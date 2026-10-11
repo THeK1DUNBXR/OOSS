@@ -839,9 +839,7 @@ export async function groupFinancials() {
   const inPaise = paiseSum(entities.map((e) => e.intercompanyIn));
   const outPaise = paiseSum(entities.map((e) => e.intercompanyOut));
   const intercompanyTotal =
-    totalsWithheldReason === null
-      ? { in: rupees(inPaise), out: rupees(outPaise), paired: inPaise === outPaise }
-      : null;
+    totalsWithheldReason === null ? { in: rupees(inPaise), out: rupees(outPaise), paired: inPaise === outPaise } : null;
 
   return {
     entities,

@@ -508,7 +508,9 @@ router.post(
       rationale: input.rationale,
       // The wire carries rupees; the check runs in paise. paiseOfInput refuses a
       // third decimal instead of rounding it, so the boundary is never a guess.
-      magnitude: input.magnitude ? { authorityClass: input.magnitude.authorityClass, value: paiseOfInput(input.magnitude.value) } : null,
+      magnitude: input.magnitude
+        ? { authorityClass: input.magnitude.authorityClass, value: paiseOfInput(input.magnitude.value) }
+        : null,
       onBehalfOfPartyId: currentAuth().partyId,
     });
   }),

@@ -256,12 +256,17 @@ describe('1.4 nightly drift check on the closed-period snapshots', () => {
 
   it('the application role cannot update or delete a snapshot', async () => {
     await expect(
-      asAppRole(ledger, (tx) =>
-        tx.$executeRaw`UPDATE "account_balance_snapshots" SET "balanceMinor" = 10000 WHERE "tenantId" = ${ledger.tid}`,
+      asAppRole(
+        ledger,
+        (tx) =>
+          tx.$executeRaw`UPDATE "account_balance_snapshots" SET "balanceMinor" = 10000 WHERE "tenantId" = ${ledger.tid}`,
       ),
     ).rejects.toThrow(/permission denied/);
     await expect(
-      asAppRole(ledger, (tx) => tx.$executeRaw`DELETE FROM "account_balance_snapshots" WHERE "tenantId" = ${ledger.tid}`),
+      asAppRole(
+        ledger,
+        (tx) => tx.$executeRaw`DELETE FROM "account_balance_snapshots" WHERE "tenantId" = ${ledger.tid}`,
+      ),
     ).rejects.toThrow(/permission denied/);
   });
 });

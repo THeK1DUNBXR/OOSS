@@ -70,10 +70,7 @@ export function instalmentPlan(raw: unknown): FeePlanPart[] {
  * fraction, in plan order (MONEY-LEDGER-CONTRACT decision 1). A fee of 100000.01
  * on 40/30/30 is 40000.01, 30000.00, 30000.00.
  */
-export function instalmentAmounts(
-  fee: { toFixed(digits: number): string } | number,
-  plan: FeePlanPart[],
-): number[] {
+export function instalmentAmounts(fee: { toFixed(digits: number): string } | number, plan: FeePlanPart[]): number[] {
   const weights = plan.map((p) => BigInt(Math.round(p.share * 10_000)));
   return allocate(paiseOf(fee), weights).map(poundsOf);
 }
