@@ -194,7 +194,7 @@ async function openIn(overrides: Partial<OpenCaseInput> = {}) {
 
 /** A case driven to `state` through the commands, not by writing the row. */
 async function inState(state: CaseState, responseDueAt?: Date): Promise<string> {
-  const row = await openIn({ responseDueAt });
+  const row = await openIn(responseDueAt ? { responseDueAt } : {});
   if (state === 'open') return row.id;
   if (state === 'withdrawn') {
     await asUser(CHAIRMAN, () => withdrawCase(row.id, 'Withdrawn in the test'));
@@ -223,7 +223,9 @@ async function eventsOf(id: string, eventName: string) {
 }
 
 async function exceptionsOf(caseId: string) {
-  return unscopedPrisma.exceptionRecord.findMany({ where: { tenantId: KAIZEN, subjectType: 'case', subjectId: caseId } });
+  return unscopedPrisma.exceptionRecord.findMany({
+    where: { tenantId: KAIZEN, subjectType: 'case', subjectId: caseId },
+  });
 }
 
 async function linksOf(caseId: string) {
@@ -291,9 +293,7 @@ describe('tenant isolation', () => {
     const before = await unscopedPrisma.case.count({ where: { tenantId: KAIZEN } });
     const local = await personIn(KAIZEN);
     await asUser(CHAIRMAN, async () => {
-      await expectReject(() =>
-        openCase({ ...baseInput(outsider.partyId, local) }),
-      );
+      await expectReject(() => openCase({ ...baseInput(outsider.partyId, local) }));
       await expectReject(() => openCase({ ...baseInput(local, outsider.partyId) }));
     });
     expect(await unscopedPrisma.case.count({ where: { tenantId: KAIZEN } })).toBe(before);
@@ -324,7 +324,7 @@ describe('tenant isolation', () => {
     const mine = await inState('open', past());
     const intruder = await fixturePrincipal(await newTenantId(), ['view', 'create', 'edit']);
     const theirs = await asPrincipal(asCeiling(intruder, 'regulated'), () =>
-      openCase({ ...baseInput(intruder.partyId, intruder.partyId, past()), backupPartyId: null }),
+      openCase(baseInput(intruder.partyId, null, past())),
     );
 
     await runJobsForTenant(KAIZEN, { jobNames: ['runCaseOverdueJob'] });
@@ -341,7 +341,7 @@ function baseInput(owner: string, backup: string | null, responseDueAt: Date = f
     kind: 'complaint',
     title: `Cross-tenant ${uniq()}`,
     ownerPartyId: owner,
-    backupPartyId: backup === owner ? null : backup,
+    backupPartyId: backup,
     responseDueAt,
     visibilityTier: 'internal',
     severity: 'S1_ATTENTION',
@@ -360,9 +360,7 @@ describe('the backup is never the owner', () => {
   it('a case naming the same person as owner and backup is refused, and no row is written', async () => {
     const same = await personIn(KAIZEN);
     const title = `Same person ${uniq()}`;
-    const err = await asUser(CHAIRMAN, () =>
-      expectReject(() => openCase({ ...baseInput(same, same), title })),
-    );
+    const err = await asUser(CHAIRMAN, () => expectReject(() => openCase({ ...baseInput(same, same), title })));
     expect(err.status).toBe(422);
     expect(await unscopedPrisma.case.count({ where: { title } })).toBe(0);
   });
@@ -397,42 +395,39 @@ describe('the state table', () => {
     expect([...CASE_TRANSITIONS.acknowledged].sort()).toEqual(['resolved', 'withdrawn']);
   });
 
-  it.each(STATES.flatMap((from) => COMMANDS.map((cmd) => [from, cmd] as const)))(
-    'from %s, %s is %s',
-    async (from, cmd) => {
-      const id = await inState(from);
-      const to = TARGET[cmd];
-      const allowed = CASE_TRANSITIONS[from].includes(to);
-      const run = () => {
-        switch (cmd) {
-          case 'acknowledge':
-            return acknowledgeCase(id);
-          case 'resolve':
-            return resolveCase(id);
-          case 'close':
-            return closeCase(id);
-          case 'withdraw':
-            return withdrawCase(id, 'Table check');
-        }
-      };
-      const historyBefore = (await historyOf(id)).length;
-      const auditBefore = (await auditOf(id)).length;
-
-      if (allowed) {
-        const row = await asUser(CHAIRMAN, run);
-        expect(row.state).toBe(to);
-        expect(await stateOf(id)).toBe(to);
-        expect(await historyOf(id)).toHaveLength(historyBefore + 1);
-        expect(await auditOf(id)).toHaveLength(auditBefore + 1);
-      } else {
-        const err = await asUser(CHAIRMAN, () => expectReject(run));
-        expect(err.status).toBe(409);
-        expect(await stateOf(id)).toBe(from);
-        expect(await historyOf(id)).toHaveLength(historyBefore);
-        expect(await auditOf(id)).toHaveLength(auditBefore);
+  it.each(STATES.flatMap((from) => COMMANDS.map((cmd) => [from, cmd] as const)))('from %s, %s', async (from, cmd) => {
+    const id = await inState(from);
+    const to = TARGET[cmd];
+    const allowed = CASE_TRANSITIONS[from].includes(to);
+    const run = () => {
+      switch (cmd) {
+        case 'acknowledge':
+          return acknowledgeCase(id);
+        case 'resolve':
+          return resolveCase(id);
+        case 'close':
+          return closeCase(id);
+        case 'withdraw':
+          return withdrawCase(id, 'Table check');
       }
-    },
-  );
+    };
+    const historyBefore = (await historyOf(id)).length;
+    const auditBefore = (await auditOf(id)).length;
+
+    if (allowed) {
+      const row = await asUser(CHAIRMAN, run);
+      expect(row.state).toBe(to);
+      expect(await stateOf(id)).toBe(to);
+      expect(await historyOf(id)).toHaveLength(historyBefore + 1);
+      expect(await auditOf(id)).toHaveLength(auditBefore + 1);
+    } else {
+      const err = await asUser(CHAIRMAN, () => expectReject(run));
+      expect(err.status).toBe(409);
+      expect(await stateOf(id)).toBe(from);
+      expect(await historyOf(id)).toHaveLength(historyBefore);
+      expect(await auditOf(id)).toHaveLength(auditBefore);
+    }
+  });
 });
 
 describe('silence never acknowledges', () => {
@@ -520,9 +515,9 @@ describe('CaseEvent is append-only', () => {
 
   it('a DELETE of a history row is refused for every role', async () => {
     const row = await openIn();
-    await expect(
-      unscopedPrisma.$executeRaw`DELETE FROM "case_events" WHERE "caseId" = ${row.id}`,
-    ).rejects.toThrow(/immutable/i);
+    await expect(unscopedPrisma.$executeRaw`DELETE FROM "case_events" WHERE "caseId" = ${row.id}`).rejects.toThrow(
+      /immutable/i,
+    );
     expect(await historyOf(row.id)).toHaveLength(1);
   });
 });
@@ -614,7 +609,7 @@ describe('permission', () => {
 });
 
 describe('audit and registration', () => {
-  it("the case entity is governed, and opening a case writes its audit row and its event", async () => {
+  it('the case entity is governed, and opening a case writes its audit row and its event', async () => {
     expect(isGoverned('case')).toBe(true);
     const row = await openIn();
     const audit = await auditOf(row.id, 'create');
@@ -625,7 +620,14 @@ describe('audit and registration', () => {
 
 describe('remedy amounts are paise', () => {
   it('the wire takes a paise string, refuses a JavaScript number, and returns a string', () => {
-    const body = { kind: 'learner', title: 'Refund', ownerPartyId: 'p', responseDueAt: future().toISOString(), visibilityTier: 'internal', severity: 'S2_WARNING' };
+    const body = {
+      kind: 'learner',
+      title: 'Refund',
+      ownerPartyId: 'p',
+      responseDueAt: future().toISOString(),
+      visibilityTier: 'internal',
+      severity: 'S2_WARNING',
+    };
     expect(openCaseBody.parse({ ...body, remedyAmountMinor: '1234500' }).remedyAmountMinor).toBe(1234500n);
     expect(openCaseBody.safeParse({ ...body, remedyAmountMinor: 1234500 }).success).toBe(false);
     expect(openCaseBody.safeParse({ ...body, remedyAmountMinor: '12.50' }).success).toBe(false);
