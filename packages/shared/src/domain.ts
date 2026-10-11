@@ -942,6 +942,11 @@ export const EXCEPTION_CODES = {
   // penalty is per day, so a return nobody has looked at is an exposure rather
   // than a task.
   EX_FIN_006: { code: 'EX-FIN-006', label: 'GST return not filed for a closed month', severity: 'S3_HIGH_RISK' },
+  // Money arrived on a date whose accounting period is closed. It is recorded in
+  // the open period, with the arrival date kept, because refusing money that has
+  // reached the bank is worse than a dated entry the accountant must look at.
+  // Interim policy, pending the accountant's confirmation of the treatment.
+  EX_FIN_007: { code: 'EX-FIN-007', label: 'Payment received for a closed period', severity: 'S2_WARNING' },
   // A student's complaint. Held at the same rung as an absence breach because
   // the thing that makes it serious is the same: a clock is running and somebody
   // outside the company is waiting.

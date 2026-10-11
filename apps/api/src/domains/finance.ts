@@ -24,7 +24,7 @@
  * pointing one way is what stops the two files becoming one.
  */
 
-import { EVENTS, round2 } from '@kaizen/shared';
+import { EVENTS, monthKey, monthRange, round2 } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -34,6 +34,7 @@ import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
 import { runHooks } from '../platform/hooks.js';
+import { periodStatus as accountingPeriodStatus } from './compliance/books.js';
 import { invoiceLabel, rehydrateReceivablesFor, totalsOf } from './invoicing.js';
 
 /**
@@ -97,6 +98,20 @@ export async function issueFeeInstalments(
 // Movement — append-only, idempotent on gatewayReference
 // ---------------------------------------------------------------------------
 
+/**
+ * The first instant, from `now` onwards, that falls in an open accounting period.
+ * `now` itself when its month is open; otherwise the IST start of the next month
+ * that is open. Used only for money that has already arrived.
+ */
+async function openAccountingDate(now: Date): Promise<Date> {
+  let date = now;
+  for (let i = 0; i < 24; i++) {
+    if ((await accountingPeriodStatus(date)) !== 'closed') return date;
+    date = monthRange(monthKey(date)).to;
+  }
+  throw ApiError.unprocessable('No open accounting period in the next two years to record this payment in.');
+}
+
 export async function recordPayment(input: {
   amount: number;
   currency?: string;
@@ -115,10 +130,20 @@ export async function recordPayment(input: {
     where: { tenantId: auth.tenantId, gatewayReference: input.gatewayReference },
   });
   if (existing) return existing;
-  await runHooks('accounting_document.before_write', {
-    date: input.receivedAt ?? new Date(),
-    what: 'This payment',
-  });
+
+  // Interim policy, pending the accountant's confirmation: money that has
+  // arrived is never refused. A caller with no human behind it (a gateway
+  // webhook, `partyId` null, as `Payment.recordedById` describes) whose money
+  // date falls in a closed period is recorded in the current open period, and
+  // the arrival date is kept as `valueDate`. A member of staff entering the same
+  // payment is still refused by the hook below. Nothing is written into the
+  // closed period either way; only the accounting date moves.
+  const arrivedAt = input.receivedAt ?? new Date();
+  const movedFromClosed = auth.partyId === null && (await accountingPeriodStatus(arrivedAt)) === 'closed';
+  if (!movedFromClosed) {
+    await runHooks('accounting_document.before_write', { date: arrivedAt, what: 'This payment' });
+  }
+  const accountingDate = movedFromClosed ? await openAccountingDate(new Date()) : arrivedAt;
 
   const recordCode = await nextRecordCode('PAY');
   const payment = await prisma.payment.create({
@@ -128,7 +153,8 @@ export async function recordPayment(input: {
       amount: input.amount,
       currency: input.currency ?? 'INR',
       gatewayReference: input.gatewayReference,
-      receivedAt: input.receivedAt ?? new Date(),
+      receivedAt: accountingDate,
+      valueDate: movedFromClosed ? arrivedAt : null,
       status: 'received',
       method: input.method ?? 'bank_transfer',
       payerOrganizationId: input.payerOrganizationId ?? null,
@@ -145,8 +171,26 @@ export async function recordPayment(input: {
     action: 'create',
     subjectType: 'payment',
     subjectId: payment.id,
-    after: { recordCode, amount: input.amount },
+    after: {
+      recordCode,
+      amount: input.amount,
+      receivedAt: accountingDate,
+      valueDate: movedFromClosed ? arrivedAt : null,
+    },
   });
+  if (movedFromClosed) {
+    await raiseException({
+      code: 'EX-FIN-007',
+      label: 'Payment received for a closed period',
+      severity: 'S2_WARNING',
+      subjectType: 'payment',
+      subjectId: payment.id,
+      subjectLabel: recordCode,
+      detail: `₹${input.amount.toFixed(2)} arrived on ${arrivedAt.toISOString().slice(0, 10)}, in a closed period. It is recorded in the open period from ${accountingDate.toISOString().slice(0, 10)}; the arrival date is kept. Confirm the treatment with the accountant.`,
+      triggerFingerprint: `payment_received_closed:${payment.id}`,
+      ladderRung: 1,
+    });
+  }
   await emit({
     name: EVENTS.PAYMENT_RECEIVED,
     subject: { entityType: 'payment', entityId: payment.id, recordCode },

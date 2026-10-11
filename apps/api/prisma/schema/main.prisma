@@ -3170,7 +3170,13 @@ model Payment {
   amount           Decimal  @db.Decimal(18, 2)
   currency         String   @default("INR")
   gatewayReference String
+  /// The accounting date: the date the books record this payment in. Equal to
+  /// the money's date unless that date fell in a closed period, in which case
+  /// the money is recorded in the open period and `valueDate` keeps the date it
+  /// arrived (interim policy, pending the accountant; see EX-FIN-007).
   receivedAt       DateTime
+  /// The date the money actually arrived, when it differs from `receivedAt`.
+  valueDate        DateTime?
   status           String   @default("received")
   method           String   @default("bank_transfer")
 
