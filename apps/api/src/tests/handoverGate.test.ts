@@ -1,13 +1,16 @@
 /**
  * The handover gate (Wave 6, SPINE-CONTRACT 1.7; OPUS decision 14).
  *
- * The exit that ends a person's access is the offboarding transition to
- * FFSettlementCompleted or ClosedArchived: the `offboarding.completed` hook there
- * ends their affiliations (privacy.ts:1353). Those transitions are refused with a
- * 409 while the leaver still owns an open Commitment, Case or Lead, or holds an
- * asset in custody, unless each such row is given a successor, or an approver
- * records a waiver with a reason. Real Postgres and the real decision paths; no
- * mocks.
+ * The exit that ends a person's access is the offboarding settlement,
+ * FFSettlementCompleted: the `offboarding.completed` hook there ends their
+ * affiliations (privacy.ts:1353). That transition is refused with a 409 while the
+ * leaver still owns an open Commitment, Case or Lead, or holds an asset in custody,
+ * unless each such row is given a successor, or an approver records a waiver with a
+ * reason. Real Postgres and the real decision paths; no mocks.
+ *
+ * Fixtures open the leaver's rows while they are still active. Nothing can be
+ * assigned to someone in notice (ownership.ts), so a row that exists at the exit
+ * was opened before the resignation, as it would be in practice.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { asUser, prisma, tenantId, unscopedPrisma, withFixtureRole } from './helpers.js';
@@ -21,6 +24,7 @@ import { nextRecordCode } from '../platform/recordCode.js';
 const HR = 'hr@kaizen.co.in';
 const CHAIRMAN = 'chairman@kaizen.co.in';
 const REASON = 'Leaver unreachable during handover; operations will re-route the rows in week two.';
+const DAY = 86_400_000;
 
 let TENANT: string;
 let seq = 0;
@@ -56,12 +60,15 @@ function blockersOf(err: Rejection): Blocker[] {
   return ((err.details as { blockers?: Blocker[] } | undefined)?.blockers ?? []) as Blocker[];
 }
 
+function must(value: string | undefined): string {
+  if (!value) throw new Error('The fixture did not open the row the test needs.');
+  return value;
+}
+
 function stamp(): string {
   seq += 1;
   return `${Date.now()}-${seq}-${Math.floor(Math.random() * 1e6)}`;
 }
-
-const DAY = 86_400_000;
 
 /** A person hired and activated by HR. Their employment is the one a resignation will be filed against. */
 async function hiredAndActive(label: string): Promise<{ personId: string; employmentId: string }> {
@@ -91,6 +98,24 @@ async function hiredAndActive(label: string): Promise<{ personId: string; employ
   });
 }
 
+/** Hires an existing person, so a fixture principal can be the leaver. */
+async function hiredAndActiveFor(personId: string): Promise<{ personId: string; employmentId: string }> {
+  return asUser(HR, async () => {
+    const position = await prisma.position.create({
+      data: {
+        tenantId: TENANT,
+        recordCode: await nextRecordCode('POS'),
+        jobId: (await prisma.job.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
+        orgUnitId: (await prisma.orgUnit.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
+        status: 'Open',
+      },
+    });
+    const employment = await hire({ personId, positionId: position.id, hireEffectiveDate: new Date() });
+    await transitionEmployment(employment.id, 'ACTIVATE');
+    return { personId, employmentId: employment.id };
+  });
+}
+
 /** Files a resignation for the employment and drives the offboarding to FFSettlementPending, one step short of the exit. */
 async function settledButNotExited(employmentId: string): Promise<string> {
   await asUser(HR, () => transitionEmployment(employmentId, 'SUBMIT_RESIGNATION', { note: 'Resigned (test)' }));
@@ -105,11 +130,33 @@ async function settledButNotExited(employmentId: string): Promise<string> {
   return offboarding.id;
 }
 
-/** A leaver ready for the exit: active, resigned, at FFSettlementPending. */
-async function leaver(label: string): Promise<{ personId: string; employmentId: string; offboardingId: string }> {
+type OpenKind = 'commitment' | 'case' | 'lead' | 'custody';
+
+interface OpenRows {
+  commitmentId?: string;
+  caseId?: string;
+  leadId?: string;
+  assignmentId?: string;
+  assetId?: string;
+}
+
+interface Leaver {
+  personId: string;
+  employmentId: string;
+  offboardingId: string;
+  rows: OpenRows;
+}
+
+/** A leaver at FFSettlementPending, holding the named open rows. The rows are opened before the resignation. */
+async function leaver(label: string, open: OpenKind[] = []): Promise<Leaver> {
   const hired = await hiredAndActive(label);
+  const rows: OpenRows = {};
+  if (open.includes('commitment')) rows.commitmentId = await ownCommitment(hired.personId, hired.employmentId);
+  if (open.includes('case')) rows.caseId = await ownCase(hired.personId);
+  if (open.includes('lead')) rows.leadId = await ownLead(hired.personId);
+  if (open.includes('custody')) Object.assign(rows, await custodyOf(hired.employmentId));
   const offboardingId = await settledButNotExited(hired.employmentId);
-  return { ...hired, offboardingId };
+  return { ...hired, offboardingId, rows };
 }
 
 /** The exit itself: the offboarding transition that fires the access-revocation hook. */
@@ -165,7 +212,7 @@ async function ownLead(ownerPartyId: string): Promise<string> {
   return lead.id;
 }
 
-/** An asset issued to the employment. Returns the open assignment's id, which is the custody row the gate names. */
+/** An asset issued to the employment. Returns the open assignment, which is the custody row the gate names. */
 async function custodyOf(employmentId: string): Promise<{ assignmentId: string; assetId: string }> {
   const asset = await asUser(CHAIRMAN, () => createAsset({ tag: `HO-${stamp()}`, category: 'laptop' }));
   const assignment = await asUser(CHAIRMAN, () =>
@@ -178,10 +225,29 @@ async function auditRowsFor(subjectType: string, subjectId: string) {
   return unscopedPrisma.auditRecord.findMany({ where: { tenantId: TENANT, subjectType, subjectId } });
 }
 
+/**
+ * Whether an audit row for the subject recorded `field` changing to a value that `matches`.
+ * An `update` row stores each changed field as `{ from, to }`; a `create` row stores the
+ * whole new row as its diff, where a field is a plain value, so it is not a change.
+ */
+async function auditChanged(
+  subjectType: string,
+  subjectId: string,
+  field: string,
+  matches: (to: unknown) => boolean,
+): Promise<boolean> {
+  const rows = await auditRowsFor(subjectType, subjectId);
+  return rows.some((row) => {
+    const diff = row.diff as unknown as Record<string, unknown> | null;
+    const change = diff?.[field];
+    return typeof change === 'object' && change !== null && 'to' in change && matches((change as { to: unknown }).to);
+  });
+}
+
 describe('the handover gate refuses an exit while the leaver still owns open rows', () => {
   it('a commitment the leaver owns blocks the exit with a 409 that names it', async () => {
-    const l = await leaver('gate-commitment');
-    const commitmentId = await ownCommitment(l.personId, l.employmentId);
+    const l = await leaver('gate-commitment', ['commitment']);
+    const commitmentId = must(l.rows.commitmentId);
     const commitment = await unscopedPrisma.commitment.findUniqueOrThrow({ where: { id: commitmentId } });
 
     const err = await rejectionOf(() => exit(l.offboardingId));
@@ -192,8 +258,8 @@ describe('the handover gate refuses an exit while the leaver still owns open row
   });
 
   it('an open case the leaver owns blocks the exit with a 409 that names it', async () => {
-    const l = await leaver('gate-case');
-    const caseId = await ownCase(l.personId);
+    const l = await leaver('gate-case', ['case']);
+    const caseId = must(l.rows.caseId);
     const kase = await unscopedPrisma.case.findUniqueOrThrow({ where: { id: caseId } });
 
     const err = await rejectionOf(() => exit(l.offboardingId));
@@ -204,9 +270,9 @@ describe('the handover gate refuses an exit while the leaver still owns open row
   });
 
   it('an asset in the leaver custody blocks the exit with a 409 that names the open assignment', async () => {
-    const l = await leaver('gate-custody');
-    const { assignmentId, assetId } = await custodyOf(l.employmentId);
-    const asset = await unscopedPrisma.asset.findUniqueOrThrow({ where: { id: assetId } });
+    const l = await leaver('gate-custody', ['custody']);
+    const assignmentId = must(l.rows.assignmentId);
+    const asset = await unscopedPrisma.asset.findUniqueOrThrow({ where: { id: must(l.rows.assetId) } });
 
     const err = await rejectionOf(() => exit(l.offboardingId));
 
@@ -216,8 +282,8 @@ describe('the handover gate refuses an exit while the leaver still owns open row
   });
 
   it('a lead the leaver owns blocks the exit with a 409 that names it', async () => {
-    const l = await leaver('gate-lead');
-    const leadId = await ownLead(l.personId);
+    const l = await leaver('gate-lead', ['lead']);
+    const leadId = must(l.rows.leadId);
     const lead = await unscopedPrisma.lead.findUniqueOrThrow({ where: { id: leadId } });
 
     const err = await rejectionOf(() => exit(l.offboardingId));
@@ -243,13 +309,14 @@ describe('the handover gate refuses an exit while the leaver still owns open row
 
 describe('a successor takes each open row, and the move is governed', () => {
   it('one successor for every row, plus a per-row successor, moves every row and audits each move', async () => {
-    const l = await leaver('handover-moves');
     const successorA = await hiredAndActive('successor-a');
     const successorB = await hiredAndActive('successor-b');
-    const commitmentId = await ownCommitment(l.personId, l.employmentId);
-    const caseId = await ownCase(l.personId);
-    const leadId = await ownLead(l.personId);
-    const { assignmentId, assetId } = await custodyOf(l.employmentId);
+    const l = await leaver('handover-moves', ['commitment', 'case', 'lead', 'custody']);
+    const commitmentId = must(l.rows.commitmentId);
+    const caseId = must(l.rows.caseId);
+    const leadId = must(l.rows.leadId);
+    const assignmentId = must(l.rows.assignmentId);
+    const assetId = must(l.rows.assetId);
 
     const exited = await exit(l.offboardingId, {
       handover: {
@@ -275,25 +342,18 @@ describe('a successor takes each open row, and the move is governed', () => {
     expect(reissued.employmentRelationshipId).toBe(successorA.employmentId);
     expect((await unscopedPrisma.asset.findUniqueOrThrow({ where: { id: assetId } })).status).toBe('assigned');
 
-    const ownerAudited = async (subjectType: string, subjectId: string, partyId: string) =>
-      (await auditRowsFor(subjectType, subjectId)).some(
-        (row) => (row.after as { ownerPartyId?: string } | null)?.ownerPartyId === partyId,
-      );
-    expect(await ownerAudited('commitment', commitmentId, successorA.personId)).toBe(true);
-    expect(await ownerAudited('case', caseId, successorB.personId)).toBe(true);
-    expect(await ownerAudited('lead', leadId, successorA.personId)).toBe(true);
-    expect(
-      (await auditRowsFor('asset_assignment', assignmentId)).some(
-        (row) => (row.after as { returnedOn?: unknown } | null)?.returnedOn != null,
-      ),
-    ).toBe(true);
+    const to = (partyId: string) => (value: unknown) => value === partyId;
+    expect(await auditChanged('commitment', commitmentId, 'ownerPartyId', to(successorA.personId))).toBe(true);
+    expect(await auditChanged('case', caseId, 'ownerPartyId', to(successorB.personId))).toBe(true);
+    expect(await auditChanged('lead', leadId, 'ownerPartyId', to(successorA.personId))).toBe(true);
+    expect(await auditChanged('asset_assignment', assignmentId, 'returnedOn', (v) => typeof v === 'string')).toBe(true);
   });
 });
 
 describe('a successor must be an active person in this tenant', () => {
   it('the leaver, a person already leaving, and a merged duplicate are each refused with a 422, and nothing moves', async () => {
-    const l = await leaver('bad-successor');
-    const commitmentId = await ownCommitment(l.personId, l.employmentId);
+    const l = await leaver('bad-successor', ['commitment']);
+    const commitmentId = must(l.rows.commitmentId);
     const leaving = await leaver('already-leaving');
     const s = stamp();
     const merged = await unscopedPrisma.person.create({
@@ -321,8 +381,8 @@ describe('a successor must be an active person in this tenant', () => {
 
 describe('an override is a separately permissioned, reasoned waiver', () => {
   it('without the approve permission the override is a 403, and nothing moves', async () => {
-    const l = await leaver('override-403');
-    const commitmentId = await ownCommitment(l.personId, l.employmentId);
+    const l = await leaver('override-403', ['commitment']);
+    const commitmentId = must(l.rows.commitmentId);
 
     const err = await rejectionOf(() => exit(l.offboardingId, { override: { reason: REASON } }, HR));
 
@@ -333,8 +393,7 @@ describe('an override is a separately permissioned, reasoned waiver', () => {
   });
 
   it('a reason under 20 non-whitespace characters is a 422, and nothing moves', async () => {
-    const l = await leaver('override-422');
-    await ownCommitment(l.personId, l.employmentId);
+    const l = await leaver('override-422', ['commitment']);
 
     const err = await rejectionOf(() => exit(l.offboardingId, { override: { reason: '  too   short  ' } }));
 
@@ -343,8 +402,8 @@ describe('an override is a separately permissioned, reasoned waiver', () => {
   });
 
   it('a valid override exits, leaves the rows with the leaver, and writes an audit row with the reason and the rows', async () => {
-    const l = await leaver('override-valid');
-    const commitmentId = await ownCommitment(l.personId, l.employmentId);
+    const l = await leaver('override-valid', ['commitment']);
+    const commitmentId = must(l.rows.commitmentId);
     const commitment = await unscopedPrisma.commitment.findUniqueOrThrow({ where: { id: commitmentId } });
 
     const exited = await exit(l.offboardingId, { override: { reason: REASON } });
@@ -353,13 +412,20 @@ describe('an override is a separately permissioned, reasoned waiver', () => {
     const still = await unscopedPrisma.commitment.findUniqueOrThrow({ where: { id: commitmentId } });
     expect(still.ownerPartyId).toBe(l.personId);
 
+    // The waiver stands through the archive: ARCHIVE follows the settlement, and does not re-run the gate.
+    const archived = await asUser(CHAIRMAN, () => transitionOffboarding(l.offboardingId, 'ARCHIVE'));
+    expect(archived.status).toBe('ClosedArchived');
+
     const audit = (await auditRowsFor('offboarding', l.offboardingId)).find(
-      (row) => (row.meta as { handoverOverride?: unknown } | null)?.handoverOverride !== undefined,
+      (row) => (row.meta as unknown as { handoverOverride?: unknown } | null)?.handoverOverride !== undefined,
     );
     expect(audit).toBeDefined();
-    const override = (audit!.meta as { handoverOverride: { reason: string; rowsLeftOpen: Blocker[] } }).handoverOverride;
+    const override = (audit!.meta as unknown as { handoverOverride: { reason: string; rowsLeftOpen: Blocker[] } })
+      .handoverOverride;
     expect(override.reason).toBe(REASON);
-    expect(override.rowsLeftOpen).toEqual([{ kind: 'commitment', id: commitmentId, recordCode: commitment.recordCode }]);
+    expect(override.rowsLeftOpen).toEqual([
+      { kind: 'commitment', id: commitmentId, recordCode: commitment.recordCode },
+    ]);
 
     const waived = await unscopedPrisma.eventRecord.count({
       where: {
@@ -390,24 +456,6 @@ describe('an override is a separately permissioned, reasoned waiver', () => {
     );
   });
 });
-
-/** Hires an existing person, so a fixture principal can be the leaver. */
-async function hiredAndActiveFor(personId: string): Promise<{ personId: string; employmentId: string }> {
-  return asUser(HR, async () => {
-    const position = await prisma.position.create({
-      data: {
-        tenantId: TENANT,
-        recordCode: await nextRecordCode('POS'),
-        jobId: (await prisma.job.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
-        orgUnitId: (await prisma.orgUnit.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
-        status: 'Open',
-      },
-    });
-    const employment = await hire({ personId, positionId: position.id, hireEffectiveDate: new Date() });
-    await transitionEmployment(employment.id, 'ACTIVATE');
-    return { personId, employmentId: employment.id };
-  });
-}
 
 describe('another tenant never blocks an exit and is never a successor', () => {
   it('open rows in another tenant do not block, and a person from another tenant cannot take a row', async () => {
@@ -443,8 +491,8 @@ describe('another tenant never blocks an exit and is never a successor', () => {
     const exited = await exit(quiet.offboardingId);
     expect(exited.status).toBe('FFSettlementCompleted');
 
-    const busy = await leaver('tenant-busy');
-    const ownCommitmentId = await ownCommitment(busy.personId, busy.employmentId);
+    const busy = await leaver('tenant-busy', ['commitment']);
+    const ownCommitmentId = must(busy.rows.commitmentId);
     const err = await rejectionOf(() => exit(busy.offboardingId));
     expect(err.status).toBe(409);
     expect(blockersOf(err).map((b) => b.id)).toEqual([ownCommitmentId]);

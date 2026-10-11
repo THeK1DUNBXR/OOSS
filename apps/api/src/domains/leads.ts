@@ -8,8 +8,9 @@
  * sitting with the intake service account.
  */
 
+import type { Lead } from '@prisma/client';
 import { EVENTS, isUnrouted, type Vertical } from '@kaizen/shared';
-import { prisma } from '../platform/db.js';
+import { prisma, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -20,6 +21,7 @@ import { assertCan, scopeFor, scopeWhere } from '../platform/permissions.js';
 import { notify, raiseException } from '../platform/exceptions.js';
 import { entryStage, pipelineForVertical, stageFor, validateTransition } from './pipelines.js';
 import { routeLead, raiseUnroutedException } from './routing.js';
+import { lockAssignableParty } from './ownership.js';
 import { findOrCreatePerson } from './identity.js';
 
 export interface LeadInput {
@@ -252,42 +254,65 @@ export async function applyRouting(leadId: string, district: string | null = nul
 
 /** An explicit, separately-permissioned override, distinct from the ordinary creation flow. */
 export async function reassignLead(leadId: string, newOwnerPartyId: string, reason: string) {
-  const auth = currentAuth();
   await assertCan({ resource: 'leads', verb: 'assign' });
 
   const lead = await prisma.lead.findFirst({ where: { id: leadId } });
   if (!lead) throw ApiError.notFound('Lead');
 
-  return governedWrite(async (tx) => {
-    const updated = await tx.lead.update({
-      where: { id: leadId },
-      data: { ownerPartyId: newOwnerPartyId, unroutedReason: null, routedAt: new Date() },
-    });
+  return governedWrite((tx) => writeLeadOwner(tx, lead, newOwnerPartyId, reason, 'human_override'));
+}
 
-    // A lead sitting with the wrong owner for the wrong reason (a routing bug vs.
-    // a manager's deliberate reassignment) needs different remediation, so the
-    // audit trail distinguishes the two by actor.
-    await auditWrite({
-      action: 'update',
-      subjectType: 'lead',
-      subjectId: leadId,
-      before: { ownerPartyId: lead.ownerPartyId },
-      after: { ownerPartyId: newOwnerPartyId },
-      meta: { assignedBy: 'human_override', reason, actorId: auth.partyId },
-      tx,
-    });
+/** The grant a handover needs for leads. Checked outside the exit's transaction, as every grant check here is. */
+export async function authoriseLeadHandover(): Promise<void> {
+  await assertCan({ resource: 'leads', verb: 'assign' });
+}
 
-    await emit({
-      name: EVENTS.LEAD_REASSIGNED,
-      subject: { entityType: 'lead', entityId: leadId, recordCode: lead.recordCode },
-      previousState: { ownerPartyId: lead.ownerPartyId },
-      newState: { ownerPartyId: newOwnerPartyId },
-      reason: { reasonCode: 'manual_override', note: reason },
-      tx,
-    });
+/** The exit handover's write for one open lead, inside the exit's transaction. The caller has locked the row and checked the grant. */
+export function handOverLeadInTx(tx: DbTx, lead: Lead, successorPartyId: string, reason: string): Promise<Lead> {
+  return writeLeadOwner(tx, lead, successorPartyId, reason, 'exit_handover');
+}
 
-    return updated;
+/**
+ * Moves a lead to a new owner inside the caller's transaction: the row, the audit
+ * row and the event. A lead sitting with the wrong owner for the wrong reason (a
+ * routing bug vs. a manager's deliberate reassignment, or a leaver's exit) needs
+ * different remediation, so the audit trail and the event say which one it was.
+ */
+async function writeLeadOwner(
+  tx: DbTx,
+  lead: Lead,
+  newOwnerPartyId: string,
+  reason: string,
+  change: 'human_override' | 'exit_handover',
+): Promise<Lead> {
+  const auth = currentAuth();
+  await lockAssignableParty(tx, auth.tenantId, newOwnerPartyId);
+
+  const updated = await tx.lead.update({
+    where: { id: lead.id },
+    data: { ownerPartyId: newOwnerPartyId, unroutedReason: null, routedAt: new Date() },
   });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'lead',
+    subjectId: lead.id,
+    before: { ownerPartyId: lead.ownerPartyId },
+    after: { ownerPartyId: newOwnerPartyId },
+    meta: { assignedBy: change, reason, actorId: auth.partyId },
+    tx,
+  });
+
+  await emit({
+    name: EVENTS.LEAD_REASSIGNED,
+    subject: { entityType: 'lead', entityId: lead.id, recordCode: lead.recordCode },
+    previousState: { ownerPartyId: lead.ownerPartyId },
+    newState: { ownerPartyId: newOwnerPartyId },
+    reason: { reasonCode: change === 'human_override' ? 'manual_override' : 'exit_handover', note: reason },
+    tx,
+  });
+
+  return updated;
 }
 
 export async function advanceLeadStage(leadId: string, toStageKey: string) {

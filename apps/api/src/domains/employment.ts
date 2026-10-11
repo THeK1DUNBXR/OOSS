@@ -58,6 +58,16 @@ import { assertEmploymentVisible } from '../platform/recordScope.js';
 import { normalisePhone, normaliseEmail } from './identity.js';
 import { runHooks } from '../platform/hooks.js';
 import { encryptField, readRegulated } from './compliance/privacy.js';
+import {
+  authoriseHandover,
+  executeHandover,
+  OVERRIDE_REASON_MIN_CHARS,
+  planHandover,
+  recordHandoverOverride,
+  type HandoverInput,
+  type HandoverOverrideInput,
+  type HandoverPlan,
+} from './handover.js';
 
 // ---------------------------------------------------------------------------
 // Org structure
@@ -1293,7 +1303,38 @@ export async function transitionOnboarding(id: string, event: OnboardingEvent, n
   });
 }
 
-export async function transitionOffboarding(id: string, event: OffboardingEvent, note?: string) {
+/** How a caller names successors for the exit, or waives the requirement with a reason. Only the exit takes them. */
+export interface OffboardingTransitionOptions {
+  handover?: HandoverInput;
+  override?: HandoverOverrideInput;
+}
+
+/**
+ * The exit is the settlement step. The access revocation runs when the offboarding
+ * enters FFSettlementCompleted (privacy.ts:1353), and ARCHIVE can only follow that
+ * state. So the gate runs once, here: a waiver given at the settlement stands
+ * through the archive, rather than the archive finding the same rows again.
+ */
+const EXIT_EVENT: OffboardingEvent = 'DISBURSE';
+const EXIT_STATE: OffboardingState = 'FFSettlementCompleted';
+
+/**
+ * The archive, the access revocation and the exit letters commit together. The
+ * hooks run inside the transaction: before, they ran after the archive had
+ * committed, so a refused relieving letter left the offboarding ClosedArchived
+ * with no letter and no checklist.
+ *
+ * On the exit, the handover gate (handover.ts) runs in the same transaction. The
+ * open rows the leaver still holds are locked and either handed to a named
+ * successor or, under an approved waiver, left with the leaver. Otherwise the exit
+ * is a 409 that names each row.
+ */
+export async function transitionOffboarding(
+  id: string,
+  event: OffboardingEvent,
+  note?: string,
+  options: OffboardingTransitionOptions = {},
+) {
   const auth = currentAuth();
   const record = await prisma.offboarding.findFirst({
     where: { id, tenantId: auth.tenantId },
@@ -1301,10 +1342,19 @@ export async function transitionOffboarding(id: string, event: OffboardingEvent,
   });
   if (!record) throw ApiError.notFound('Offboarding');
 
-  // The archive, the access revocation and the exit letters commit together. The
-  // hooks run inside the transaction: before, they ran after the archive had
-  // committed, so a refused relieving letter left the offboarding ClosedArchived
-  // with no letter and no checklist.
+  const leaverPersonId = record.employmentRelationship.personId;
+  const hasHandover = options.handover !== undefined;
+  const hasOverride = options.override !== undefined;
+  if ((hasHandover || hasOverride) && event !== EXIT_EVENT) {
+    throw ApiError.unprocessable('A handover or a waiver applies only to the exit (the settlement), not to this step.');
+  }
+
+  // Before the transaction: each grant check reads on the scoped client, which cannot
+  // run inside a transaction this code did not open.
+  if (options.handover) await authoriseHandover(options.handover);
+  if (options.override) await authoriseOverride(options.override, leaverPersonId);
+
+  let plan: HandoverPlan | undefined;
   const { value: updated } = await transitionInTx(
     {
       machine: offboardingMachine,
@@ -1313,18 +1363,41 @@ export async function transitionOffboarding(id: string, event: OffboardingEvent,
       resource: 'employees',
       subjectType: 'offboarding',
       subjectId: id,
-      ownerPartyId: record.employmentRelationship.personId,
+      ownerPartyId: leaverPersonId,
       from: record.status as OffboardingState,
       event,
       reasonNote: note ?? null,
     },
     {
-      write: (tx, to) =>
-        tx.offboarding.update({
+      // The gate's lock and check come before the status change, and before the
+      // transition's audit row. Emitting from here would take the event lock ahead
+      // of the audit lock, so the gate only plans; the moves happen in `after`.
+      write: async (tx, to) => {
+        if (to === EXIT_STATE) {
+          plan = await planHandover(tx, {
+            tenantId: auth.tenantId,
+            leaverPersonId,
+            handover: options.handover,
+            allowUnhanded: hasOverride,
+          });
+        }
+        return tx.offboarding.update({
           where: { id },
           data: { status: to, disputeReason: event === 'DISPUTE' ? (note ?? 'disputed') : null },
-        }),
+        });
+      },
       after: async (tx, to, offboarding) => {
+        if (to === EXIT_STATE && plan) {
+          await executeHandover(tx, plan, `Exit handover, offboarding ${id}`);
+          if (plan.unhanded.length > 0 && options.override) {
+            await recordHandoverOverride(tx, {
+              offboardingId: id,
+              leaverPersonId,
+              reason: options.override.reason.trim(),
+              rowsLeftOpen: plan.unhanded,
+            });
+          }
+        }
         if (to === 'ClosedArchived' || to === 'FFSettlementCompleted') {
           // Access revocation and the exit paperwork attach here (workstreams F, G).
           await runHooks('offboarding.completed', {
@@ -1337,6 +1410,27 @@ export async function transitionOffboarding(id: string, event: OffboardingEvent,
     },
   );
   return updated;
+}
+
+/**
+ * A waiver is the most consequential thing an exit can carry, so it is refused in
+ * three ways, in this order: the leaver cannot waive their own exit, whoever they
+ * are; the approve grant on employees is distinct from the edit that exits do, so
+ * a manager who can exit someone cannot waive for them; and the reason has to say
+ * something, counted without whitespace.
+ */
+async function authoriseOverride(override: HandoverOverrideInput, leaverPersonId: string): Promise<void> {
+  const auth = currentAuth();
+  if (auth.partyId && auth.partyId === leaverPersonId) {
+    throw ApiError.forbidden('A person cannot waive the handover of their own exit.');
+  }
+  await assertCan({ resource: 'employees', verb: 'approve' });
+  const reason = typeof override.reason === 'string' ? override.reason : '';
+  if (reason.replace(/\s/g, '').length < OVERRIDE_REASON_MIN_CHARS) {
+    throw ApiError.unprocessable(
+      `A handover waiver needs a reason of at least ${OVERRIDE_REASON_MIN_CHARS} characters that are not whitespace.`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

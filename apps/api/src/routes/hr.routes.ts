@@ -14,6 +14,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { HANDOVER_KINDS } from '../domains/handover.js';
 import {
   HR_MACHINES,
   employmentRelationshipMachine,
@@ -142,6 +143,25 @@ function parseTransition(body: unknown): { event: string; note?: string } {
   if (!parsed.success) throw ApiError.badRequest('A transition needs an `event`.', parsed.error.flatten());
   return parsed.data;
 }
+
+/** The exit's handover: a successor for all open rows, one per row, or both (the per-row one wins). */
+const offboardingTransitionBody = transitionBody.extend({
+  handover: z
+    .object({
+      successorPartyId: z.string().min(1).optional(),
+      rows: z
+        .array(
+          z.object({
+            kind: z.enum(HANDOVER_KINDS),
+            id: z.string().min(1),
+            successorPartyId: z.string().min(1),
+          }),
+        )
+        .optional(),
+    })
+    .optional(),
+  override: z.object({ reason: z.string() }).optional(),
+});
 
 // ---------------------------------------------------------------------------
 // The machines themselves, so a surface can render a lifecycle it has not been
@@ -485,8 +505,10 @@ router.post(
 router.post(
   '/offboardings/:id/transition',
   handler(async (req) => {
-    const { event, note } = parseTransition(req.body);
-    return transitionOffboarding(req.params.id, event as OffboardingEvent, note);
+    const parsed = offboardingTransitionBody.safeParse(req.body);
+    if (!parsed.success) throw ApiError.badRequest('A transition needs an `event`.', parsed.error.flatten());
+    const { event, note, handover, override } = parsed.data;
+    return transitionOffboarding(req.params.id, event as OffboardingEvent, note, { handover, override });
   }),
 );
 
