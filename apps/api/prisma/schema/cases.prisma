@@ -1,0 +1,119 @@
+// The customer Case record (Wave 6, OP:116; SPINE-CONTRACT 1.2; OPUS decision 2).
+//
+// A case is a customer, learner or complaint matter one named person owns, with a
+// response due at a UTC instant. A case may raise an ExceptionRecord, and at most
+// one: CaseExceptionLink carries the link, unique per case. The exception is the
+// consequence of the case, not its base; the case is what a person works.
+//
+// Each state change writes a CaseEvent row, and those rows are append-only. Silence
+// never acknowledges a case: the overdue job sets overdueFlaggedAt and leaves the
+// state open, and no path fills acknowledgedById or acknowledgedAt in except a
+// person's acknowledgement.
+//
+// What Prisma cannot express is raw SQL in migration 20261013120000_case_record: the
+// closed value lists, backup not equal to owner, acknowledgement recorded with its
+// state, the remedy amount non-negative, and the trigger that refuses UPDATE and
+// DELETE on case_events. The transition table is CASE_TRANSITIONS in
+// domains/cases.ts.
+
+model Case {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// CAS-YYYY-NNNNN, generator-assigned and never edited (platform/recordCode.ts).
+  recordCode String
+  /// customer | learner | complaint.
+  kind       String
+  title      String
+  description String?
+
+  ownerPartyId  String
+  backupPartyId String?
+
+  /// A UTC instant. Lateness is an instant comparison, as for a commitment.
+  responseDueAt DateTime
+
+  /// open | acknowledged | resolved | closed | withdrawn.
+  state String @default("open")
+
+  /// The lowest classification a caller's ceiling must clear to see the case. The
+  /// vocabulary is SENSITIVITY_CLASSES (packages/shared/src/events.ts), the same
+  /// ladder the WHAT axis of permissions.evaluate reads.
+  visibilityTier String
+  /// S0_INFO .. S4_CRITICAL, the exception severity (SEVERITIES in shared/events.ts).
+  /// A raised exception takes this severity unchanged.
+  severity String
+
+  lineId String?
+
+  /// What the case is about. Plain strings, as on Commitment: the caller checks the subject exists.
+  subjectType String?
+  subjectId   String?
+
+  /// Paise. A remedy is money (CLAUDE.md rule 1): bigint, and a string on the wire.
+  remedyAmountMinor BigInt?
+
+  acknowledgedById String?
+  acknowledgedAt   DateTime?
+
+  /// Set once, by the overdue job, when the response due instant passes while the
+  /// case is still open. It records that the company is late; it acknowledges nothing.
+  overdueFlaggedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner        Person        @relation("CaseOwner", fields: [tenantId, ownerPartyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  backup       Person?       @relation("CaseBackup", fields: [tenantId, backupPartyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  acknowledger Person?       @relation("CaseAcknowledger", fields: [tenantId, acknowledgedById], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  line         BusinessLine? @relation(fields: [tenantId, lineId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  events        CaseEvent[]
+  exceptionLink CaseExceptionLink?
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, id])
+  @@index([tenantId, state, responseDueAt])
+  @@index([tenantId, ownerPartyId, state])
+  @@map("cases")
+}
+
+/// One row per change of state, and one per overdue flag (fromState equals toState
+/// there). The creation row has no fromState. Append-only: a trigger refuses UPDATE
+/// and DELETE for every role, so a correction is a new row.
+model CaseEvent {
+  id       String @id @default(cuid())
+  tenantId String
+
+  caseId       String
+  fromState    String?
+  toState      String
+  /// Null when the scheduled job made the change; the audit row then records a system actor.
+  actorPartyId String?
+  reason       String?
+  at           DateTime @default(now())
+
+  caseRecord Case    @relation(fields: [tenantId, caseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  actor      Person? @relation("CaseEventActor", fields: [tenantId, actorPartyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenantId, caseId, at])
+  @@map("case_events")
+}
+
+/// The one exception a case has raised, at most. Unique per case and per exception,
+/// so a second raise cannot land a second row even if the domain check were bypassed.
+model CaseExceptionLink {
+  id       String @id @default(cuid())
+  tenantId String
+
+  caseId            String
+  exceptionRecordId String
+  createdAt         DateTime @default(now())
+
+  caseRecord Case            @relation(fields: [tenantId, caseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  exception  ExceptionRecord @relation(fields: [tenantId, exceptionRecordId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([tenantId, caseId])
+  @@unique([tenantId, exceptionRecordId])
+  @@map("case_exception_links")
+}

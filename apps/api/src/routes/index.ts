@@ -21,7 +21,9 @@ import ceoRoutes from './ceo/index.js';
 import { marketingRouter, marketingPublicRouter } from './marketing/index.js';
 import hcmRoutes from './hcm/index.js';
 import commitmentRoutes from './commitments.routes.js';
+import caseRoutes from './cases.routes.js';
 import documentRoutes from './documents.routes.js';
+import unitRoutes from './units.routes.js';
 import { requireAuth } from '../lib/http.js';
 
 const router = Router();
@@ -53,7 +55,9 @@ router.use('/it', requireAuth, itRoutes);
 router.use('/ceo', requireAuth, ceoRoutes);
 router.use('/hcm', requireAuth, hcmRoutes);
 router.use('/commitments', requireAuth, commitmentRoutes);
+router.use('/cases', requireAuth, caseRoutes);
 router.use('/documents', requireAuth, documentRoutes);
+router.use('/units', requireAuth, unitRoutes);
 // What is running, and against what data. Signed in, because the seed stamp is
 // about a particular tenant.
 router.use('/meta', requireAuth, metaRoutes);
