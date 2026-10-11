@@ -72,7 +72,10 @@ export async function setMarketingPolicy(patch: Partial<MarketingPolicy>): Promi
   const config = (tenant.config as Record<string, unknown>) ?? {};
   const current = { ...DEFAULT_MARKETING_POLICY, ...((config.marketing as Partial<MarketingPolicy>) ?? {}) };
   const next = { ...current, ...patch };
-  await prisma.tenant.update({ where: { id: auth.tenantId }, data: { config: { ...config, marketing: next } as never } });
+  await prisma.tenant.update({
+    where: { id: auth.tenantId },
+    data: { config: { ...config, marketing: next } as never },
+  });
   return next;
 }
 
@@ -300,9 +303,7 @@ export async function createCampaign(input: CampaignCreateInput): Promise<Campai
   return getCampaign(row.id);
 }
 
-export async function listCampaigns(
-  filters: CampaignListFilters,
-): Promise<{ items: CampaignView[]; total: number }> {
+export async function listCampaigns(filters: CampaignListFilters): Promise<{ items: CampaignView[]; total: number }> {
   const auth = currentAuth();
   await assertCan({ resource: 'campaigns', verb: 'view' });
 
@@ -314,7 +315,14 @@ export async function listCampaigns(
     deletedAt: null,
     ...(filters.status ? { status: filters.status } : {}),
     ...(filters.division ? { division: filters.division } : {}),
-    ...(filters.q ? { OR: [{ name: { contains: filters.q, mode: 'insensitive' } }, { recordCode: { contains: filters.q, mode: 'insensitive' } }] } : {}),
+    ...(filters.q
+      ? {
+          OR: [
+            { name: { contains: filters.q, mode: 'insensitive' } },
+            { recordCode: { contains: filters.q, mode: 'insensitive' } },
+          ],
+        }
+      : {}),
     ...(filters.from || filters.to
       ? {
           AND: [
@@ -347,7 +355,10 @@ export async function getCampaign(id: string): Promise<CampaignDetailView> {
 
   const [view, approvalsRaw, spendTotal, touchpointCount, leadCount, events] = await Promise.all([
     toCampaignViewSingle(row),
-    prisma.marketingCampaignApproval.findMany({ where: { tenantId: auth.tenantId, campaignId: id }, orderBy: { createdAt: 'desc' } }),
+    prisma.marketingCampaignApproval.findMany({
+      where: { tenantId: auth.tenantId, campaignId: id },
+      orderBy: { createdAt: 'desc' },
+    }),
     campaignSpendTotal(auth.tenantId, id),
     prisma.marketingTouchpoint.count({ where: { tenantId: auth.tenantId, campaignId: id, deletedAt: null } }),
     prisma.lead.count({ where: { tenantId: auth.tenantId, campaignId: id, deletedAt: null } as never }).catch(() => 0),
@@ -376,7 +387,13 @@ export async function getCampaign(id: string): Promise<CampaignDetailView> {
     spendTotal,
     touchpointCount,
     leadCount,
-    events: events.map((e) => ({ id: e.id, recordCode: e.recordCode, name: e.name, status: e.status as never, startAt: e.startAt.toISOString() })),
+    events: events.map((e) => ({
+      id: e.id,
+      recordCode: e.recordCode,
+      name: e.name,
+      status: e.status as never,
+      startAt: e.startAt.toISOString(),
+    })),
   };
 }
 
@@ -385,12 +402,19 @@ export async function updateCampaign(id: string, patch: CampaignUpdateInput): Pr
   const row = await requireCampaignRow(id);
 
   if (!['draft', 'paused', 'scheduled'].includes(row.status)) {
-    throw ApiError.conflict(`Campaign cannot be edited while ${row.status}. Only draft, paused or scheduled campaigns may change.`);
+    throw ApiError.conflict(
+      `Campaign cannot be edited while ${row.status}. Only draft, paused or scheduled campaigns may change.`,
+    );
   }
-  if ((patch.offeringId && patch.courseId) || (patch.offeringId && row.courseId && patch.courseId !== null) || (patch.courseId && row.offeringId && patch.offeringId !== null)) {
+  if (
+    (patch.offeringId && patch.courseId) ||
+    (patch.offeringId && row.courseId && patch.courseId !== null) ||
+    (patch.courseId && row.offeringId && patch.offeringId !== null)
+  ) {
     throw ApiError.badRequest('A campaign links at most one of offeringId/courseId, never both.');
   }
-  if (patch.startAt && patch.endAt && patch.endAt <= patch.startAt) throw ApiError.badRequest('endAt must be after startAt.');
+  if (patch.startAt && patch.endAt && patch.endAt <= patch.startAt)
+    throw ApiError.badRequest('endAt must be after startAt.');
 
   const updated = await prisma.marketingCampaign.update({
     where: { id },
@@ -426,7 +450,10 @@ export async function deleteCampaign(id: string): Promise<{ ok: true }> {
   const row = await requireCampaignRow(id);
   if (row.status !== 'draft') throw ApiError.conflict('Only a draft campaign may be deleted.');
 
-  await prisma.marketingCampaign.update({ where: { id }, data: { deletedAt: new Date(), updatedById: currentAuth().partyId } });
+  await prisma.marketingCampaign.update({
+    where: { id },
+    data: { deletedAt: new Date(), updatedById: currentAuth().partyId },
+  });
   return { ok: true };
 }
 
@@ -449,9 +476,10 @@ export async function deleteCampaign(id: string): Promise<{ ok: true }> {
 function assertNotSelfDealing(action: string, requestedById: string, ownerPartyId: string | null): void {
   const auth = currentAuth();
   if (auth.principalType === 'agent') {
-    throw ApiError.forbidden(`An AI principal may never execute ${action}. A named human role sits at every value tier.`, [
-      { axis: 'WHO', passed: false, reason: 'agent_principal_excluded' },
-    ]);
+    throw ApiError.forbidden(
+      `An AI principal may never execute ${action}. A named human role sits at every value tier.`,
+      [{ axis: 'WHO', passed: false, reason: 'agent_principal_excluded' }],
+    );
   }
   if (auth.partyId && (auth.partyId === requestedById || (ownerPartyId && auth.partyId === ownerPartyId))) {
     throw ApiError.forbidden(
@@ -493,14 +521,24 @@ export async function submitCampaign(id: string): Promise<CampaignDetailView> {
       data: { status: 'pending_approval', approvalRequired: true, updatedById: auth.partyId },
       include: CAMPAIGN_INCLUDE,
     });
-    await emitCampaignEvent(EVENTS.MKT_CAMPAIGN_SUBMITTED, updated, { status: 'draft' }, { status: 'pending_approval', budgetPlanned });
+    await emitCampaignEvent(
+      EVENTS.MKT_CAMPAIGN_SUBMITTED,
+      updated,
+      { status: 'draft' },
+      { status: 'pending_approval', budgetPlanned },
+    );
   } else {
     const updated = await prisma.marketingCampaign.update({
       where: { id },
       data: { status: 'scheduled', approvalRequired: false, updatedById: auth.partyId },
       include: CAMPAIGN_INCLUDE,
     });
-    await emitCampaignEvent(EVENTS.MKT_CAMPAIGN_SCHEDULED, updated, { status: 'draft' }, { status: 'scheduled', budgetPlanned });
+    await emitCampaignEvent(
+      EVENTS.MKT_CAMPAIGN_SCHEDULED,
+      updated,
+      { status: 'draft' },
+      { status: 'scheduled', budgetPlanned },
+    );
   }
 
   return getCampaign(id);
@@ -510,7 +548,8 @@ export async function approveCampaign(id: string, reason?: string): Promise<Camp
   await assertCan({ resource: 'campaigns', verb: 'approve' });
   const auth = currentAuth();
   const row = await requireCampaignRow(id);
-  if (row.status !== 'pending_approval') throw ApiError.conflict(`Cannot approve: campaign is ${row.status}, not pending_approval.`);
+  if (row.status !== 'pending_approval')
+    throw ApiError.conflict(`Cannot approve: campaign is ${row.status}, not pending_approval.`);
 
   const approval = await prisma.marketingCampaignApproval.findFirst({
     where: { tenantId: auth.tenantId, campaignId: id, decision: 'pending' },
@@ -531,7 +570,12 @@ export async function approveCampaign(id: string, reason?: string): Promise<Camp
     include: CAMPAIGN_INCLUDE,
   });
 
-  await emitCampaignEvent(EVENTS.MKT_CAMPAIGN_APPROVED, updated, { status: 'pending_approval' }, { status: 'scheduled' });
+  await emitCampaignEvent(
+    EVENTS.MKT_CAMPAIGN_APPROVED,
+    updated,
+    { status: 'pending_approval' },
+    { status: 'scheduled' },
+  );
   return getCampaign(id);
 }
 
@@ -540,7 +584,8 @@ export async function rejectCampaign(id: string, reason: string): Promise<Campai
   await assertCan({ resource: 'campaigns', verb: 'approve' });
   const auth = currentAuth();
   const row = await requireCampaignRow(id);
-  if (row.status !== 'pending_approval') throw ApiError.conflict(`Cannot reject: campaign is ${row.status}, not pending_approval.`);
+  if (row.status !== 'pending_approval')
+    throw ApiError.conflict(`Cannot reject: campaign is ${row.status}, not pending_approval.`);
 
   const approval = await prisma.marketingCampaignApproval.findFirst({
     where: { tenantId: auth.tenantId, campaignId: id, decision: 'pending' },
@@ -561,7 +606,12 @@ export async function rejectCampaign(id: string, reason: string): Promise<Campai
     include: CAMPAIGN_INCLUDE,
   });
 
-  await emitCampaignEvent(EVENTS.MKT_CAMPAIGN_REJECTED, updated, { status: 'pending_approval' }, { status: 'draft', reason });
+  await emitCampaignEvent(
+    EVENTS.MKT_CAMPAIGN_REJECTED,
+    updated,
+    { status: 'pending_approval' },
+    { status: 'draft', reason },
+  );
   return getCampaign(id);
 }
 
@@ -569,7 +619,13 @@ export async function rejectCampaign(id: string, reason: string): Promise<Campai
 // State machine (MKT-CMP-004, MKT-GOV-002)
 // ---------------------------------------------------------------------------
 
-async function transition(id: string, target: CampaignStatus, action: string, eventName: string, extraState?: Record<string, unknown>): Promise<CampaignDetailView> {
+async function transition(
+  id: string,
+  target: CampaignStatus,
+  action: string,
+  eventName: string,
+  extraState?: Record<string, unknown>,
+): Promise<CampaignDetailView> {
   await assertCan({ resource: 'campaigns', verb: 'edit' });
   const auth = currentAuth();
   const row = await requireCampaignRow(id);
@@ -700,7 +756,9 @@ export interface CampaignUtmView {
 export async function campaignUtm(id: string): Promise<CampaignUtmView> {
   await assertCan({ resource: 'campaigns', verb: 'view' });
   const row = await requireCampaignRow(id);
-  const channels = (row.channelMix as ChannelKey[]).length ? (row.channelMix as ChannelKey[]) : (['other'] as ChannelKey[]);
+  const channels = (row.channelMix as ChannelKey[]).length
+    ? (row.channelMix as ChannelKey[])
+    : (['other'] as ChannelKey[]);
 
   const links = channels.map((channelKey) => {
     const utmMedium = UTM_MEDIUM_BY_CHANNEL[channelKey] ?? 'other';
@@ -710,7 +768,7 @@ export async function campaignUtm(id: string): Promise<CampaignUtmView> {
 
   return {
     utmSource: channels[0] ?? null,
-    utmMedium: links[0] ? UTM_MEDIUM_BY_CHANNEL[links[0].channelKey] ?? 'other' : null,
+    utmMedium: links[0] ? (UTM_MEDIUM_BY_CHANNEL[links[0].channelKey] ?? 'other') : null,
     utmCampaign: row.utmCampaign,
     links,
   };

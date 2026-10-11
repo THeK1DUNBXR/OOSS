@@ -61,9 +61,13 @@ export async function createPlan(input: EsopPlanInput) {
   const pool = await prisma.shareClass.findFirst({ where: { id: input.poolShareClassId, tenantId: auth.tenantId } });
   if (!pool) throw ApiError.notFound('Share class');
   if (pool.instrument !== 'option') {
-    throw ApiError.badRequest(`The plan's pool must be a share class of instrument "option"; ${pool.name} is "${pool.instrument}".`);
+    throw ApiError.badRequest(
+      `The plan's pool must be a share class of instrument "option"; ${pool.name} is "${pool.instrument}".`,
+    );
   }
-  const target = await prisma.shareClass.findFirst({ where: { id: input.targetShareClassId, tenantId: auth.tenantId } });
+  const target = await prisma.shareClass.findFirst({
+    where: { id: input.targetShareClassId, tenantId: auth.tenantId },
+  });
   if (!target) throw ApiError.notFound('Share class');
 
   if (!firstVestingIsRuleTwelveCompliant(input.vestingDefault)) {
@@ -128,7 +132,13 @@ export async function activatePlan(id: string, input: ActivatePlanInput) {
     },
   });
 
-  await auditWrite({ action: 'update', subjectType: 'esop_plan', subjectId: id, before: existing as never, after: updated as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'esop_plan',
+    subjectId: id,
+    before: existing as never,
+    after: updated as never,
+  });
   await emit({
     name: EVENTS.ESOP_PLAN_ACTIVATED,
     subject: { entityType: 'esop_plan', entityId: id, recordCode: existing.recordCode },
@@ -157,9 +167,19 @@ async function poolStats(plan: { id: string; poolShareClassId: string }) {
 }
 
 function planView(row: {
-  id: string; recordCode: string; name: string; poolShareClassId: string; targetShareClassId: string;
-  approvedOn: Date | null; resolutionRef: string | null; mgt14Srn: string | null; isDpiitRecognised: boolean;
-  exercisePriceDefault: unknown; vestingDefault: unknown; exerciseWindowMonthsAfterExit: number; status: string;
+  id: string;
+  recordCode: string;
+  name: string;
+  poolShareClassId: string;
+  targetShareClassId: string;
+  approvedOn: Date | null;
+  resolutionRef: string | null;
+  mgt14Srn: string | null;
+  isDpiitRecognised: boolean;
+  exercisePriceDefault: unknown;
+  vestingDefault: unknown;
+  exerciseWindowMonthsAfterExit: number;
+  status: string;
 }) {
   return {
     id: row.id,
@@ -181,7 +201,10 @@ function planView(row: {
 export async function listPlans() {
   const auth = currentAuth();
   await assertScopeAll('esop_plans');
-  const rows = await prisma.esopPlan.findMany({ where: { tenantId: auth.tenantId, deletedAt: null }, orderBy: { createdAt: 'asc' } });
+  const rows = await prisma.esopPlan.findMany({
+    where: { tenantId: auth.tenantId, deletedAt: null },
+    orderBy: { createdAt: 'asc' },
+  });
   return Promise.all(rows.map(async (r) => ({ ...planView(r), pool: await poolStats(r) })));
 }
 
@@ -213,10 +236,15 @@ async function personEquityPct(personId: string): Promise<number> {
   if (classIds.length === 0) return 0;
 
   const [orgAffiliations, personHolder, orgHolders, transactions] = await Promise.all([
-    prisma.affiliation.findMany({ where: { tenantId: auth.tenantId, partyId: personId, status: 'active' }, select: { counterpartyId: true } }),
+    prisma.affiliation.findMany({
+      where: { tenantId: auth.tenantId, partyId: personId, status: 'active' },
+      select: { counterpartyId: true },
+    }),
     prisma.holder.findFirst({ where: { tenantId: auth.tenantId, kind: 'person', personId } }),
     prisma.holder.findMany({ where: { tenantId: auth.tenantId, kind: 'organization' } }),
-    prisma.shareTransaction.findMany({ where: { tenantId: auth.tenantId, status: 'effective', shareClassId: { in: classIds } } }),
+    prisma.shareTransaction.findMany({
+      where: { tenantId: auth.tenantId, status: 'effective', shareClassId: { in: classIds } },
+    }),
   ]);
 
   const orgIds = new Set(orgAffiliations.map((a) => a.counterpartyId).filter((v): v is string => Boolean(v)));
@@ -262,12 +290,17 @@ export async function proposeGrant(input: ProposeGrantInput) {
 
   const planRow = await prisma.esopPlan.findFirst({ where: { id: input.planId, tenantId: auth.tenantId } });
   if (!planRow) throw ApiError.notFound('ESOP plan');
-  if (planRow.status !== 'active') throw ApiError.unprocessable(`The plan is ${planRow.status}; a grant can only be proposed under an active plan.`);
+  if (planRow.status !== 'active')
+    throw ApiError.unprocessable(`The plan is ${planRow.status}; a grant can only be proposed under an active plan.`);
 
-  const employment = await prisma.employmentRelationship.findFirst({ where: { id: input.employmentId, tenantId: auth.tenantId } });
+  const employment = await prisma.employmentRelationship.findFirst({
+    where: { id: input.employmentId, tenantId: auth.tenantId },
+  });
   if (!employment) throw ApiError.notFound('Employment relationship');
   if (!isEmployed(employment.status as EmploymentState)) {
-    throw ApiError.unprocessable(`${employment.recordCode} is ${employment.status}; a grant cannot be proposed against an employment that has already ended.`);
+    throw ApiError.unprocessable(
+      `${employment.recordCode} is ${employment.status}; a grant cannot be proposed against an employment that has already ended.`,
+    );
   }
 
   if (input.count <= 0) throw ApiError.badRequest('A grant must be for a positive number of options.');
@@ -318,7 +351,8 @@ export async function proposeGrant(input: ProposeGrantInput) {
   }
 
   const exercisePrice = input.exercisePrice ?? num(planRow.exercisePriceDefault as never);
-  if (exercisePrice == null) throw ApiError.badRequest('An exercise price is required — either on this grant or as the plan default.');
+  if (exercisePrice == null)
+    throw ApiError.badRequest('An exercise price is required — either on this grant or as the plan default.');
 
   const tranches = generateVestingTranches(input.grantedOn, input.count, schedule);
 
@@ -363,7 +397,10 @@ export async function proposeGrant(input: ProposeGrantInput) {
 
 async function issuedShareCapitalTotal(): Promise<number> {
   const auth = currentAuth();
-  const classes = await prisma.shareClass.findMany({ where: { tenantId: auth.tenantId, kind: { in: ['equity', 'preference'] } }, select: { id: true } });
+  const classes = await prisma.shareClass.findMany({
+    where: { tenantId: auth.tenantId, kind: { in: ['equity', 'preference'] } },
+    select: { id: true },
+  });
   const classIds = classes.map((c) => c.id);
   if (classIds.length === 0) return 0;
   const agg = await prisma.shareTransaction.aggregate({
@@ -371,7 +408,12 @@ async function issuedShareCapitalTotal(): Promise<number> {
     _sum: { count: true },
   });
   const outAgg = await prisma.shareTransaction.aggregate({
-    where: { tenantId: auth.tenantId, status: 'effective', shareClassId: { in: classIds }, fromHolderId: { not: null } },
+    where: {
+      tenantId: auth.tenantId,
+      status: 'effective',
+      shareClassId: { in: classIds },
+      fromHolderId: { not: null },
+    },
     _sum: { count: true },
   });
   return (num(agg._sum.count) ?? 0) - (num(outAgg._sum.count) ?? 0);
@@ -413,8 +455,17 @@ export async function approveGrant(id: string) {
     throw ApiError.forbidden(result.reason, [{ axis: 'WHO', passed: false, reason: 'self_dealing_or_authority' }]);
   }
 
-  const updated = await prisma.optionGrant.update({ where: { id }, data: { status: 'granted', approvedByPartyId: auth.partyId ?? 'system' } });
-  await auditWrite({ action: 'update', subjectType: 'option_grant', subjectId: id, before: grant as never, after: updated as never });
+  const updated = await prisma.optionGrant.update({
+    where: { id },
+    data: { status: 'granted', approvedByPartyId: auth.partyId ?? 'system' },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'option_grant',
+    subjectId: id,
+    before: grant as never,
+    after: updated as never,
+  });
   await emit({
     name: EVENTS.OPTION_GRANTED,
     subject: { entityType: 'option_grant', entityId: id, recordCode: grant.recordCode },
@@ -430,15 +481,27 @@ export async function cancelGrant(id: string, reason: string) {
 
   const grant = await prisma.optionGrant.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!grant) throw ApiError.notFound('Option grant');
-  if (['exercised', 'lapsed', 'cancelled'].includes(grant.status)) throw ApiError.conflict(`This grant is already ${grant.status}.`);
+  if (['exercised', 'lapsed', 'cancelled'].includes(grant.status))
+    throw ApiError.conflict(`This grant is already ${grant.status}.`);
   if ((num(grant.vested) ?? 0) > 0) {
-    throw ApiError.unprocessable('This grant has already vested in part and can no longer be cancelled outright — lapse the unexercised balance instead.');
+    throw ApiError.unprocessable(
+      'This grant has already vested in part and can no longer be cancelled outright — lapse the unexercised balance instead.',
+    );
   }
 
   const updated = await prisma.optionGrant.update({ where: { id }, data: { status: 'cancelled' } });
-  await prisma.vestingEvent.updateMany({ where: { tenantId: auth.tenantId, grantId: id, status: 'scheduled' }, data: { status: 'lapsed' } });
+  await prisma.vestingEvent.updateMany({
+    where: { tenantId: auth.tenantId, grantId: id, status: 'scheduled' },
+    data: { status: 'lapsed' },
+  });
 
-  await auditWrite({ action: 'update', subjectType: 'option_grant', subjectId: id, before: grant as never, after: updated as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'option_grant',
+    subjectId: id,
+    before: grant as never,
+    after: updated as never,
+  });
   await emit({
     name: EVENTS.OPTION_CANCELLED,
     subject: { entityType: 'option_grant', entityId: id, recordCode: grant.recordCode },
@@ -454,16 +517,31 @@ export async function lapseGrant(id: string, reason: string) {
 
   const grant = await prisma.optionGrant.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!grant) throw ApiError.notFound('Option grant');
-  if (['exercised', 'lapsed', 'cancelled'].includes(grant.status)) throw ApiError.conflict(`This grant is already ${grant.status}.`);
+  if (['exercised', 'lapsed', 'cancelled'].includes(grant.status))
+    throw ApiError.conflict(`This grant is already ${grant.status}.`);
 
   const remaining = (num(grant.count) ?? 0) - (num(grant.exercised) ?? 0) - (num(grant.lapsed) ?? 0);
   const updated = await prisma.optionGrant.update({
     where: { id },
-    data: { status: 'lapsed', lapsed: dec((num(grant.lapsed) ?? 0) + remaining)!, lapsedOn: new Date(), lapseReason: reason },
+    data: {
+      status: 'lapsed',
+      lapsed: dec((num(grant.lapsed) ?? 0) + remaining)!,
+      lapsedOn: new Date(),
+      lapseReason: reason,
+    },
   });
-  await prisma.vestingEvent.updateMany({ where: { tenantId: auth.tenantId, grantId: id, status: 'scheduled' }, data: { status: 'lapsed' } });
+  await prisma.vestingEvent.updateMany({
+    where: { tenantId: auth.tenantId, grantId: id, status: 'scheduled' },
+    data: { status: 'lapsed' },
+  });
 
-  await auditWrite({ action: 'update', subjectType: 'option_grant', subjectId: id, before: grant as never, after: updated as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'option_grant',
+    subjectId: id,
+    before: grant as never,
+    after: updated as never,
+  });
   await emit({
     name: EVENTS.OPTION_LAPSED,
     subject: { entityType: 'option_grant', entityId: id, recordCode: grant.recordCode },
@@ -475,11 +553,27 @@ export async function lapseGrant(id: string, reason: string) {
 
 function grantView(
   row: {
-    id: string; recordCode: string; planId: string; employmentId: string; personId: string; grantedOn: Date;
-    count: unknown; exercisePrice: unknown; vesting: unknown; grantLetterRef: string | null; status: string;
-    vested: unknown; exercised: unknown; lapsed: unknown; lapsedOn: Date | null; lapseReason: string | null;
-    exerciseWindowEndsOn: Date | null; promoterCheck: unknown; resolutionRef: string | null;
-    proposedByPartyId: string; approvedByPartyId: string | null;
+    id: string;
+    recordCode: string;
+    planId: string;
+    employmentId: string;
+    personId: string;
+    grantedOn: Date;
+    count: unknown;
+    exercisePrice: unknown;
+    vesting: unknown;
+    grantLetterRef: string | null;
+    status: string;
+    vested: unknown;
+    exercised: unknown;
+    lapsed: unknown;
+    lapsedOn: Date | null;
+    lapseReason: string | null;
+    exerciseWindowEndsOn: Date | null;
+    promoterCheck: unknown;
+    resolutionRef: string | null;
+    proposedByPartyId: string;
+    approvedByPartyId: string | null;
   },
   tranchesOverride?: VestingTranche[],
 ) {
@@ -513,7 +607,10 @@ export async function listGrants() {
   const auth = currentAuth();
   await assertCan({ resource: 'option_grants', verb: 'view' });
   const scope = await scopeFor('option_grants', 'view');
-  const rows = await prisma.optionGrant.findMany({ where: { tenantId: auth.tenantId, deletedAt: null }, orderBy: { createdAt: 'desc' } });
+  const rows = await prisma.optionGrant.findMany({
+    where: { tenantId: auth.tenantId, deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
   const scoped = scope === 'all' ? rows : rows.filter((r) => r.personId === auth.partyId);
   return scoped.map((r) => grantView(r));
 }
@@ -532,7 +629,11 @@ export async function grant(id: string) {
 // Vesting
 // ---------------------------------------------------------------------------
 
-function nextGrantStatus(count: number, vested: number, exercised: number): 'granted' | 'partly_vested' | 'fully_vested' | 'exercised' {
+function nextGrantStatus(
+  count: number,
+  vested: number,
+  exercised: number,
+): 'granted' | 'partly_vested' | 'fully_vested' | 'exercised' {
   if (exercised >= count && exercised > 0) return 'exercised';
   if (vested >= count) return 'fully_vested';
   if (vested > 0) return 'partly_vested';
@@ -556,7 +657,9 @@ export async function runVesting(): Promise<number> {
     const grantRow = await prisma.optionGrant.findFirst({ where: { id: ve.grantId, tenantId: auth.tenantId } });
     if (!grantRow || !['granted', 'partly_vested'].includes(grantRow.status)) continue;
 
-    const employment = await prisma.employmentRelationship.findFirst({ where: { id: grantRow.employmentId, tenantId: auth.tenantId } });
+    const employment = await prisma.employmentRelationship.findFirst({
+      where: { id: grantRow.employmentId, tenantId: auth.tenantId },
+    });
     if (!employment || !isEmployed(employment.status as EmploymentState)) continue;
 
     await prisma.vestingEvent.update({ where: { id: ve.id }, data: { status: 'vested', vestedOn: new Date() } });
@@ -623,7 +726,11 @@ export async function runExpiredExerciseWindows(): Promise<number> {
 export async function handleEmploymentExit(employmentId: string, exitDate: Date): Promise<void> {
   const auth = currentAuth();
   const grants = await prisma.optionGrant.findMany({
-    where: { tenantId: auth.tenantId, employmentId, status: { in: ['proposed', 'granted', 'partly_vested', 'fully_vested'] } },
+    where: {
+      tenantId: auth.tenantId,
+      employmentId,
+      status: { in: ['proposed', 'granted', 'partly_vested', 'fully_vested'] },
+    },
   });
 
   for (const g of grants) {
@@ -695,7 +802,9 @@ export async function requestExercise(input: RequestExerciseInput) {
 
   const available = (num(g.vested) ?? 0) - (num(g.exercised) ?? 0);
   if (input.count <= 0 || input.count > available) {
-    throw ApiError.unprocessable(`Only ${available} vested option(s) on ${g.recordCode} are unexercised; ${input.count} was requested.`);
+    throw ApiError.unprocessable(
+      `Only ${available} vested option(s) on ${g.recordCode} are unexercised; ${input.count} was requested.`,
+    );
   }
 
   const planRow = await prisma.esopPlan.findFirstOrThrow({ where: { id: g.planId } });
@@ -764,7 +873,13 @@ export async function rejectExercise(id: string, reason: string) {
   if (row.status !== 'requested') throw ApiError.conflict(`This exercise request is already ${row.status}.`);
 
   const updated = await prisma.optionExercise.update({ where: { id }, data: { status: 'rejected' } });
-  await auditWrite({ action: 'update', subjectType: 'option_exercise', subjectId: id, before: row as never, after: updated as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'option_exercise',
+    subjectId: id,
+    before: row as never,
+    after: updated as never,
+  });
   await emit({
     name: EVENTS.OPTION_EXERCISE_REQUESTED,
     subject: { entityType: 'option_exercise', entityId: id },
@@ -791,7 +906,9 @@ export async function approveExercise(id: string) {
 
   const g = await prisma.optionGrant.findFirstOrThrow({ where: { id: exercise.grantId } });
   if (exercise.requestedByPartyId === auth.partyId) {
-    throw ApiError.forbidden('The Self-Dealing Bar is unconditional: the requester of an exercise may never approve it.');
+    throw ApiError.forbidden(
+      'The Self-Dealing Bar is unconditional: the requester of an exercise may never approve it.',
+    );
   }
 
   const result = await evaluateApprovalGate(
@@ -815,7 +932,9 @@ export async function approveExercise(id: string) {
 
   const planRow = await prisma.esopPlan.findFirstOrThrow({ where: { id: g.planId } });
   if (!planRow.targetShareClassId) {
-    throw ApiError.unprocessable(`${planRow.recordCode} names no target equity class for its options to convert into; an exercise cannot allot.`);
+    throw ApiError.unprocessable(
+      `${planRow.recordCode} names no target equity class for its options to convert into; an exercise cannot allot.`,
+    );
   }
 
   const holder = await holderForExercise(g.personId);
@@ -840,7 +959,13 @@ export async function approveExercise(id: string) {
     data: { status: 'allotted', approvedByPartyId: auth.partyId ?? 'system', allotmentTransactionId: effective.id },
   });
 
-  await auditWrite({ action: 'update', subjectType: 'option_exercise', subjectId: id, before: exercise as never, after: updated as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'option_exercise',
+    subjectId: id,
+    before: exercise as never,
+    after: updated as never,
+  });
   await emit({
     name: EVENTS.OPTION_EXERCISED,
     subject: { entityType: 'option_exercise', entityId: id },
@@ -855,9 +980,20 @@ export async function approveExercise(id: string) {
 }
 
 function exerciseView(row: {
-  id: string; grantId: string; requestedOn: Date; count: unknown; exercisePrice: unknown; fmvPerShare: unknown;
-  fmvBasis: string; fmvValuationId: string | null; perquisite: unknown; perquisiteNote: string | null;
-  taxDeferred: boolean; status: string; allotmentTransactionId: string | null; paidReference: string | null;
+  id: string;
+  grantId: string;
+  requestedOn: Date;
+  count: unknown;
+  exercisePrice: unknown;
+  fmvPerShare: unknown;
+  fmvBasis: string;
+  fmvValuationId: string | null;
+  perquisite: unknown;
+  perquisiteNote: string | null;
+  taxDeferred: boolean;
+  status: string;
+  allotmentTransactionId: string | null;
+  paidReference: string | null;
 }) {
   return {
     id: row.id,
@@ -925,9 +1061,15 @@ export async function sh6Register() {
   await assertCan({ resource: 'esop_plans', verb: 'view' });
   await assertScopeAll('esop_plans');
 
-  const grants = await prisma.optionGrant.findMany({ where: { tenantId: auth.tenantId, deletedAt: null }, orderBy: { grantedOn: 'asc' } });
+  const grants = await prisma.optionGrant.findMany({
+    where: { tenantId: auth.tenantId, deletedAt: null },
+    orderBy: { grantedOn: 'asc' },
+  });
   const personIds = [...new Set(grants.map((g) => g.personId))];
-  const people = await prisma.person.findMany({ where: { id: { in: personIds } }, select: { id: true, fullName: true } });
+  const people = await prisma.person.findMany({
+    where: { id: { in: personIds } },
+    select: { id: true, fullName: true },
+  });
   const nameById = new Map(people.map((p) => [p.id, p.fullName]));
 
   return grants.map((g) => {
@@ -953,8 +1095,17 @@ export async function sh6Register() {
 export async function sh6Export(): Promise<Buffer> {
   const rows = await sh6Register();
   const header = [
-    'Grantee', 'Grant date', 'Options granted', 'Vesting dates', 'Exercise price',
-    'Options vested', 'Options exercised', 'Shares allotted', 'Options lapsed', 'Lock-in', 'Variation notes',
+    'Grantee',
+    'Grant date',
+    'Options granted',
+    'Vesting dates',
+    'Exercise price',
+    'Options vested',
+    'Options exercised',
+    'Shares allotted',
+    'Options lapsed',
+    'Lock-in',
+    'Variation notes',
   ];
   const data = rows.map((r) => [
     r.grantee,

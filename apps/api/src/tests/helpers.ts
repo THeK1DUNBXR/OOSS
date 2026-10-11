@@ -12,6 +12,8 @@ import { newRequestContext, runWithContext, type AuthContext } from '../platform
 import { invalidateGrantCache } from '../platform/permissions.js';
 import { registerSubscribers } from '../events/handlers.js';
 import { ROLE_CLASSIFICATION_CEILING, type SensitivityClass } from '@kaizen/shared';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { hashRefreshSecret, signToken } from '../lib/auth.js';
 
 export interface TestPrincipal {
   tenantId: string;
@@ -35,8 +37,10 @@ export async function principalFor(email: string): Promise<TestPrincipal> {
   // principal, several entities), so the lookup names the tenant rather
   // than taking whichever row the database returns first.
   const user =
-    (await unscopedPrisma.user.findFirst({ where: { email, tenant: { slug: 'kaizen' } }, include: { person: true } })) ??
-    (await unscopedPrisma.user.findFirstOrThrow({ where: { email }, include: { person: true } }));
+    (await unscopedPrisma.user.findFirst({
+      where: { email, tenant: { slug: 'kaizen' } },
+      include: { person: true },
+    })) ?? (await unscopedPrisma.user.findFirstOrThrow({ where: { email }, include: { person: true } }));
   const affiliation = await unscopedPrisma.affiliation.findFirstOrThrow({
     where: { partyId: user.personId, status: 'active' },
     orderBy: [{ primaryFlag: 'desc' }, { createdAt: 'asc' }],
@@ -91,7 +95,9 @@ export async function asPrincipal<T>(auth: AuthContext, fn: () => Promise<T>): P
 }
 
 /** Asserts that `fn` rejects, and returns the error for inspection. */
-export async function expectReject(fn: () => Promise<unknown>): Promise<{ code?: string; message: string; status?: number }> {
+export async function expectReject(
+  fn: () => Promise<unknown>,
+): Promise<{ code?: string; message: string; status?: number }> {
   try {
     await fn();
   } catch (err) {
@@ -215,6 +221,30 @@ export async function withFixtureRole<T>(
     await unscopedPrisma.accessRole.delete({ where: { id: role.id } });
     invalidateGrantCache();
   }
+}
+
+/**
+ * A bearer token for a principal without going through login: writes the
+ * Session row a real sign-in would, then signs the access token against it.
+ * Tokens minted by `signToken` alone have no live session and are refused.
+ */
+export async function sessionToken(p: {
+  userId: string;
+  tenantId: string;
+  affiliationId: string;
+  stepUp: boolean;
+}): Promise<string> {
+  const jti = randomUUID();
+  await unscopedPrisma.session.create({
+    data: {
+      tenantId: p.tenantId,
+      userId: p.userId,
+      jti,
+      refreshTokenHash: hashRefreshSecret(randomBytes(32).toString('base64url')),
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    },
+  });
+  return signToken({ ...p, jti });
 }
 
 export { prisma, unscopedPrisma };

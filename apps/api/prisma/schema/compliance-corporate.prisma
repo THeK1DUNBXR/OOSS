@@ -287,6 +287,12 @@ model Certificate {
 
   issuedAt DateTime @default(now())
 
+  /// valid | revoked. A revoked certificate stays on record, so anyone who was
+  /// handed it can be shown why it no longer verifies.
+  status        String    @default("valid")
+  revokedAt     DateTime?
+  revokedReason String?
+
   @@unique([tenantId, number])
   @@index([tenantId, enrollmentId])
   @@map("compliance_certificates")

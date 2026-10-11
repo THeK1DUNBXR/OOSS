@@ -130,7 +130,10 @@ describe('portfolio — domain and wiring', () => {
   });
 
   it('IT-INI-002: a stage transition the machine has no arrow for is refused by the API, not silently accepted', async () => {
-    const opsUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'operations@kaizen.co.in', tenant: { slug: 'kaizen' } }, include: { person: true } });
+    const opsUser = await unscopedPrisma.user.findFirstOrThrow({
+      where: { email: 'operations@kaizen.co.in', tenant: { slug: 'kaizen' } },
+      include: { person: true },
+    });
     const created = await asUser('operations@kaizen.co.in', () =>
       createInitiative({
         title: `In-flight initiative ${stamp()}`,
@@ -142,7 +145,9 @@ describe('portfolio — domain and wiring', () => {
     );
 
     await asUser('operations@kaizen.co.in', () => transitionInitiative(created.id, 'ASSESS'));
-    const approveResult = await asUser('operations@kaizen.co.in', () => transitionInitiative(created.id, 'APPROVE').catch((e) => e));
+    const approveResult = await asUser('operations@kaizen.co.in', () =>
+      transitionInitiative(created.id, 'APPROVE').catch((e) => e),
+    );
     // Operations Head holds no it_initiatives:approve grant, so this must
     // reject at the gate's own permission check, never silently apply.
     expect(approveResult).toBeInstanceOf(Error);
@@ -170,7 +175,10 @@ describe('portfolio — domain and wiring', () => {
     // Named by tenant: the equity suite bootstraps subsidiary tenants whose
     // founding accounts carry the same emails, and the shared database holds
     // them all.
-    const chairmanUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'chairman@kaizen.co.in', tenant: { slug: 'kaizen' } }, include: { person: true } });
+    const chairmanUser = await unscopedPrisma.user.findFirstOrThrow({
+      where: { email: 'chairman@kaizen.co.in', tenant: { slug: 'kaizen' } },
+      include: { person: true },
+    });
 
     const own = await asUser('chairman@kaizen.co.in', () =>
       createInitiative({
@@ -193,7 +201,10 @@ describe('portfolio — domain and wiring', () => {
   });
 
   it('IT-INI-001: a Finance Head approving an initiative they did not sponsor is never flagged self-dealing', async () => {
-    const opsUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'operations@kaizen.co.in', tenant: { slug: 'kaizen' } }, include: { person: true } });
+    const opsUser = await unscopedPrisma.user.findFirstOrThrow({
+      where: { email: 'operations@kaizen.co.in', tenant: { slug: 'kaizen' } },
+      include: { person: true },
+    });
     const initiative = await asUser('operations@kaizen.co.in', () =>
       createInitiative({
         title: `Sponsored by ops ${stamp()}`,
@@ -216,7 +227,13 @@ describe('portfolio — domain and wiring', () => {
   it('the Finance Head cannot create an initiative — the grant has no create — but holds approve', async () => {
     const denied = await expectReject(() =>
       asUser('finance@kaizen.co.in', () =>
-        createInitiative({ title: 'Finance-proposed', theme: 'run', sponsorPartyId: 'x', ownerPartyId: 'x', budget: 1 }),
+        createInitiative({
+          title: 'Finance-proposed',
+          theme: 'run',
+          sponsorPartyId: 'x',
+          ownerPartyId: 'x',
+          budget: 1,
+        }),
       ),
     );
     expect(denied.status).toBe(403);
@@ -255,7 +272,7 @@ describe('portfolio — domain and wiring', () => {
     await expectReject(() => asUser('employee@kaizen.co.in', () => portfolioSummary()));
   });
 
-  it('IT-BUD-001: a budget line\'s actual is a live sum over the books, and a late bill moves the variance without editing the line', async () => {
+  it("IT-BUD-001: a budget line's actual is a live sum over the books, and a late bill moves the variance without editing the line", async () => {
     const catName = `IT Cloud Spend ${stamp()}`;
     const category = await unscopedPrisma.ledgerCategory.create({
       data: { tenantId: tid, name: catName, kind: 'expense', behaviour: 'variable' },
@@ -444,12 +461,16 @@ describe('portfolio — domain and wiring', () => {
 
     const first = await asUser('finance@kaizen.co.in', () => runBudgetBurnJob());
     expect(first.notified).toBe(1);
-    const count1 = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_BUDGET_BURN', subjectId: line.id } });
+    const count1 = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_BUDGET_BURN', subjectId: line.id },
+    });
     expect(count1).toBe(1);
 
     const second = await asUser('finance@kaizen.co.in', () => runBudgetBurnJob());
     expect(second.notified).toBe(0);
-    const count2 = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_BUDGET_BURN', subjectId: line.id } });
+    const count2 = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_BUDGET_BURN', subjectId: line.id },
+    });
     expect(count2).toBe(1);
 
     const refreshed = await unscopedPrisma.itBudgetLine.findFirstOrThrow({ where: { id: line.id } });
@@ -457,7 +478,10 @@ describe('portfolio — domain and wiring', () => {
   });
 
   it('the portfolio summary reports "not yet measured" only with no initiatives, and stage/RAG counts once one exists', async () => {
-    const opsUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'operations@kaizen.co.in', tenant: { slug: 'kaizen' } }, include: { person: true } });
+    const opsUser = await unscopedPrisma.user.findFirstOrThrow({
+      where: { email: 'operations@kaizen.co.in', tenant: { slug: 'kaizen' } },
+      include: { person: true },
+    });
     const before = await asUser('finance@kaizen.co.in', () => portfolioSummary());
     if (before.notYetMeasured) {
       // Only true on a tenant with zero initiatives — the fixture tenant
@@ -467,7 +491,13 @@ describe('portfolio — domain and wiring', () => {
     }
 
     await asUser('operations@kaizen.co.in', () =>
-      createInitiative({ title: `Summary check ${stamp()}`, theme: 'run', sponsorPartyId: opsUser.personId, ownerPartyId: opsUser.personId, budget: 1000 }),
+      createInitiative({
+        title: `Summary check ${stamp()}`,
+        theme: 'run',
+        sponsorPartyId: opsUser.personId,
+        ownerPartyId: opsUser.personId,
+        budget: 1000,
+      }),
     );
     const after = await asUser('finance@kaizen.co.in', () => portfolioSummary());
     expect(after.notYetMeasured).toBe(false);
@@ -476,7 +506,11 @@ describe('portfolio — domain and wiring', () => {
 
   it('tech-debt items run through the declared lifecycle and cannot skip to an undeclared state', async () => {
     const item = await asUser('operations@kaizen.co.in', () =>
-      createTechDebtItem({ title: `Legacy PHP ${stamp()}`, severity: 'high', interest: 'Security patches have stopped.' }),
+      createTechDebtItem({
+        title: `Legacy PHP ${stamp()}`,
+        severity: 'high',
+        interest: 'Security patches have stopped.',
+      }),
     );
     expect(item.status).toBe('open');
     expect(item.recordCode).toMatch(/^TDB-/);

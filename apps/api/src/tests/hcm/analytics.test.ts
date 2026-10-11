@@ -12,7 +12,13 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { asUser, expectReject, prisma, tenantId, withFixtureRole } from '../helpers.js';
 import { hire, transitionEmployment } from '../../domains/employment.js';
-import { createRequisition, transitionRequisition, createApplication, transitionApplication, joinFromApplication } from '../../domains/hiring.js';
+import {
+  createRequisition,
+  transitionRequisition,
+  createApplication,
+  transitionApplication,
+  joinFromApplication,
+} from '../../domains/hiring.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import {
   headcountTrend,
@@ -30,7 +36,13 @@ import {
   dashboard,
   exportHeadcountRegister,
 } from '../../domains/hcm/analytics.js';
-import { spanOfControlStats, tenureBucket, annualizedAttritionRate, isEarlyAttrition, computeEnps } from '@kaizen/shared';
+import {
+  spanOfControlStats,
+  tenureBucket,
+  annualizedAttritionRate,
+  isEarlyAttrition,
+  computeEnps,
+} from '@kaizen/shared';
 
 let TENANT: string;
 let fixtureSeq = 0;
@@ -187,7 +199,12 @@ describe('HCM-ANALYTICS-004 — leave liability', () => {
     // A fixture role that can view analytics but holds no `financial` verb
     // on compensation — the days are still visible, the money is not.
     await withFixtureRole(
-      { grants: [{ resource: 'hr_analytics', verbs: ['view'] }, { resource: 'compensation', verbs: ['view'] }] },
+      {
+        grants: [
+          { resource: 'hr_analytics', verbs: ['view'] },
+          { resource: 'compensation', verbs: ['view'] },
+        ],
+      },
       async () => {
         const noMoney = await leaveLiability();
         expect(noMoney.totalDays).toBeGreaterThanOrEqual(12);
@@ -210,7 +227,15 @@ describe('HCM-ANALYTICS-005 — overtime hours', () => {
       const now = new Date();
       const isoWeek = `${now.getUTCFullYear()}-W${String(Math.ceil(now.getUTCDate() / 7)).padStart(2, '0')}`;
       await prisma.overtimeAccrual.create({
-        data: { tenantId: TENANT, employmentRelationshipId: employment.id, isoWeek: `${isoWeek}-${fixtureSeq}`, hours: 6, rate: 250, amount: 1500, computedAt: now },
+        data: {
+          tenantId: TENANT,
+          employmentRelationshipId: employment.id,
+          isoWeek: `${isoWeek}-${fixtureSeq}`,
+          hours: 6,
+          rate: 250,
+          amount: 1500,
+          computedAt: now,
+        },
       });
 
       const result = await overtimeHours(1);
@@ -244,7 +269,13 @@ describe('HCM-ANALYTICS-006 — hiring summary', () => {
       await transitionRequisition(requisition.id, 'PUBLISH');
 
       const candidate = await prisma.person.create({
-        data: { tenantId: TENANT, recordCode: await nextRecordCode('PER'), fullName: `Fixture Candidate ${stamp}`, primaryEmail: `fixture.candidate.${stamp}@example.com`, source: 'test' },
+        data: {
+          tenantId: TENANT,
+          recordCode: await nextRecordCode('PER'),
+          fullName: `Fixture Candidate ${stamp}`,
+          primaryEmail: `fixture.candidate.${stamp}@example.com`,
+          source: 'test',
+        },
       });
       const application = await createApplication({ requisitionId: requisition.id, candidatePartyId: candidate.id });
       await transitionApplication(application.id, 'ADVANCE');
@@ -342,13 +373,17 @@ describe('HCM-ANALYTICS-009 — report export is audited', () => {
     await makeEmployee('csv-export', 10);
 
     await asUser('operations@kaizen.co.in', async () => {
-      const before = await prisma.auditRecord.count({ where: { tenantId: TENANT, action: 'export', subjectType: 'employment_relationship' } });
+      const before = await prisma.auditRecord.count({
+        where: { tenantId: TENANT, action: 'export', subjectType: 'employment_relationship' },
+      });
       const { filename, csv } = await exportHeadcountRegister();
       expect(filename).toContain('.csv');
       expect(csv.split('\n')[0]).toContain('Record code');
       expect(csv.length).toBeGreaterThan(20);
 
-      const after = await prisma.auditRecord.count({ where: { tenantId: TENANT, action: 'export', subjectType: 'employment_relationship' } });
+      const after = await prisma.auditRecord.count({
+        where: { tenantId: TENANT, action: 'export', subjectType: 'employment_relationship' },
+      });
       expect(after).toBe(before + 1);
     });
   });
@@ -358,7 +393,7 @@ describe('HCM-ANALYTICS-009 — report export is audited', () => {
     expect(rejection.status).toBe(403);
   });
 
-  it('HCM-ANALYTICS-009b: holding hr_reports:export at `own` scope is refused — a register export is tenant-wide, never one employee\'s own record', async () => {
+  it("HCM-ANALYTICS-009b: holding hr_reports:export at `own` scope is refused — a register export is tenant-wide, never one employee's own record", async () => {
     await withFixtureRole({ grants: [{ resource: 'hr_reports', verbs: ['export'], scope: 'own' }] }, async () => {
       const rejection = await expectReject(() => exportHeadcountRegister());
       expect(rejection.status).toBe(403);
@@ -371,13 +406,17 @@ describe('HCM-ANALYTICS-009 — report export is audited', () => {
 // ===========================================================================
 
 describe('HCM-ANALYTICS-010 — tenant scoping', () => {
-  it('headcount by division only ever counts this tenant\'s own employments', async () => {
+  it("headcount by division only ever counts this tenant's own employments", async () => {
     await makeEmployee('tenant-scope', 5);
 
     await asUser('operations@kaizen.co.in', async () => {
       const trend = await headcountTrend(1);
       const directCount = await prisma.employmentRelationship.count({
-        where: { tenantId: TENANT, deletedAt: null, status: { in: ['Active', 'OnLeave', 'Suspended', 'NoticePeriod', 'Absconded'] } },
+        where: {
+          tenantId: TENANT,
+          deletedAt: null,
+          status: { in: ['Active', 'OnLeave', 'Suspended', 'NoticePeriod', 'Absconded'] },
+        },
       });
       expect(trend.at(-1)!.headcount).toBe(directCount);
     });
@@ -419,10 +458,23 @@ describe('HCM-ANALYTICS-011 — compa-ratio distribution', () => {
         data: { tenantId: TENANT, code: `CR-GRADE-${stamp}`, name: `Comp ratio fixture grade ${stamp}`, level },
       });
       await prisma.gradeAssignment.create({
-        data: { tenantId: TENANT, employmentRelationshipId: employment.id, gradeId: grade.id, effectiveFrom: new Date() },
+        data: {
+          tenantId: TENANT,
+          employmentRelationshipId: employment.id,
+          gradeId: grade.id,
+          effectiveFrom: new Date(),
+        },
       });
       await prisma.payGrade.create({
-        data: { tenantId: TENANT, code: `PG-CR-${stamp}`, level, currency: 'INR', minPay: 80_000, midPay: 100_000, maxPay: 120_000 },
+        data: {
+          tenantId: TENANT,
+          code: `PG-CR-${stamp}`,
+          level,
+          currency: 'INR',
+          minPay: 80_000,
+          midPay: 100_000,
+          maxPay: 120_000,
+        },
       });
 
       const result = await compRatioDistribution();
@@ -436,7 +488,12 @@ describe('HCM-ANALYTICS-011 — compa-ratio distribution', () => {
 
   it('is withheld (not measured, never a wrong number) from a viewer without compensation:financial', async () => {
     await withFixtureRole(
-      { grants: [{ resource: 'hr_analytics', verbs: ['view'] }, { resource: 'compensation', verbs: ['view'] }] },
+      {
+        grants: [
+          { resource: 'hr_analytics', verbs: ['view'] },
+          { resource: 'compensation', verbs: ['view'] },
+        ],
+      },
       async () => {
         const result = await compRatioDistribution();
         expect(result.measured).toBe(false);
@@ -487,7 +544,12 @@ describe('HCM-ANALYTICS-012 — engagement eNPS', () => {
       const scores = [9, 10, 9, 10, 3];
       for (const [i, value] of scores.entries()) {
         await prisma.surveyResponse.create({
-          data: { tenantId: TENANT, surveyId: survey.id, respondentToken: `tok-${stamp}-${i}`, answers: [{ questionId: 'q1', value }] },
+          data: {
+            tenantId: TENANT,
+            surveyId: survey.id,
+            respondentToken: `tok-${stamp}-${i}`,
+            answers: [{ questionId: 'q1', value }],
+          },
         });
       }
 

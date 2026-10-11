@@ -149,6 +149,14 @@ else
     ok "created role 'kaizen'"
   fi
 
+  # The owner runs migrations, seeds and cross-tenant jobs, so it bypasses
+  # row-level security; the application role below does not (FX-51).
+  as_super "ALTER ROLE kaizen BYPASSRLS" >/dev/null \
+    || die "Could not grant BYPASSRLS to 'kaizen'. As a superuser run: ALTER ROLE kaizen BYPASSRLS;"
+  as_super "$(cat "$ROOT/scripts/app-role.sql")" >/dev/null \
+    || die "Could not create the application role 'kaizen_app'. Run scripts/app-role.sql as a superuser."
+  ok "application role 'kaizen_app' ready"
+
   if [ "$(as_super "SELECT 1 FROM pg_database WHERE datname='kaizen'")" = "1" ]; then
     ok "database 'kaizen' already exists"
   else

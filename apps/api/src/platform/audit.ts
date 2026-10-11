@@ -23,6 +23,9 @@ export const AUDIT_ACTIONS = [
   'merge',
   'export',
   'login',
+  'logout',
+  'refresh_reuse',
+  'refresh_recovered',
   'permission_change',
   'read',
 ] as const;
@@ -52,6 +55,10 @@ export function isGoverned(entityType: string): boolean {
   for (const set of governedRegistry.values()) if (set.has(entityType)) return true;
   return false;
 }
+
+// A login session is a governed subject: login, logout and refresh reuse are
+// the events an incident review needs to reconstruct who held a credential.
+registerGovernedEntities('identity', ['session']);
 
 // CRM's original 12-entity contribution, preserved verbatim.
 registerGovernedEntities('crm', [
@@ -87,6 +94,12 @@ registerGovernedEntities('crm', [
 registerGovernedEntities('pct', ['contract', 'partner_agreement', 'proposal', 'quote']);
 registerGovernedEntities('gov', ['policy', 'policy_version', 'grant', 'authority_grant', 'decision', 'delegation']);
 registerGovernedEntities('fin', ['invoice', 'receipt', 'credit_note', 'fee_instalment']);
+// A task closed is a commitment someone made good on or didn't; closing it
+// unaudited left no trace of who marked a follow-up done.
+registerGovernedEntities('crm', ['task']);
+// An affiliation names the access role a person works under, so creating one
+// is a grant of access; it was the one write in the people area with no trail.
+registerGovernedEntities('crm', ['affiliation']);
 // Added with invoicing and the returns: the company's own registration, which
 // every invoice is printed from, and a filed return, which is a statement to
 // the government. Both are things somebody will one day have to prove who
@@ -171,7 +184,8 @@ function sortDeep(v: unknown): unknown {
     const toJSON = (v as { toJSON?: () => unknown }).toJSON;
     if (typeof toJSON === 'function') return sortDeep(toJSON.call(v));
     const out: Record<string, unknown> = {};
-    for (const k of Object.keys(v as Record<string, unknown>).sort()) out[k] = sortDeep((v as Record<string, unknown>)[k]);
+    for (const k of Object.keys(v as Record<string, unknown>).sort())
+      out[k] = sortDeep((v as Record<string, unknown>)[k]);
     return out;
   }
   return v;
@@ -342,12 +356,19 @@ export interface AuditWriteInput {
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
   meta?: Record<string, unknown>;
-  /** Forces the record even if the entity is not on the governed registry. */
-  force?: boolean;
 }
 
 export async function auditWrite(input: AuditWriteInput): Promise<void> {
-  if (!input.force && !isGoverned(input.subjectType)) return;
+  // Refused, not skipped: a silent return let a write succeed with no audit row
+  // (the cashbook was outside the log for this reason). Throwing everywhere,
+  // including production, is deliberate: an unaudited write is a defect to fix
+  // in the owning module's registerGovernedEntities call, not a state to run in.
+  if (!isGoverned(input.subjectType)) {
+    throw new Error(
+      `auditWrite: subjectType '${input.subjectType}' is not registered. ` +
+        `Add it to registerGovernedEntities in its owning domain module.`,
+    );
+  }
   const auth = currentAuth();
   const diff = input.action === 'update' ? diffForAudit(input.before ?? null, input.after ?? null) : null;
 
@@ -371,11 +392,7 @@ export async function auditWrite(input: AuditWriteInput): Promise<void> {
  * projection that excludes the regulated field from its output produces no
  * record — the hook inspects the outgoing response shape, not the schema.
  */
-export async function auditRegulatedRead(
-  subjectType: string,
-  subjectId: string,
-  fieldsRead: string[],
-): Promise<void> {
+export async function auditRegulatedRead(subjectType: string, subjectId: string, fieldsRead: string[]): Promise<void> {
   if (fieldsRead.length === 0) return;
   const auth = currentAuth();
   await createChainedAuditRecord({

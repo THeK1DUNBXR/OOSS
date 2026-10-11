@@ -312,7 +312,7 @@ export const MOU_USER_TRANSITIONS: Record<string, string[]> = {
   negotiating: ['approved', 'proposed'],
   approved: ['signed'],
   signed: ['active'],
-  active: [],       // -> expiring/expired/renewed are job-driven only
+  active: [], // -> expiring/expired/renewed are job-driven only
   expiring: [],
   expired: ['renewed'],
   renewed: [],
@@ -434,7 +434,15 @@ export const COMPUTED_RELATIONSHIP_STATUSES = [
 ] as const;
 export type ComputedRelationshipStatus = (typeof COMPUTED_RELATIONSHIP_STATUSES)[number];
 
-export const INSTITUTION_TYPES = ['university', 'engineering_college', 'arts_science_college', 'polytechnic', 'school', 'iti', 'other'] as const;
+export const INSTITUTION_TYPES = [
+  'university',
+  'engineering_college',
+  'arts_science_college',
+  'polytechnic',
+  'school',
+  'iti',
+  'other',
+] as const;
 export const MANAGEMENT_TYPES = ['government', 'aided', 'self_financing', 'autonomous', 'deemed', 'private'] as const;
 
 // ---------------------------------------------------------------------------
@@ -596,7 +604,14 @@ export type LearnerLogSeverity = (typeof LEARNER_LOG_SEVERITIES)[number];
 
 /** The kinds a merged learner timeline is made of. */
 export const LEARNER_TIMELINE_KINDS = [
-  'attendance', 'progress', 'query', 'feedback', 'issue', 'note', 'invoice', 'enrollment',
+  'attendance',
+  'progress',
+  'query',
+  'feedback',
+  'issue',
+  'note',
+  'invoice',
+  'enrollment',
 ] as const;
 export type LearnerTimelineKind = (typeof LEARNER_TIMELINE_KINDS)[number];
 
@@ -607,16 +622,62 @@ export type LearnerTimelineKind = (typeof LEARNER_TIMELINE_KINDS)[number];
 // ---------------------------------------------------------------------------
 
 export const RECORD_TYPE_CODES = [
-  'PER', 'ORG', 'EMP', 'STU', 'LEAD', 'OPP', 'MOU', 'CON', 'PRJ', 'TSK', 'INV', 'PAY',
-  'EXP', 'REQ', 'APP', 'CRS', 'COH', 'ENR', 'ASN', 'ASM', 'CAS', 'DEC', 'POL', 'SOP',
-  'DOC', 'MTG', 'RSK', 'ISS', 'OBJ', 'KR', 'INI', 'CMP', 'EXC', 'WF', 'AG', 'PBE',
-  'OFF', 'PA', 'QUO', 'PRO', 'WLR', 'INT', 'REC', 'FEE', 'TER',
+  'PER',
+  'ORG',
+  'EMP',
+  'STU',
+  'LEAD',
+  'OPP',
+  'MOU',
+  'CON',
+  'PRJ',
+  'TSK',
+  'INV',
+  'PAY',
+  'EXP',
+  'REQ',
+  'APP',
+  'CRS',
+  'COH',
+  'ENR',
+  'ASN',
+  'ASM',
+  'CAS',
+  'DEC',
+  'POL',
+  'SOP',
+  'DOC',
+  'MTG',
+  'RSK',
+  'ISS',
+  'OBJ',
+  'KR',
+  'INI',
+  'CMP',
+  'EXC',
+  'WF',
+  'AG',
+  'PBE',
+  'OFF',
+  'PA',
+  'QUO',
+  'PRO',
+  'WLR',
+  'INT',
+  'REC',
+  'FEE',
+  'TER',
   // People (§14): the seat, the leave request and the payroll run are the HR
   // records a human refers to out loud. EMP, REQ, APP and ASN are above.
-  'POS', 'LVR', 'PRN',
+  'POS',
+  'LVR',
+  'PRN',
   // The books (§15): a ledger movement, a supplier bill, a capital purchase
   // and a borrowing.
-  'TXN', 'BILL', 'FA', 'LN',
+  'TXN',
+  'BILL',
+  'FA',
+  'LN',
   // A staged import: a file somebody uploaded, its rows, and what became of
   // them. A record because a figure in the books must be traceable to the
   // statement line it came from.
@@ -633,7 +694,11 @@ export const RECORD_TYPE_CODES = [
   'DRF',
   // The register (equity-portal plan §5): a class of shares, a holder, one
   // ledger entry, a printed certificate, a recorded valuation.
-  'SHC', 'HLD', 'SHT', 'CRT', 'VAL',
+  'SHC',
+  'HLD',
+  'SHT',
+  'CRT',
+  'VAL',
   // The group (equity-portal plan §6, phase 2): a subsidiary's published
   // summary, written into its parent's tenant.
   'ESN',
@@ -641,29 +706,48 @@ export const RECORD_TYPE_CODES = [
   // bonus, a rights offer, a buy-back or a capital reduction is struck under.
   'RND',
   // ESOP (equity-portal plan §5/§6, phase 5): a scheme and a grant under it.
-  'ESP', 'OPG',
+  'ESP',
+  'OPG',
   // Board (equity-portal plan §6, phase 3): a meeting, a board seat, a
   // resolution and a compliance item — each referred to by its own code.
-  'BRD', 'BDM', 'RES', 'CPL',
+  'BRD',
+  'BDM',
+  'RES',
+  'CPL',
   // The filing log (equity-portal plan §6 phase 6a): one row per statutory
   // form owed or filed — MGT-1/2, PAS-3, SH-4, PAS-6, FC-GPR, FC-TRS, FLA.
   'FIL',
   // Data protection (workstream G): a data-principal request and a breach
   // register entry, each a case a data principal or the company refers to by
   // number.
-  'DPR', 'BRC',
+  'DPR',
+  'BRC',
   // Technology (docs/plan/cio.md): an asset, an application, a licence, a
   // vendor and a vendor contract (A-C); a ticket and a knowledge article (D);
   // an incident, a problem and a change (E); a risk, a policy document, a
   // control, an access review and a security finding (F); an initiative and
   // a technical-debt item (G); a continuity plan, a continuity test and a
   // maintenance window (H). Each is a thing a person refers to by number.
-  'ITA', 'SWA', 'LIC', 'ITV', 'VCT',
-  'TKT', 'KBA',
-  'INC', 'PRB', 'CHG',
-  'ITR', 'ITP', 'CTL', 'ACR', 'FND',
-  'ITI', 'TDB',
-  'DRP', 'DRT', 'MWN',
+  'ITA',
+  'SWA',
+  'LIC',
+  'ITV',
+  'VCT',
+  'TKT',
+  'KBA',
+  'INC',
+  'PRB',
+  'CHG',
+  'ITR',
+  'ITP',
+  'CTL',
+  'ACR',
+  'FND',
+  'ITI',
+  'TDB',
+  'DRP',
+  'DRT',
+  'MWN',
   // Marketing (mkt), Canon H_MKT. `CMP` is already reserved above for the
   // compliance-obligation record type, so a campaign takes `CPG` instead —
   // no collision, no shared sequence with an unrelated domain.
@@ -671,13 +755,41 @@ export const RECORD_TYPE_CODES = [
   // recordCode per marketing.prisma's convention, unlike the other sub-log
   // tables (touchpoints, attributions, recipients, …) that were left off this
   // list on purpose — those are never referred to by a human-facing code.
-  'CHN', 'AUD', 'TPL', 'SND', 'JRN', 'FRM', 'EVT', 'AST', 'PST', 'LNK', 'RFP', 'REF', 'BDG', 'SPN', 'PLN', 'CPG', 'CAA', 'VND',
+  'CHN',
+  'AUD',
+  'TPL',
+  'SND',
+  'JRN',
+  'FRM',
+  'EVT',
+  'AST',
+  'PST',
+  'LNK',
+  'RFP',
+  'REF',
+  'BDG',
+  'SPN',
+  'PLN',
+  'CPG',
+  'CAA',
+  'VND',
   // HCM/HRMS (docs/plan/hcm.md): the records a human refers to by number.
   // `RES` is already the board Resolution code (above), so a resignation is
   // `RSG`; `LN` is already the finance borrowing code, so an employee loan is
   // `LOAN`, a distinct string. `AST` is already marketing's asset code
   // (above), so an HCM asset request is `HAS` instead.
-  'TSH', 'OFR', 'RVW', 'LOAN', 'RSG', 'CASE', 'HAS', 'TRV', 'HRQ', 'JPST', 'CERT', 'SREV',
+  'TSH',
+  'OFR',
+  'RVW',
+  'LOAN',
+  'RSG',
+  'CASE',
+  'HAS',
+  'TRV',
+  'HRQ',
+  'JPST',
+  'CERT',
+  'SREV',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 
@@ -800,10 +912,18 @@ export const EXCEPTION_CODES = {
   EX_CRM_013: { code: 'EX-CRM-013', label: 'Dual-channel partner conflict', severity: 'S2_WARNING' },
   EX_CRM_014: { code: 'EX-CRM-014', label: 'MoU expiry approaching', severity: 'S1_ATTENTION' },
   EX_CRM_015: { code: 'EX-CRM-015', label: 'Win/loss review overdue', severity: 'S1_ATTENTION' },
-  EX_CRM_016: { code: 'EX-CRM-016', label: 'Chronic recommit — commit past one full forecast period', severity: 'S2_WARNING' },
+  EX_CRM_016: {
+    code: 'EX-CRM-016',
+    label: 'Chronic recommit — commit past one full forecast period',
+    severity: 'S2_WARNING',
+  },
   EX_FIN_001: { code: 'EX-FIN-001', label: 'Payment overdue', severity: 'S2_WARNING' },
   EX_EDU_001: { code: 'EX-EDU-001', label: 'Learner at risk', severity: 'S2_WARNING' },
-  DET_CRM_OFF_01: { code: 'DET-CRM-OFF-01', label: 'Active offering with no price book entry', severity: 'S1_ATTENTION' },
+  DET_CRM_OFF_01: {
+    code: 'DET-CRM-OFF-01',
+    label: 'Active offering with no price book entry',
+    severity: 'S1_ATTENTION',
+  },
   // People (§14). An absence breach is high risk because it runs a clock the
   // company is answerable for; the other two are paperwork that becomes an
   // exposure if it is never done.
@@ -839,18 +959,38 @@ export const EXCEPTION_CODES = {
   // Marketing (mkt), Canon H_MKT.
   EX_MKT_001: { code: 'EX-MKT-001', label: 'Lead created with no attributable source', severity: 'S1_ATTENTION' },
   EX_MKT_002: { code: 'EX-MKT-002', label: 'Campaign spend exceeds planned budget', severity: 'S2_WARNING' },
-  EX_MKT_003: { code: 'EX-MKT-003', label: 'Send requested to recipients lacking marketing consent', severity: 'S2_WARNING' },
+  EX_MKT_003: {
+    code: 'EX-MKT-003',
+    label: 'Send requested to recipients lacking marketing consent',
+    severity: 'S2_WARNING',
+  },
   EX_MKT_004: { code: 'EX-MKT-004', label: 'Live campaign with no touchpoints for 7 days', severity: 'S1_ATTENTION' },
   EX_MKT_005: { code: 'EX-MKT-005', label: 'Bounce rate above 5% on a send', severity: 'S2_WARNING' },
   EX_MKT_006: { code: 'EX-MKT-006', label: 'Unsubscribe spike on a send (>2%)', severity: 'S2_WARNING' },
   EX_MKT_007: { code: 'EX-MKT-007', label: 'Form submission unconverted for 24h', severity: 'S1_ATTENTION' },
-  EX_MKT_008: { code: 'EX-MKT-008', label: 'Event completed with follow-ups outstanding after 3 days', severity: 'S1_ATTENTION' },
-  EX_MKT_009: { code: 'EX-MKT-009', label: 'DLT/WhatsApp template used before registration/approval', severity: 'S3_HIGH_RISK' },
+  EX_MKT_008: {
+    code: 'EX-MKT-008',
+    label: 'Event completed with follow-ups outstanding after 3 days',
+    severity: 'S1_ATTENTION',
+  },
+  EX_MKT_009: {
+    code: 'EX-MKT-009',
+    label: 'DLT/WhatsApp template used before registration/approval',
+    severity: 'S3_HIGH_RISK',
+  },
   EX_MKT_010: { code: 'EX-MKT-010', label: 'Campaign live past endAt', severity: 'S1_ATTENTION' },
-  EX_MKT_011: { code: 'EX-MKT-011', label: 'Channel adapter not configured but send requested', severity: 'S1_ATTENTION' },
+  EX_MKT_011: {
+    code: 'EX-MKT-011',
+    label: 'Channel adapter not configured but send requested',
+    severity: 'S1_ATTENTION',
+  },
   EX_MKT_012: { code: 'EX-MKT-012', label: 'Asset used past usage-rights expiry', severity: 'S2_WARNING' },
   EX_MKT_013: { code: 'EX-MKT-013', label: 'Referral reward pending beyond 30 days', severity: 'S1_ATTENTION' },
-  EX_MKT_014: { code: 'EX-MKT-014', label: 'Budget period has no approved budget while spend recorded', severity: 'S2_WARNING' },
+  EX_MKT_014: {
+    code: 'EX-MKT-014',
+    label: 'Budget period has no approved budget while spend recorded',
+    severity: 'S2_WARNING',
+  },
   EX_MKT_015: { code: 'EX-MKT-015', label: 'Journey run stuck (nextAt overdue by 2 days)', severity: 'S1_ATTENTION' },
 } as const;
 

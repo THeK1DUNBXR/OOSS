@@ -6,8 +6,8 @@ Governance, Technology (the CIO office) and the Command Center ship alongside
 them because the platform's premise is that they are one system, not nine
 that integrate.
 
-Built from the *Kaizen Infinities Unified Operating Platform — Master
-Architecture*: 39 numbered CRM requirements with PASS/FAIL acceptance criteria,
+Built from the _Kaizen Infinities Unified Operating Platform — Master
+Architecture_: 39 numbered CRM requirements with PASS/FAIL acceptance criteria,
 §14's eleven HRM lifecycle state machines, §15's finance model, and structured
 briefs for every other domain and experience surface.
 
@@ -118,12 +118,12 @@ already exists keeps its password.
 Everyone else is created inside the product. The same screen genuinely shows
 different things to each of the four:
 
-| Role | Signs in as | What they hold |
-|---|---|---|
-| **Employee** | employee@ | Their own leave, attendance, goals, skills and payslip, plus the staff and skills directories — and they raise invoices for what they sell, seeing the ones they raised and no others. No colleague's file. |
-| **Operations Head** | operations@ | The employment lifecycle end to end, payroll preparation, disciplinary records, projects, education and the course catalogue. Proposes pay and cannot approve it. |
-| **Finance Head** | finance@ | The books outright, the GST returns, and the money side of people: approves compensation and payroll and sees what the establishment costs, without running it. |
-| **Chairman** | chairman@ | Superadmin. Every resource, every verb, every scope — nothing is hidden or inaccessible. |
+| Role                | Signs in as | What they hold                                                                                                                                                                                              |
+| ------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Employee**        | employee@   | Their own leave, attendance, goals, skills and payslip, plus the staff and skills directories — and they raise invoices for what they sell, seeing the ones they raised and no others. No colleague's file. |
+| **Operations Head** | operations@ | The employment lifecycle end to end, payroll preparation, disciplinary records, projects, education and the course catalogue. Proposes pay and cannot approve it.                                           |
+| **Finance Head**    | finance@    | The books outright, the GST returns, and the money side of people: approves compensation and payroll and sees what the establishment costs, without running it.                                             |
+| **Chairman**        | chairman@   | Superadmin. Every resource, every verb, every scope — nothing is hidden or inaccessible.                                                                                                                    |
 
 The HR/Finance split is the one worth understanding. `hr_ops_manager` holds
 `compensation:VCEDXF` and no `approve`; `finance_head` holds `approve` and
@@ -182,6 +182,7 @@ mean anything. **Import Data**, under Set up, reads five things:
   does not come to the total, or the instalments come to a rupee more than is
   owed, the preview says which row and by how much, and the enrolment still
   imports: losing a real student over a spreadsheet error is the worse trade.
+
 - **One of our own templates, filled in.** For the lists you keep yourself —
   courses, training batches, colleges, client companies, students, contacts,
   staff — the platform hands out the file instead of guessing at yours.
@@ -216,7 +217,7 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
   bank and not revenue. The trend chart shows complete months only.
 - **Command Center** — ten domain health scores, an attention queue ranked by
   severity and ownership, and a decision queue. Four domains read
-  *Not yet measured* rather than zero, because no evidence is not the same
+  _Not yet measured_ rather than zero, because no evidence is not the same
   fact as bad evidence.
 - **People** — the §14 lifecycle, end to end. Every record carries the
   transitions its state machine says exist, so the buttons on a row cannot
@@ -230,12 +231,12 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
   separations and alumni, asset assignments and travel, HR analytics, and
   approval workflows for compensation, offers and requests.
 - **Ledger** — every movement of money, whatever raised it. A transaction has
-  no edit control, only *Reverse*, which posts the opposite entry and leaves
+  no edit control, only _Reverse_, which posts the opposite entry and leaves
   both rows visible.
 - **Invoices** — a tax invoice, priced per line when it is raised and final once
   it is issued. The document prints two figures side by side — what the whole
-  thing costs and what is being paid now — and says which of *full payment*,
-  *part payment* or *payable on credit* it is, and how the money changed hands.
+  thing costs and what is being paid now — and says which of _full payment_,
+  _part payment_ or _payable on credit_ it is, and how the money changed hands.
   A draft carries no invoice number: the tax series has to be consecutive, so
   the number is allocated at the moment the document exists.
 - **Receipts** — where the part payments live. Every instalment against an
@@ -261,7 +262,7 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
   **Institutions** are the schools and colleges they come from; **Organisations**
   are the businesses, trusts and foundations that buy corporate training,
   sponsor a cohort or hire our learners. They used to be one
-  screen called "Companies & Colleges" and one word, *customer*, which meant
+  screen called "Companies & Colleges" and one word, _customer_, which meant
   neither "how many students do we have" nor "which colleges do we work with"
   had anywhere to be answered, and billing a walk-in meant inventing a company
   for them. Billing detail sits on any of the three, because being invoiced is
@@ -278,6 +279,7 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
   is what a good relationship looks like. A college records **which of the six
   engagements** the partnership runs at, from academic alignment to the
   admissions portal we built for them.
+
 - **A student's own page** — their day-by-day record: attendance, weekly
   scores, the questions they asked, the feedback they gave and anything that
   went wrong, merged into one timeline. A query and a complaint stay open until
@@ -296,7 +298,7 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
   chairman publishes policy and approves the change the Operations Head
   raised — an engineer's own change goes to someone else, and nobody
   reviews their own access. A tenant with nothing recorded yet reads
-  *Nothing to measure yet*, never a zero. It does not discover devices on
+  _Nothing to measure yet_, never a zero. It does not discover devices on
   the network, meter a SaaS login, page anyone, or scan for
   vulnerabilities — every figure here is typed in or computed from what was
   typed in.
@@ -310,7 +312,7 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
   counts a recipient, and if no channel adapter is configured it says so and
   stays in draft rather than pretending to have sent. Every touchpoint, once
   recorded, is immutable, and a lead with no attributable source is shown as
-  *Unattributed* rather than assigned one. **H_MKT** reads *Not yet measured*
+  _Unattributed_ rather than assigned one. **H_MKT** reads _Not yet measured_
   until a campaign has actually gone live.
 
 Every one of those surfaces starts empty, because the seed creates structure and
@@ -363,7 +365,6 @@ the API. That split is removed: it put a foreign network between every user
 and the data, and it needed a second deployment target to keep in step with
 the first.
 
-
 ---
 
 ## Which build am I looking at
@@ -395,7 +396,7 @@ screens that could not be reached because nobody knew that step existed.
 up in permissions: a release that adds a whole resource leaves every existing
 tenant with no grant row for it, so the screen that shipped with it has no
 button — "I can add institutions and organisations but not customers" was
-exactly that. At boot, a role with *no row at all* for a resource the matrix
+exactly that. At boot, a role with _no row at all_ for a resource the matrix
 declares gets the row the matrix declares. An existing grant is never changed,
 widened, narrowed or removed: that stays a deliberate act through
 `pnpm grants:reconcile --apply`, which prints the diff before it writes, and

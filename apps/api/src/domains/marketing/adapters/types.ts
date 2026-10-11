@@ -63,9 +63,15 @@ export interface RenderedMessage {
 
 export interface InboundDeliveryEvent {
   providerMessageId: string;
-  kind: 'delivered' | 'opened' | 'clicked' | 'bounced' | 'unsubscribed' | 'failed' | 'replied';
+  kind: 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'unsubscribed' | 'failed' | 'replied';
   at: Date;
   detail?: string;
+  /**
+   * The provider's id for this delivery event. Applying the same id and kind
+   * twice changes state once (FX-50 follow-up). Absent when the provider does
+   * not supply one, in which case the event cannot be deduplicated.
+   */
+  eventId?: string;
 }
 
 export interface ChannelAdapter {

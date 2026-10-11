@@ -3,3 +3,4 @@ node_modules
 docs/plan/MAP.md
 apps/api/prisma/schema
 pnpm-lock.yaml
+.claude

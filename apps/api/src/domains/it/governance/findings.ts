@@ -61,7 +61,8 @@ export async function createFinding(input: CreateFindingInput) {
   const title = input.title?.trim();
   if (!title) throw ApiError.badRequest('A finding needs a title.');
   if (!SOURCES.includes(input.source)) throw ApiError.badRequest(`Source must be one of: ${SOURCES.join(', ')}.`);
-  if (!SEVERITIES.includes(input.severity as FindingSeverity)) throw ApiError.badRequest(`Severity must be one of: ${SEVERITIES.join(', ')}.`);
+  if (!SEVERITIES.includes(input.severity as FindingSeverity))
+    throw ApiError.badRequest(`Severity must be one of: ${SEVERITIES.join(', ')}.`);
 
   const now = new Date();
   const rules = await remediationRules();
@@ -69,7 +70,9 @@ export async function createFinding(input: CreateFindingInput) {
   try {
     dueAt = remediationDueAt(now, input.severity as FindingSeverity, rules);
   } catch {
-    throw ApiError.unprocessable(`No remediation rule for severity '${input.severity}' is in force yet. Run the seed before raising a finding.`);
+    throw ApiError.unprocessable(
+      `No remediation rule for severity '${input.severity}' is in force yet. Run the seed before raising a finding.`,
+    );
   }
 
   const recordCode = await nextRecordCode('FND');
@@ -89,7 +92,12 @@ export async function createFinding(input: CreateFindingInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_security_finding', subjectId: finding.id, after: { recordCode, severity: input.severity, dueAt } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_security_finding',
+    subjectId: finding.id,
+    after: { recordCode, severity: input.severity, dueAt },
+  });
   await emit({
     name: EVENTS.IT_FINDING_RAISED,
     subject: { entityType: 'it_security_finding', entityId: finding.id, recordCode },
@@ -120,7 +128,13 @@ export async function updateFinding(id: string, patch: UpdateFindingInput) {
       ...(patch.cvss !== undefined ? { cvss: patch.cvss } : {}),
     },
   });
-  await auditWrite({ action: 'update', subjectType: 'it_security_finding', subjectId: id, before: finding, after: updated });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_security_finding',
+    subjectId: id,
+    before: finding,
+    after: updated,
+  });
   return withTransitions(updated);
 }
 
@@ -175,7 +189,14 @@ export async function transitionFinding(id: string, event: FindingEvent, note?: 
 
   const updated = await prisma.itSecurityFinding.update({ where: { id }, data: { status: to } });
 
-  await auditWrite({ action: 'update', subjectType: 'it_security_finding', subjectId: id, before: { status: from }, after: { status: to }, meta: { transition: event } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_security_finding',
+    subjectId: id,
+    before: { status: from },
+    after: { status: to },
+    meta: { transition: event },
+  });
   await emit({
     name: EVENTS.IT_FINDING_TRANSITIONED,
     subject: { entityType: 'it_security_finding', entityId: id, recordCode: finding.recordCode },
@@ -224,7 +245,9 @@ export async function runFindingOverdueLadder(now: Date = new Date()): Promise<F
     const opsHead = await resolveOpsHeadPartyId();
     await raiseException({
       code: overdue ? 'IT_FND_OVERDUE' : 'IT_FND_DUE',
-      label: overdue ? `${row.title} remediation overdue` : `${row.title} remediation due in ${rung} day${rung === 1 ? '' : 's'}`,
+      label: overdue
+        ? `${row.title} remediation overdue`
+        : `${row.title} remediation due in ${rung} day${rung === 1 ? '' : 's'}`,
       severity: overdue ? (row.severity === 'critical' ? 'S4_CRITICAL' : 'S3_HIGH_RISK') : 'S2_WARNING',
       subjectType: 'it_security_finding',
       subjectId: row.id,
@@ -239,7 +262,10 @@ export async function runFindingOverdueLadder(now: Date = new Date()): Promise<F
       ladderRung: rung,
     });
     notified += 1;
-    await prisma.itSecurityFinding.update({ where: { id: row.id }, data: { overdueNotifiedRungs: [...new Set([...already, ...crossed])] } });
+    await prisma.itSecurityFinding.update({
+      where: { id: row.id },
+      data: { overdueNotifiedRungs: [...new Set([...already, ...crossed])] },
+    });
   }
 
   return { checked: rows.length, notified, skippedIdempotent };
@@ -257,7 +283,9 @@ export async function findingsSummary() {
     return { notYetMeasured: true, openBySeverity: { critical: 0, high: 0, medium: 0, low: 0 }, overdue: 0 };
   }
 
-  const rows = await prisma.itSecurityFinding.findMany({ where: { tenantId: auth.tenantId, status: { in: ['open', 'in_progress'] } } });
+  const rows = await prisma.itSecurityFinding.findMany({
+    where: { tenantId: auth.tenantId, status: { in: ['open', 'in_progress'] } },
+  });
   const now = new Date();
   const openBySeverity: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0 };
   let overdue = 0;

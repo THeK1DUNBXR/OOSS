@@ -131,8 +131,13 @@ export function neftAdviceCsv(rows: NeftBeneficiary[]): string {
   const lines = [NEFT_HEADER.map(csvCell).join(',')];
   for (const r of rows) {
     lines.push(
-      [csvCell(r.employeeName), csvCell(r.accountNumber), csvCell(r.ifsc), csvCell(round2(r.amount)), csvCell(r.reference)]
-        .join(','),
+      [
+        csvCell(r.employeeName),
+        csvCell(r.accountNumber),
+        csvCell(r.ifsc),
+        csvCell(round2(r.amount)),
+        csvCell(r.reference),
+      ].join(','),
     );
   }
   return lines.join('\r\n') + '\r\n';
@@ -185,11 +190,27 @@ export function reconciliationDiff(
     const currNet = currMap.has(id) ? currMap.get(id)! : null;
 
     if (prevNet === null && currNet !== null) {
-      out.push({ employmentRelationshipId: id, previousNet: null, currentNet: currNet, delta: round2(currNet), deltaPct: null, unexplained: false, note: 'New in this run (joiner or first pay).' });
+      out.push({
+        employmentRelationshipId: id,
+        previousNet: null,
+        currentNet: currNet,
+        delta: round2(currNet),
+        deltaPct: null,
+        unexplained: false,
+        note: 'New in this run (joiner or first pay).',
+      });
       continue;
     }
     if (prevNet !== null && currNet === null) {
-      out.push({ employmentRelationshipId: id, previousNet: prevNet, currentNet: null, delta: round2(-prevNet), deltaPct: null, unexplained: false, note: 'Absent from this run (leaver or excluded).' });
+      out.push({
+        employmentRelationshipId: id,
+        previousNet: prevNet,
+        currentNet: null,
+        delta: round2(-prevNet),
+        deltaPct: null,
+        unexplained: false,
+        note: 'Absent from this run (leaver or excluded).',
+      });
       continue;
     }
 
@@ -205,7 +226,9 @@ export function reconciliationDiff(
       delta,
       deltaPct,
       unexplained,
-      note: unexplained ? `Net pay moved ${deltaPct > 0 ? 'up' : 'down'} ${Math.abs(deltaPct)}% — beyond the ${thresholdPct}% check.` : 'Within the usual range.',
+      note: unexplained
+        ? `Net pay moved ${deltaPct > 0 ? 'up' : 'down'} ${Math.abs(deltaPct)}% — beyond the ${thresholdPct}% check.`
+        : 'Within the usual range.',
     });
   }
   return out.sort((a, b) => Math.abs(b.deltaPct ?? 0) - Math.abs(a.deltaPct ?? 0));

@@ -33,7 +33,11 @@ import { humanize } from '../lib/words.js';
 
 export function Cohorts() {
   const [adding, setAdding] = useState<'cohort' | 'course' | null>(null);
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['cohorts'],
     queryFn: () => api.get<any[]>('/education/cohorts'),
   });
@@ -51,7 +55,9 @@ export function Cohorts() {
         subtitle="Each run of a course: dates, trainer, place, and how full it is."
         actions={
           <>
-            <button className="btn" onClick={() => setAdding('course')}>+ Course</button>
+            <button className="btn" onClick={() => setAdding('course')}>
+              + Course
+            </button>
             <NewButton label="Start a batch" onClick={() => setAdding('cohort')} />
           </>
         }
@@ -71,7 +77,9 @@ export function Cohorts() {
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
-        <Card><EmptyState message="No training batches you can see." /></Card>
+        <Card>
+          <EmptyState message="No training batches you can see." />
+        </Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {data.map((c) => (
@@ -108,7 +116,11 @@ export function Enrollments() {
   const [tab, setTab] = useState<'all' | 'at_risk'>('all');
   const [enrolling, setEnrolling] = useState(false);
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['enrollments', tab],
     queryFn: () => api.get<any[]>(`/education/enrollments${tab === 'at_risk' ? '?atRisk=true' : ''}`),
   });
@@ -146,7 +158,13 @@ export function Enrollments() {
           sub={data.length === studentCount ? undefined : `on ${data.length} enrolments`}
           drillTo="/education/enrollments"
         />
-        <Metric label="At risk" value={atRisk} tone={atRisk > 0 ? 'warn' : 'good'} sub="Attendance below the threshold" drillTo="/exceptions" />
+        <Metric
+          label="At risk"
+          value={atRisk}
+          tone={atRisk > 0 ? 'warn' : 'good'}
+          sub="Attendance below the threshold"
+          drillTo="/exceptions"
+        />
         <Metric
           label="Mean attendance"
           value={data.length ? `${Math.round(data.reduce((s, e) => s + e.attendancePct, 0) / data.length)}%` : '—'}
@@ -176,10 +194,7 @@ export function Enrollments() {
         <Loading />
       ) : data.length === 0 ? (
         <Card>
-          <EmptyState
-            message="No students yet."
-            hint="A student joins a batch, and usually comes from a college."
-          />
+          <EmptyState message="No students yet." hint="A student joins a batch, and usually comes from a college." />
         </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
@@ -199,13 +214,18 @@ export function Enrollments() {
             <tbody>
               {data.map((e) => (
                 <tr key={e.id}>
-                  <td><RecordCode code={e.recordCode} /></td>
+                  <td>
+                    <RecordCode code={e.recordCode} />
+                  </td>
                   <td>
                     <Link to={`/education/enrollments/${e.id}`} className="text-xs text-ink-100 hover:text-accent-soft">
                       {e.personName ?? '—'}
                     </Link>
                     {e.isMinor && (
-                      <span className="chip border-band-critical/40 text-band-critical" title="Guardian contact is DPDP-covered and read-audited.">
+                      <span
+                        className="chip border-band-critical/40 text-band-critical"
+                        title="Guardian contact is DPDP-covered and read-audited."
+                      >
                         minor
                       </span>
                     )}
@@ -226,7 +246,9 @@ export function Enrollments() {
                     <p className="text-ink-600">{e.courseName}</p>
                   </td>
                   <td className="text-right tabular-nums text-xs">{e.progressPct}%</td>
-                  <td className={`text-right tabular-nums text-xs ${e.atRisk ? 'text-band-watch' : ''}`}>{e.attendancePct}%</td>
+                  <td className={`text-right tabular-nums text-xs ${e.atRisk ? 'text-band-watch' : ''}`}>
+                    {e.attendancePct}%
+                  </td>
                   <td>
                     <StatusChip
                       status={humanize(e.status)}
@@ -261,7 +283,11 @@ export function Enrollments() {
 
 export function Projects() {
   const qc = useQueryClient();
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['projects'],
     queryFn: () => api.get<any[]>('/education/projects'),
   });
@@ -277,10 +303,7 @@ export function Projects() {
 
   return (
     <div>
-      <PageHeader
-        title="Projects"
-        subtitle="Work that has been won, and is being delivered."
-      />
+      <PageHeader title="Projects" subtitle="Work that has been won, and is being delivered." />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Metric label="Projects" value={data.length} drillTo="/delivery/projects" />
@@ -297,7 +320,9 @@ export function Projects() {
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
-        <Card><EmptyState message="No projects." /></Card>
+        <Card>
+          <EmptyState message="No projects." />
+        </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
           <table className="table">
@@ -315,14 +340,25 @@ export function Projects() {
             <tbody>
               {data.map((p) => (
                 <tr key={p.id}>
-                  <td><RecordCode code={p.recordCode} /></td>
+                  <td>
+                    <RecordCode code={p.recordCode} />
+                  </td>
                   <td className="text-xs text-ink-100">{p.name}</td>
                   <td className="text-2xs text-ink-400">{p.organizationName ?? '—'}</td>
-                  <td><StatusChip status={humanize(p.status)} tone={p.status === 'delivered' ? 'good' : p.status === 'on_hold' ? 'warn' : 'neutral'} /></td>
-                  <td className={`text-right tabular-nums text-xs ${Math.abs(p.scheduleVariancePct) > 10 ? 'text-band-watch' : ''}`}>
+                  <td>
+                    <StatusChip
+                      status={humanize(p.status)}
+                      tone={p.status === 'delivered' ? 'good' : p.status === 'on_hold' ? 'warn' : 'neutral'}
+                    />
+                  </td>
+                  <td
+                    className={`text-right tabular-nums text-xs ${Math.abs(p.scheduleVariancePct) > 10 ? 'text-band-watch' : ''}`}
+                  >
                     {p.scheduleVariancePct}%
                   </td>
-                  <td><StatusChip status={humanize(p.healthBand)} tone={p.healthBand === 'stable' ? 'good' : 'warn'} /></td>
+                  <td>
+                    <StatusChip status={humanize(p.healthBand)} tone={p.healthBand === 'stable' ? 'good' : 'warn'} />
+                  </td>
                   <td>
                     {p.handoffPending && (
                       <button className="btn-primary" onClick={() => accept.mutate(p.id)} disabled={accept.isPending}>

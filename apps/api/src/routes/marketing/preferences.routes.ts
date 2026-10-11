@@ -55,7 +55,12 @@ router.post(
 router.post(
   '/channel',
   handler(async (req) => {
-    const schema = z.object({ personId: z.string(), channelKey: z.string(), optedIn: z.boolean(), source: z.string().optional() });
+    const schema = z.object({
+      personId: z.string(),
+      channelKey: z.string(),
+      optedIn: z.boolean(),
+      source: z.string().optional(),
+    });
     const input = schema.parse(req.body);
     return setChannelPreference(input.personId, input.channelKey, input.optedIn, input.source);
   }),
@@ -70,7 +75,10 @@ router.post(
   }),
 );
 
-router.get('/coverage', handler(async () => consentCoverage()));
+router.get(
+  '/coverage',
+  handler(async () => consentCoverage()),
+);
 
 export default router;
 
@@ -113,11 +121,13 @@ publicRouter.get('/unsubscribe/:token', async (req, res, next) => {
       }
     }
     res.setHeader('content-type', 'text/html; charset=utf-8');
-    res.status(found ? 200 : 404).send(
-      found
-        ? `<!doctype html><html><body><h1>Unsubscribe</h1><form method="post"><button type="submit">Confirm unsubscribe from marketing messages</button></form></body></html>`
-        : `<!doctype html><html><body><h1>Link not recognised</h1><p>This unsubscribe link is invalid or has already been used.</p></body></html>`,
-    );
+    res
+      .status(found ? 200 : 404)
+      .send(
+        found
+          ? `<!doctype html><html><body><h1>Unsubscribe</h1><form method="post"><button type="submit">Confirm unsubscribe from marketing messages</button></form></body></html>`
+          : `<!doctype html><html><body><h1>Link not recognised</h1><p>This unsubscribe link is invalid or has already been used.</p></body></html>`,
+      );
   } catch (err) {
     next(err);
   }

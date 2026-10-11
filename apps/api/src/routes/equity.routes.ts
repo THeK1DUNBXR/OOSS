@@ -7,20 +7,48 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { handler, str } from '../lib/http.js';
 import {
-  createShareClass, updateShareClass, listShareClasses,
-  createHolder, updateHolder, listHolders, holder,
-  proposeAllotment, proposeTransfer, approveShareTransaction, rejectShareTransaction,
-  makeEffective, reverseShareTransaction, listShareLedger,
-  capTable, holdingsFor,
-  certificate, certificateDocument, listCertificates,
-  recordValuation, listValuations,
-  publishDocument, listDocuments,
+  createShareClass,
+  updateShareClass,
+  listShareClasses,
+  createHolder,
+  updateHolder,
+  listHolders,
+  holder,
+  proposeAllotment,
+  proposeTransfer,
+  approveShareTransaction,
+  rejectShareTransaction,
+  makeEffective,
+  reverseShareTransaction,
+  listShareLedger,
+  capTable,
+  holdingsFor,
+  certificate,
+  certificateDocument,
+  listCertificates,
+  recordValuation,
+  listValuations,
+  publishDocument,
+  listDocuments,
 } from '../domains/equity.js';
 import {
-  createRound, updateRound, listRounds, round, openRound, closeRound, cancelRound,
-  proposeConversion, proposeRedemption, proposeBuyback, proposeBonus,
-  createRightsOffers, listRightsOffers, acceptRightsOffer, renounceRightsOffer,
-  scenarioRound, scenarioWaterfall,
+  createRound,
+  updateRound,
+  listRounds,
+  round,
+  openRound,
+  closeRound,
+  cancelRound,
+  proposeConversion,
+  proposeRedemption,
+  proposeBuyback,
+  proposeBonus,
+  createRightsOffers,
+  listRightsOffers,
+  acceptRightsOffer,
+  renounceRightsOffer,
+  scenarioRound,
+  scenarioWaterfall,
 } from '../domains/rounds.js';
 import filingsRoutes from './filings.routes.js';
 
@@ -32,7 +60,10 @@ router.use('/filings', filingsRoutes);
 
 // ---- Share classes ---------------------------------------------------------
 
-router.get('/share-classes', handler(async () => ({ items: await listShareClasses() })));
+router.get(
+  '/share-classes',
+  handler(async () => ({ items: await listShareClasses() })),
+);
 
 router.post(
   '/share-classes',
@@ -42,8 +73,18 @@ router.post(
         name: z.string().min(1),
         kind: z.enum(['equity', 'preference', 'debenture']),
         instrument: z.enum([
-          'equity', 'sweat_equity', 'ccps', 'ocps', 'rps', 'ccd', 'ocd', 'ncd',
-          'convertible_note', 'warrant', 'option', 'phantom',
+          'equity',
+          'sweat_equity',
+          'ccps',
+          'ocps',
+          'rps',
+          'ccd',
+          'ocd',
+          'ncd',
+          'convertible_note',
+          'warrant',
+          'option',
+          'phantom',
         ]),
         faceValue: z.number().nonnegative(),
         votesPerShare: z.number().positive().optional(),
@@ -75,8 +116,14 @@ router.patch(
 
 // ---- Holders ----------------------------------------------------------------
 
-router.get('/holders', handler(async () => ({ items: await listHolders() })));
-router.get('/holders/:id', handler(async (req) => holder(req.params.id)));
+router.get(
+  '/holders',
+  handler(async () => ({ items: await listHolders() })),
+);
+router.get(
+  '/holders/:id',
+  handler(async (req) => holder(req.params.id)),
+);
 
 router.post(
   '/holders',
@@ -87,7 +134,9 @@ router.post(
         personId: z.string().optional(),
         organizationId: z.string().optional(),
         heldByTenantId: z.string().optional(),
-        person: z.object({ fullName: z.string().min(1), email: z.string().nullish(), phone: z.string().nullish() }).optional(),
+        person: z
+          .object({ fullName: z.string().min(1), email: z.string().nullish(), phone: z.string().nullish() })
+          .optional(),
         residency: z.enum(['resident', 'non_resident']).optional(),
         investmentBasis: z.enum(['repatriable', 'non_repatriable']).nullish(),
         panNumber: z.string().nullish(),
@@ -118,7 +167,10 @@ router.patch(
 
 // ---- The ledger ---------------------------------------------------------------
 
-router.get('/ledger', handler(async () => ({ items: await listShareLedger() })));
+router.get(
+  '/ledger',
+  handler(async () => ({ items: await listShareLedger() })),
+);
 
 router.post(
   '/ledger/allotments',
@@ -157,7 +209,10 @@ router.post(
   }),
 );
 
-router.post('/ledger/:id/approve', handler(async (req) => approveShareTransaction(req.params.id)));
+router.post(
+  '/ledger/:id/approve',
+  handler(async (req) => approveShareTransaction(req.params.id)),
+);
 
 router.post(
   '/ledger/:id/reject',
@@ -167,7 +222,10 @@ router.post(
   }),
 );
 
-router.post('/ledger/:id/effective', handler(async (req) => makeEffective(req.params.id)));
+router.post(
+  '/ledger/:id/effective',
+  handler(async (req) => makeEffective(req.params.id)),
+);
 
 router.post(
   '/ledger/:id/reverse',
@@ -179,20 +237,41 @@ router.post(
 
 // ---- Cap table & holdings ------------------------------------------------------
 
-router.get('/cap-table', handler(async (req) => capTable(str(req.query.asOf))));
+router.get(
+  '/cap-table',
+  handler(async (req) => capTable(str(req.query.asOf))),
+);
 
-router.get('/holdings/me', handler(async () => holdingsFor('me')));
-router.get('/holdings/:holderId', handler(async (req) => holdingsFor(req.params.holderId)));
+router.get(
+  '/holdings/me',
+  handler(async () => holdingsFor('me')),
+);
+router.get(
+  '/holdings/:holderId',
+  handler(async (req) => holdingsFor(req.params.holderId)),
+);
 
 // ---- Certificates ----------------------------------------------------------------
 
-router.get('/certificates', handler(async () => ({ items: await listCertificates() })));
-router.get('/certificates/:id', handler(async (req) => certificate(req.params.id)));
-router.get('/certificates/:id/document', handler(async (req) => certificateDocument(req.params.id)));
+router.get(
+  '/certificates',
+  handler(async () => ({ items: await listCertificates() })),
+);
+router.get(
+  '/certificates/:id',
+  handler(async (req) => certificate(req.params.id)),
+);
+router.get(
+  '/certificates/:id/document',
+  handler(async (req) => certificateDocument(req.params.id)),
+);
 
 // ---- Valuations --------------------------------------------------------------------
 
-router.get('/valuations', handler(async () => ({ items: await listValuations() })));
+router.get(
+  '/valuations',
+  handler(async () => ({ items: await listValuations() })),
+);
 
 router.post(
   '/valuations',
@@ -216,7 +295,10 @@ router.post(
 
 // ---- Entity documents ------------------------------------------------------------
 
-router.get('/documents', handler(async (req) => ({ items: await listDocuments(str(req.query.audience)) })));
+router.get(
+  '/documents',
+  handler(async (req) => ({ items: await listDocuments(str(req.query.audience)) })),
+);
 
 router.post(
   '/documents',
@@ -238,8 +320,17 @@ router.post(
 // ---- Rounds (phase 4) ---------------------------------------------------------
 
 const roundKindEnum = z.enum([
-  'seed', 'series', 'rights_issue', 'bonus', 'preferential', 'private_placement',
-  'sweat_equity', 'esop_top_up', 'buyback', 'capital_reduction', 'conversion',
+  'seed',
+  'series',
+  'rights_issue',
+  'bonus',
+  'preferential',
+  'private_placement',
+  'sweat_equity',
+  'esop_top_up',
+  'buyback',
+  'capital_reduction',
+  'conversion',
 ]);
 
 const roundInputSchema = z.object({
@@ -261,8 +352,14 @@ const roundInputSchema = z.object({
   notes: z.string().nullish(),
 });
 
-router.get('/rounds', handler(async () => ({ items: await listRounds() })));
-router.get('/rounds/:id', handler(async (req) => round(req.params.id)));
+router.get(
+  '/rounds',
+  handler(async () => ({ items: await listRounds() })),
+);
+router.get(
+  '/rounds/:id',
+  handler(async (req) => round(req.params.id)),
+);
 
 router.post(
   '/rounds',
@@ -272,11 +369,23 @@ router.post(
   }),
 );
 
-router.patch('/rounds/:id', handler(async (req) => updateRound(req.params.id, roundInputSchema.parse(req.body))));
+router.patch(
+  '/rounds/:id',
+  handler(async (req) => updateRound(req.params.id, roundInputSchema.parse(req.body))),
+);
 
-router.post('/rounds/:id/open', handler(async (req) => openRound(req.params.id)));
-router.post('/rounds/:id/close', handler(async (req) => closeRound(req.params.id)));
-router.post('/rounds/:id/cancel', handler(async (req) => cancelRound(req.params.id)));
+router.post(
+  '/rounds/:id/open',
+  handler(async (req) => openRound(req.params.id)),
+);
+router.post(
+  '/rounds/:id/close',
+  handler(async (req) => closeRound(req.params.id)),
+);
+router.post(
+  '/rounds/:id/cancel',
+  handler(async (req) => cancelRound(req.params.id)),
+);
 
 router.post(
   '/rounds/:id/bonus',
@@ -297,13 +406,20 @@ router.post(
   '/rounds/:id/rights',
   handler(async (req) => {
     const body = z
-      .object({ shareClassId: z.string(), ratioNumerator: z.number().positive(), ratioDenominator: z.number().positive() })
+      .object({
+        shareClassId: z.string(),
+        ratioNumerator: z.number().positive(),
+        ratioDenominator: z.number().positive(),
+      })
       .parse(req.body);
     return createRightsOffers({ roundId: req.params.id, ...body });
   }),
 );
 
-router.get('/rounds/:id/rights', handler(async (req) => listRightsOffers(req.params.id)));
+router.get(
+  '/rounds/:id/rights',
+  handler(async (req) => listRightsOffers(req.params.id)),
+);
 
 router.post(
   '/rights/:offerId/accept',

@@ -40,7 +40,7 @@ acceptance criteria this answers to.
   `msmeDueAt = billDate + min(agreedTermDays ?? 45, 45)`. A daily job
   (`runMsmeLadder`) raises `CMP_MSME_45_DAY` (S2) once per bill past due,
   unpaid. The before-pay hook does not block on this — `GET
-  /compliance/tax/msme/exposure` shows the disallowance exposure instead.
+/compliance/tax/msme/exposure` shows the disallowance exposure instead.
   **CMP-TDS-003**, pinned by "CMP-TDS-003 — MSME 45-day payment term".
 - Salary TDS (Sec 192): `TaxDeclaration` per employment per FY (regime,
   declared deductions), `IncomeTaxSlabTable` dated per regime per FY.
@@ -53,7 +53,7 @@ acceptance criteria this answers to.
   snapshot Json, never edited once filed — pinned by "Quarterly TDS returns —
   snapshot, superseded, never edited"). `POST /compliance/tax/returns/prepare`,
   `POST /compliance/tax/returns/:id/file`, `GET
-  /compliance/tax/returns/:id/export` (deductee-row CSV: PAN, name, section,
+/compliance/tax/returns/:id/export` (deductee-row CSV: PAN, name, section,
   amount paid, TDS, challan) — prepares, does not transmit.
   `TdsCertificate` (Form 16A per vendor per quarter, Form 16 per employee per
   FY), final once issued — a correction supersedes via `supersedesId`.

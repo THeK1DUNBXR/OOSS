@@ -57,7 +57,10 @@ export function Learning() {
   const my = useQuery({ queryKey: ['me-learning-employment'], queryFn: () => api.get<EmployeeRow[]>('/hr/employees') });
   const employmentId = my.data?.[0]?.id;
 
-  const sessions = useQuery({ queryKey: ['me-learning-sessions'], queryFn: () => api.get<Session[]>('/hcm/learning/sessions') });
+  const sessions = useQuery({
+    queryKey: ['me-learning-sessions'],
+    queryFn: () => api.get<Session[]>('/hcm/learning/sessions'),
+  });
   const enrollments = useQuery({
     queryKey: ['me-learning-enrollments', employmentId],
     queryFn: () => api.get<Enrollment[]>(`/hcm/learning/enrollments?employmentRelationshipId=${employmentId}`),
@@ -95,7 +98,10 @@ export function Learning() {
 
       {my.data && my.data.length === 0 && (
         <Card title="My learning">
-          <EmptyState message="No employment record is linked to your account." hint="Ask HR to link your login to your employee record." />
+          <EmptyState
+            message="No employment record is linked to your account."
+            hint="Ask HR to link your login to your employee record."
+          />
         </Card>
       )}
 
@@ -104,14 +110,22 @@ export function Learning() {
           <Card
             title="My enrollments"
             subtitle="Nominated → approved → attended → completed."
-            actions={upcomingSessions.length > 0 ? <NewButton label="Nominate myself" onClick={() => setOpen(true)} /> : undefined}
+            actions={
+              upcomingSessions.length > 0 ? (
+                <NewButton label="Nominate myself" onClick={() => setOpen(true)} />
+              ) : undefined
+            }
           >
             {enrollments.isLoading && <Loading />}
             {enrollments.error && <ErrorBox error={enrollments.error} />}
             {enrollments.data && enrollments.data.length === 0 && (
               <EmptyState
                 message="You have no training enrollments yet."
-                hint={upcomingSessions.length > 0 ? 'Nominate yourself for an upcoming session above.' : 'No sessions are currently open to nominate into.'}
+                hint={
+                  upcomingSessions.length > 0
+                    ? 'Nominate yourself for an upcoming session above.'
+                    : 'No sessions are currently open to nominate into.'
+                }
               />
             )}
             {enrollments.data && enrollments.data.length > 0 && (
@@ -132,7 +146,13 @@ export function Learning() {
                       <td>
                         <StatusChip
                           status={e.status}
-                          tone={e.status === 'completed' ? 'good' : e.status === 'rejected' || e.status === 'no_show' ? 'bad' : 'neutral'}
+                          tone={
+                            e.status === 'completed'
+                              ? 'good'
+                              : e.status === 'rejected' || e.status === 'no_show'
+                                ? 'bad'
+                                : 'neutral'
+                          }
                         />
                       </td>
                       <td className="tabular-nums">{e.score ?? '—'}</td>
@@ -165,7 +185,12 @@ export function Learning() {
                       <td>{c.issuer ?? '—'}</td>
                       <td>{date(c.issuedOn)}</td>
                       <td>{c.expiresOn ? date(c.expiresOn) : 'Never'}</td>
-                      <td><StatusChip status={c.verified ? 'verified' : 'unverified'} tone={c.verified ? 'good' : 'neutral'} /></td>
+                      <td>
+                        <StatusChip
+                          status={c.verified ? 'verified' : 'unverified'}
+                          tone={c.verified ? 'good' : 'neutral'}
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -177,7 +202,10 @@ export function Learning() {
             {idps.isLoading && <Loading />}
             {idps.error && <ErrorBox error={idps.error} />}
             {idps.data && idps.data.length === 0 && (
-              <EmptyState message="No development plan on file." hint="Ask your manager or HR to set one up with you." />
+              <EmptyState
+                message="No development plan on file."
+                hint="Ask your manager or HR to set one up with you."
+              />
             )}
             {idps.data && idps.data.length > 0 && (
               <ul className="space-y-2 text-sm">
@@ -185,7 +213,9 @@ export function Learning() {
                   <li key={i.id} className="rounded border border-ink-800 p-3">
                     <div className="mb-1 flex items-center justify-between">
                       <StatusChip status={i.status} tone={i.status === 'active' ? 'good' : 'neutral'} />
-                      <span className="text-2xs text-ink-400">{i.reviewDate ? `Review ${date(i.reviewDate)}` : 'No review date set'}</span>
+                      <span className="text-2xs text-ink-400">
+                        {i.reviewDate ? `Review ${date(i.reviewDate)}` : 'No review date set'}
+                      </span>
                     </div>
                     <ul className="list-inside list-disc text-ink-300">
                       {(i.goals?.items ?? []).map((g, idx) => (

@@ -20,6 +20,10 @@ import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { raiseException } from '../platform/exceptions.js';
+import { auditWrite } from '../platform/audit.js';
+import { assertCan } from '../platform/permissions.js';
+import { ApiError } from '../platform/errors.js';
+import { nextRecordCode } from '../platform/recordCode.js';
 import { relationshipStrengthScore } from './relationships.js';
 
 export interface RoutingSubject {
@@ -84,9 +88,7 @@ async function candidatesHoldingLeadGrant(vertical: string): Promise<Candidate[]
     where: { tenantId: auth.tenantId, resource: 'leads', verbs: { has: 'assign' } },
   });
   const eligibleRoleIds = new Set(grants.map((g) => g.roleId).filter(Boolean) as string[]);
-  const eligibleRoleSlugs = new Set(
-    roles.filter((r) => eligibleRoleIds.has(r.id)).map((r) => r.slug),
-  );
+  const eligibleRoleSlugs = new Set(roles.filter((r) => eligibleRoleIds.has(r.id)).map((r) => r.slug));
 
   // A vertical-specific narrowing lives on the grant's conditions, as data.
   const verticalNarrowed = new Set<string>();
@@ -161,7 +163,12 @@ export async function routeLead(subject: RoutingSubject): Promise<RoutingOutcome
 
   for (const candidate of pool) {
     // ---- Hard filter 1: territory --------------------------------------
-    if (territory && territory.geoAreaRef.length > 0 && candidate.branch && !territory.geoAreaRef.includes(candidate.branch)) {
+    if (
+      territory &&
+      territory.geoAreaRef.length > 0 &&
+      candidate.branch &&
+      !territory.geoAreaRef.includes(candidate.branch)
+    ) {
       scored.push({
         candidateId: candidate.partyId,
         candidateName: candidate.name,
@@ -182,8 +189,18 @@ export async function routeLead(subject: RoutingSubject): Promise<RoutingOutcome
     const recencyRaw = recencyScore(candidate.lastAssignedAt);
 
     const factors = [
-      { factor: 'capacity', weight: weights.capacity ?? 30, raw: capacityRaw, weighted: capacityRaw * (weights.capacity ?? 30) },
-      { factor: 'capability', weight: weights.capability ?? 25, raw: capabilityRaw, weighted: capabilityRaw * (weights.capability ?? 25) },
+      {
+        factor: 'capacity',
+        weight: weights.capacity ?? 30,
+        raw: capacityRaw,
+        weighted: capacityRaw * (weights.capacity ?? 30),
+      },
+      {
+        factor: 'capability',
+        weight: weights.capability ?? 25,
+        raw: capabilityRaw,
+        weighted: capabilityRaw * (weights.capability ?? 25),
+      },
       {
         factor: 'relationship_strength',
         weight: weights.relationship_strength ?? 30,
@@ -219,11 +236,12 @@ export async function routeLead(subject: RoutingSubject): Promise<RoutingOutcome
   if (survivors.length === 0) {
     // The two unrouted causes need different remedies, so they carry different
     // reason codes: a genuine coverage gap versus a capacity problem.
-    const reason: UnroutedReason = pool.length === 0
-      ? 'no_vertical_coverage'
-      : territory === null
-        ? 'no_territory_match'
-        : 'all_candidates_over_capacity';
+    const reason: UnroutedReason =
+      pool.length === 0
+        ? 'no_vertical_coverage'
+        : territory === null
+          ? 'no_territory_match'
+          : 'all_candidates_over_capacity';
     await persistAudit(subject.leadId, territory?.id ?? null, scored, null, reason);
     return { winnerPartyId: null, territoryId: territory?.id ?? null, candidates: scored, unroutedReason: reason };
   }
@@ -329,10 +347,10 @@ export async function raiseUnroutedException(
 
   const detail =
     reason === 'no_vertical_coverage'
-      ? 'No candidate in this territory holds a grant for the lead\'s vertical — a genuine coverage gap. The remedy is a grant change, not a capacity change.'
+      ? "No candidate in this territory holds a grant for the lead's vertical — a genuine coverage gap. The remedy is a grant change, not a capacity change."
       : reason === 'all_candidates_over_capacity'
         ? 'Every eligible candidate is at or over their declared capacity ceiling. The remedy is capacity, not coverage.'
-        : 'No active territory matches this lead\'s geography, vertical and account kind.';
+        : "No active territory matches this lead's geography, vertical and account kind.";
 
   await raiseException({
     code: 'EX-CRM-004',
@@ -365,4 +383,68 @@ export async function routingAuditFor(leadId: string) {
     where: { tenantId: auth.tenantId, leadId },
     orderBy: { evaluatedAt: 'desc' },
   });
+}
+
+/**
+ * Territories and routing rules are what `routeLead` reads when it assigns a
+ * lead, so a change to either changes who owns the next lead. Both writes sit
+ * here, not in the route, so that they take the same assertCan → write →
+ * auditWrite → emit path as the rest of this module.
+ */
+export async function createTerritory(input: {
+  name: string;
+  geoAreaRef?: string[];
+  appliesToVerticals?: string[];
+  appliesToAccountKind?: string;
+  ownerPositionId?: string | null;
+  ownerPartyId?: string | null;
+  capacityCeiling?: number;
+}) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'territories', verb: 'create' });
+
+  const recordCode = await nextRecordCode('TER');
+  const territory = await prisma.territory.create({
+    data: {
+      tenantId: auth.tenantId,
+      recordCode,
+      name: input.name,
+      geoAreaRef: input.geoAreaRef ?? [],
+      appliesToVerticals: input.appliesToVerticals ?? [],
+      appliesToAccountKind: input.appliesToAccountKind ?? 'any',
+      ownerPositionId: input.ownerPositionId ?? null,
+      ownerPartyId: input.ownerPartyId ?? null,
+      capacityCeiling: input.capacityCeiling ?? 50,
+    },
+  });
+  await auditWrite({ action: 'create', subjectType: 'territory', subjectId: territory.id, after: territory });
+  await emit({
+    name: EVENTS.TERRITORY_CREATED,
+    subject: { entityType: 'territory', entityId: territory.id, recordCode },
+    newState: { name: territory.name, capacityCeiling: territory.capacityCeiling },
+  });
+  return territory;
+}
+
+export async function updateRoutingRule(
+  ruleId: string,
+  input: { factorWeights?: Record<string, number>; tieBreakMarginPoints?: number; active?: boolean },
+) {
+  await assertCan({ resource: 'routing_rules', verb: 'edit' });
+
+  const before = await prisma.routingRule.findFirst({ where: { id: ruleId } });
+  if (!before) throw ApiError.notFound('Routing rule');
+
+  const after = await prisma.routingRule.update({ where: { id: ruleId }, data: input as never });
+  await auditWrite({ action: 'update', subjectType: 'routing_rule', subjectId: ruleId, before, after });
+  await emit({
+    name: EVENTS.ROUTING_RULE_UPDATED,
+    subject: { entityType: 'routing_rule', entityId: ruleId, recordCode: null },
+    newState: {
+      active: after.active,
+      tieBreakMarginPoints: after.tieBreakMarginPoints,
+      factorWeights: after.factorWeights,
+    },
+  });
+  return after;
 }

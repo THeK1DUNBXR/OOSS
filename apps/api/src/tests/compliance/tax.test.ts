@@ -175,7 +175,9 @@ describe('computeAnnualTax — regime comparison', () => {
 describe('CMP-TDS-001 — a bill under an applicable TDS category cannot be paid until TDS is settled', () => {
   it('refuses payment when the category defaults to a section nobody considered, and allows it once computed', async () => {
     const account = await bankAccount();
-    const category = await asUser(FINANCE, () => createCategory({ name: `Contractor fees ${Date.now()}`, kind: 'expense' }));
+    const category = await asUser(FINANCE, () =>
+      createCategory({ name: `Contractor fees ${Date.now()}`, kind: 'expense' }),
+    );
     await asUser(FINANCE, () => setApplicabilityRule({ categoryId: category.id, section: '194C_IND' }));
 
     const bill = await asUser(FINANCE, () =>
@@ -213,7 +215,12 @@ describe('CMP-TDS-001 — a bill under an applicable TDS category cannot be paid
     await asUser(FINANCE, () => setApplicabilityRule({ categoryId: category.id, section: '194H' }));
 
     const bill = await asUser(FINANCE, () =>
-      recordVendorBill({ vendorName: `Waived Vendor ${Date.now()}`, billDate: new Date(), categoryId: category.id, subtotal: 20_000 }),
+      recordVendorBill({
+        vendorName: `Waived Vendor ${Date.now()}`,
+        billDate: new Date(),
+        categoryId: category.id,
+        subtotal: 20_000,
+      }),
     );
 
     const blocked = await expectReject(() =>
@@ -221,9 +228,13 @@ describe('CMP-TDS-001 — a bill under an applicable TDS category cannot be paid
     );
     expect(blocked.message).toContain('CMP-TDS-001');
 
-    await asUser(FINANCE, () => waiveVendorTds(bill.id, 'One-off referral, below the aggregate the vendor will ever cross.'));
+    await asUser(FINANCE, () =>
+      waiveVendorTds(bill.id, 'One-off referral, below the aggregate the vendor will ever cross.'),
+    );
 
-    const paid = await asUser(FINANCE, () => payVendorBill(bill.id, { amount: 20_000, accountId: account.id, paidOn: new Date() }));
+    const paid = await asUser(FINANCE, () =>
+      payVendorBill(bill.id, { amount: 20_000, accountId: account.id, paidOn: new Date() }),
+    );
     expect(paid.bill.status).toBe('paid');
   });
 
@@ -232,7 +243,9 @@ describe('CMP-TDS-001 — a bill under an applicable TDS category cannot be paid
     const bill = await asUser(FINANCE, () =>
       recordVendorBill({ vendorName: `No Rule Vendor ${Date.now()}`, billDate: new Date(), subtotal: 5_000 }),
     );
-    const paid = await asUser(FINANCE, () => payVendorBill(bill.id, { amount: 5_000, accountId: account.id, paidOn: new Date() }));
+    const paid = await asUser(FINANCE, () =>
+      payVendorBill(bill.id, { amount: 5_000, accountId: account.id, paidOn: new Date() }),
+    );
     expect(paid.bill.status).toBe('paid');
   });
 });
@@ -271,11 +284,15 @@ describe('CMP-TDS-002 — TDS challans', () => {
 
     // The proposer never approves.
     const selfPay = await expectReject(() =>
-      asUser(FINANCE_2, () => markChallanPaid(challan.id, { bsrCode: '0000123', challanNo: 'CHN001', paidOn: new Date() })),
+      asUser(FINANCE_2, () =>
+        markChallanPaid(challan.id, { bsrCode: '0000123', challanNo: 'CHN001', paidOn: new Date() }),
+      ),
     );
     expect(selfPay.status).toBe(403);
 
-    const paid = await asUser(FINANCE, () => markChallanPaid(challan.id, { bsrCode: '0000123', challanNo: 'CHN001', paidOn: new Date() }));
+    const paid = await asUser(FINANCE, () =>
+      markChallanPaid(challan.id, { bsrCode: '0000123', challanNo: 'CHN001', paidOn: new Date() }),
+    );
     expect(paid.status).toBe('paid');
   });
 });
@@ -316,9 +333,13 @@ describe('CMP-TDS-003 — MSME 45-day payment term', () => {
   it('the before-pay hook does not block an MSME bill past its due date — it only appears in the exposure summary', async () => {
     const account = await bankAccount();
     const billDate = new Date(Date.now() - 60 * 86_400_000);
-    const bill = await asUser(FINANCE, () => recordVendorBill({ vendorName: 'MSME Payable', billDate, subtotal: 10_000 }));
+    const bill = await asUser(FINANCE, () =>
+      recordVendorBill({ vendorName: 'MSME Payable', billDate, subtotal: 10_000 }),
+    );
     await asUser(FINANCE, () => setMsmeTerms(bill.id, { udyamNumber: 'UDYAM-TN-00-0000002' }));
-    const paid = await asUser(FINANCE, () => payVendorBill(bill.id, { amount: 10_000, accountId: account.id, paidOn: new Date() }));
+    const paid = await asUser(FINANCE, () =>
+      payVendorBill(bill.id, { amount: 10_000, accountId: account.id, paidOn: new Date() }),
+    );
     expect(paid.bill.status).toBe('paid');
   });
 });

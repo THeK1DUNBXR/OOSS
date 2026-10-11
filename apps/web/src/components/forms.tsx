@@ -26,7 +26,11 @@ function Label({ label, required, hint }: { label: string; required?: boolean; h
     <span className="mb-1 flex items-baseline justify-between gap-2">
       <span className="label">
         {label}
-        {required && <span className="ml-1 text-band-critical" aria-hidden>*</span>}
+        {required && (
+          <span className="ml-1 text-band-critical" aria-hidden>
+            *
+          </span>
+        )}
       </span>
       {hint && <span className="text-2xs text-ink-500">{hint}</span>}
     </span>
@@ -34,7 +38,14 @@ function Label({ label, required, hint }: { label: string; required?: boolean; h
 }
 
 export function TextInput({
-  label, value, onChange, placeholder, required, hint, type = 'text', autoFocus,
+  label,
+  value,
+  onChange,
+  placeholder,
+  required,
+  hint,
+  type = 'text',
+  autoFocus,
 }: {
   label: string;
   value: string;
@@ -62,7 +73,11 @@ export function TextInput({
 }
 
 export function MoneyInput({
-  label, value, onChange, required, hint,
+  label,
+  value,
+  onChange,
+  required,
+  hint,
 }: {
   label: string;
   value: string;
@@ -74,7 +89,9 @@ export function MoneyInput({
     <label className="block">
       <Label label={label} required={required} hint={hint} />
       <div className="flex items-stretch">
-        <span className="flex items-center rounded-l border border-r-0 border-ink-700 bg-ink-850 px-2 text-sm text-ink-400">₹</span>
+        <span className="flex items-center rounded-l border border-r-0 border-ink-700 bg-ink-850 px-2 text-sm text-ink-400">
+          ₹
+        </span>
         <input
           className="input rounded-l-none tabular-nums"
           type="number"
@@ -90,7 +107,13 @@ export function MoneyInput({
 }
 
 export function SelectInput<T extends string>({
-  label, value, onChange, options, required, hint, placeholder,
+  label,
+  value,
+  onChange,
+  options,
+  required,
+  hint,
+  placeholder,
 }: {
   label: string;
   value: T | '';
@@ -116,7 +139,13 @@ export function SelectInput<T extends string>({
 }
 
 export function TextArea({
-  label, value, onChange, rows = 3, required, hint, placeholder,
+  label,
+  value,
+  onChange,
+  rows = 3,
+  required,
+  hint,
+  placeholder,
 }: {
   label: string;
   value: string;
@@ -253,7 +282,9 @@ export function messageOf(error: unknown): string {
 export function NewButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button className="btn-primary whitespace-nowrap" onClick={onClick}>
-      <span aria-hidden className="mr-1">+</span>
+      <span aria-hidden className="mr-1">
+        +
+      </span>
       {label}
     </button>
   );

@@ -44,7 +44,12 @@ const RESOURCE = 'it_risks';
 async function allBandRows(): Promise<RiskScoringBandRow[]> {
   const auth = currentAuth();
   const rows = await prisma.itRiskScoringBand.findMany({ where: { tenantId: auth.tenantId } });
-  return rows.map((r) => ({ setId: r.setId, band: r.band as RiskScoringBandRow['band'], minScore: r.minScore, effectiveFrom: r.effectiveFrom }));
+  return rows.map((r) => ({
+    setId: r.setId,
+    band: r.band as RiskScoringBandRow['band'],
+    minScore: r.minScore,
+    effectiveFrom: r.effectiveFrom,
+  }));
 }
 
 /** Scores `likelihood x impact` against the band set in force `at` (default
@@ -61,7 +66,10 @@ export async function scoreAgainstBands(
     throw ApiError.unprocessable('No risk scoring band set is in force yet. Run the seed before scoring a risk.');
   }
   const score = riskScore(likelihood, impact);
-  const band = riskBandFor(score, all.filter((r) => r.setId === setId));
+  const band = riskBandFor(
+    score,
+    all.filter((r) => r.setId === setId),
+  );
   return { score, band, setId };
 }
 
@@ -94,7 +102,8 @@ export async function createRisk(input: CreateRiskInput) {
   if (!title) throw ApiError.badRequest('A risk needs a title.');
   if (!input.category?.trim()) throw ApiError.badRequest('A risk needs a category.');
   if (!input.ownerPartyId) throw ApiError.badRequest('A risk needs an owner.');
-  if (!TREATMENTS.includes(input.treatment)) throw ApiError.badRequest(`Treatment must be one of: ${TREATMENTS.join(', ')}.`);
+  if (!TREATMENTS.includes(input.treatment))
+    throw ApiError.badRequest(`Treatment must be one of: ${TREATMENTS.join(', ')}.`);
   assertScale(input.likelihoodInherent, 'Inherent likelihood');
   assertScale(input.impactInherent, 'Inherent impact');
 
@@ -122,7 +131,12 @@ export async function createRisk(input: CreateRiskInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_risk', subjectId: risk.id, after: { recordCode, title, scoreInherent: scored.score, bandInherent: scored.band } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_risk',
+    subjectId: risk.id,
+    after: { recordCode, title, scoreInherent: scored.score, bandInherent: scored.band },
+  });
   await emit({
     name: EVENTS.IT_RISK_CREATED,
     subject: { entityType: 'it_risk', entityId: risk.id, recordCode },
@@ -159,7 +173,13 @@ export async function updateRisk(id: string, patch: UpdateRiskInput) {
     throw ApiError.badRequest(`Treatment must be one of: ${TREATMENTS.join(', ')}.`);
   }
 
-  let residual: { likelihoodResidual?: number; impactResidual?: number; scoreResidual?: number; bandResidual?: string; scoredUnderBandSetId?: string } = {};
+  let residual: {
+    likelihoodResidual?: number;
+    impactResidual?: number;
+    scoreResidual?: number;
+    bandResidual?: string;
+    scoredUnderBandSetId?: string;
+  } = {};
   if (patch.likelihoodResidual !== undefined || patch.impactResidual !== undefined) {
     const likelihood = patch.likelihoodResidual ?? risk.likelihoodResidual;
     const impact = patch.impactResidual ?? risk.impactResidual;
@@ -212,7 +232,9 @@ export async function listRisks(filter: RiskFilter = {}) {
       tenantId: auth.tenantId,
       ...(filter.status ? { status: filter.status } : {}),
       ...(filter.category ? { category: filter.category } : {}),
-      ...(filter.band ? { OR: [{ bandResidual: filter.band }, { AND: [{ bandResidual: null }, { bandInherent: filter.band }] }] } : {}),
+      ...(filter.band
+        ? { OR: [{ bandResidual: filter.band }, { AND: [{ bandResidual: null }, { bandInherent: filter.band }] }] }
+        : {}),
       ...scopeWhere,
     },
     orderBy: { createdAt: 'desc' },
@@ -260,7 +282,14 @@ export async function transitionRisk(id: string, event: RiskEvent, note?: string
 
   const updated = await prisma.itRisk.update({ where: { id }, data: { status: to } });
 
-  await auditWrite({ action: 'update', subjectType: 'it_risk', subjectId: id, before: { status: from }, after: { status: to }, meta: { transition: event } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_risk',
+    subjectId: id,
+    before: { status: from },
+    after: { status: to },
+    meta: { transition: event },
+  });
   await emit({
     name: EVENTS.IT_RISK_TRANSITIONED,
     subject: { entityType: 'it_risk', entityId: id, recordCode: risk.recordCode },
@@ -332,7 +361,10 @@ export async function runRiskReviewLadder(now: Date = new Date()): Promise<RiskR
       ladderRung: rung,
     });
     notified += 1;
-    await prisma.itRisk.update({ where: { id: row.id }, data: { reviewNotifiedRungs: [...new Set([...already, ...crossed])] } });
+    await prisma.itRisk.update({
+      where: { id: row.id },
+      data: { reviewNotifiedRungs: [...new Set([...already, ...crossed])] },
+    });
   }
 
   return { checked: rows.length, notified, skippedIdempotent };
@@ -347,7 +379,13 @@ export async function risksSummary() {
   const auth = currentAuth();
   const total = await prisma.itRisk.count({ where: { tenantId: auth.tenantId } });
   if (total === 0) {
-    return { notYetMeasured: true, total: 0, byBand: { low: 0, medium: 0, high: 0, critical: 0 }, open: 0, reviewsOverdue: 0 };
+    return {
+      notYetMeasured: true,
+      total: 0,
+      byBand: { low: 0, medium: 0, high: 0, critical: 0 },
+      open: 0,
+      reviewsOverdue: 0,
+    };
   }
 
   const rows = await prisma.itRisk.findMany({ where: { tenantId: auth.tenantId } });

@@ -38,7 +38,15 @@ function useEmployeeOptions() {
   });
 }
 
-function EmployeeFilter({ value, onChange, employees }: { value: string; onChange: (v: string) => void; employees: EmployeeOption[] }) {
+function EmployeeFilter({
+  value,
+  onChange,
+  employees,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  employees: EmployeeOption[];
+}) {
   return (
     <select className="input max-w-xs" value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">Everyone</option>
@@ -90,15 +98,29 @@ interface Shift {
 
 function ShiftsTab() {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ code: '', name: '', startTime: '09:00', endTime: '18:00', graceMinutes: '10', breakMinutes: '60', nightShift: false });
+  const [form, setForm] = useState({
+    code: '',
+    name: '',
+    startTime: '09:00',
+    endTime: '18:00',
+    graceMinutes: '10',
+    breakMinutes: '60',
+    nightShift: false,
+  });
 
   const shifts = useQuery({ queryKey: ['time-shifts'], queryFn: () => api.get<Shift[]>('/hcm/time/shifts') });
 
   return (
-    <Card title="Shifts" subtitle="Start/end are clock time; a night shift is the one case where end reads earlier than start." actions={<NewButton label="Add shift" onClick={() => setOpen(true)} />}>
+    <Card
+      title="Shifts"
+      subtitle="Start/end are clock time; a night shift is the one case where end reads earlier than start."
+      actions={<NewButton label="Add shift" onClick={() => setOpen(true)} />}
+    >
       {shifts.isLoading && <Loading />}
       {shifts.error && <ErrorBox error={shifts.error} />}
-      {shifts.data && shifts.data.length === 0 && <EmptyState message="No shifts defined yet." hint="Add one before assigning a roster." />}
+      {shifts.data && shifts.data.length === 0 && (
+        <EmptyState message="No shifts defined yet." hint="Add one before assigning a roster." />
+      )}
       {shifts.data && shifts.data.length > 0 && (
         <table className="table">
           <thead>
@@ -117,11 +139,15 @@ function ShiftsTab() {
               <tr key={s.id}>
                 <td className="mono">{s.code}</td>
                 <td>{s.name}</td>
-                <td>{s.startTime}–{s.endTime}</td>
+                <td>
+                  {s.startTime}–{s.endTime}
+                </td>
                 <td>{s.graceMinutes}m</td>
                 <td>{s.breakMinutes}m</td>
                 <td>{s.nightShift ? 'Yes' : 'No'}</td>
-                <td><StatusChip status={s.active ? 'active' : 'inactive'} tone={s.active ? 'good' : 'neutral'} /></td>
+                <td>
+                  <StatusChip status={s.active ? 'active' : 'inactive'} tone={s.active ? 'good' : 'neutral'} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -150,15 +176,41 @@ function ShiftsTab() {
           <TextInput label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
         </Row>
         <Row>
-          <TextInput label="Start time" hint="HH:MM" value={form.startTime} onChange={(v) => setForm({ ...form, startTime: v })} required />
-          <TextInput label="End time" hint="HH:MM" value={form.endTime} onChange={(v) => setForm({ ...form, endTime: v })} required />
+          <TextInput
+            label="Start time"
+            hint="HH:MM"
+            value={form.startTime}
+            onChange={(v) => setForm({ ...form, startTime: v })}
+            required
+          />
+          <TextInput
+            label="End time"
+            hint="HH:MM"
+            value={form.endTime}
+            onChange={(v) => setForm({ ...form, endTime: v })}
+            required
+          />
         </Row>
         <Row>
-          <TextInput label="Grace minutes" type="number" value={form.graceMinutes} onChange={(v) => setForm({ ...form, graceMinutes: v })} />
-          <TextInput label="Break minutes" type="number" value={form.breakMinutes} onChange={(v) => setForm({ ...form, breakMinutes: v })} />
+          <TextInput
+            label="Grace minutes"
+            type="number"
+            value={form.graceMinutes}
+            onChange={(v) => setForm({ ...form, graceMinutes: v })}
+          />
+          <TextInput
+            label="Break minutes"
+            type="number"
+            value={form.breakMinutes}
+            onChange={(v) => setForm({ ...form, breakMinutes: v })}
+          />
         </Row>
         <label className="flex items-center gap-2 text-sm text-ink-300">
-          <input type="checkbox" checked={form.nightShift} onChange={(e) => setForm({ ...form, nightShift: e.target.checked })} />
+          <input
+            type="checkbox"
+            checked={form.nightShift}
+            onChange={(e) => setForm({ ...form, nightShift: e.target.checked })}
+          />
           Night shift (crosses midnight)
         </label>
       </CreateModal>
@@ -183,21 +235,39 @@ const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function RosterTab() {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ employmentRelationshipId: '', shiftId: '', effectiveFrom: '', effectiveTo: '', weeklyOffDays: [0] as number[] });
+  const [form, setForm] = useState({
+    employmentRelationshipId: '',
+    shiftId: '',
+    effectiveFrom: '',
+    effectiveTo: '',
+    weeklyOffDays: [0] as number[],
+  });
 
   const { data: employees = [] } = useEmployeeOptions();
-  const { data: shifts = [] } = useQuery({ queryKey: ['time-shifts'], queryFn: () => api.get<Shift[]>('/hcm/time/shifts') });
+  const { data: shifts = [] } = useQuery({
+    queryKey: ['time-shifts'],
+    queryFn: () => api.get<Shift[]>('/hcm/time/shifts'),
+  });
   const rosters = useQuery({ queryKey: ['time-rosters'], queryFn: () => api.get<RosterRow[]>('/hcm/time/rosters') });
 
   const nameFor = (id: string) => employees.find((e) => e.id === id)?.fullName ?? id;
   const shiftFor = (id: string) => shifts.find((s) => s.id === id)?.name ?? id;
 
   const toggleOff = (day: number) => {
-    setForm((f) => ({ ...f, weeklyOffDays: f.weeklyOffDays.includes(day) ? f.weeklyOffDays.filter((d) => d !== day) : [...f.weeklyOffDays, day].sort() }));
+    setForm((f) => ({
+      ...f,
+      weeklyOffDays: f.weeklyOffDays.includes(day)
+        ? f.weeklyOffDays.filter((d) => d !== day)
+        : [...f.weeklyOffDays, day].sort(),
+    }));
   };
 
   return (
-    <Card title="Roster assignments" subtitle="Which shift an employment works, over a date range, with its weekly offs." actions={<NewButton label="Assign roster" onClick={() => setOpen(true)} />}>
+    <Card
+      title="Roster assignments"
+      subtitle="Which shift an employment works, over a date range, with its weekly offs."
+      actions={<NewButton label="Assign roster" onClick={() => setOpen(true)} />}
+    >
       {rosters.isLoading && <Loading />}
       {rosters.error && <ErrorBox error={rosters.error} />}
       {rosters.data && rosters.data.length === 0 && <EmptyState message="No roster assignments yet." />}
@@ -241,11 +311,37 @@ function RosterTab() {
           })
         }
       >
-        <SelectInput label="Employee" value={form.employmentRelationshipId} onChange={(v) => setForm({ ...form, employmentRelationshipId: v })} required placeholder="Select…" options={employees.map((e) => ({ value: e.id, label: e.fullName }))} />
-        <SelectInput label="Shift" value={form.shiftId} onChange={(v) => setForm({ ...form, shiftId: v })} required placeholder="Select…" options={shifts.map((s) => ({ value: s.id, label: `${s.name} (${s.startTime}–${s.endTime})` }))} />
+        <SelectInput
+          label="Employee"
+          value={form.employmentRelationshipId}
+          onChange={(v) => setForm({ ...form, employmentRelationshipId: v })}
+          required
+          placeholder="Select…"
+          options={employees.map((e) => ({ value: e.id, label: e.fullName }))}
+        />
+        <SelectInput
+          label="Shift"
+          value={form.shiftId}
+          onChange={(v) => setForm({ ...form, shiftId: v })}
+          required
+          placeholder="Select…"
+          options={shifts.map((s) => ({ value: s.id, label: `${s.name} (${s.startTime}–${s.endTime})` }))}
+        />
         <Row>
-          <TextInput label="Effective from" type="date" value={form.effectiveFrom} onChange={(v) => setForm({ ...form, effectiveFrom: v })} required />
-          <TextInput label="Effective to" type="date" value={form.effectiveTo} onChange={(v) => setForm({ ...form, effectiveTo: v })} hint="Optional" />
+          <TextInput
+            label="Effective from"
+            type="date"
+            value={form.effectiveFrom}
+            onChange={(v) => setForm({ ...form, effectiveFrom: v })}
+            required
+          />
+          <TextInput
+            label="Effective to"
+            type="date"
+            value={form.effectiveTo}
+            onChange={(v) => setForm({ ...form, effectiveTo: v })}
+            hint="Optional"
+          />
         </Row>
         <div>
           <p className="label mb-1">Weekly offs</p>
@@ -286,11 +382,17 @@ function ClockTab() {
   });
 
   return (
-    <Card title="Clock events" subtitle="The raw punch log a nightly job folds into each day's attendance." actions={<EmployeeFilter value={employmentId} onChange={setEmploymentId} employees={employees} />}>
+    <Card
+      title="Clock events"
+      subtitle="The raw punch log a nightly job folds into each day's attendance."
+      actions={<EmployeeFilter value={employmentId} onChange={setEmploymentId} employees={employees} />}
+    >
       {!selected && <EmptyState message="No employee selected." />}
       {selected && events.isLoading && <Loading />}
       {selected && events.error && <ErrorBox error={events.error} />}
-      {selected && events.data && events.data.length === 0 && <EmptyState message="No clock events recorded for this employee." />}
+      {selected && events.data && events.data.length === 0 && (
+        <EmptyState message="No clock events recorded for this employee." />
+      )}
       {selected && events.data && events.data.length > 0 && (
         <table className="table">
           <thead>
@@ -304,7 +406,9 @@ function ClockTab() {
             {events.data.map((e) => (
               <tr key={e.id}>
                 <td>{dateTime(e.occurredAt)}</td>
-                <td><StatusChip status={e.kind} tone={e.kind === 'in' ? 'good' : 'neutral'} /></td>
+                <td>
+                  <StatusChip status={e.kind} tone={e.kind === 'in' ? 'good' : 'neutral'} />
+                </td>
                 <td>{e.source.replace('_', ' ')}</td>
               </tr>
             ))}
@@ -344,7 +448,8 @@ function TimesheetsTab() {
 
   const timesheets = useQuery({
     queryKey: ['time-timesheets', employmentId],
-    queryFn: () => api.get<TimesheetRow[]>(`/hcm/time/timesheets${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`),
+    queryFn: () =>
+      api.get<TimesheetRow[]>(`/hcm/time/timesheets${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`),
   });
 
   const nameFor = (id: string) => employees.find((e) => e.id === id)?.fullName ?? id;
@@ -363,7 +468,11 @@ function TimesheetsTab() {
   });
 
   return (
-    <Card title="Timesheets" subtitle="Submitted weekly and approved by anyone but the employee who filed them." actions={<EmployeeFilter value={employmentId} onChange={setEmploymentId} employees={employees} />}>
+    <Card
+      title="Timesheets"
+      subtitle="Submitted weekly and approved by anyone but the employee who filed them."
+      actions={<EmployeeFilter value={employmentId} onChange={setEmploymentId} employees={employees} />}
+    >
       {timesheets.isLoading && <Loading />}
       {timesheets.error && <ErrorBox error={timesheets.error} />}
       {timesheets.data && timesheets.data.length === 0 && <EmptyState message="No timesheets yet." />}
@@ -386,11 +495,17 @@ function TimesheetsTab() {
                 <td>{nameFor(t.employmentRelationshipId)}</td>
                 <td>{date(t.weekStart)}</td>
                 <td className="tabular-nums">{Number(t.totalHours).toFixed(2)}</td>
-                <td><StatusChip status={t.status} tone={TIMESHEET_TONE[t.status] ?? 'neutral'} /></td>
+                <td>
+                  <StatusChip status={t.status} tone={TIMESHEET_TONE[t.status] ?? 'neutral'} />
+                </td>
                 <td className="text-right">
                   {t.status === 'submitted' && (
                     <div className="flex justify-end gap-2">
-                      <button className="btn text-2xs" onClick={() => approve.mutate(t.id)} disabled={approve.isPending}>
+                      <button
+                        className="btn text-2xs"
+                        onClick={() => approve.mutate(t.id)}
+                        disabled={approve.isPending}
+                      >
                         Approve
                       </button>
                       <button className="btn text-2xs" onClick={() => setRejecting(t.id)}>
@@ -432,7 +547,11 @@ interface OvertimeRow {
   status: string;
 }
 
-const OT_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = { requested: 'warn', approved: 'good', rejected: 'bad' };
+const OT_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
+  requested: 'warn',
+  approved: 'good',
+  rejected: 'bad',
+};
 
 function OvertimeTab() {
   const qc = useQueryClient();
@@ -441,7 +560,8 @@ function OvertimeTab() {
 
   const requests = useQuery({
     queryKey: ['time-overtime', employmentId],
-    queryFn: () => api.get<OvertimeRow[]>(`/hcm/time/overtime${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`),
+    queryFn: () =>
+      api.get<OvertimeRow[]>(`/hcm/time/overtime${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`),
   });
 
   const nameFor = (id: string) => employees.find((e) => e.id === id)?.fullName ?? id;
@@ -456,7 +576,11 @@ function OvertimeTab() {
   });
 
   return (
-    <Card title="Overtime requests" subtitle="Approving one is also what earns the comp-off it comes with." actions={<EmployeeFilter value={employmentId} onChange={setEmploymentId} employees={employees} />}>
+    <Card
+      title="Overtime requests"
+      subtitle="Approving one is also what earns the comp-off it comes with."
+      actions={<EmployeeFilter value={employmentId} onChange={setEmploymentId} employees={employees} />}
+    >
       {requests.isLoading && <Loading />}
       {requests.error && <ErrorBox error={requests.error} />}
       {decide.error && <ErrorBox error={decide.error} />}
@@ -479,15 +603,27 @@ function OvertimeTab() {
                 <td>{nameFor(r.employmentRelationshipId)}</td>
                 <td>{date(r.date)}</td>
                 <td className="tabular-nums">{Number(r.hours).toFixed(2)}</td>
-                <td className="max-w-xs truncate" title={r.reason ?? ''}>{r.reason ?? '—'}</td>
-                <td><StatusChip status={r.status} tone={OT_TONE[r.status] ?? 'neutral'} /></td>
+                <td className="max-w-xs truncate" title={r.reason ?? ''}>
+                  {r.reason ?? '—'}
+                </td>
+                <td>
+                  <StatusChip status={r.status} tone={OT_TONE[r.status] ?? 'neutral'} />
+                </td>
                 <td className="text-right">
                   {r.status === 'requested' && (
                     <div className="flex justify-end gap-2">
-                      <button className="btn text-2xs" onClick={() => decide.mutate({ id: r.id, approve: true })} disabled={decide.isPending}>
+                      <button
+                        className="btn text-2xs"
+                        onClick={() => decide.mutate({ id: r.id, approve: true })}
+                        disabled={decide.isPending}
+                      >
                         Approve
                       </button>
-                      <button className="btn text-2xs" onClick={() => decide.mutate({ id: r.id, approve: false })} disabled={decide.isPending}>
+                      <button
+                        className="btn text-2xs"
+                        onClick={() => decide.mutate({ id: r.id, approve: false })}
+                        disabled={decide.isPending}
+                      >
                         Reject
                       </button>
                     </div>
@@ -516,7 +652,11 @@ interface CompOffRow {
   status: string;
 }
 
-const COMP_OFF_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = { available: 'good', consumed: 'neutral', expired: 'bad' };
+const COMP_OFF_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
+  available: 'good',
+  consumed: 'neutral',
+  expired: 'bad',
+};
 
 function CompOffTab() {
   const qc = useQueryClient();
@@ -527,7 +667,8 @@ function CompOffTab() {
 
   const compOffs = useQuery({
     queryKey: ['time-compoffs', employmentId],
-    queryFn: () => api.get<CompOffRow[]>(`/hcm/time/comp-offs${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`),
+    queryFn: () =>
+      api.get<CompOffRow[]>(`/hcm/time/comp-offs${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`),
   });
 
   const nameFor = (id: string) => employees.find((e) => e.id === id)?.fullName ?? id;
@@ -573,7 +714,9 @@ function CompOffTab() {
                 <td>{date(c.earnedOn)}</td>
                 <td className="tabular-nums">{Number(c.days).toFixed(2)}</td>
                 <td>{date(c.expiresOn)}</td>
-                <td><StatusChip status={c.status} tone={COMP_OFF_TONE[c.status] ?? 'neutral'} /></td>
+                <td>
+                  <StatusChip status={c.status} tone={COMP_OFF_TONE[c.status] ?? 'neutral'} />
+                </td>
                 <td className="text-right">
                   {c.status === 'available' && (
                     <button className="btn text-2xs" onClick={() => consume.mutate(c.id)} disabled={consume.isPending}>
@@ -601,10 +744,30 @@ function CompOffTab() {
           })
         }
       >
-        <SelectInput label="Employee" value={form.employmentRelationshipId} onChange={(v) => setForm({ ...form, employmentRelationshipId: v })} required placeholder="Select…" options={employees.map((e) => ({ value: e.id, label: e.fullName }))} />
+        <SelectInput
+          label="Employee"
+          value={form.employmentRelationshipId}
+          onChange={(v) => setForm({ ...form, employmentRelationshipId: v })}
+          required
+          placeholder="Select…"
+          options={employees.map((e) => ({ value: e.id, label: e.fullName }))}
+        />
         <Row>
-          <TextInput label="Day worked" type="date" value={form.earnedOn} onChange={(v) => setForm({ ...form, earnedOn: v })} required />
-          <TextInput label="Days earned" type="number" value={form.days} onChange={(v) => setForm({ ...form, days: v })} hint="Usually 1" required />
+          <TextInput
+            label="Day worked"
+            type="date"
+            value={form.earnedOn}
+            onChange={(v) => setForm({ ...form, earnedOn: v })}
+            required
+          />
+          <TextInput
+            label="Days earned"
+            type="number"
+            value={form.days}
+            onChange={(v) => setForm({ ...form, days: v })}
+            hint="Usually 1"
+            required
+          />
         </Row>
         <TextArea label="Note" value={form.note} onChange={(v) => setForm({ ...form, note: v })} />
       </CreateModal>
@@ -624,7 +787,11 @@ interface RegularisationRow {
   status: string;
 }
 
-const REG_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = { submitted: 'warn', approved: 'good', rejected: 'bad' };
+const REG_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
+  submitted: 'warn',
+  approved: 'good',
+  rejected: 'bad',
+};
 
 function RegularisationsTab() {
   const qc = useQueryClient();
@@ -635,7 +802,10 @@ function RegularisationsTab() {
 
   const rows = useQuery({
     queryKey: ['time-regularisations', employmentId],
-    queryFn: () => api.get<RegularisationRow[]>(`/hcm/time/regularisations${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`),
+    queryFn: () =>
+      api.get<RegularisationRow[]>(
+        `/hcm/time/regularisations${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`,
+      ),
   });
 
   const nameFor = (id: string) => employees.find((e) => e.id === id)?.fullName ?? id;
@@ -654,7 +824,11 @@ function RegularisationsTab() {
   });
 
   return (
-    <Card title="Attendance regularisations" subtitle="Submitting one disputes the day; approving it regularises the same WorkAttendance row." actions={<EmployeeFilter value={employmentId} onChange={setEmploymentId} employees={employees} />}>
+    <Card
+      title="Attendance regularisations"
+      subtitle="Submitting one disputes the day; approving it regularises the same WorkAttendance row."
+      actions={<EmployeeFilter value={employmentId} onChange={setEmploymentId} employees={employees} />}
+    >
       {rows.isLoading && <Loading />}
       {rows.error && <ErrorBox error={rows.error} />}
       {approve.error && <ErrorBox error={approve.error} />}
@@ -675,12 +849,20 @@ function RegularisationsTab() {
               <tr key={r.id}>
                 <td>{nameFor(r.employmentRelationshipId)}</td>
                 <td>{date(r.date)}</td>
-                <td className="max-w-xs truncate" title={r.reason}>{r.reason}</td>
-                <td><StatusChip status={r.status} tone={REG_TONE[r.status] ?? 'neutral'} /></td>
+                <td className="max-w-xs truncate" title={r.reason}>
+                  {r.reason}
+                </td>
+                <td>
+                  <StatusChip status={r.status} tone={REG_TONE[r.status] ?? 'neutral'} />
+                </td>
                 <td className="text-right">
                   {r.status === 'submitted' && (
                     <div className="flex justify-end gap-2">
-                      <button className="btn text-2xs" onClick={() => approve.mutate(r.id)} disabled={approve.isPending}>
+                      <button
+                        className="btn text-2xs"
+                        onClick={() => approve.mutate(r.id)}
+                        disabled={approve.isPending}
+                      >
                         Approve
                       </button>
                       <button className="btn text-2xs" onClick={() => setRejecting(r.id)}>
@@ -695,7 +877,13 @@ function RegularisationsTab() {
         </table>
       )}
 
-      <CreateModal open={Boolean(rejecting)} title="Reject this request" submitLabel="Reject" onClose={() => setRejecting(null)} onSubmit={() => reject.mutateAsync()}>
+      <CreateModal
+        open={Boolean(rejecting)}
+        title="Reject this request"
+        submitLabel="Reject"
+        onClose={() => setRejecting(null)}
+        onSubmit={() => reject.mutateAsync()}
+      >
         <TextArea label="Reason" value={rejectNote} onChange={setRejectNote} required />
       </CreateModal>
     </Card>

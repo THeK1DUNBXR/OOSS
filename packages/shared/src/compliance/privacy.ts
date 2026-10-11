@@ -3,6 +3,8 @@
  * arithmetic shared by API and web. docs/plan/compliance.md §G.
  */
 
+import { istDateKey } from '../time.js';
+
 /** The purposes this platform actually processes personal data for. Each is a
  * row on the seeded privacy notice; `X-Purpose` is accepted only when it names
  * one of these. */
@@ -54,12 +56,18 @@ export function breachLadderRung(hoursElapsed: number): number {
 }
 
 /** Age in whole years as of `asOf` (default now). Null when the birth date is
- * unknown — age is then unmeasured, not assumed adult. */
+ * unknown — age is then unmeasured, not assumed adult.
+ *
+ * Both instants are read as IST calendar dates. On the UTC calendar a learner
+ * born on 10 May is still 17 until 05:30 IST on the day, because 00:00 IST is
+ * 18:30 UTC on the 9th. Rule 3, FX-64. */
 export function ageInYears(dateOfBirth: Date | null | undefined, asOf: Date = new Date()): number | null {
   if (!dateOfBirth) return null;
-  let age = asOf.getUTCFullYear() - dateOfBirth.getUTCFullYear();
-  const monthDiff = asOf.getUTCMonth() - dateOfBirth.getUTCMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && asOf.getUTCDate() < dateOfBirth.getUTCDate())) age -= 1;
+  const [byear, bmonth, bday] = istDateKey(dateOfBirth).split('-').map(Number);
+  const [ayear, amonth, aday] = istDateKey(asOf).split('-').map(Number);
+  let age = ayear - byear;
+  const monthDiff = amonth - bmonth;
+  if (monthDiff < 0 || (monthDiff === 0 && aday < bday)) age -= 1;
   return age;
 }
 

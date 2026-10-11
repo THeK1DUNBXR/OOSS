@@ -41,7 +41,10 @@ const CampaignInputSchema = z.object({
   targetLeads: z.number().nullish(),
   targetEnrolments: z.number().nullish(),
   targetPipelineValue: z.number().nullish(),
-  utmCampaign: z.string().regex(/^[a-z0-9-]+$/).nullish(),
+  utmCampaign: z
+    .string()
+    .regex(/^[a-z0-9-]+$/)
+    .nullish(),
 });
 
 router.get(
@@ -60,7 +63,10 @@ router.get(
   }),
 );
 
-router.get('/:id', handler(async (req) => getCampaign(req.params.id)));
+router.get(
+  '/:id',
+  handler(async (req) => getCampaign(req.params.id)),
+);
 
 router.post(
   '/',
@@ -80,9 +86,15 @@ router.patch(
   }),
 );
 
-router.delete('/:id', handler(async (req) => deleteCampaign(req.params.id)));
+router.delete(
+  '/:id',
+  handler(async (req) => deleteCampaign(req.params.id)),
+);
 
-router.post('/:id/submit', handler(async (req) => submitCampaign(req.params.id)));
+router.post(
+  '/:id/submit',
+  handler(async (req) => submitCampaign(req.params.id)),
+);
 
 router.post(
   '/:id/approve',
@@ -102,11 +114,26 @@ router.post(
   }),
 );
 
-router.post('/:id/launch', handler(async (req) => launchCampaign(req.params.id)));
-router.post('/:id/pause', handler(async (req) => pauseCampaign(req.params.id)));
-router.post('/:id/resume', handler(async (req) => resumeCampaign(req.params.id)));
-router.post('/:id/complete', handler(async (req) => completeCampaign(req.params.id)));
-router.post('/:id/archive', handler(async (req) => archiveCampaign(req.params.id)));
+router.post(
+  '/:id/launch',
+  handler(async (req) => launchCampaign(req.params.id)),
+);
+router.post(
+  '/:id/pause',
+  handler(async (req) => pauseCampaign(req.params.id)),
+);
+router.post(
+  '/:id/resume',
+  handler(async (req) => resumeCampaign(req.params.id)),
+);
+router.post(
+  '/:id/complete',
+  handler(async (req) => completeCampaign(req.params.id)),
+);
+router.post(
+  '/:id/archive',
+  handler(async (req) => archiveCampaign(req.params.id)),
+);
 
 router.post(
   '/:id/cancel',
@@ -117,7 +144,13 @@ router.post(
   }),
 );
 
-router.get('/:id/timeline', handler(async (req) => campaignTimeline(req.params.id)));
-router.get('/:id/utm', handler(async (req) => campaignUtm(req.params.id)));
+router.get(
+  '/:id/timeline',
+  handler(async (req) => campaignTimeline(req.params.id)),
+);
+router.get(
+  '/:id/utm',
+  handler(async (req) => campaignUtm(req.params.id)),
+);
 
 export default router;

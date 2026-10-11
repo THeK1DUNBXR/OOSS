@@ -28,7 +28,10 @@ interface MyContext {
 }
 
 function useMyContext() {
-  return useQuery({ queryKey: ['performance-my-context'], queryFn: () => api.get<MyContext>('/hcm/performance/my/context') });
+  return useQuery({
+    queryKey: ['performance-my-context'],
+    queryFn: () => api.get<MyContext>('/hcm/performance/my/context'),
+  });
 }
 
 export function Performance() {
@@ -37,11 +40,17 @@ export function Performance() {
 
   return (
     <>
-      <PageHeader title="My performance" subtitle="Your reviews, your released ratings, feedback, 1:1s and any improvement plan against you." />
+      <PageHeader
+        title="My performance"
+        subtitle="Your reviews, your released ratings, feedback, 1:1s and any improvement plan against you."
+      />
       {ctx.isLoading && <Loading />}
       {!ctx.isLoading && !ctx.data?.employmentRelationshipId && (
         <Card>
-          <EmptyState message="No active employment relationship is linked to your account." hint="Ask HR to confirm your employee record." />
+          <EmptyState
+            message="No active employment relationship is linked to your account."
+            hint="Ask HR to confirm your employee record."
+          />
         </Card>
       )}
       {ctx.data?.employmentRelationshipId && (
@@ -100,7 +109,10 @@ function MyReviewsTab({ employmentId }: { employmentId: string }) {
 
   return (
     <>
-      <Card title="Reviews to complete" subtitle="Includes your own self-review and anyone you have been asked to review.">
+      <Card
+        title="Reviews to complete"
+        subtitle="Includes your own self-review and anyone you have been asked to review."
+      >
         {assignments.isLoading && <Loading />}
         {assignments.error && <ErrorBox error={assignments.error} />}
         {pending.length === 0 && !assignments.isLoading && <EmptyState message="Nothing waiting on you right now." />}
@@ -110,7 +122,9 @@ function MyReviewsTab({ employmentId }: { employmentId: string }) {
               <li key={a.id} className="rounded border border-ink-800 p-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-ink-100">
-                    {a.kind === 'self' && a.employmentRelationshipId === employmentId ? 'Your self-review' : `A ${a.kind} review`}
+                    {a.kind === 'self' && a.employmentRelationshipId === employmentId
+                      ? 'Your self-review'
+                      : `A ${a.kind} review`}
                   </span>
                   <button className="btn text-2xs" onClick={() => setOpenId(a.id)}>
                     Fill in
@@ -177,10 +191,18 @@ function MyRatingsTab({ employmentId }: { employmentId: string }) {
   });
 
   return (
-    <Card title="My ratings" subtitle="A rating appears here once its cycle is closed and HR has released it — not before.">
+    <Card
+      title="My ratings"
+      subtitle="A rating appears here once its cycle is closed and HR has released it — not before."
+    >
       {ratings.isLoading && <Loading />}
       {ratings.error && <ErrorBox error={ratings.error} />}
-      {ratings.data && ratings.data.length === 0 && <EmptyState message="No released rating yet." hint="It will appear here once your cycle closes and HR releases it." />}
+      {ratings.data && ratings.data.length === 0 && (
+        <EmptyState
+          message="No released rating yet."
+          hint="It will appear here once your cycle closes and HR releases it."
+        />
+      )}
       {ratings.data && ratings.data.length > 0 && (
         <ul className="space-y-2">
           {ratings.data.map((r) => (
@@ -189,7 +211,9 @@ function MyRatingsTab({ employmentId }: { employmentId: string }) {
                 <span className="text-lg font-semibold text-ink-50">{r.rating}</span>
                 {r.promotionRecommended && <StatusChip status="promotion recommended" tone="good" />}
               </div>
-              <p className="mt-1 text-2xs text-ink-500">Band {r.band ?? '—'} · Potential {titleCase(r.potential)} · Released {date(r.releasedAt)}</p>
+              <p className="mt-1 text-2xs text-ink-500">
+                Band {r.band ?? '—'} · Potential {titleCase(r.potential)} · Released {date(r.releasedAt)}
+              </p>
             </li>
           ))}
         </ul>
@@ -216,14 +240,24 @@ function FeedbackTab({ employmentId }: { employmentId: string }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ toEmploymentRelationshipId: '', kind: 'praise' as string, message: '' });
 
-  const feedback = useQuery({ queryKey: ['my-feedback'], queryFn: () => api.get<FeedbackRow[]>('/hcm/performance/feedback') });
+  const feedback = useQuery({
+    queryKey: ['my-feedback'],
+    queryFn: () => api.get<FeedbackRow[]>('/hcm/performance/feedback'),
+  });
 
   const received = (feedback.data ?? []).filter((f) => f.toEmploymentRelationshipId === employmentId);
   const given = (feedback.data ?? []).filter((f) => f.fromEmploymentRelationshipId === employmentId);
 
   return (
     <>
-      <Card title="Received" actions={<button className="btn-primary text-xs" onClick={() => setOpen(true)}>Give feedback</button>}>
+      <Card
+        title="Received"
+        actions={
+          <button className="btn-primary text-xs" onClick={() => setOpen(true)}>
+            Give feedback
+          </button>
+        }
+      >
         {feedback.isLoading && <Loading />}
         {feedback.error && <ErrorBox error={feedback.error} />}
         {received.length === 0 && !feedback.isLoading && <EmptyState message="No feedback received yet." />}
@@ -280,7 +314,16 @@ function FeedbackTab({ employmentId }: { employmentId: string }) {
               required
             />
           </label>
-          <SelectInput label="Kind" value={form.kind as never} onChange={(v) => setForm({ ...form, kind: v })} options={[{ value: 'praise', label: 'Praise' }, { value: 'constructive', label: 'Constructive' }]} required />
+          <SelectInput
+            label="Kind"
+            value={form.kind as never}
+            onChange={(v) => setForm({ ...form, kind: v })}
+            options={[
+              { value: 'praise', label: 'Praise' },
+              { value: 'constructive', label: 'Constructive' },
+            ]}
+            required
+          />
         </Row>
         <TextArea label="Message" value={form.message} onChange={(v) => setForm({ ...form, message: v })} required />
       </CreateModal>
@@ -334,7 +377,12 @@ interface PipRow {
   outcome: string;
 }
 
-const PIP_TONE: Record<string, 'neutral' | 'good' | 'bad' | 'warn'> = { open: 'warn', successful: 'good', extended: 'neutral', exited: 'bad' };
+const PIP_TONE: Record<string, 'neutral' | 'good' | 'bad' | 'warn'> = {
+  open: 'warn',
+  successful: 'good',
+  extended: 'neutral',
+  exited: 'bad',
+};
 
 function PipsTab({ employmentId }: { employmentId: string }) {
   const pips = useQuery({
@@ -352,7 +400,9 @@ function PipsTab({ employmentId }: { employmentId: string }) {
           {pips.data.map((p) => (
             <li key={p.id} className="rounded border border-ink-800 p-3">
               <div className="flex items-center justify-between">
-                <span className="text-2xs text-ink-400">{date(p.startsOn)} – {date(p.endsOn)}</span>
+                <span className="text-2xs text-ink-400">
+                  {date(p.startsOn)} – {date(p.endsOn)}
+                </span>
                 <StatusChip status={p.outcome} tone={PIP_TONE[p.outcome]} />
               </div>
             </li>

@@ -32,10 +32,23 @@ interface EmploymentOption {
 }
 
 function useEmployments() {
-  return useQuery({ queryKey: ['performance-employments'], queryFn: () => api.get<EmploymentOption[]>('/hr/employments?status=Active') });
+  return useQuery({
+    queryKey: ['performance-employments'],
+    queryFn: () => api.get<EmploymentOption[]>('/hr/employments?status=Active'),
+  });
 }
 
-function EmploymentSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: EmploymentOption[] }) {
+function EmploymentSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: EmploymentOption[];
+}) {
   return (
     <SelectInput
       label={label}
@@ -91,17 +104,26 @@ const PHASE_TONE: Record<string, 'neutral' | 'warn' | 'good'> = {
   closed: 'good',
 };
 
-const NEXT_PHASE: Record<string, string | null> = { self: 'manager', manager: 'calibration', calibration: 'closed', closed: null };
+const NEXT_PHASE: Record<string, string | null> = {
+  self: 'manager',
+  manager: 'calibration',
+  calibration: 'closed',
+  closed: null,
+};
 
 function CyclesTab() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: '', kind: 'annual' as string, periodLabel: '', startsOn: '', endsOn: '' });
 
-  const cycles = useQuery({ queryKey: ['performance-cycles'], queryFn: () => api.get<ReviewCycle[]>('/hcm/performance/review-cycles') });
+  const cycles = useQuery({
+    queryKey: ['performance-cycles'],
+    queryFn: () => api.get<ReviewCycle[]>('/hcm/performance/review-cycles'),
+  });
 
   const advance = useMutation({
-    mutationFn: ({ id, phase }: { id: string; phase: string }) => api.post(`/hcm/performance/review-cycles/${id}/phase`, { phase }),
+    mutationFn: ({ id, phase }: { id: string; phase: string }) =>
+      api.post(`/hcm/performance/review-cycles/${id}/phase`, { phase }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['performance-cycles'] }),
   });
 
@@ -113,7 +135,9 @@ function CyclesTab() {
     >
       {cycles.isLoading && <Loading />}
       {cycles.error && <ErrorBox error={cycles.error} />}
-      {cycles.data && cycles.data.length === 0 && <EmptyState message="No review cycles yet." hint="Open one to start collecting self and manager reviews." />}
+      {cycles.data && cycles.data.length === 0 && (
+        <EmptyState message="No review cycles yet." hint="Open one to start collecting self and manager reviews." />
+      )}
       {cycles.data && cycles.data.length > 0 && (
         <table className="table">
           <thead>
@@ -135,8 +159,12 @@ function CyclesTab() {
                 </td>
                 <td>{titleCase(c.kind)}</td>
                 <td>{c.periodLabel}</td>
-                <td><StatusChip status={c.phase} tone={PHASE_TONE[c.phase] ?? 'neutral'} /></td>
-                <td className="text-2xs text-ink-400">{date(c.startsOn)} – {date(c.endsOn)}</td>
+                <td>
+                  <StatusChip status={c.phase} tone={PHASE_TONE[c.phase] ?? 'neutral'} />
+                </td>
+                <td className="text-2xs text-ink-400">
+                  {date(c.startsOn)} – {date(c.endsOn)}
+                </td>
                 <td className="text-right">
                   {NEXT_PHASE[c.phase] && (
                     <button
@@ -184,11 +212,29 @@ function CyclesTab() {
             ]}
             required
           />
-          <TextInput label="Period label" value={form.periodLabel} onChange={(v) => setForm({ ...form, periodLabel: v })} placeholder="FY2026-27" required />
+          <TextInput
+            label="Period label"
+            value={form.periodLabel}
+            onChange={(v) => setForm({ ...form, periodLabel: v })}
+            placeholder="FY2026-27"
+            required
+          />
         </Row>
         <Row>
-          <TextInput label="Starts on" type="date" value={form.startsOn} onChange={(v) => setForm({ ...form, startsOn: v })} required />
-          <TextInput label="Ends on" type="date" value={form.endsOn} onChange={(v) => setForm({ ...form, endsOn: v })} required />
+          <TextInput
+            label="Starts on"
+            type="date"
+            value={form.startsOn}
+            onChange={(v) => setForm({ ...form, startsOn: v })}
+            required
+          />
+          <TextInput
+            label="Ends on"
+            type="date"
+            value={form.endsOn}
+            onChange={(v) => setForm({ ...form, endsOn: v })}
+            required
+          />
         </Row>
       </CreateModal>
     </Card>
@@ -213,12 +259,23 @@ function AssignmentsTab() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const employments = useEmployments();
-  const cycles = useQuery({ queryKey: ['performance-cycles'], queryFn: () => api.get<ReviewCycle[]>('/hcm/performance/review-cycles') });
-  const [form, setForm] = useState({ cycleId: '', employmentRelationshipId: '', reviewerEmploymentRelationshipId: '', kind: 'manager' as string });
+  const cycles = useQuery({
+    queryKey: ['performance-cycles'],
+    queryFn: () => api.get<ReviewCycle[]>('/hcm/performance/review-cycles'),
+  });
+  const [form, setForm] = useState({
+    cycleId: '',
+    employmentRelationshipId: '',
+    reviewerEmploymentRelationshipId: '',
+    kind: 'manager' as string,
+  });
 
   const assignments = useQuery({
     queryKey: ['performance-assignments', form.cycleId],
-    queryFn: () => api.get<ReviewAssignment[]>(`/hcm/performance/review-assignments${form.cycleId ? `?cycleId=${form.cycleId}` : ''}`),
+    queryFn: () =>
+      api.get<ReviewAssignment[]>(
+        `/hcm/performance/review-assignments${form.cycleId ? `?cycleId=${form.cycleId}` : ''}`,
+      ),
   });
 
   const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
@@ -256,8 +313,12 @@ function AssignmentsTab() {
               <tr key={a.id}>
                 <td>{byId.get(a.employmentRelationshipId) ?? a.employmentRelationshipId}</td>
                 <td>{byId.get(a.reviewerEmploymentRelationshipId) ?? a.reviewerEmploymentRelationshipId}</td>
-                <td><StatusChip status={a.kind} /></td>
-                <td><StatusChip status={a.status} tone={a.status === 'submitted' ? 'good' : 'neutral'} /></td>
+                <td>
+                  <StatusChip status={a.kind} />
+                </td>
+                <td>
+                  <StatusChip status={a.status} tone={a.status === 'submitted' ? 'good' : 'neutral'} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -288,8 +349,18 @@ function AssignmentsTab() {
         />
         {employments.data && (
           <>
-            <EmploymentSelect label="Subject" value={form.employmentRelationshipId} onChange={(v) => setForm({ ...form, employmentRelationshipId: v })} options={employments.data} />
-            <EmploymentSelect label="Reviewer" value={form.reviewerEmploymentRelationshipId} onChange={(v) => setForm({ ...form, reviewerEmploymentRelationshipId: v })} options={employments.data} />
+            <EmploymentSelect
+              label="Subject"
+              value={form.employmentRelationshipId}
+              onChange={(v) => setForm({ ...form, employmentRelationshipId: v })}
+              options={employments.data}
+            />
+            <EmploymentSelect
+              label="Reviewer"
+              value={form.reviewerEmploymentRelationshipId}
+              onChange={(v) => setForm({ ...form, reviewerEmploymentRelationshipId: v })}
+              options={employments.data}
+            />
           </>
         )}
         <SelectInput
@@ -318,28 +389,45 @@ interface CalibrationSession {
   id: string;
   cycleId: string;
   status: string;
-  decisions: Array<{ employmentRelationshipId: string; rating: string; potential: string; promotionRecommended?: boolean }> | null;
+  decisions: Array<{
+    employmentRelationshipId: string;
+    rating: string;
+    potential: string;
+    promotionRecommended?: boolean;
+  }> | null;
 }
 
 function CalibrationTab() {
   const qc = useQueryClient();
   const employments = useEmployments();
-  const cycles = useQuery({ queryKey: ['performance-cycles'], queryFn: () => api.get<ReviewCycle[]>('/hcm/performance/review-cycles') });
+  const cycles = useQuery({
+    queryKey: ['performance-cycles'],
+    queryFn: () => api.get<ReviewCycle[]>('/hcm/performance/review-cycles'),
+  });
   const [cycleId, setCycleId] = useState('');
   const [openForm, setOpenForm] = useState(false);
   const [participantId, setParticipantId] = useState('');
   const [decisionEmp, setDecisionEmp] = useState('');
-  const [decisionForm, setDecisionForm] = useState({ rating: '3', potential: 'medium' as string, promotionRecommended: false });
+  const [decisionForm, setDecisionForm] = useState({
+    rating: '3',
+    potential: 'medium' as string,
+    promotionRecommended: false,
+  });
 
   const sessions = useQuery({
     queryKey: ['performance-calibrations', cycleId],
-    queryFn: () => api.get<CalibrationSession[]>(`/hcm/performance/calibrations${cycleId ? `?cycleId=${cycleId}` : ''}`),
+    queryFn: () =>
+      api.get<CalibrationSession[]>(`/hcm/performance/calibrations${cycleId ? `?cycleId=${cycleId}` : ''}`),
   });
 
   const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
 
   const openSession = useMutation({
-    mutationFn: () => api.post('/hcm/performance/calibrations', { cycleId, participants: [{ employmentRelationshipId: participantId }] }),
+    mutationFn: () =>
+      api.post('/hcm/performance/calibrations', {
+        cycleId,
+        participants: [{ employmentRelationshipId: participantId }],
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['performance-calibrations', cycleId] });
       setOpenForm(false);
@@ -373,12 +461,20 @@ function CalibrationTab() {
       actions={<NewButton label="Open session" onClick={() => setOpenForm(true)} />}
     >
       <div className="mb-3 max-w-xs">
-        <SelectInput label="Cycle" value={cycleId as never} onChange={setCycleId} placeholder="Choose a cycle…" options={(cycles.data ?? []).map((c) => ({ value: c.id, label: c.name }))} />
+        <SelectInput
+          label="Cycle"
+          value={cycleId as never}
+          onChange={setCycleId}
+          placeholder="Choose a cycle…"
+          options={(cycles.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
+        />
       </div>
 
       {sessions.isLoading && <Loading />}
       {sessions.error && <ErrorBox error={sessions.error} />}
-      {sessions.data && sessions.data.length === 0 && <EmptyState message="No calibration sessions for this cycle yet." />}
+      {sessions.data && sessions.data.length === 0 && (
+        <EmptyState message="No calibration sessions for this cycle yet." />
+      )}
       {(sessions.data ?? []).map((s) => (
         <div key={s.id} className="mb-4 rounded border border-ink-800 p-3">
           <div className="mb-2 flex items-center justify-between">
@@ -413,27 +509,68 @@ function CalibrationTab() {
           )}
           {s.status === 'open' && employments.data && (
             <div className="mt-3 flex flex-wrap items-end gap-2">
-              <EmploymentSelect label="Person" value={decisionEmp} onChange={setDecisionEmp} options={employments.data} />
-              <SelectInput label="Rating" value={decisionForm.rating as never} onChange={(v) => setDecisionForm({ ...decisionForm, rating: v })} options={['1', '2', '3', '4', '5'].map((v) => ({ value: v, label: v }))} required />
+              <EmploymentSelect
+                label="Person"
+                value={decisionEmp}
+                onChange={setDecisionEmp}
+                options={employments.data}
+              />
+              <SelectInput
+                label="Rating"
+                value={decisionForm.rating as never}
+                onChange={(v) => setDecisionForm({ ...decisionForm, rating: v })}
+                options={['1', '2', '3', '4', '5'].map((v) => ({ value: v, label: v }))}
+                required
+              />
               <SelectInput
                 label="Potential"
                 value={decisionForm.potential as never}
                 onChange={(v) => setDecisionForm({ ...decisionForm, potential: v })}
-                options={[{ value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' }]}
+                options={[
+                  { value: 'low', label: 'Low' },
+                  { value: 'medium', label: 'Medium' },
+                  { value: 'high', label: 'High' },
+                ]}
                 required
               />
-              <button className="btn" disabled={!decisionEmp || recordDecision.isPending} onClick={() => recordDecision.mutate(s.id)}>
+              <button
+                className="btn"
+                disabled={!decisionEmp || recordDecision.isPending}
+                onClick={() => recordDecision.mutate(s.id)}
+              >
                 Record decision
               </button>
             </div>
           )}
         </div>
       ))}
-      {(openSession.error || recordDecision.error || close.error) && <ErrorBox error={openSession.error ?? recordDecision.error ?? close.error} />}
+      {(openSession.error || recordDecision.error || close.error) && (
+        <ErrorBox error={openSession.error ?? recordDecision.error ?? close.error} />
+      )}
 
-      <CreateModal open={openForm} title="Open a calibration session" onClose={() => setOpenForm(false)} invalidate={[['performance-calibrations', cycleId]]} onSubmit={() => openSession.mutateAsync()}>
-        <SelectInput label="Cycle" value={cycleId as never} onChange={setCycleId} placeholder="Choose a cycle…" options={(cycles.data ?? []).map((c) => ({ value: c.id, label: c.name }))} required />
-        {employments.data && <EmploymentSelect label="First participant" value={participantId} onChange={setParticipantId} options={employments.data} />}
+      <CreateModal
+        open={openForm}
+        title="Open a calibration session"
+        onClose={() => setOpenForm(false)}
+        invalidate={[['performance-calibrations', cycleId]]}
+        onSubmit={() => openSession.mutateAsync()}
+      >
+        <SelectInput
+          label="Cycle"
+          value={cycleId as never}
+          onChange={setCycleId}
+          placeholder="Choose a cycle…"
+          options={(cycles.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
+          required
+        />
+        {employments.data && (
+          <EmploymentSelect
+            label="First participant"
+            value={participantId}
+            onChange={setParticipantId}
+            options={employments.data}
+          />
+        )}
       </CreateModal>
     </Card>
   );
@@ -457,7 +594,10 @@ const NINE_BOX_COLS = ['Low performance', 'Medium performance', 'High performanc
 
 function NineBoxTab() {
   const employments = useEmployments();
-  const cycles = useQuery({ queryKey: ['performance-cycles'], queryFn: () => api.get<ReviewCycle[]>('/hcm/performance/review-cycles') });
+  const cycles = useQuery({
+    queryKey: ['performance-cycles'],
+    queryFn: () => api.get<ReviewCycle[]>('/hcm/performance/review-cycles'),
+  });
   const [cycleId, setCycleId] = useState('');
 
   const grid = useQuery({
@@ -469,14 +609,26 @@ function NineBoxTab() {
   const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
 
   return (
-    <Card title="9-box" subtitle="Every rated employee at once — needs an all-scope grant on reviews, so this is an HR view rather than a manager one.">
+    <Card
+      title="9-box"
+      subtitle="Every rated employee at once — needs an all-scope grant on reviews, so this is an HR view rather than a manager one."
+    >
       <div className="mb-3 max-w-xs">
-        <SelectInput label="Cycle" value={cycleId as never} onChange={setCycleId} placeholder="Choose a cycle…" options={(cycles.data ?? []).map((c) => ({ value: c.id, label: c.name }))} required />
+        <SelectInput
+          label="Cycle"
+          value={cycleId as never}
+          onChange={setCycleId}
+          placeholder="Choose a cycle…"
+          options={(cycles.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
+          required
+        />
       </div>
       {!cycleId && <EmptyState message="Choose a cycle to see its 9-box." />}
       {cycleId && grid.isLoading && <Loading />}
       {cycleId && grid.error && <ErrorBox error={grid.error} />}
-      {cycleId && grid.data && grid.data.length === 0 && <EmptyState message="No calibrated ratings for this cycle yet." hint="Close a calibration session first." />}
+      {cycleId && grid.data && grid.data.length === 0 && (
+        <EmptyState message="No calibrated ratings for this cycle yet." hint="Close a calibration session first." />
+      )}
       {cycleId && grid.data && grid.data.length > 0 && (
         <div className="grid grid-cols-3 gap-2">
           {NINE_BOX_ROWS.map((rowLabel, row) =>
@@ -484,7 +636,9 @@ function NineBoxTab() {
               const cellItems = grid.data!.filter((g) => g.row === 2 - row && g.col === col);
               return (
                 <div key={`${row}-${col}`} className="min-h-24 rounded border border-ink-800 p-2">
-                  <p className="text-2xs text-ink-500">{rowLabel} / {colLabel}</p>
+                  <p className="text-2xs text-ink-500">
+                    {rowLabel} / {colLabel}
+                  </p>
                   <ul className="mt-1 space-y-0.5">
                     {cellItems.map((c) => (
                       <li key={c.employmentRelationshipId} className="text-xs text-ink-200">
@@ -521,19 +675,39 @@ function FeedbackTab() {
   const employments = useEmployments();
   const [open, setOpen] = useState(false);
   const [employmentRelationshipId, setEmploymentRelationshipId] = useState('');
-  const [form, setForm] = useState({ fromEmploymentRelationshipId: '', toEmploymentRelationshipId: '', kind: 'praise' as string, message: '', visibility: 'private' as string });
+  const [form, setForm] = useState({
+    fromEmploymentRelationshipId: '',
+    toEmploymentRelationshipId: '',
+    kind: 'praise' as string,
+    message: '',
+    visibility: 'private' as string,
+  });
 
   const feedback = useQuery({
     queryKey: ['performance-feedback', employmentRelationshipId],
-    queryFn: () => api.get<FeedbackRow[]>(`/hcm/performance/feedback${employmentRelationshipId ? `?employmentRelationshipId=${employmentRelationshipId}` : ''}`),
+    queryFn: () =>
+      api.get<FeedbackRow[]>(
+        `/hcm/performance/feedback${employmentRelationshipId ? `?employmentRelationshipId=${employmentRelationshipId}` : ''}`,
+      ),
   });
 
   const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
 
   return (
-    <Card title="Feedback" subtitle="Continuous, outside any cycle." actions={<NewButton label="Give feedback" onClick={() => setOpen(true)} />}>
+    <Card
+      title="Feedback"
+      subtitle="Continuous, outside any cycle."
+      actions={<NewButton label="Give feedback" onClick={() => setOpen(true)} />}
+    >
       <div className="mb-3 max-w-xs">
-        {employments.data && <EmploymentSelect label="About" value={employmentRelationshipId} onChange={setEmploymentRelationshipId} options={employments.data} />}
+        {employments.data && (
+          <EmploymentSelect
+            label="About"
+            value={employmentRelationshipId}
+            onChange={setEmploymentRelationshipId}
+            options={employments.data}
+          />
+        )}
       </div>
       {feedback.isLoading && <Loading />}
       {feedback.error && <ErrorBox error={feedback.error} />}
@@ -543,11 +717,16 @@ function FeedbackTab() {
           {feedback.data.map((f) => (
             <li key={f.id} className="rounded border border-ink-800 p-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-ink-300">{byId.get(f.fromEmploymentRelationshipId) ?? f.fromEmploymentRelationshipId} → {byId.get(f.toEmploymentRelationshipId) ?? f.toEmploymentRelationshipId}</span>
+                <span className="text-xs text-ink-300">
+                  {byId.get(f.fromEmploymentRelationshipId) ?? f.fromEmploymentRelationshipId} →{' '}
+                  {byId.get(f.toEmploymentRelationshipId) ?? f.toEmploymentRelationshipId}
+                </span>
                 <StatusChip status={f.kind} tone={f.kind === 'praise' ? 'good' : 'warn'} />
               </div>
               <p className="mt-1 text-sm text-ink-200">{f.message}</p>
-              <p className="mt-1 text-2xs text-ink-500">{titleCase(f.visibility)} · {date(f.createdAt)}</p>
+              <p className="mt-1 text-2xs text-ink-500">
+                {titleCase(f.visibility)} · {date(f.createdAt)}
+              </p>
             </li>
           ))}
         </ul>
@@ -562,13 +741,42 @@ function FeedbackTab() {
       >
         {employments.data && (
           <>
-            <EmploymentSelect label="From" value={form.fromEmploymentRelationshipId} onChange={(v) => setForm({ ...form, fromEmploymentRelationshipId: v })} options={employments.data} />
-            <EmploymentSelect label="To" value={form.toEmploymentRelationshipId} onChange={(v) => setForm({ ...form, toEmploymentRelationshipId: v })} options={employments.data} />
+            <EmploymentSelect
+              label="From"
+              value={form.fromEmploymentRelationshipId}
+              onChange={(v) => setForm({ ...form, fromEmploymentRelationshipId: v })}
+              options={employments.data}
+            />
+            <EmploymentSelect
+              label="To"
+              value={form.toEmploymentRelationshipId}
+              onChange={(v) => setForm({ ...form, toEmploymentRelationshipId: v })}
+              options={employments.data}
+            />
           </>
         )}
         <Row>
-          <SelectInput label="Kind" value={form.kind as never} onChange={(v) => setForm({ ...form, kind: v })} options={[{ value: 'praise', label: 'Praise' }, { value: 'constructive', label: 'Constructive' }]} required />
-          <SelectInput label="Visibility" value={form.visibility as never} onChange={(v) => setForm({ ...form, visibility: v })} options={[{ value: 'private', label: 'Private' }, { value: 'manager', label: 'Manager' }, { value: 'public', label: 'Public' }]} required />
+          <SelectInput
+            label="Kind"
+            value={form.kind as never}
+            onChange={(v) => setForm({ ...form, kind: v })}
+            options={[
+              { value: 'praise', label: 'Praise' },
+              { value: 'constructive', label: 'Constructive' },
+            ]}
+            required
+          />
+          <SelectInput
+            label="Visibility"
+            value={form.visibility as never}
+            onChange={(v) => setForm({ ...form, visibility: v })}
+            options={[
+              { value: 'private', label: 'Private' },
+              { value: 'manager', label: 'Manager' },
+              { value: 'public', label: 'Public' },
+            ]}
+            required
+          />
         </Row>
         <TextArea label="Message" value={form.message} onChange={(v) => setForm({ ...form, message: v })} required />
       </CreateModal>
@@ -593,11 +801,16 @@ function OneOnOnesTab() {
   const employments = useEmployments();
   const [open, setOpen] = useState(false);
   const [reportId, setReportId] = useState('');
-  const [form, setForm] = useState({ managerEmploymentRelationshipId: '', reportEmploymentRelationshipId: '', scheduledAt: '' });
+  const [form, setForm] = useState({
+    managerEmploymentRelationshipId: '',
+    reportEmploymentRelationshipId: '',
+    scheduledAt: '',
+  });
 
   const oneOnOnes = useQuery({
     queryKey: ['performance-1on1s', reportId],
-    queryFn: () => api.get<OneOnOne[]>(`/hcm/performance/one-on-ones${reportId ? `?employmentRelationshipId=${reportId}` : ''}`),
+    queryFn: () =>
+      api.get<OneOnOne[]>(`/hcm/performance/one-on-ones${reportId ? `?employmentRelationshipId=${reportId}` : ''}`),
   });
   const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
 
@@ -607,9 +820,15 @@ function OneOnOnesTab() {
   });
 
   return (
-    <Card title="1:1s" subtitle="Manager/report check-ins." actions={<NewButton label="Schedule" onClick={() => setOpen(true)} />}>
+    <Card
+      title="1:1s"
+      subtitle="Manager/report check-ins."
+      actions={<NewButton label="Schedule" onClick={() => setOpen(true)} />}
+    >
       <div className="mb-3 max-w-xs">
-        {employments.data && <EmploymentSelect label="Report" value={reportId} onChange={setReportId} options={employments.data} />}
+        {employments.data && (
+          <EmploymentSelect label="Report" value={reportId} onChange={setReportId} options={employments.data} />
+        )}
       </div>
       {oneOnOnes.isLoading && <Loading />}
       {oneOnOnes.error && <ErrorBox error={oneOnOnes.error} />}
@@ -617,7 +836,13 @@ function OneOnOnesTab() {
       {oneOnOnes.data && oneOnOnes.data.length > 0 && (
         <table className="table">
           <thead>
-            <tr><th>Manager</th><th>Report</th><th>When</th><th>Status</th><th /></tr>
+            <tr>
+              <th>Manager</th>
+              <th>Report</th>
+              <th>When</th>
+              <th>Status</th>
+              <th />
+            </tr>
           </thead>
           <tbody>
             {oneOnOnes.data.map((o) => (
@@ -625,9 +850,15 @@ function OneOnOnesTab() {
                 <td>{byId.get(o.managerEmploymentRelationshipId) ?? o.managerEmploymentRelationshipId}</td>
                 <td>{byId.get(o.reportEmploymentRelationshipId) ?? o.reportEmploymentRelationshipId}</td>
                 <td>{date(o.scheduledAt)}</td>
-                <td><StatusChip status={o.status} tone={o.status === 'completed' ? 'good' : 'neutral'} /></td>
+                <td>
+                  <StatusChip status={o.status} tone={o.status === 'completed' ? 'good' : 'neutral'} />
+                </td>
                 <td className="text-right">
-                  {o.status === 'scheduled' && <button className="btn text-2xs" onClick={() => complete.mutate(o.id)}>Mark completed</button>}
+                  {o.status === 'scheduled' && (
+                    <button className="btn text-2xs" onClick={() => complete.mutate(o.id)}>
+                      Mark completed
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -644,11 +875,27 @@ function OneOnOnesTab() {
       >
         {employments.data && (
           <>
-            <EmploymentSelect label="Manager" value={form.managerEmploymentRelationshipId} onChange={(v) => setForm({ ...form, managerEmploymentRelationshipId: v })} options={employments.data} />
-            <EmploymentSelect label="Report" value={form.reportEmploymentRelationshipId} onChange={(v) => setForm({ ...form, reportEmploymentRelationshipId: v })} options={employments.data} />
+            <EmploymentSelect
+              label="Manager"
+              value={form.managerEmploymentRelationshipId}
+              onChange={(v) => setForm({ ...form, managerEmploymentRelationshipId: v })}
+              options={employments.data}
+            />
+            <EmploymentSelect
+              label="Report"
+              value={form.reportEmploymentRelationshipId}
+              onChange={(v) => setForm({ ...form, reportEmploymentRelationshipId: v })}
+              options={employments.data}
+            />
           </>
         )}
-        <TextInput label="When" type="date" value={form.scheduledAt} onChange={(v) => setForm({ ...form, scheduledAt: v })} required />
+        <TextInput
+          label="When"
+          type="date"
+          value={form.scheduledAt}
+          onChange={(v) => setForm({ ...form, scheduledAt: v })}
+          required
+        />
       </CreateModal>
     </Card>
   );
@@ -666,43 +913,81 @@ interface PipRow {
   outcome: string;
 }
 
-const PIP_TONE: Record<string, 'neutral' | 'good' | 'bad' | 'warn'> = { open: 'warn', successful: 'good', extended: 'neutral', exited: 'bad' };
+const PIP_TONE: Record<string, 'neutral' | 'good' | 'bad' | 'warn'> = {
+  open: 'warn',
+  successful: 'good',
+  extended: 'neutral',
+  exited: 'bad',
+};
 
 function PipsTab() {
   const qc = useQueryClient();
   const employments = useEmployments();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ employmentRelationshipId: '', managerEmploymentRelationshipId: '', startsOn: '', endsOn: '', objective: '' });
+  const [form, setForm] = useState({
+    employmentRelationshipId: '',
+    managerEmploymentRelationshipId: '',
+    startsOn: '',
+    endsOn: '',
+    objective: '',
+  });
 
   const pips = useQuery({ queryKey: ['performance-pips'], queryFn: () => api.get<PipRow[]>('/hcm/performance/pips') });
   const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
 
   const close = useMutation({
-    mutationFn: ({ id, outcome }: { id: string; outcome: string }) => api.post(`/hcm/performance/pips/${id}/close`, { outcome }),
+    mutationFn: ({ id, outcome }: { id: string; outcome: string }) =>
+      api.post(`/hcm/performance/pips/${id}/close`, { outcome }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['performance-pips'] }),
     onError: (e: unknown) => alert(messageOf(e)),
   });
 
   return (
-    <Card title="PIPs" subtitle="Performance Improvement Plans. Closing one needs a decider who is not the person it is about." actions={<NewButton label="Open a PIP" onClick={() => setOpen(true)} />}>
+    <Card
+      title="PIPs"
+      subtitle="Performance Improvement Plans. Closing one needs a decider who is not the person it is about."
+      actions={<NewButton label="Open a PIP" onClick={() => setOpen(true)} />}
+    >
       {pips.isLoading && <Loading />}
       {pips.error && <ErrorBox error={pips.error} />}
-      {pips.data && pips.data.length === 0 && <EmptyState message="No PIPs open." hint="A true and reassuring state, not a gap." />}
+      {pips.data && pips.data.length === 0 && (
+        <EmptyState message="No PIPs open." hint="A true and reassuring state, not a gap." />
+      )}
       {pips.data && pips.data.length > 0 && (
         <table className="table">
-          <thead><tr><th>Person</th><th>Window</th><th>Outcome</th><th /></tr></thead>
+          <thead>
+            <tr>
+              <th>Person</th>
+              <th>Window</th>
+              <th>Outcome</th>
+              <th />
+            </tr>
+          </thead>
           <tbody>
             {pips.data.map((p) => (
               <tr key={p.id}>
                 <td>{byId.get(p.employmentRelationshipId) ?? p.employmentRelationshipId}</td>
-                <td className="text-2xs text-ink-400">{date(p.startsOn)} – {date(p.endsOn)}</td>
-                <td><StatusChip status={p.outcome} tone={PIP_TONE[p.outcome]} /></td>
+                <td className="text-2xs text-ink-400">
+                  {date(p.startsOn)} – {date(p.endsOn)}
+                </td>
+                <td>
+                  <StatusChip status={p.outcome} tone={PIP_TONE[p.outcome]} />
+                </td>
                 <td className="text-right">
                   {p.outcome === 'open' && (
                     <div className="flex justify-end gap-1">
-                      <button className="btn text-2xs" onClick={() => close.mutate({ id: p.id, outcome: 'successful' })}>Successful</button>
-                      <button className="btn text-2xs" onClick={() => close.mutate({ id: p.id, outcome: 'extended' })}>Extend</button>
-                      <button className="btn text-2xs" onClick={() => close.mutate({ id: p.id, outcome: 'exited' })}>Exit</button>
+                      <button
+                        className="btn text-2xs"
+                        onClick={() => close.mutate({ id: p.id, outcome: 'successful' })}
+                      >
+                        Successful
+                      </button>
+                      <button className="btn text-2xs" onClick={() => close.mutate({ id: p.id, outcome: 'extended' })}>
+                        Extend
+                      </button>
+                      <button className="btn text-2xs" onClick={() => close.mutate({ id: p.id, outcome: 'exited' })}>
+                        Exit
+                      </button>
                     </div>
                   )}
                 </td>
@@ -729,15 +1014,42 @@ function PipsTab() {
       >
         {employments.data && (
           <>
-            <EmploymentSelect label="Person" value={form.employmentRelationshipId} onChange={(v) => setForm({ ...form, employmentRelationshipId: v })} options={employments.data} />
-            <EmploymentSelect label="Manager" value={form.managerEmploymentRelationshipId} onChange={(v) => setForm({ ...form, managerEmploymentRelationshipId: v })} options={employments.data} />
+            <EmploymentSelect
+              label="Person"
+              value={form.employmentRelationshipId}
+              onChange={(v) => setForm({ ...form, employmentRelationshipId: v })}
+              options={employments.data}
+            />
+            <EmploymentSelect
+              label="Manager"
+              value={form.managerEmploymentRelationshipId}
+              onChange={(v) => setForm({ ...form, managerEmploymentRelationshipId: v })}
+              options={employments.data}
+            />
           </>
         )}
         <Row>
-          <TextInput label="Starts on" type="date" value={form.startsOn} onChange={(v) => setForm({ ...form, startsOn: v })} required />
-          <TextInput label="Ends on" type="date" value={form.endsOn} onChange={(v) => setForm({ ...form, endsOn: v })} required />
+          <TextInput
+            label="Starts on"
+            type="date"
+            value={form.startsOn}
+            onChange={(v) => setForm({ ...form, startsOn: v })}
+            required
+          />
+          <TextInput
+            label="Ends on"
+            type="date"
+            value={form.endsOn}
+            onChange={(v) => setForm({ ...form, endsOn: v })}
+            required
+          />
         </Row>
-        <TextArea label="Objective" value={form.objective} onChange={(v) => setForm({ ...form, objective: v })} required />
+        <TextArea
+          label="Objective"
+          value={form.objective}
+          onChange={(v) => setForm({ ...form, objective: v })}
+          required
+        />
       </CreateModal>
     </Card>
   );
@@ -759,11 +1071,18 @@ function SuccessionTab() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ positionTitle: '', employmentRelationshipId: '', readiness: 'now' as string });
 
-  const plans = useQuery({ queryKey: ['performance-succession'], queryFn: () => api.get<SuccessionPlan[]>('/hcm/performance/succession-plans') });
+  const plans = useQuery({
+    queryKey: ['performance-succession'],
+    queryFn: () => api.get<SuccessionPlan[]>('/hcm/performance/succession-plans'),
+  });
   const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
 
   return (
-    <Card title="Succession" subtitle="Who is ready to step into which position, and how soon. Named candidates who have not been told, so this stays HR-only." actions={<NewButton label="New plan" onClick={() => setOpen(true)} />}>
+    <Card
+      title="Succession"
+      subtitle="Who is ready to step into which position, and how soon. Named candidates who have not been told, so this stays HR-only."
+      actions={<NewButton label="New plan" onClick={() => setOpen(true)} />}
+    >
       {plans.isLoading && <Loading />}
       {plans.error && <ErrorBox error={plans.error} />}
       {plans.data && plans.data.length === 0 && <EmptyState message="No succession plans yet." />}
@@ -796,13 +1115,29 @@ function SuccessionTab() {
           })
         }
       >
-        <TextInput label="Position" value={form.positionTitle} onChange={(v) => setForm({ ...form, positionTitle: v })} required />
-        {employments.data && <EmploymentSelect label="First successor" value={form.employmentRelationshipId} onChange={(v) => setForm({ ...form, employmentRelationshipId: v })} options={employments.data} />}
+        <TextInput
+          label="Position"
+          value={form.positionTitle}
+          onChange={(v) => setForm({ ...form, positionTitle: v })}
+          required
+        />
+        {employments.data && (
+          <EmploymentSelect
+            label="First successor"
+            value={form.employmentRelationshipId}
+            onChange={(v) => setForm({ ...form, employmentRelationshipId: v })}
+            options={employments.data}
+          />
+        )}
         <SelectInput
           label="Readiness"
           value={form.readiness as never}
           onChange={(v) => setForm({ ...form, readiness: v })}
-          options={[{ value: 'now', label: 'Ready now' }, { value: '1yr', label: '1 year' }, { value: '2yr', label: '2 years' }]}
+          options={[
+            { value: 'now', label: 'Ready now' },
+            { value: '1yr', label: '1 year' },
+            { value: '2yr', label: '2 years' },
+          ]}
           required
         />
       </CreateModal>

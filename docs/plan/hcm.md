@@ -18,7 +18,7 @@ What exists under `/api/hr`:
 - **Web surfaces.** `PeopleOps.tsx` listing Employees, with tabs for EmployeeDetail, Leave, Attendance, Payroll, Hiring, Skills, and compliance pages.
 - **Platform.** Tenant gate, five-axis permissions with a Self-Dealing Bar on approvals, event bus emitting `kz.<domain>.<entity>.<verb>`, audit trail, exception handling, record codes via `nextRecordCode`, jobs scheduler, roles and grants.
 
-The gap has a consistent shape: the platform has built the *state machines and ledgers* — how people move through their employment, how leave accrues and is spent — and has not surfaced the *work* people and managers do day to day — designing teams, rosters, timesheets, reviews, compensation change, severance, recruitment pipelines, communication. Most of what follows is new domain modules wired onto existing machinery.
+The gap has a consistent shape: the platform has built the _state machines and ledgers_ — how people move through their employment, how leave accrues and is spent — and has not surfaced the _work_ people and managers do day to day — designing teams, rosters, timesheets, reviews, compensation change, severance, recruitment pipelines, communication. Most of what follows is new domain modules wired onto existing machinery.
 
 ---
 
@@ -271,18 +271,18 @@ My home, leave, attendance, payslips, performance, learning, money, requests and
 
 ## As built
 
-| Workstream | Doc | Test file | Status |
-|---|---|---|---|
-| WS1 Workforce | docs/hcm/workforce.md | src/tests/hcm/workforce.test.ts | See doc |
-| WS2 Time | docs/hcm/time.md | src/tests/hcm/time.test.ts | See doc |
+| Workstream       | Doc                      | Test file                          | Status  |
+| ---------------- | ------------------------ | ---------------------------------- | ------- |
+| WS1 Workforce    | docs/hcm/workforce.md    | src/tests/hcm/workforce.test.ts    | See doc |
+| WS2 Time         | docs/hcm/time.md         | src/tests/hcm/time.test.ts         | See doc |
 | WS3 Leave Policy | docs/hcm/leave-policy.md | src/tests/hcm/leave-policy.test.ts | See doc |
-| WS4 Recruiting | docs/hcm/recruiting.md | src/tests/hcm/recruiting.test.ts | See doc |
-| WS5 Performance | docs/hcm/performance.md | src/tests/hcm/performance.test.ts | See doc |
-| WS6 Learning | docs/hcm/learning.md | src/tests/hcm/learning.test.ts | See doc |
+| WS4 Recruiting   | docs/hcm/recruiting.md   | src/tests/hcm/recruiting.test.ts   | See doc |
+| WS5 Performance  | docs/hcm/performance.md  | src/tests/hcm/performance.test.ts  | See doc |
+| WS6 Learning     | docs/hcm/learning.md     | src/tests/hcm/learning.test.ts     | See doc |
 | WS7 Compensation | docs/hcm/compensation.md | src/tests/hcm/compensation.test.ts | See doc |
-| WS8 Payroll Ops | docs/hcm/payroll-ops.md | src/tests/hcm/payroll-ops.test.ts | See doc |
-| WS9 Engagement | docs/hcm/engagement.md | src/tests/hcm/engagement.test.ts | See doc |
-| WS10 Separations | docs/hcm/separations.md | src/tests/hcm/separations.test.ts | See doc |
-| WS11 Assets | docs/hcm/assets.md | src/tests/hcm/assets.test.ts | See doc |
-| WS12 Analytics | docs/hcm/analytics.md | src/tests/hcm/analytics.test.ts | See doc |
-| WS13 Workflow | docs/hcm/workflow.md | src/tests/hcm/workflow.test.ts | See doc |
+| WS8 Payroll Ops  | docs/hcm/payroll-ops.md  | src/tests/hcm/payroll-ops.test.ts  | See doc |
+| WS9 Engagement   | docs/hcm/engagement.md   | src/tests/hcm/engagement.test.ts   | See doc |
+| WS10 Separations | docs/hcm/separations.md  | src/tests/hcm/separations.test.ts  | See doc |
+| WS11 Assets      | docs/hcm/assets.md       | src/tests/hcm/assets.test.ts       | See doc |
+| WS12 Analytics   | docs/hcm/analytics.md    | src/tests/hcm/analytics.test.ts    | See doc |
+| WS13 Workflow    | docs/hcm/workflow.md     | src/tests/hcm/workflow.test.ts     | See doc |

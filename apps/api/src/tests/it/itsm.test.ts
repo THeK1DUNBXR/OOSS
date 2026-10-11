@@ -52,41 +52,75 @@ describe('pure arithmetic (no DB)', () => {
   it('IT-CHG-003: changeSuccessRate counts only reviewed/failed/rolled_back and is null with none', () => {
     expect(changeSuccessRate([])).toBeNull();
     expect(changeSuccessRate([{ status: 'draft' }, { status: 'submitted' }, { status: 'scheduled' }])).toBeNull();
-    expect(changeSuccessRate([{ status: 'reviewed' }, { status: 'reviewed' }, { status: 'failed' }, { status: 'rolled_back' }, { status: 'draft' }])).toBe(0.5);
+    expect(
+      changeSuccessRate([
+        { status: 'reviewed' },
+        { status: 'reviewed' },
+        { status: 'failed' },
+        { status: 'rolled_back' },
+        { status: 'draft' },
+      ]),
+    ).toBe(0.5);
   });
 
   it('isInFreeze blocks a normal change inside the window and lets an allow-listed emergency through', () => {
-    const freezes = [{ name: 'Year-end freeze', startsAt: new Date('2026-12-20'), endsAt: new Date('2027-01-05'), allowEmergency: false }];
+    const freezes = [
+      {
+        name: 'Year-end freeze',
+        startsAt: new Date('2026-12-20'),
+        endsAt: new Date('2027-01-05'),
+        allowEmergency: false,
+      },
+    ];
     expect(isInFreeze(freezes, new Date('2026-12-25'), 'normal')?.name).toBe('Year-end freeze');
     expect(isInFreeze(freezes, new Date('2026-12-25'), 'emergency')?.name).toBe('Year-end freeze');
     expect(isInFreeze(freezes, new Date('2026-06-01'), 'normal')).toBeNull();
 
-    const allowsEmergency = [{ name: 'Peak season', startsAt: new Date('2026-12-20'), endsAt: new Date('2027-01-05'), allowEmergency: true }];
+    const allowsEmergency = [
+      { name: 'Peak season', startsAt: new Date('2026-12-20'), endsAt: new Date('2027-01-05'), allowEmergency: true },
+    ];
     expect(isInFreeze(allowsEmergency, new Date('2026-12-25'), 'emergency')).toBeNull();
     expect(isInFreeze(allowsEmergency, new Date('2026-12-25'), 'normal')?.name).toBe('Peak season');
   });
 
   it('isWindowInFreeze catches a change that starts before a freeze and runs into it, not only one that starts inside it', () => {
-    const freezes = [{ name: 'Year-end freeze', startsAt: new Date('2026-12-20'), endsAt: new Date('2027-01-05'), allowEmergency: false }];
+    const freezes = [
+      {
+        name: 'Year-end freeze',
+        startsAt: new Date('2026-12-20'),
+        endsAt: new Date('2027-01-05'),
+        allowEmergency: false,
+      },
+    ];
 
     // Starts three days before the freeze opens, ends two days into it —
     // `isInFreeze` at the window's own start would miss this entirely.
     expect(isInFreeze(freezes, new Date('2026-12-17'), 'normal')).toBeNull();
-    expect(isWindowInFreeze(freezes, new Date('2026-12-17'), new Date('2026-12-22'), 'normal')?.name).toBe('Year-end freeze');
+    expect(isWindowInFreeze(freezes, new Date('2026-12-17'), new Date('2026-12-22'), 'normal')?.name).toBe(
+      'Year-end freeze',
+    );
 
     // Starts inside the freeze and runs past its end — also an overlap.
-    expect(isWindowInFreeze(freezes, new Date('2026-12-30'), new Date('2027-01-10'), 'normal')?.name).toBe('Year-end freeze');
+    expect(isWindowInFreeze(freezes, new Date('2026-12-30'), new Date('2027-01-10'), 'normal')?.name).toBe(
+      'Year-end freeze',
+    );
 
     // Entirely swallows the freeze.
-    expect(isWindowInFreeze(freezes, new Date('2026-12-01'), new Date('2027-02-01'), 'normal')?.name).toBe('Year-end freeze');
+    expect(isWindowInFreeze(freezes, new Date('2026-12-01'), new Date('2027-02-01'), 'normal')?.name).toBe(
+      'Year-end freeze',
+    );
 
     // No overlap at all.
     expect(isWindowInFreeze(freezes, new Date('2026-06-01'), new Date('2026-06-05'), 'normal')).toBeNull();
 
     // Same `allowEmergency` override as `isInFreeze`.
-    const allowsEmergency = [{ name: 'Peak season', startsAt: new Date('2026-12-20'), endsAt: new Date('2027-01-05'), allowEmergency: true }];
+    const allowsEmergency = [
+      { name: 'Peak season', startsAt: new Date('2026-12-20'), endsAt: new Date('2027-01-05'), allowEmergency: true },
+    ];
     expect(isWindowInFreeze(allowsEmergency, new Date('2026-12-17'), new Date('2026-12-22'), 'emergency')).toBeNull();
-    expect(isWindowInFreeze(allowsEmergency, new Date('2026-12-17'), new Date('2026-12-22'), 'normal')?.name).toBe('Peak season');
+    expect(isWindowInFreeze(allowsEmergency, new Date('2026-12-17'), new Date('2026-12-22'), 'normal')?.name).toBe(
+      'Peak season',
+    );
   });
 });
 
@@ -110,7 +144,9 @@ describe('incidents, problems and changes — domain and wiring', () => {
     expect(acknowledged.status).toBe('acknowledged');
     expect(acknowledged.acknowledgedAt).toBeTruthy();
 
-    const repeat = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionIncident(incident.id, 'ACKNOWLEDGE')));
+    const repeat = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => transitionIncident(incident.id, 'ACKNOWLEDGE')),
+    );
     expect(repeat.status).toBe(409);
 
     const stillAcknowledged = await unscopedPrisma.itIncident.findFirstOrThrow({ where: { id: incident.id } });
@@ -128,7 +164,9 @@ describe('incidents, problems and changes — domain and wiring', () => {
     await asUser('operations@kaizen.co.in', () => transitionIncident(incident.id, 'MITIGATE'));
     await asUser('operations@kaizen.co.in', () => transitionIncident(incident.id, 'RESOLVE'));
 
-    const closeBlocked = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionIncident(incident.id, 'CLOSE')));
+    const closeBlocked = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => transitionIncident(incident.id, 'CLOSE')),
+    );
     expect(closeBlocked.status).toBe(422);
     expect(closeBlocked.message).toContain('IT-INC-002');
 
@@ -136,12 +174,17 @@ describe('incidents, problems and changes — domain and wiring', () => {
     expect(detail.availableTransitions).not.toContain('CLOSE');
 
     const published = await asUser('operations@kaizen.co.in', () =>
-      submitIncidentReview(incident.id, { reviewBody: 'Root cause: a bad migration. Fixed and verified.', publish: true }),
+      submitIncidentReview(incident.id, {
+        reviewBody: 'Root cause: a bad migration. Fixed and verified.',
+        publish: true,
+      }),
     );
     expect(published.reviewPublishedAt).toBeTruthy();
 
     const editAfterPublish = await expectReject(() =>
-      asUser('operations@kaizen.co.in', () => submitIncidentReview(incident.id, { reviewBody: 'trying to sneak a change in' })),
+      asUser('operations@kaizen.co.in', () =>
+        submitIncidentReview(incident.id, { reviewBody: 'trying to sneak a change in' }),
+      ),
     );
     expect(editAfterPublish.status).toBe(409);
 
@@ -150,7 +193,9 @@ describe('incidents, problems and changes — domain and wiring', () => {
   });
 
   it('posting an update resets the stale marker and appends to the timeline', async () => {
-    const incident = await asUser('operations@kaizen.co.in', () => declareIncident({ title: `Slow queries ${stamp()}`, severity: 'sev3' }));
+    const incident = await asUser('operations@kaizen.co.in', () =>
+      declareIncident({ title: `Slow queries ${stamp()}`, severity: 'sev3' }),
+    );
     await unscopedPrisma.itIncident.update({ where: { id: incident.id }, data: { staleNotifiedAt: new Date() } });
 
     await asUser('operations@kaizen.co.in', () => postIncidentUpdate(incident.id, 'Investigating a locking issue.'));
@@ -164,19 +209,25 @@ describe('incidents, problems and changes — domain and wiring', () => {
   });
 
   it('listIncidents filters by severity and status', async () => {
-    const sev4 = await asUser('operations@kaizen.co.in', () => declareIncident({ title: `Cosmetic glitch ${stamp()}`, severity: 'sev4' }));
+    const sev4 = await asUser('operations@kaizen.co.in', () =>
+      declareIncident({ title: `Cosmetic glitch ${stamp()}`, severity: 'sev4' }),
+    );
     const bySeverity = await asUser('operations@kaizen.co.in', () => listIncidents({ severity: 'sev4' }));
     expect(bySeverity.every((i) => i.severity === 'sev4')).toBe(true);
     expect(bySeverity.some((i) => i.id === sev4.id)).toBe(true);
   });
 
   it('the Finance Head cannot declare an incident (view-only on it_incidents)', async () => {
-    const denied = await expectReject(() => asUser('finance@kaizen.co.in', () => declareIncident({ title: 'x', severity: 'sev4' })));
+    const denied = await expectReject(() =>
+      asUser('finance@kaizen.co.in', () => declareIncident({ title: 'x', severity: 'sev4' })),
+    );
     expect(denied.status).toBe(403);
   });
 
   it('a problem can be opened from an incident and carries it through its lifecycle', async () => {
-    const incident = await asUser('operations@kaizen.co.in', () => declareIncident({ title: `Cascading failure ${stamp()}`, severity: 'sev2' }));
+    const incident = await asUser('operations@kaizen.co.in', () =>
+      declareIncident({ title: `Cascading failure ${stamp()}`, severity: 'sev2' }),
+    );
 
     const problem = await asUser('operations@kaizen.co.in', () =>
       createProblem({ title: `Root cause for ${incident.recordCode}`, incidentIds: [incident.id] }),
@@ -220,7 +271,9 @@ describe('incidents, problems and changes — domain and wiring', () => {
 
     // The raiser holds no `approve` grant on it_changes at all — denied on
     // the WHO axis before the gate's self-dealing logic even runs.
-    const raiserApproves = await expectReject(() => asUser('employee@kaizen.co.in', () => transitionChange(raised.id, { event: 'APPROVE' })));
+    const raiserApproves = await expectReject(() =>
+      asUser('employee@kaizen.co.in', () => transitionChange(raised.id, { event: 'APPROVE' })),
+    );
     expect(raiserApproves.status).toBe(403);
 
     // The Operations Head, not the raiser, approves directly.
@@ -242,7 +295,9 @@ describe('incidents, problems and changes — domain and wiring', () => {
       }),
     );
     await asUser('operations@kaizen.co.in', () => transitionChange(ownChange.id, { event: 'SUBMIT' }));
-    const selfDealing = await asUser('operations@kaizen.co.in', () => transitionChange(ownChange.id, { event: 'APPROVE' }));
+    const selfDealing = await asUser('operations@kaizen.co.in', () =>
+      transitionChange(ownChange.id, { event: 'APPROVE' }),
+    );
     expect(selfDealing.applied).toBe(false);
     expect(selfDealing.selfDealingBarTripped).toBe(true);
     expect(selfDealing.approvalStepId).toBeTruthy();
@@ -262,7 +317,9 @@ describe('incidents, problems and changes — domain and wiring', () => {
         windowEnd,
       }),
     );
-    const autoApproved = await asUser('employee@kaizen.co.in', () => transitionChange(standard.id, { event: 'SUBMIT' }));
+    const autoApproved = await asUser('employee@kaizen.co.in', () =>
+      transitionChange(standard.id, { event: 'SUBMIT' }),
+    );
     expect(autoApproved.applied).toBe(true);
     expect((autoApproved.change as { status: string }).status).toBe('approved');
     expect(autoApproved.approvalStepId).toBeNull();
@@ -277,7 +334,12 @@ describe('incidents, problems and changes — domain and wiring', () => {
     const freezeName = `Quarter close freeze ${stamp()}`;
 
     const freeze = await asUser('operations@kaizen.co.in', () =>
-      declareFreeze({ name: freezeName, startsAt: freezeStart, endsAt: freezeEnd, reason: 'Quarter close — no changes to finance systems.' }),
+      declareFreeze({
+        name: freezeName,
+        startsAt: freezeStart,
+        endsAt: freezeEnd,
+        reason: 'Quarter close — no changes to finance systems.',
+      }),
     );
     expect(freeze.allowEmergency).toBe(false);
 
@@ -299,10 +361,14 @@ describe('incidents, problems and changes — domain and wiring', () => {
       }),
     );
     await asUser('employee@kaizen.co.in', () => transitionChange(normalChange.id, { event: 'SUBMIT' }));
-    const normalApproved = await asUser('operations@kaizen.co.in', () => transitionChange(normalChange.id, { event: 'APPROVE' }));
+    const normalApproved = await asUser('operations@kaizen.co.in', () =>
+      transitionChange(normalChange.id, { event: 'APPROVE' }),
+    );
     expect(normalApproved.applied).toBe(true);
 
-    const refused = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionChange(normalChange.id, { event: 'SCHEDULE' })));
+    const refused = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => transitionChange(normalChange.id, { event: 'SCHEDULE' })),
+    );
     expect(refused.status).toBe(422);
     expect(refused.message).toContain(freezeName);
     expect(refused.message).toContain('IT-CHG-002');
@@ -324,7 +390,9 @@ describe('incidents, problems and changes — domain and wiring', () => {
     );
     await asUser('employee@kaizen.co.in', () => transitionChange(straddlingChange.id, { event: 'SUBMIT' }));
     await asUser('operations@kaizen.co.in', () => transitionChange(straddlingChange.id, { event: 'APPROVE' }));
-    const straddlingRefused = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionChange(straddlingChange.id, { event: 'SCHEDULE' })));
+    const straddlingRefused = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => transitionChange(straddlingChange.id, { event: 'SCHEDULE' })),
+    );
     expect(straddlingRefused.status).toBe(422);
     expect(straddlingRefused.message).toContain(freezeName);
 
@@ -334,7 +402,13 @@ describe('incidents, problems and changes — domain and wiring', () => {
     const permissiveEnd = new Date(permissiveStart.getTime() + 5 * 86_400_000);
     const permissiveFreezeName = `Peak trading freeze ${stamp()}`;
     await asUser('operations@kaizen.co.in', () =>
-      declareFreeze({ name: permissiveFreezeName, startsAt: permissiveStart, endsAt: permissiveEnd, reason: 'Peak trading window.', allowEmergency: true }),
+      declareFreeze({
+        name: permissiveFreezeName,
+        startsAt: permissiveStart,
+        endsAt: permissiveEnd,
+        reason: 'Peak trading window.',
+        allowEmergency: true,
+      }),
     );
 
     const emergencyWindowStart = new Date(permissiveStart.getTime() + 86_400_000);
@@ -352,9 +426,13 @@ describe('incidents, problems and changes — domain and wiring', () => {
       }),
     );
     await asUser('employee@kaizen.co.in', () => transitionChange(emergencyChange.id, { event: 'SUBMIT' }));
-    const emergencyApproved = await asUser('operations@kaizen.co.in', () => transitionChange(emergencyChange.id, { event: 'APPROVE' }));
+    const emergencyApproved = await asUser('operations@kaizen.co.in', () =>
+      transitionChange(emergencyChange.id, { event: 'APPROVE' }),
+    );
     expect(emergencyApproved.applied).toBe(true);
-    const scheduled = await asUser('operations@kaizen.co.in', () => transitionChange(emergencyChange.id, { event: 'SCHEDULE' }));
+    const scheduled = await asUser('operations@kaizen.co.in', () =>
+      transitionChange(emergencyChange.id, { event: 'SCHEDULE' }),
+    );
     expect(scheduled.applied).toBe(true);
     expect((scheduled.change as { status: string }).status).toBe('scheduled');
   });
@@ -381,13 +459,19 @@ describe('incidents, problems and changes — domain and wiring', () => {
     );
     expect((implemented.change as { implementationNote: string }).implementationNote).toContain('Deployed at 02:00');
 
-    const noNote = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionChange(change.id, { event: 'REVIEW' })));
+    const noNote = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => transitionChange(change.id, { event: 'REVIEW' })),
+    );
     expect(noNote.status).toBe(400);
 
-    const reviewed = await asUser('operations@kaizen.co.in', () => transitionChange(change.id, { event: 'REVIEW', note: 'Clean. No incidents.' }));
+    const reviewed = await asUser('operations@kaizen.co.in', () =>
+      transitionChange(change.id, { event: 'REVIEW', note: 'Clean. No incidents.' }),
+    );
     expect((reviewed.change as { status: string }).status).toBe('reviewed');
 
-    const secondReview = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionChange(change.id, { event: 'REVIEW', note: 'trying again' })));
+    const secondReview = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => transitionChange(change.id, { event: 'REVIEW', note: 'trying again' })),
+    );
     expect(secondReview.status).toBe(409);
   });
 
@@ -454,14 +538,29 @@ describe('incidents, problems and changes — domain and wiring', () => {
     const freezeStart = new Date(Date.now() + dayOffset * 86_400_000);
     const freezeEnd = new Date(freezeStart.getTime() + 5 * 86_400_000);
     const freezeName = `Detail-check freeze ${stamp()}`;
-    await asUser('operations@kaizen.co.in', () => declareFreeze({ name: freezeName, startsAt: freezeStart, endsAt: freezeEnd, reason: 'Detail-check freeze window.' }));
+    await asUser('operations@kaizen.co.in', () =>
+      declareFreeze({
+        name: freezeName,
+        startsAt: freezeStart,
+        endsAt: freezeEnd,
+        reason: 'Detail-check freeze window.',
+      }),
+    );
 
     // The window starts two days before the freeze opens and runs a day
     // into it — "now" (when this reads) is nowhere near either.
     const windowStart = new Date(freezeStart.getTime() - 2 * 86_400_000);
     const windowEnd = new Date(freezeStart.getTime() + 86_400_000);
     const change = await asUser('operations@kaizen.co.in', () =>
-      createChange({ title: `Straddling detail check ${stamp()}`, kind: 'normal', risk: 'low', plan: 'x', rollbackPlan: 'x', windowStart, windowEnd }),
+      createChange({
+        title: `Straddling detail check ${stamp()}`,
+        kind: 'normal',
+        risk: 'low',
+        plan: 'x',
+        rollbackPlan: 'x',
+        windowStart,
+        windowEnd,
+      }),
     );
 
     const detail = await asUser('operations@kaizen.co.in', () => changeDetail(change.id));
@@ -474,7 +573,13 @@ describe('incidents, problems and changes — domain and wiring', () => {
     const freezeEnd = new Date(now.getTime() + 86_400_000);
     const freezeName = `Live freeze ${stamp()}`;
     await asUser('operations@kaizen.co.in', () =>
-      declareFreeze({ name: freezeName, startsAt: freezeStart, endsAt: freezeEnd, reason: 'Covers this instant.', allowEmergency: true }),
+      declareFreeze({
+        name: freezeName,
+        startsAt: freezeStart,
+        endsAt: freezeEnd,
+        reason: 'Covers this instant.',
+        allowEmergency: true,
+      }),
     );
 
     const summary = await asUser('operations@kaizen.co.in', () => changeSummary());
@@ -501,33 +606,51 @@ describe('incidents, problems and changes — domain and wiring', () => {
   });
 
   it('the stale-incident job is idempotent per rung', async () => {
-    const incident = await asUser('operations@kaizen.co.in', () => declareIncident({ title: `Degraded but quiet ${stamp()}`, severity: 'sev1' }));
-    await unscopedPrisma.itIncident.update({ where: { id: incident.id }, data: { lastActivityAt: new Date(Date.now() - 90 * 60_000) } });
+    const incident = await asUser('operations@kaizen.co.in', () =>
+      declareIncident({ title: `Degraded but quiet ${stamp()}`, severity: 'sev1' }),
+    );
+    await unscopedPrisma.itIncident.update({
+      where: { id: incident.id },
+      data: { lastActivityAt: new Date(Date.now() - 90 * 60_000) },
+    });
 
     const first = await asUser('operations@kaizen.co.in', () => runStaleIncidentJob());
     expect(first.notified).toBeGreaterThanOrEqual(1);
-    const firstCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_INCIDENT_STALE', subjectId: incident.id } });
+    const firstCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_INCIDENT_STALE', subjectId: incident.id },
+    });
     expect(firstCount).toBe(1);
 
     const second = await asUser('operations@kaizen.co.in', () => runStaleIncidentJob());
-    const secondCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_INCIDENT_STALE', subjectId: incident.id } });
+    const secondCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_INCIDENT_STALE', subjectId: incident.id },
+    });
     expect(secondCount).toBe(1);
     void second;
   });
 
   it('the review-overdue job is idempotent per rung', async () => {
-    const incident = await asUser('operations@kaizen.co.in', () => declareIncident({ title: `Needs a review ${stamp()}`, severity: 'sev2' }));
+    const incident = await asUser('operations@kaizen.co.in', () =>
+      declareIncident({ title: `Needs a review ${stamp()}`, severity: 'sev2' }),
+    );
     await asUser('operations@kaizen.co.in', () => transitionIncident(incident.id, 'ACKNOWLEDGE'));
     await asUser('operations@kaizen.co.in', () => transitionIncident(incident.id, 'MITIGATE'));
     await asUser('operations@kaizen.co.in', () => transitionIncident(incident.id, 'RESOLVE'));
-    await unscopedPrisma.itIncident.update({ where: { id: incident.id }, data: { resolvedAt: new Date(Date.now() - 6 * 86_400_000) } });
+    await unscopedPrisma.itIncident.update({
+      where: { id: incident.id },
+      data: { resolvedAt: new Date(Date.now() - 6 * 86_400_000) },
+    });
 
     await asUser('operations@kaizen.co.in', () => runReviewOverdueJob());
-    const firstCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_INCIDENT_REVIEW_OVERDUE', subjectId: incident.id } });
+    const firstCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_INCIDENT_REVIEW_OVERDUE', subjectId: incident.id },
+    });
     expect(firstCount).toBe(1);
 
     await asUser('operations@kaizen.co.in', () => runReviewOverdueJob());
-    const secondCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_INCIDENT_REVIEW_OVERDUE', subjectId: incident.id } });
+    const secondCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_INCIDENT_REVIEW_OVERDUE', subjectId: incident.id },
+    });
     expect(secondCount).toBe(1);
   });
 
@@ -546,11 +669,15 @@ describe('incidents, problems and changes — domain and wiring', () => {
     await asUser('operations@kaizen.co.in', () => transitionChange(change.id, { event: 'SUBMIT' }));
 
     await asUser('operations@kaizen.co.in', () => runChangeWindowMissedJob());
-    const firstCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_CHANGE_WINDOW_MISSED', subjectId: change.id } });
+    const firstCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_CHANGE_WINDOW_MISSED', subjectId: change.id },
+    });
     expect(firstCount).toBe(1);
 
     await asUser('operations@kaizen.co.in', () => runChangeWindowMissedJob());
-    const secondCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_CHANGE_WINDOW_MISSED', subjectId: change.id } });
+    const secondCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_CHANGE_WINDOW_MISSED', subjectId: change.id },
+    });
     expect(secondCount).toBe(1);
   });
 });

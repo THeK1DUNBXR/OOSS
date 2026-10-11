@@ -6,7 +6,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { handler, str } from '../../lib/http.js';
-import { REGISTER_KINDS, BOARD_MEETING_KINDS, BOARD_RESOLUTION_KINDS, CERTIFICATE_KINDS, MCA_FILINGS } from '@kaizen/shared';
+import {
+  REGISTER_KINDS,
+  BOARD_MEETING_KINDS,
+  BOARD_RESOLUTION_KINDS,
+  CERTIFICATE_KINDS,
+  MCA_FILINGS,
+} from '@kaizen/shared';
 import {
   securityPolicy,
   updateSecurityPolicy,
@@ -40,6 +46,7 @@ import {
   publishRefundPolicy,
   listCertificates,
   issueCertificate,
+  revokeCertificate,
   verifyCertificate,
 } from '../../domains/compliance/corporate.js';
 import { currentAuth } from '../../platform/context.js';
@@ -50,7 +57,10 @@ const router = Router();
 // Security
 // ---------------------------------------------------------------------------
 
-router.get('/security/policy', handler(async () => securityPolicy()));
+router.get(
+  '/security/policy',
+  handler(async () => securityPolicy()),
+);
 
 router.patch(
   '/security/policy',
@@ -64,7 +74,10 @@ router.patch(
   }),
 );
 
-router.get('/security/backups', handler(async () => listBackups()));
+router.get(
+  '/security/backups',
+  handler(async () => listBackups()),
+);
 
 router.post(
   '/security/backups/run',
@@ -122,8 +135,14 @@ router.post(
 // Board minutes
 // ---------------------------------------------------------------------------
 
-router.get('/board/meetings', handler(async () => listBoardMeetings()));
-router.get('/board/meetings/:id', handler(async (req) => getBoardMeeting(req.params.id)));
+router.get(
+  '/board/meetings',
+  handler(async () => listBoardMeetings()),
+);
+router.get(
+  '/board/meetings/:id',
+  handler(async (req) => getBoardMeeting(req.params.id)),
+);
 
 router.post(
   '/board/meetings',
@@ -147,7 +166,10 @@ router.patch(
   }),
 );
 
-router.post('/board/meetings/:id/record', handler(async (req) => recordBoardMeeting(req.params.id)));
+router.post(
+  '/board/meetings/:id/record',
+  handler(async (req) => recordBoardMeeting(req.params.id)),
+);
 
 router.post(
   '/board/meetings/:id/resolutions',
@@ -170,8 +192,14 @@ router.post(
 
 const mcaFormSchema = z.enum(MCA_FILINGS.map((f) => f.form) as [string, ...string[]]);
 
-router.get('/mca/filings', handler(async (req) => listMcaFilings(str(req.query.fy))));
-router.get('/mca/filings/types', handler(async () => MCA_FILINGS));
+router.get(
+  '/mca/filings',
+  handler(async (req) => listMcaFilings(str(req.query.fy))),
+);
+router.get(
+  '/mca/filings/types',
+  handler(async () => MCA_FILINGS),
+);
 
 router.post(
   '/mca/filings',
@@ -194,8 +222,14 @@ router.post(
 // Contracts: stamp duty, e-signature, retention
 // ---------------------------------------------------------------------------
 
-router.get('/contracts/stamp-duty-rules', handler(async () => listStampDutyRules()));
-router.get('/contracts/retention-rules', handler(async () => listRetentionRules()));
+router.get(
+  '/contracts/stamp-duty-rules',
+  handler(async () => listStampDutyRules()),
+);
+router.get(
+  '/contracts/retention-rules',
+  handler(async () => listRetentionRules()),
+);
 
 router.post(
   '/documents/:id/esign',
@@ -242,7 +276,10 @@ router.patch(
 // Refunds
 // ---------------------------------------------------------------------------
 
-router.get('/refunds', handler(async (req) => listRefunds(str(req.query.status))));
+router.get(
+  '/refunds',
+  handler(async (req) => listRefunds(str(req.query.status))),
+);
 
 router.post(
   '/refunds',
@@ -257,7 +294,10 @@ router.post(
   }),
 );
 
-router.post('/refunds/:id/approve', handler(async (req) => approveRefund(req.params.id)));
+router.post(
+  '/refunds/:id/approve',
+  handler(async (req) => approveRefund(req.params.id)),
+);
 
 router.post(
   '/refunds/:id/pay',
@@ -267,15 +307,25 @@ router.post(
   }),
 );
 
-router.get('/refunds/policy', handler(async () => currentRefundPolicy()));
-router.get('/refunds/policy/versions', handler(async () => listRefundPolicyVersions()));
+router.get(
+  '/refunds/policy',
+  handler(async () => currentRefundPolicy()),
+);
+router.get(
+  '/refunds/policy/versions',
+  handler(async () => listRefundPolicyVersions()),
+);
 
 router.post(
   '/refunds/policy',
   handler(async (req) => {
     const schema = z.object({
       text: z.string().min(1),
-      rules: z.object({ fullWithinDays: z.number().int(), partialPercent: z.number(), noneAfterStartDays: z.number().int() }),
+      rules: z.object({
+        fullWithinDays: z.number().int(),
+        partialPercent: z.number(),
+        noneAfterStartDays: z.number().int(),
+      }),
     });
     return publishRefundPolicy(schema.parse(req.body));
   }),
@@ -285,7 +335,10 @@ router.post(
 // Certificates
 // ---------------------------------------------------------------------------
 
-router.get('/certificates', handler(async (req) => listCertificates(str(req.query.enrollmentId))));
+router.get(
+  '/certificates',
+  handler(async (req) => listCertificates(str(req.query.enrollmentId))),
+);
 
 router.post(
   '/certificates',
@@ -299,8 +352,18 @@ router.post(
   }),
 );
 
+router.post(
+  '/certificates/:id/revoke',
+  handler(async (req) =>
+    revokeCertificate(req.params.id, z.object({ reason: z.string().min(1) }).parse(req.body).reason),
+  ),
+);
+
 // Public-shaped (a verification code, not an id) but still behind requireAuth
 // via this router's mount — see certificates.ts's own note.
-router.get('/certificates/verify/:code', handler(async (req) => verifyCertificate(req.params.code)));
+router.get(
+  '/certificates/verify/:code',
+  handler(async (req) => verifyCertificate(req.params.code)),
+);
 
 export default router;

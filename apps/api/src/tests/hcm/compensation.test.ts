@@ -19,17 +19,50 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { emiSchedule, revisionBudgetCheck, compaRatio, computeVariablePayout } from '@kaizen/shared';
-import { asUser, asPrincipal, authFor, expectReject, prisma, unscopedPrisma, tenantId, withFixtureRole, type TestPrincipal } from '../helpers.js';
+import {
+  asUser,
+  asPrincipal,
+  authFor,
+  expectReject,
+  prisma,
+  unscopedPrisma,
+  tenantId,
+  withFixtureRole,
+  type TestPrincipal,
+} from '../helpers.js';
 import { hire, transitionEmployment } from '../../domains/employment.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import {
-  createPayGrade, listPayGrades,
-  createRevisionCycle, addRevisionLine, listRevisionLines, proposeCycle,
-  approveRevisionLine, approveCycle, applyCycle, getRevisionCycle, listRevisionCycles,
-  createVariablePayPlan, computePayout, approvePayout, markPayoutPaid, listVariablePayouts,
-  createBenefitPlan, enrolInBenefit, cancelBenefitEnrollment, listMyBenefitEnrollments, listBenefitEnrollments,
-  requestLoan, approveLoan, disburseLoan, recordLoanRepayment, listLoans,
-  submitExpenseClaim, approveExpenseClaim, reimburseExpenseClaim, listExpenseClaims,
+  createPayGrade,
+  listPayGrades,
+  createRevisionCycle,
+  addRevisionLine,
+  listRevisionLines,
+  proposeCycle,
+  approveRevisionLine,
+  approveCycle,
+  applyCycle,
+  getRevisionCycle,
+  listRevisionCycles,
+  createVariablePayPlan,
+  computePayout,
+  approvePayout,
+  markPayoutPaid,
+  listVariablePayouts,
+  createBenefitPlan,
+  enrolInBenefit,
+  cancelBenefitEnrollment,
+  listMyBenefitEnrollments,
+  listBenefitEnrollments,
+  requestLoan,
+  approveLoan,
+  disburseLoan,
+  recordLoanRepayment,
+  listLoans,
+  submitExpenseClaim,
+  approveExpenseClaim,
+  reimburseExpenseClaim,
+  listExpenseClaims,
 } from '../../domains/hcm/compensation.js';
 
 let TENANT: string;
@@ -144,7 +177,9 @@ describe('pay grades', () => {
 
   it('HCM-COMPENSATION-004: a grade with minPay above maxPay is refused', async () => {
     const err = await expectReject(() =>
-      asUser('operations@kaizen.co.in', () => createPayGrade({ code: `PG-BAD-${Date.now()}`, level: 1, minPay: 900_000, midPay: 600_000, maxPay: 800_000 })),
+      asUser('operations@kaizen.co.in', () =>
+        createPayGrade({ code: `PG-BAD-${Date.now()}`, level: 1, minPay: 900_000, midPay: 600_000, maxPay: 800_000 }),
+      ),
     );
     expect(err.message).toMatch(/minPay/);
   });
@@ -163,9 +198,16 @@ describe('salary revision cycles', () => {
       createRevisionCycle({ name: `Roles cycle ${Date.now()}`, effectiveDate: new Date(), budgetPct: 20 }),
     );
     const line = await asUser('operations@kaizen.co.in', () =>
-      addRevisionLine({ cycleId: cycle.id, employmentRelationshipId: employment.id, currentCtc: 600_000, proposedPct: 10 }),
+      addRevisionLine({
+        cycleId: cycle.id,
+        employmentRelationshipId: employment.id,
+        currentCtc: 600_000,
+        proposedPct: 10,
+      }),
     );
-    const hrOpsApprove = await expectReject(() => asUser('operations@kaizen.co.in', () => approveRevisionLine(line.id)));
+    const hrOpsApprove = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => approveRevisionLine(line.id)),
+    );
     expect(hrOpsApprove.message).toMatch(/Denied on WHO axis/);
 
     await asUser('operations@kaizen.co.in', () => proposeCycle(cycle.id));
@@ -176,13 +218,18 @@ describe('salary revision cycles', () => {
     expect(financeApply.message).toMatch(/Denied on WHO axis/);
   });
 
-  it('HCM-COMPENSATION-006: hrOps proposes and finance approves a third employee\'s line, and applying (by hrOps, who holds edit) writes an Effective CompensationRecord', async () => {
+  it("HCM-COMPENSATION-006: hrOps proposes and finance approves a third employee's line, and applying (by hrOps, who holds edit) writes an Effective CompensationRecord", async () => {
     const { employment } = await makeEmployee('revline-apply');
     const cycle = await asUser('operations@kaizen.co.in', () =>
       createRevisionCycle({ name: `Apply cycle ${Date.now()}`, effectiveDate: new Date(), budgetPct: 20 }),
     );
     await asUser('operations@kaizen.co.in', () =>
-      addRevisionLine({ cycleId: cycle.id, employmentRelationshipId: employment.id, currentCtc: 600_000, proposedPct: 10 }),
+      addRevisionLine({
+        cycleId: cycle.id,
+        employmentRelationshipId: employment.id,
+        currentCtc: 600_000,
+        proposedPct: 10,
+      }),
     );
     await asUser('operations@kaizen.co.in', () => proposeCycle(cycle.id));
     const lines = await asUser('finance@kaizen.co.in', () => listRevisionLines(cycle.id));
@@ -207,7 +254,12 @@ describe('salary revision cycles', () => {
       createRevisionCycle({ name: `Overbudget cycle ${Date.now()}`, effectiveDate: new Date(), budgetPct: 5 }),
     );
     const line = await asUser('operations@kaizen.co.in', () =>
-      addRevisionLine({ cycleId: cycle.id, employmentRelationshipId: employment.id, currentCtc: 600_000, proposedPct: 50 }),
+      addRevisionLine({
+        cycleId: cycle.id,
+        employmentRelationshipId: employment.id,
+        currentCtc: 600_000,
+        proposedPct: 50,
+      }),
     );
     await asUser('operations@kaizen.co.in', () => proposeCycle(cycle.id));
     await asUser('finance@kaizen.co.in', () => approveRevisionLine(line.id));
@@ -221,7 +273,12 @@ describe('salary revision cycles', () => {
       createRevisionCycle({ name: `Money cycle ${Date.now()}`, effectiveDate: new Date(), budgetPct: 20 }),
     );
     await asUser('operations@kaizen.co.in', () =>
-      addRevisionLine({ cycleId: cycle.id, employmentRelationshipId: employment.id, currentCtc: 600_000, proposedPct: 10 }),
+      addRevisionLine({
+        cycleId: cycle.id,
+        employmentRelationshipId: employment.id,
+        currentCtc: 600_000,
+        proposedPct: 10,
+      }),
     );
     const asHrOps = await asUser('operations@kaizen.co.in', () => listRevisionLines(cycle.id));
     expect(asHrOps[0].currentCtc).toBeNull();
@@ -245,9 +302,12 @@ describe('salary revision cycles', () => {
     expect(err.status).toBe(404);
   });
 
-  it('HCM-COMPENSATION-009: the Self-Dealing Bar refuses a line\'s own proposer even when that principal holds the approve grant', async () => {
+  it("HCM-COMPENSATION-009: the Self-Dealing Bar refuses a line's own proposer even when that principal holds the approve grant", async () => {
     await withFixtureRole(
-      { slug: 'comp_dualhat', grants: [{ resource: 'salary_revisions', verbs: ['view', 'create', 'approve'], scope: 'all' }] },
+      {
+        slug: 'comp_dualhat',
+        grants: [{ resource: 'salary_revisions', verbs: ['view', 'create', 'approve'], scope: 'all' }],
+      },
       async (fixture) => {
         const { employment } = await makeEmployee('revline-dualhat-proposer');
         const cycle = await asUser('operations@kaizen.co.in', () =>
@@ -281,9 +341,16 @@ describe('variable pay', () => {
   it('HCM-COMPENSATION-010: a payout is computed by hrOps, approved by finance, and marked paid by hrOps (who holds edit)', async () => {
     const { employment } = await makeEmployee('varpay');
     const plan = await asUser('operations@kaizen.co.in', () =>
-      createVariablePayPlan({ name: `Bonus ${Date.now()}`, kind: 'bonus', period: 'annual', formula: { type: 'percentage_of_base', pct: 10 } }),
+      createVariablePayPlan({
+        name: `Bonus ${Date.now()}`,
+        kind: 'bonus',
+        period: 'annual',
+        formula: { type: 'percentage_of_base', pct: 10 },
+      }),
     );
-    const payout = await asUser('operations@kaizen.co.in', () => computePayout(plan.id, employment.id, '2026', 600_000));
+    const payout = await asUser('operations@kaizen.co.in', () =>
+      computePayout(plan.id, employment.id, '2026', 600_000),
+    );
     expect(Number(payout.computedAmount)).toBe(60_000);
 
     const approved = await asUser('finance@kaizen.co.in', () => approvePayout(payout.id));
@@ -295,13 +362,21 @@ describe('variable pay', () => {
     expect(list.find((p) => p.id === payout.id)?.status).toBe('paid');
   });
 
-  it('HCM-COMPENSATION-011: the Self-Dealing Bar refuses a payout\'s own computer even when that principal holds approve', async () => {
+  it("HCM-COMPENSATION-011: the Self-Dealing Bar refuses a payout's own computer even when that principal holds approve", async () => {
     await withFixtureRole(
-      { slug: 'comp_varpay_dualhat', grants: [{ resource: 'variable_pay', verbs: ['view', 'create', 'approve'], scope: 'all' }] },
+      {
+        slug: 'comp_varpay_dualhat',
+        grants: [{ resource: 'variable_pay', verbs: ['view', 'create', 'approve'], scope: 'all' }],
+      },
       async (fixture) => {
         const { employment } = await makeEmployee('varpay-dualhat');
         const plan = await asUser('operations@kaizen.co.in', () =>
-          createVariablePayPlan({ name: `Dualhat bonus ${Date.now()}`, kind: 'bonus', period: 'annual', formula: { type: 'fixed', amount: 5_000 } }),
+          createVariablePayPlan({
+            name: `Dualhat bonus ${Date.now()}`,
+            kind: 'bonus',
+            period: 'annual',
+            formula: { type: 'fixed', amount: 5_000 },
+          }),
         );
         const payout = await asPrincipal(authFor(fixture), () => computePayout(plan.id, employment.id, '2026', 0));
         const err = await expectReject(() => asPrincipal(authFor(fixture), () => approvePayout(payout.id)));
@@ -319,7 +394,12 @@ describe('benefits', () => {
   it('HCM-COMPENSATION-012: an employee enrols in a benefit plan and can cancel their own enrolment', async () => {
     const { employment } = await makeEmployee('benefits');
     const plan = await asUser('operations@kaizen.co.in', () =>
-      createBenefitPlan({ name: `Health ${Date.now()}`, kind: 'health', employerContribution: 500, employeeContribution: 100 }),
+      createBenefitPlan({
+        name: `Health ${Date.now()}`,
+        kind: 'health',
+        employerContribution: 500,
+        employeeContribution: 100,
+      }),
     );
     const enrollment = await asUser('operations@kaizen.co.in', () => enrolInBenefit(plan.id, employment.id));
     expect(enrollment.status).toBe('enrolled');
@@ -339,7 +419,9 @@ describe('benefits', () => {
 describe('employee loans', () => {
   it('HCM-COMPENSATION-013: ravi requests his own loan, finance approves it (never ravi, who holds no approve grant), hrOps disburses and a full repayment closes it', async () => {
     const ravi = await employmentFor('ravi@kaizen.co.in');
-    const loan = await asUser('ravi@kaizen.co.in', () => requestLoan({ employmentRelationshipId: ravi.id, principal: 60_000, interestPct: 0, tenureMonths: 6 }));
+    const loan = await asUser('ravi@kaizen.co.in', () =>
+      requestLoan({ employmentRelationshipId: ravi.id, principal: 60_000, interestPct: 0, tenureMonths: 6 }),
+    );
     expect(Number(loan.emi)).toBe(10_000);
 
     const raviApprove = await expectReject(() => asUser('ravi@kaizen.co.in', () => approveLoan(loan.id)));
@@ -357,16 +439,21 @@ describe('employee loans', () => {
 
   it('HCM-COMPENSATION-014: loan principal is withheld from a viewer without the `financial` verb, and visible to finance', async () => {
     const { employment } = await makeEmployee('loan-money');
-    await asUser('operations@kaizen.co.in', () => requestLoan({ employmentRelationshipId: employment.id, principal: 40_000, interestPct: 12, tenureMonths: 4 }));
+    await asUser('operations@kaizen.co.in', () =>
+      requestLoan({ employmentRelationshipId: employment.id, principal: 40_000, interestPct: 12, tenureMonths: 4 }),
+    );
     const asHrOps = await asUser('operations@kaizen.co.in', () => listLoans(employment.id));
     expect(asHrOps[0].principal).toBeNull();
     const asFinance = await asUser('finance@kaizen.co.in', () => listLoans(employment.id));
     expect(asFinance[0].principal).toBe(40_000);
   });
 
-  it('HCM-COMPENSATION-015: the Self-Dealing Bar refuses a loan for the approver\'s own employment, even when that principal holds approve', async () => {
+  it("HCM-COMPENSATION-015: the Self-Dealing Bar refuses a loan for the approver's own employment, even when that principal holds approve", async () => {
     await withFixtureRole(
-      { slug: 'comp_loan_dualhat', grants: [{ resource: 'employee_loans', verbs: ['view', 'create', 'approve'], scope: 'all' }] },
+      {
+        slug: 'comp_loan_dualhat',
+        grants: [{ resource: 'employee_loans', verbs: ['view', 'create', 'approve'], scope: 'all' }],
+      },
       async (fixture) => {
         const employment = await hireEmploymentFor(fixture.partyId, 'loan-dualhat-subject');
         // Requested by hrOps for the fixture's own employment, so the subject
@@ -388,7 +475,9 @@ describe('employee loans', () => {
 describe('expense claims', () => {
   it('HCM-COMPENSATION-016: ravi submits his own claim, hrOps approves it (never ravi), and hrOps marks it reimbursed', async () => {
     const ravi = await employmentFor('ravi@kaizen.co.in');
-    const claim = await asUser('ravi@kaizen.co.in', () => submitExpenseClaim({ employmentRelationshipId: ravi.id, category: 'travel', amount: 2_500 }));
+    const claim = await asUser('ravi@kaizen.co.in', () =>
+      submitExpenseClaim({ employmentRelationshipId: ravi.id, category: 'travel', amount: 2_500 }),
+    );
     expect(claim.status).toBe('submitted');
 
     const raviApprove = await expectReject(() => asUser('ravi@kaizen.co.in', () => approveExpenseClaim(claim.id)));
@@ -405,7 +494,9 @@ describe('expense claims', () => {
 
   it('HCM-COMPENSATION-017: an invalid transition (approving an already-reimbursed claim) is refused as a conflict', async () => {
     const ravi = await employmentFor('ravi@kaizen.co.in');
-    const claim = await asUser('ravi@kaizen.co.in', () => submitExpenseClaim({ employmentRelationshipId: ravi.id, category: 'food', amount: 400 }));
+    const claim = await asUser('ravi@kaizen.co.in', () =>
+      submitExpenseClaim({ employmentRelationshipId: ravi.id, category: 'food', amount: 400 }),
+    );
     await asUser('finance@kaizen.co.in', () => approveExpenseClaim(claim.id));
     await asUser('operations@kaizen.co.in', () => reimburseExpenseClaim(claim.id));
     const err = await expectReject(() => asUser('finance@kaizen.co.in', () => approveExpenseClaim(claim.id)));
@@ -414,7 +505,10 @@ describe('expense claims', () => {
 
   it('HCM-COMPENSATION-018: the Self-Dealing Bar refuses a claim submitted and approved by the same dual-hatted principal', async () => {
     await withFixtureRole(
-      { slug: 'comp_expense_dualhat', grants: [{ resource: 'expense_claims', verbs: ['view', 'create', 'approve'], scope: 'own' }] },
+      {
+        slug: 'comp_expense_dualhat',
+        grants: [{ resource: 'expense_claims', verbs: ['view', 'create', 'approve'], scope: 'own' }],
+      },
       async (fixture) => {
         const employment = await hireEmploymentFor(fixture.partyId, 'expense-dualhat');
         const claim = await asPrincipal(authFor(fixture), () =>
@@ -445,7 +539,12 @@ describe("scope axis: an own-scope employee cannot reach a colleague's data", ()
       createRevisionCycle({ name: `Scope cycle ${Date.now()}`, effectiveDate: new Date(), budgetPct: 20 }),
     );
     await asUser('operations@kaizen.co.in', () =>
-      addRevisionLine({ cycleId: cycle.id, employmentRelationshipId: colleague.id, currentCtc: 600_000, proposedPct: 10 }),
+      addRevisionLine({
+        cycleId: cycle.id,
+        employmentRelationshipId: colleague.id,
+        currentCtc: 600_000,
+        proposedPct: 10,
+      }),
     );
     const asRavi = await asUser('ravi@kaizen.co.in', () => listRevisionLines(cycle.id));
     expect(asRavi.find((l) => l.employmentRelationshipId === colleague.id)).toBeUndefined();
@@ -454,7 +553,12 @@ describe("scope axis: an own-scope employee cannot reach a colleague's data", ()
   it("HCM-COMPENSATION-020: an unfiltered payout list does not leak a colleague's payout to an own-scope viewer", async () => {
     const { employment: colleague } = await makeEmployee('scope-payout');
     const plan = await asUser('operations@kaizen.co.in', () =>
-      createVariablePayPlan({ name: `Scope bonus ${Date.now()}`, kind: 'bonus', period: 'annual', formula: { type: 'fixed', amount: 1_000 } }),
+      createVariablePayPlan({
+        name: `Scope bonus ${Date.now()}`,
+        kind: 'bonus',
+        period: 'annual',
+        formula: { type: 'fixed', amount: 1_000 },
+      }),
     );
     await asUser('operations@kaizen.co.in', () => computePayout(plan.id, colleague.id, '2026', 0));
     const asRavi = await asUser('ravi@kaizen.co.in', () => listVariablePayouts());
@@ -482,7 +586,12 @@ describe("scope axis: an own-scope employee cannot reach a colleague's data", ()
   it("HCM-COMPENSATION-023: an unfiltered benefit enrolment list does not leak a colleague's enrolment to an own-scope viewer", async () => {
     const { employment: colleague } = await makeEmployee('scope-benefit');
     const plan = await asUser('operations@kaizen.co.in', () =>
-      createBenefitPlan({ name: `Scope health ${Date.now()}`, kind: 'health', employerContribution: 100, employeeContribution: 10 }),
+      createBenefitPlan({
+        name: `Scope health ${Date.now()}`,
+        kind: 'health',
+        employerContribution: 100,
+        employeeContribution: 10,
+      }),
     );
     await asUser('operations@kaizen.co.in', () => enrolInBenefit(plan.id, colleague.id));
     const asRavi = await asUser('ravi@kaizen.co.in', () => listBenefitEnrollments());

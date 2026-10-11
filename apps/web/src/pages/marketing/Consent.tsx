@@ -43,13 +43,14 @@ interface PersonHit {
   primaryPhone: string | null;
 }
 
-const CONSENT_CHANNELS: Array<{ value: 'portal' | 'in_app' | 'paper' | 'verbal' | 'guardian_intake'; label: string }> = [
-  { value: 'portal', label: 'Portal' },
-  { value: 'in_app', label: 'In-app' },
-  { value: 'paper', label: 'Paper form' },
-  { value: 'verbal', label: 'Verbal, recorded by staff' },
-  { value: 'guardian_intake', label: "Guardian intake" },
-];
+const CONSENT_CHANNELS: Array<{ value: 'portal' | 'in_app' | 'paper' | 'verbal' | 'guardian_intake'; label: string }> =
+  [
+    { value: 'portal', label: 'Portal' },
+    { value: 'in_app', label: 'In-app' },
+    { value: 'paper', label: 'Paper form' },
+    { value: 'verbal', label: 'Verbal, recorded by staff' },
+    { value: 'guardian_intake', label: 'Guardian intake' },
+  ];
 
 export function Consent() {
   const { can } = useSession();
@@ -167,14 +168,28 @@ function CoverageMetric({
   return (
     <Metric
       label={label}
-      value={measured ? (value ?? 0).toLocaleString('en-IN') : <span className="text-sm italic text-ink-500">Not yet measured</span>}
+      value={
+        measured ? (
+          (value ?? 0).toLocaleString('en-IN')
+        ) : (
+          <span className="text-sm italic text-ink-500">Not yet measured</span>
+        )
+      }
       tone={tone}
       noActionReason={noActionReason}
     />
   );
 }
 
-function PreferencePanel({ personId, personLabel, canEdit }: { personId: string; personLabel: string; canEdit: boolean }) {
+function PreferencePanel({
+  personId,
+  personLabel,
+  canEdit,
+}: {
+  personId: string;
+  personLabel: string;
+  canEdit: boolean;
+}) {
   const { data, isLoading, error } = usePreferences(personId);
   const [banner, setBanner] = useState<string | null>(null);
   const [consentChannel, setConsentChannel] = useState<(typeof CONSENT_CHANNELS)[number]['value']>('portal');
@@ -212,7 +227,10 @@ function PreferencePanel({ personId, personLabel, canEdit }: { personId: string;
               <Field label="Channel">{titleCase(data.consent.channel)}</Field>
             </dl>
           ) : (
-            <EmptyState message="No marketing consent recorded yet." hint="A send cannot reach this person until consent is recorded." />
+            <EmptyState
+              message="No marketing consent recorded yet."
+              hint="A send cannot reach this person until consent is recorded."
+            />
           )}
 
           {canEdit && (
@@ -220,7 +238,11 @@ function PreferencePanel({ personId, personLabel, canEdit }: { personId: string;
               <div className="grid gap-2 sm:grid-cols-2">
                 <label className="block">
                   <span className="label">How it was given</span>
-                  <select className="input" value={consentChannel} onChange={(e) => setConsentChannel(e.target.value as typeof consentChannel)}>
+                  <select
+                    className="input"
+                    value={consentChannel}
+                    onChange={(e) => setConsentChannel(e.target.value as typeof consentChannel)}
+                  >
                     {CONSENT_CHANNELS.map((c) => (
                       <option key={c.value} value={c.value}>
                         {c.label}
@@ -230,7 +252,12 @@ function PreferencePanel({ personId, personLabel, canEdit }: { personId: string;
                 </label>
                 <label className="block">
                   <span className="label">Evidence (optional)</span>
-                  <input className="input" value={evidence} onChange={(e) => setEvidence(e.target.value)} placeholder="Form ref, recording ref…" />
+                  <input
+                    className="input"
+                    value={evidence}
+                    onChange={(e) => setEvidence(e.target.value)}
+                    placeholder="Form ref, recording ref…"
+                  />
                 </label>
               </div>
               <div className="flex gap-2">
@@ -251,7 +278,8 @@ function PreferencePanel({ personId, personLabel, canEdit }: { personId: string;
                     className="btn-ghost text-band-critical"
                     disabled={withdraw.isPending}
                     onClick={() => {
-                      const reason = withdrawReason || prompt('Reason for withdrawing consent (optional)?') || undefined;
+                      const reason =
+                        withdrawReason || prompt('Reason for withdrawing consent (optional)?') || undefined;
                       withdraw.mutate({ personId, reason }, { onError: (e) => setBanner(messageOf(e)) });
                     }}
                   >
@@ -325,17 +353,29 @@ function PreferencePanel({ personId, personLabel, canEdit }: { personId: string;
             const pref = channelMap.get(ck);
             const optedIn = pref?.optedIn ?? false;
             return (
-              <div key={ck} className="flex items-center justify-between gap-2 rounded-md border border-ink-800 bg-ink-900 px-3 py-2">
+              <div
+                key={ck}
+                className="flex items-center justify-between gap-2 rounded-md border border-ink-800 bg-ink-900 px-3 py-2"
+              >
                 <div>
                   <p className="text-xs text-ink-100">{CHANNEL_KEY_LABELS[ck]}</p>
-                  {pref && <p className="text-2xs text-ink-500">since {dateTime(pref.changedAt)} · {titleCase(pref.source)}</p>}
+                  {pref && (
+                    <p className="text-2xs text-ink-500">
+                      since {dateTime(pref.changedAt)} · {titleCase(pref.source)}
+                    </p>
+                  )}
                 </div>
                 {canEdit ? (
                   <button
                     className={`chip ${optedIn ? 'border-band-strong/40 bg-band-strong/10 text-band-strong' : 'border-ink-700 text-ink-400'}`}
                     onClick={() =>
                       setChannel.mutate(
-                        { personId, channelKey: ck as ChannelKey, optedIn: !optedIn, source: 'agent' as PreferenceChangeSource },
+                        {
+                          personId,
+                          channelKey: ck as ChannelKey,
+                          optedIn: !optedIn,
+                          source: 'agent' as PreferenceChangeSource,
+                        },
                         { onError: (e) => setBanner(messageOf(e)) },
                       )
                     }

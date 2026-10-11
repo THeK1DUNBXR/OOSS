@@ -12,7 +12,10 @@ import { handler } from '../../lib/http.js';
 
 const router = Router();
 
-router.get('*', handler(async () => ({ items: [] })));
+router.get(
+  '*',
+  handler(async () => ({ items: [] })),
+);
 
 router.post(
   '*',

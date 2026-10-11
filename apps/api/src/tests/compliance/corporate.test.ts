@@ -15,7 +15,14 @@ import {
   enrolMfa,
   confirmMfa,
 } from '../../lib/auth.js';
-import { hotpRaw, totpRaw, totp, verifyTotp, generateTotpSecret, otpauthUri } from '../../domains/compliance/corporate/totp.js';
+import {
+  hotpRaw,
+  totpRaw,
+  totp,
+  verifyTotp,
+  generateTotpSecret,
+  otpauthUri,
+} from '../../domains/compliance/corporate/totp.js';
 import {
   createBoardMeeting,
   recordBoardMeeting,
@@ -45,7 +52,11 @@ describe('CMP-COR-001: the API refuses insecure JWT secrets outside test/develop
   });
 
   it('throws when JWT_SECRET is a known fallback value, in production', () => {
-    for (const fallback of ['dev-secret-change-me', 'change-me-in-production', 'docker-development-secret-not-for-production']) {
+    for (const fallback of [
+      'dev-secret-change-me',
+      'change-me-in-production',
+      'docker-development-secret-not-for-production',
+    ]) {
       expect(() => assertProductionSecrets({ NODE_ENV: 'production', JWT_SECRET: fallback })).toThrow(/placeholder/);
     }
   });
@@ -56,7 +67,12 @@ describe('CMP-COR-001: the API refuses insecure JWT secrets outside test/develop
   });
 
   it('passes silently with a real secret in production', () => {
-    expect(() => assertProductionSecrets({ NODE_ENV: 'production', JWT_SECRET: 'a-genuinely-random-64-char-secret-nobody-would-guess-or-reuse' })).not.toThrow();
+    expect(() =>
+      assertProductionSecrets({
+        NODE_ENV: 'production',
+        JWT_SECRET: 'a-genuinely-random-64-char-secret-nobody-would-guess-or-reuse',
+      }),
+    ).not.toThrow();
   });
 });
 
@@ -187,10 +203,25 @@ async function createLoginFixture(password: string) {
   const stamp = `${Date.now()}${Math.floor(Math.random() * 10_000)}`;
   const email = `mfa-fixture-${stamp}@fixture.test`;
   const person = await unscopedPrisma.person.create({
-    data: { tenantId: TENANT, recordCode: `PER-MFAFIX-${stamp}`, fullName: 'MFA Fixture', primaryEmail: email, primaryEmailNormalised: email, source: 'test' },
+    data: {
+      tenantId: TENANT,
+      recordCode: `PER-MFAFIX-${stamp}`,
+      fullName: 'MFA Fixture',
+      primaryEmail: email,
+      primaryEmailNormalised: email,
+      source: 'test',
+    },
   });
   await unscopedPrisma.affiliation.create({
-    data: { tenantId: TENANT, partyId: person.id, affiliationType: 'employee', counterpartyName: 'Fixture', roleSlug: 'employee', primaryFlag: true, status: 'active' },
+    data: {
+      tenantId: TENANT,
+      partyId: person.id,
+      affiliationType: 'employee',
+      counterpartyName: 'Fixture',
+      roleSlug: 'employee',
+      primaryFlag: true,
+      status: 'active',
+    },
   });
   const user = await unscopedPrisma.user.create({
     data: { tenantId: TENANT, personId: person.id, email, passwordHash: await hashPassword(password) },
@@ -214,7 +245,10 @@ describe('login: lockout', () => {
 
     // Simulate the lock having expired, and confirm a correct password then
     // succeeds and clears the counters.
-    await unscopedPrisma.user.update({ where: { id: fixture.userId }, data: { lockedUntil: new Date(Date.now() - 1000) } });
+    await unscopedPrisma.user.update({
+      where: { id: fixture.userId },
+      data: { lockedUntil: new Date(Date.now() - 1000) },
+    });
     const result = await login(fixture.email, 'a-correct-passphrase-12');
     expect('token' in result).toBe(true);
 
@@ -268,9 +302,14 @@ describe('login: MFA (CMP-COR-002)', () => {
 describe('CMP-COR-002: an approve-shaped action requires MFA enrolment for a policy-named role', () => {
   it('refuses when the role is named in the policy and MFA is not enrolled', async () => {
     await asUser('finance@kaizen.co.in', async () => {
-      const financeUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'finance@kaizen.co.in', tenantId: TENANT } });
+      const financeUser = await unscopedPrisma.user.findFirstOrThrow({
+        where: { email: 'finance@kaizen.co.in', tenantId: TENANT },
+      });
       // Guaranteed unenrolled for this assertion, regardless of prior test state.
-      await unscopedPrisma.user.update({ where: { id: financeUser.id }, data: { mfaSecret: null, mfaEnabledAt: null } });
+      await unscopedPrisma.user.update({
+        where: { id: financeUser.id },
+        data: { mfaSecret: null, mfaEnabledAt: null },
+      });
 
       const err = await expectReject(() => assertStepUpForApprove('Approving a refund'));
       expect(err.message).toMatch(/MFA/);
@@ -279,16 +318,24 @@ describe('CMP-COR-002: an approve-shaped action requires MFA enrolment for a pol
 
   it('passes once the role has MFA enrolled', async () => {
     await asUser('finance@kaizen.co.in', async () => {
-      const financeUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'finance@kaizen.co.in', tenantId: TENANT } });
+      const financeUser = await unscopedPrisma.user.findFirstOrThrow({
+        where: { email: 'finance@kaizen.co.in', tenantId: TENANT },
+      });
       const secret = generateTotpSecret();
-      await unscopedPrisma.user.update({ where: { id: financeUser.id }, data: { mfaSecret: secret, mfaEnabledAt: new Date() } });
+      await unscopedPrisma.user.update({
+        where: { id: financeUser.id },
+        data: { mfaSecret: secret, mfaEnabledAt: new Date() },
+      });
 
       // asUser's fixed principal carries stepUpVerified: true, which is what a
       // completed /auth/mfa/verify sets on a real session — this checks the
       // gate's "enrolled" branch, not the login-flow challenge (covered above).
       await expect(assertStepUpForApprove('Approving a refund')).resolves.toBeUndefined();
 
-      await unscopedPrisma.user.update({ where: { id: financeUser.id }, data: { mfaSecret: null, mfaEnabledAt: null } });
+      await unscopedPrisma.user.update({
+        where: { id: financeUser.id },
+        data: { mfaSecret: null, mfaEnabledAt: null },
+      });
     });
   });
 });
@@ -297,7 +344,7 @@ describe('CMP-COR-002: an approve-shaped action requires MFA enrolment for a pol
 // CMP-COR-003: a board resolution is immutable once its meeting is recorded
 // ---------------------------------------------------------------------------
 
-describe('CMP-COR-003: a recorded board meeting\'s resolutions are immutable', () => {
+describe("CMP-COR-003: a recorded board meeting's resolutions are immutable", () => {
   it('a resolution added after recording must correct an existing one, and the original text never changes', async () => {
     await asUser('chairman@kaizen.co.in', async () => {
       const meeting = await createBoardMeeting({ kind: 'board', heldOn: new Date('2026-04-01') });
@@ -343,7 +390,7 @@ describe('CMP-COR-003: a recorded board meeting\'s resolutions are immutable', (
 // ---------------------------------------------------------------------------
 
 describe('statutory registers are append-only', () => {
-  it('a superseding entry must reference the current head of its subject\'s chain', async () => {
+  it("a superseding entry must reference the current head of its subject's chain", async () => {
     await asUser('chairman@kaizen.co.in', async () => {
       const first = await createRegisterEntry({
         registerKind: 'directors',
@@ -394,10 +441,20 @@ describe('CMP-COR-004: a refund is its own Movement fact', () => {
 
     // Approving and paying a refund are gated by CMP-COR-002 for finance_head
     // and chairman — enrol both for this test, and clear them afterward.
-    const financeUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'finance@kaizen.co.in', tenantId: TENANT } });
-    const chairmanUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'chairman@kaizen.co.in', tenantId: TENANT } });
-    await unscopedPrisma.user.update({ where: { id: financeUser.id }, data: { mfaSecret: generateTotpSecret(), mfaEnabledAt: new Date() } });
-    await unscopedPrisma.user.update({ where: { id: chairmanUser.id }, data: { mfaSecret: generateTotpSecret(), mfaEnabledAt: new Date() } });
+    const financeUser = await unscopedPrisma.user.findFirstOrThrow({
+      where: { email: 'finance@kaizen.co.in', tenantId: TENANT },
+    });
+    const chairmanUser = await unscopedPrisma.user.findFirstOrThrow({
+      where: { email: 'chairman@kaizen.co.in', tenantId: TENANT },
+    });
+    await unscopedPrisma.user.update({
+      where: { id: financeUser.id },
+      data: { mfaSecret: generateTotpSecret(), mfaEnabledAt: new Date() },
+    });
+    await unscopedPrisma.user.update({
+      where: { id: chairmanUser.id },
+      data: { mfaSecret: generateTotpSecret(), mfaEnabledAt: new Date() },
+    });
 
     try {
       const refund = await asUser('finance@kaizen.co.in', () =>
@@ -417,7 +474,9 @@ describe('CMP-COR-004: a refund is its own Movement fact', () => {
       expect(paid.status).toBe('paid');
       expect(paid.paidPaymentId).toBeTruthy();
 
-      const txn = await asUser('chairman@kaizen.co.in', () => prisma.transaction.findFirstOrThrow({ where: { id: paid.paidPaymentId! } }));
+      const txn = await asUser('chairman@kaizen.co.in', () =>
+        prisma.transaction.findFirstOrThrow({ where: { id: paid.paidPaymentId! } }),
+      );
       expect(txn.source).toBe('refund');
       expect(txn.direction).toBe('out');
       expect(Number(txn.amount.toString())).toBe(500);
@@ -426,8 +485,14 @@ describe('CMP-COR-004: a refund is its own Movement fact', () => {
       // the transaction are the only two rows this test produced.
       expect(refund.receiptId).toBe('REC-fixture-0001');
     } finally {
-      await unscopedPrisma.user.update({ where: { id: financeUser.id }, data: { mfaSecret: null, mfaEnabledAt: null } });
-      await unscopedPrisma.user.update({ where: { id: chairmanUser.id }, data: { mfaSecret: null, mfaEnabledAt: null } });
+      await unscopedPrisma.user.update({
+        where: { id: financeUser.id },
+        data: { mfaSecret: null, mfaEnabledAt: null },
+      });
+      await unscopedPrisma.user.update({
+        where: { id: chairmanUser.id },
+        data: { mfaSecret: null, mfaEnabledAt: null },
+      });
     }
   });
 });
@@ -439,18 +504,35 @@ describe('CMP-COR-004: a refund is its own Movement fact', () => {
 describe('certificate verification', () => {
   it('issues a certificate with a unique verification code, and verifies it back', async () => {
     const { issueCertificate, verifyCertificate } = await import('../../domains/compliance/corporate.js');
-    const certificate = await asUser('chairman@kaizen.co.in', () =>
-      issueCertificate({ enrollmentId: 'ENR-fixture-0001', kind: 'completion', snapshot: { learnerName: 'Test Learner', courseName: 'Test Course' } }),
-    );
-    expect(certificate.number).toMatch(/\/T\//);
-
-    const verified = await asUser('chairman@kaizen.co.in', () => verifyCertificate(certificate.verificationCode));
-    expect(verified.valid).toBe(true);
-    expect(verified.number).toBe(certificate.number);
-
-    await asUser('chairman@kaizen.co.in', async () => {
-      const bad = await expectReject(() => verifyCertificate('not-a-real-code'));
-      expect(bad.message).toMatch(/not found/i);
+    // A certificate needs a real, completed enrolment behind it (FX-80).
+    const enrolment = await unscopedPrisma.enrollment.findFirstOrThrow({ where: { tenantId: await tenantId() } });
+    await unscopedPrisma.enrollment.update({
+      where: { id: enrolment.id },
+      data: { status: 'completed', completedAt: new Date() },
     });
+    try {
+      const certificate = await asUser('chairman@kaizen.co.in', () =>
+        issueCertificate({
+          enrollmentId: enrolment.id,
+          kind: 'completion',
+          snapshot: { learnerName: 'Test Learner', courseName: 'Test Course' },
+        }),
+      );
+      expect(certificate.number).toMatch(/\/T\//);
+
+      const verified = await asUser('chairman@kaizen.co.in', () => verifyCertificate(certificate.verificationCode));
+      expect(verified.valid).toBe(true);
+      expect(verified.number).toBe(certificate.number);
+
+      await asUser('chairman@kaizen.co.in', async () => {
+        const bad = await expectReject(() => verifyCertificate('not-a-real-code'));
+        expect(bad.message).toMatch(/not found/i);
+      });
+    } finally {
+      await unscopedPrisma.enrollment.update({
+        where: { id: enrolment.id },
+        data: { status: enrolment.status, completedAt: enrolment.completedAt },
+      });
+    }
   });
 });

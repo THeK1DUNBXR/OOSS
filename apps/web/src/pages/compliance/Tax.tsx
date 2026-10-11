@@ -10,10 +10,30 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, money, date } from '../../lib/api.js';
-import { Card, EmptyState, ErrorBox, Field, Loading, Modal, PageHeader, RecordCode, StatusChip, Tabs } from '../../components/ui.js';
+import {
+  Card,
+  EmptyState,
+  ErrorBox,
+  Field,
+  Loading,
+  Modal,
+  PageHeader,
+  RecordCode,
+  StatusChip,
+  Tabs,
+} from '../../components/ui.js';
 import { TextInput, SelectInput, Row, messageOf } from '../../components/forms.js';
 
-const TDS_SECTIONS = ['194C_IND', '194C_COMP', '194J_PROF', '194J_TECH', '194H', '194I_LAND', '194I_PLANT', '194Q'] as const;
+const TDS_SECTIONS = [
+  '194C_IND',
+  '194C_COMP',
+  '194J_PROF',
+  '194J_TECH',
+  '194H',
+  '194I_LAND',
+  '194I_PLANT',
+  '194Q',
+] as const;
 
 type Tab = 'bills' | 'challans' | 'salary' | 'returns' | 'certificates' | 'advance' | 'msme';
 
@@ -21,7 +41,10 @@ export function ComplianceTax() {
   const [tab, setTab] = useState<Tab>('bills');
   return (
     <div>
-      <PageHeader title="Tax" subtitle="TDS on vendor bills and salary, challans, returns and certificates. Prepares, does not transmit." />
+      <PageHeader
+        title="Tax"
+        subtitle="TDS on vendor bills and salary, challans, returns and certificates. Prepares, does not transmit."
+      />
       <Tabs
         tabs={[
           { key: 'bills', label: 'TDS on bills' },
@@ -65,7 +88,10 @@ interface VendorBillRow {
 function BillsTab() {
   const qc = useQueryClient();
   const [target, setTarget] = useState<VendorBillRow | null>(null);
-  const bills = useQuery({ queryKey: ['tds-bills'], queryFn: () => api.get<VendorBillRow[]>('/compliance/tax/vendor-bills') });
+  const bills = useQuery({
+    queryKey: ['tds-bills'],
+    queryFn: () => api.get<VendorBillRow[]>('/compliance/tax/vendor-bills'),
+  });
 
   if (bills.error) return <ErrorBox error={bills.error} />;
   if (bills.isLoading) return <Loading />;
@@ -124,7 +150,15 @@ function BillsTab() {
   );
 }
 
-function SetSectionModal({ bill, onClose, onDone }: { bill: VendorBillRow | null; onClose: () => void; onDone: () => void }) {
+function SetSectionModal({
+  bill,
+  onClose,
+  onDone,
+}: {
+  bill: VendorBillRow | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const [section, setSection] = useState<string>('194C_IND');
   const [certificateRef, setCertificateRef] = useState('');
   const [certificateRate, setCertificateRate] = useState('');
@@ -145,11 +179,24 @@ function SetSectionModal({ bill, onClose, onDone }: { bill: VendorBillRow | null
     <Modal open={Boolean(bill)} title={bill ? `TDS on ${bill.recordCode}` : ''} onClose={onClose}>
       {error && <p className="mb-3 text-xs text-band-critical">{error}</p>}
       <Row>
-        <SelectInput label="Section" value={section} onChange={setSection} options={TDS_SECTIONS.map((s) => ({ value: s, label: s }))} />
+        <SelectInput
+          label="Section"
+          value={section}
+          onChange={setSection}
+          options={TDS_SECTIONS.map((s) => ({ value: s, label: s }))}
+        />
       </Row>
       <Row>
-        <TextInput label="Sec 197 certificate reference (optional)" value={certificateRef} onChange={setCertificateRef} />
-        <TextInput label="Certificate rate % (optional, overrides the table)" value={certificateRate} onChange={setCertificateRate} />
+        <TextInput
+          label="Sec 197 certificate reference (optional)"
+          value={certificateRef}
+          onChange={setCertificateRef}
+        />
+        <TextInput
+          label="Certificate rate % (optional, overrides the table)"
+          value={certificateRate}
+          onChange={setCertificateRate}
+        />
       </Row>
       <div className="mt-4 flex justify-end gap-2">
         <button className="btn-ghost" onClick={onClose}>
@@ -181,7 +228,10 @@ interface Challan {
 
 function ChallansTab() {
   const qc = useQueryClient();
-  const challans = useQuery({ queryKey: ['tds-challans'], queryFn: () => api.get<Challan[]>('/compliance/tax/challans') });
+  const challans = useQuery({
+    queryKey: ['tds-challans'],
+    queryFn: () => api.get<Challan[]>('/compliance/tax/challans'),
+  });
   const [paying, setPaying] = useState<Challan | null>(null);
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [sectionGroup, setSectionGroup] = useState('194C_IND');
@@ -199,7 +249,12 @@ function ChallansTab() {
     <>
       <div className="mb-4 flex flex-wrap items-end gap-2">
         <TextInput label="Month (YYYY-MM)" value={month} onChange={setMonth} />
-        <SelectInput label="Section group" value={sectionGroup} onChange={setSectionGroup} options={[...TDS_SECTIONS, '192'].map((s) => ({ value: s, label: s }))} />
+        <SelectInput
+          label="Section group"
+          value={sectionGroup}
+          onChange={setSectionGroup}
+          options={[...TDS_SECTIONS, '192'].map((s) => ({ value: s, label: s }))}
+        />
         <button className="btn-primary" disabled={create.isPending} onClick={() => create.mutate()}>
           Prepare challan
         </button>
@@ -260,7 +315,15 @@ function ChallansTab() {
   );
 }
 
-function MarkChallanPaidModal({ challan, onClose, onDone }: { challan: Challan | null; onClose: () => void; onDone: () => void }) {
+function MarkChallanPaidModal({
+  challan,
+  onClose,
+  onDone,
+}: {
+  challan: Challan | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const [bsrCode, setBsrCode] = useState('');
   const [challanNo, setChallanNo] = useState('');
   const [paidOn, setPaidOn] = useState(new Date().toISOString().slice(0, 10));
@@ -301,10 +364,14 @@ function MarkChallanPaidModal({ challan, onClose, onDone }: { challan: Challan |
 function SalaryTab() {
   const [employmentId, setEmploymentId] = useState('');
   const [fy, setFy] = useState('');
-  const currentFy = useQuery({ queryKey: ['current-fy'], queryFn: () => api.get<{ fy: string }>('/compliance/tax/current-fy') });
+  const currentFy = useQuery({
+    queryKey: ['current-fy'],
+    queryFn: () => api.get<{ fy: string }>('/compliance/tax/current-fy'),
+  });
   const projection = useQuery({
     queryKey: ['salary-projection', employmentId, fy],
-    queryFn: () => api.get<Record<string, unknown>>(`/compliance/tax/salary/${employmentId}/projection${fy ? `?fy=${fy}` : ''}`),
+    queryFn: () =>
+      api.get<Record<string, unknown>>(`/compliance/tax/salary/${employmentId}/projection${fy ? `?fy=${fy}` : ''}`),
     enabled: Boolean(employmentId),
   });
 
@@ -354,7 +421,10 @@ interface TdsReturnRow {
 
 function ReturnsTab() {
   const qc = useQueryClient();
-  const returns = useQuery({ queryKey: ['tds-returns'], queryFn: () => api.get<TdsReturnRow[]>('/compliance/tax/returns') });
+  const returns = useQuery({
+    queryKey: ['tds-returns'],
+    queryFn: () => api.get<TdsReturnRow[]>('/compliance/tax/returns'),
+  });
   const [fy, setFy] = useState('');
   const [quarter, setQuarter] = useState('Q1');
   const [form, setForm] = useState('26Q');
@@ -380,8 +450,21 @@ function ReturnsTab() {
     <div>
       <div className="mb-4 flex flex-wrap items-end gap-2">
         <TextInput label="FY" value={fy} onChange={setFy} />
-        <SelectInput label="Quarter" value={quarter} onChange={setQuarter} options={['Q1', 'Q2', 'Q3', 'Q4'].map((q) => ({ value: q, label: q }))} />
-        <SelectInput label="Form" value={form} onChange={setForm} options={[{ value: '26Q', label: '26Q — vendors' }, { value: '24Q', label: '24Q — salary' }]} />
+        <SelectInput
+          label="Quarter"
+          value={quarter}
+          onChange={setQuarter}
+          options={['Q1', 'Q2', 'Q3', 'Q4'].map((q) => ({ value: q, label: q }))}
+        />
+        <SelectInput
+          label="Form"
+          value={form}
+          onChange={setForm}
+          options={[
+            { value: '26Q', label: '26Q — vendors' },
+            { value: '24Q', label: '24Q — salary' },
+          ]}
+        />
         <button className="btn-primary" disabled={prepare.isPending} onClick={() => prepare.mutate()}>
           Prepare
         </button>
@@ -415,10 +498,18 @@ function ReturnsTab() {
                   <td className="text-right tabular-nums text-xs">{r.snapshot?.totals?.deducteeCount ?? 0}</td>
                   <td className="text-right tabular-nums text-xs">{money(r.snapshot?.totals?.totalTds ?? 0)}</td>
                   <td>
-                    <StatusChip status={r.status} tone={r.status === 'filed' ? 'good' : r.status === 'superseded' ? 'neutral' : 'warn'} />
+                    <StatusChip
+                      status={r.status}
+                      tone={r.status === 'filed' ? 'good' : r.status === 'superseded' ? 'neutral' : 'warn'}
+                    />
                   </td>
                   <td className="whitespace-nowrap">
-                    <button className="btn-ghost" onClick={() => api.download(`/compliance/tax/returns/${r.id}/export`, `${r.form}-${r.fy}-${r.quarter}.csv`)}>
+                    <button
+                      className="btn-ghost"
+                      onClick={() =>
+                        api.download(`/compliance/tax/returns/${r.id}/export`, `${r.form}-${r.fy}-${r.quarter}.csv`)
+                      }
+                    >
                       CSV
                     </button>
                     {r.status === 'prepared' && (
@@ -433,9 +524,15 @@ function ReturnsTab() {
           </table>
         </Card>
       )}
-      <p className="mt-3 text-2xs text-ink-600">Returns are prepared here and filed on the portal — this platform does not transmit them.</p>
+      <p className="mt-3 text-2xs text-ink-600">
+        Returns are prepared here and filed on the portal — this platform does not transmit them.
+      </p>
 
-      <Modal open={Boolean(filing)} title={filing ? `File ${filing.form} — ${filing.fy} ${filing.quarter}` : ''} onClose={() => setFiling(null)}>
+      <Modal
+        open={Boolean(filing)}
+        title={filing ? `File ${filing.form} — ${filing.fy} ${filing.quarter}` : ''}
+        onClose={() => setFiling(null)}
+      >
         <Row>
           <TextInput label="Portal acknowledgement token" value={ack} onChange={setAck} />
         </Row>
@@ -468,7 +565,10 @@ interface Certificate {
 
 function CertificatesTab() {
   const qc = useQueryClient();
-  const certs = useQuery({ queryKey: ['tds-certificates'], queryFn: () => api.get<Certificate[]>('/compliance/tax/certificates') });
+  const certs = useQuery({
+    queryKey: ['tds-certificates'],
+    queryFn: () => api.get<Certificate[]>('/compliance/tax/certificates'),
+  });
   const [form, setForm] = useState<'16A' | '16'>('16A');
   const [deducteeRef, setDeducteeRef] = useState('');
   const [fy, setFy] = useState('');
@@ -476,7 +576,8 @@ function CertificatesTab() {
   const [error, setError] = useState<string | null>(null);
 
   const issue = useMutation({
-    mutationFn: () => api.post('/compliance/tax/certificates', { form, deducteeRef, fy, quarter: form === '16A' ? quarter : null }),
+    mutationFn: () =>
+      api.post('/compliance/tax/certificates', { form, deducteeRef, fy, quarter: form === '16A' ? quarter : null }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tds-certificates'] }),
     onError: (e: unknown) => setError(messageOf(e)),
   });
@@ -484,10 +585,29 @@ function CertificatesTab() {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-end gap-2">
-        <SelectInput label="Form" value={form} onChange={(v) => setForm(v as '16A' | '16')} options={[{ value: '16A', label: '16A — vendor' }, { value: '16', label: '16 — employee' }]} />
-        <TextInput label={form === '16A' ? 'Vendor PAN (or name)' : 'Employment relationship id'} value={deducteeRef} onChange={setDeducteeRef} />
+        <SelectInput
+          label="Form"
+          value={form}
+          onChange={(v) => setForm(v as '16A' | '16')}
+          options={[
+            { value: '16A', label: '16A — vendor' },
+            { value: '16', label: '16 — employee' },
+          ]}
+        />
+        <TextInput
+          label={form === '16A' ? 'Vendor PAN (or name)' : 'Employment relationship id'}
+          value={deducteeRef}
+          onChange={setDeducteeRef}
+        />
         <TextInput label="FY" value={fy} onChange={setFy} />
-        {form === '16A' && <SelectInput label="Quarter" value={quarter} onChange={setQuarter} options={['Q1', 'Q2', 'Q3', 'Q4'].map((q) => ({ value: q, label: q }))} />}
+        {form === '16A' && (
+          <SelectInput
+            label="Quarter"
+            value={quarter}
+            onChange={setQuarter}
+            options={['Q1', 'Q2', 'Q3', 'Q4'].map((q) => ({ value: q, label: q }))}
+          />
+        )}
         <button className="btn-primary" disabled={issue.isPending} onClick={() => issue.mutate()}>
           Issue
         </button>
@@ -523,7 +643,10 @@ function CertificatesTab() {
                   </td>
                   <td className="text-2xs text-ink-400">{date(c.issuedAt)}</td>
                   <td>
-                    <button className="btn-ghost" onClick={() => api.download(`/compliance/tax/certificates/${c.id}/document`, `${c.number}.json`)}>
+                    <button
+                      className="btn-ghost"
+                      onClick={() => api.download(`/compliance/tax/certificates/${c.id}/document`, `${c.number}.json`)}
+                    >
                       Document
                     </button>
                   </td>
@@ -543,11 +666,26 @@ function CertificatesTab() {
 
 function AdvanceTaxTab() {
   const [fy, setFy] = useState('');
-  const currentFy = useQuery({ queryKey: ['current-fy'], queryFn: () => api.get<{ fy: string }>('/compliance/tax/current-fy') });
+  const currentFy = useQuery({
+    queryKey: ['current-fy'],
+    queryFn: () => api.get<{ fy: string }>('/compliance/tax/current-fy'),
+  });
   const effectiveFy = fy || currentFy.data?.fy || '';
   const estimate = useQuery({
     queryKey: ['advance-tax', effectiveFy],
-    queryFn: () => api.get<{ ytdProfit: number; ratePercent: number; estimatedAnnualTax: number; schedule: Array<{ label: string; dueDate: string; cumulativeDue: number; paidSoFar: number; outstanding: number }> }>(`/compliance/tax/advance-tax/${effectiveFy}`),
+    queryFn: () =>
+      api.get<{
+        ytdProfit: number;
+        ratePercent: number;
+        estimatedAnnualTax: number;
+        schedule: Array<{
+          label: string;
+          dueDate: string;
+          cumulativeDue: number;
+          paidSoFar: number;
+          outstanding: number;
+        }>;
+      }>(`/compliance/tax/advance-tax/${effectiveFy}`),
     enabled: Boolean(effectiveFy),
   });
 
@@ -563,7 +701,8 @@ function AdvanceTaxTab() {
           <Card>
             <p className="text-xs text-ink-400">
               YTD profit {money(estimate.data.ytdProfit)} × {estimate.data.ratePercent}% (Sec 115BAA) ≈{' '}
-              <span className="font-semibold text-ink-100">{money(estimate.data.estimatedAnnualTax)}</span> estimated annual tax.
+              <span className="font-semibold text-ink-100">{money(estimate.data.estimatedAnnualTax)}</span> estimated
+              annual tax.
             </p>
           </Card>
           <Card bodyClassName="p-0 overflow-x-auto mt-3">
@@ -604,9 +743,17 @@ function MsmeTab() {
   const exposure = useQuery({
     queryKey: ['msme-exposure'],
     queryFn: () =>
-      api.get<{ exposure: number; bills: Array<{ id: string; recordCode: string; vendorName: string; msmeDueAt: string; total: number; paidAmount: number }> }>(
-        '/compliance/tax/msme/exposure',
-      ),
+      api.get<{
+        exposure: number;
+        bills: Array<{
+          id: string;
+          recordCode: string;
+          vendorName: string;
+          msmeDueAt: string;
+          total: number;
+          paidAmount: number;
+        }>;
+      }>('/compliance/tax/msme/exposure'),
   });
 
   if (exposure.error) return <ErrorBox error={exposure.error} />;
@@ -617,8 +764,9 @@ function MsmeTab() {
     <div>
       <Card>
         <p className="text-xs text-ink-400">
-          Sec 43B(h) disallowance exposure right now: <span className="font-semibold text-band-watch">{money(data.exposure)}</span> across{' '}
-          {data.bills.length} unpaid bill{data.bills.length === 1 ? '' : 's'} past their agreed term.
+          Sec 43B(h) disallowance exposure right now:{' '}
+          <span className="font-semibold text-band-watch">{money(data.exposure)}</span> across {data.bills.length}{' '}
+          unpaid bill{data.bills.length === 1 ? '' : 's'} past their agreed term.
         </p>
       </Card>
       {data.bills.length === 0 ? (

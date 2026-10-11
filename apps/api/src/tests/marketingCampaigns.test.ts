@@ -24,7 +24,13 @@ import {
   cancelCampaign,
   type CampaignCreateInput,
 } from '../domains/marketing/campaigns.js';
-import { createBudget, recordSpend, reconcileSpend, budgetVariance, detectOverBudget } from '../domains/marketing/budget.js';
+import {
+  createBudget,
+  recordSpend,
+  reconcileSpend,
+  budgetVariance,
+  detectOverBudget,
+} from '../domains/marketing/budget.js';
 
 let TENANT: string;
 
@@ -276,7 +282,7 @@ describe('MKT-CMP — cross-tenant reach', () => {
 
 describe('MKT-BUD-001 — budget variance is not measured without an approved budget', () => {
   it('a created-but-unapproved budget reports measured:false', async () => {
-    const period = `2031-${String((Math.floor(Math.random() * 12) + 1)).padStart(2, '0')}`;
+    const period = `2031-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}`;
     const division = 'software';
 
     await asUser(OPERATIONS, async () => {

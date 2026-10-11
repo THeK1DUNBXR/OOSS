@@ -116,9 +116,7 @@ export function computeTds(input: ComputeTdsInput): ComputeTdsResult {
     };
   }
 
-  const rate = input.panPresent
-    ? input.ratePercent
-    : Math.max(input.ratePercent, input.panMissingRatePercent);
+  const rate = input.panPresent ? input.ratePercent : Math.max(input.ratePercent, input.panMissingRatePercent);
 
   return {
     applicable: true,

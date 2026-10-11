@@ -11,7 +11,16 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, date, money } from '../../lib/api.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip, Tabs, Metric } from '../../components/ui.js';
-import { CreateModal, messageOf, MoneyInput, NewButton, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
+import {
+  CreateModal,
+  messageOf,
+  MoneyInput,
+  NewButton,
+  Row,
+  SelectInput,
+  TextArea,
+  TextInput,
+} from '../../components/forms.js';
 
 type Tab = 'programs' | 'sessions' | 'enrollments' | 'certifications' | 'mandatory' | 'idps' | 'budget';
 
@@ -66,14 +75,21 @@ function ProgramsTab() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
-    title: '', kind: 'classroom' as 'classroom' | 'online' | 'certification' | 'mandatory',
-    provider: '', cost: '0', validityMonths: '',
+    title: '',
+    kind: 'classroom' as 'classroom' | 'online' | 'certification' | 'mandatory',
+    provider: '',
+    cost: '0',
+    validityMonths: '',
   });
 
-  const programs = useQuery({ queryKey: ['learning-programs'], queryFn: () => api.get<Program[]>('/hcm/learning/programs') });
+  const programs = useQuery({
+    queryKey: ['learning-programs'],
+    queryFn: () => api.get<Program[]>('/hcm/learning/programs'),
+  });
 
   const toggleActive = useMutation({
-    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => api.patch(`/hcm/learning/programs/${id}`, { isActive }),
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      api.patch(`/hcm/learning/programs/${id}`, { isActive }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['learning-programs'] }),
   });
 
@@ -105,13 +121,20 @@ function ProgramsTab() {
             {programs.data.map((p) => (
               <tr key={p.id}>
                 <td>{p.title}</td>
-                <td><StatusChip status={p.kind} /></td>
+                <td>
+                  <StatusChip status={p.kind} />
+                </td>
                 <td>{p.provider ?? '—'}</td>
                 <td className="tabular-nums">{money(p.cost)}</td>
                 <td>{p.validityMonths ? `${p.validityMonths} months` : '—'}</td>
-                <td><StatusChip status={p.isActive ? 'active' : 'inactive'} tone={p.isActive ? 'good' : 'neutral'} /></td>
+                <td>
+                  <StatusChip status={p.isActive ? 'active' : 'inactive'} tone={p.isActive ? 'good' : 'neutral'} />
+                </td>
                 <td className="text-right">
-                  <button className="btn text-2xs" onClick={() => toggleActive.mutate({ id: p.id, isActive: !p.isActive })}>
+                  <button
+                    className="btn text-2xs"
+                    onClick={() => toggleActive.mutate({ id: p.id, isActive: !p.isActive })}
+                  >
                     {p.isActive ? 'Deactivate' : 'Activate'}
                   </button>
                 </td>
@@ -136,7 +159,13 @@ function ProgramsTab() {
           })
         }
       >
-        <TextInput label="Title" value={form.title} onChange={(v) => setForm({ ...form, title: v })} required autoFocus />
+        <TextInput
+          label="Title"
+          value={form.title}
+          onChange={(v) => setForm({ ...form, title: v })}
+          required
+          autoFocus
+        />
         <Row>
           <SelectInput
             label="Kind"
@@ -187,8 +216,14 @@ function SessionsTab() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ programId: '', startsAt: '', endsAt: '', trainer: '', seats: '20', location: '' });
 
-  const programs = useQuery({ queryKey: ['learning-programs'], queryFn: () => api.get<Program[]>('/hcm/learning/programs') });
-  const sessions = useQuery({ queryKey: ['learning-sessions'], queryFn: () => api.get<Session[]>('/hcm/learning/sessions') });
+  const programs = useQuery({
+    queryKey: ['learning-programs'],
+    queryFn: () => api.get<Program[]>('/hcm/learning/programs'),
+  });
+  const sessions = useQuery({
+    queryKey: ['learning-sessions'],
+    queryFn: () => api.get<Session[]>('/hcm/learning/sessions'),
+  });
 
   const setStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: 'completed' | 'cancelled' }) =>
@@ -205,7 +240,10 @@ function SessionsTab() {
       {sessions.isLoading && <Loading />}
       {sessions.error && <ErrorBox error={sessions.error} />}
       {sessions.data && sessions.data.length === 0 && (
-        <EmptyState message="No sessions scheduled yet." hint="Add a program first, then schedule a session against it." />
+        <EmptyState
+          message="No sessions scheduled yet."
+          hint="Add a program first, then schedule a session against it."
+        />
       )}
       {sessions.data && sessions.data.length > 0 && (
         <table className="table">
@@ -228,10 +266,18 @@ function SessionsTab() {
                 <td>{s.trainer ?? '—'}</td>
                 <td className="tabular-nums">{s.seats}</td>
                 <td>{s.location ?? '—'}</td>
-                <td><StatusChip status={s.status} tone={s.status === 'completed' ? 'good' : s.status === 'cancelled' ? 'bad' : 'neutral'} /></td>
+                <td>
+                  <StatusChip
+                    status={s.status}
+                    tone={s.status === 'completed' ? 'good' : s.status === 'cancelled' ? 'bad' : 'neutral'}
+                  />
+                </td>
                 <td className="text-right">
                   {s.status === 'scheduled' && (
-                    <button className="btn text-2xs" onClick={() => setStatus.mutate({ id: s.id, status: 'completed' })}>
+                    <button
+                      className="btn text-2xs"
+                      onClick={() => setStatus.mutate({ id: s.id, status: 'completed' })}
+                    >
                       Mark completed
                     </button>
                   )}
@@ -267,8 +313,20 @@ function SessionsTab() {
           required
         />
         <Row>
-          <TextInput label="Starts" type="date" value={form.startsAt} onChange={(v) => setForm({ ...form, startsAt: v })} required />
-          <TextInput label="Ends" type="date" value={form.endsAt} onChange={(v) => setForm({ ...form, endsAt: v })} required />
+          <TextInput
+            label="Starts"
+            type="date"
+            value={form.startsAt}
+            onChange={(v) => setForm({ ...form, startsAt: v })}
+            required
+          />
+          <TextInput
+            label="Ends"
+            type="date"
+            value={form.endsAt}
+            onChange={(v) => setForm({ ...form, endsAt: v })}
+            required
+          />
         </Row>
         <Row>
           <TextInput label="Trainer" value={form.trainer} onChange={(v) => setForm({ ...form, trainer: v })} />
@@ -303,9 +361,15 @@ function EnrollmentsTab() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ sessionId: '', employmentRelationshipId: '' });
 
-  const sessions = useQuery({ queryKey: ['learning-sessions'], queryFn: () => api.get<Session[]>('/hcm/learning/sessions') });
+  const sessions = useQuery({
+    queryKey: ['learning-sessions'],
+    queryFn: () => api.get<Session[]>('/hcm/learning/sessions'),
+  });
   const employees = useQuery({ queryKey: ['learning-employees'], queryFn: () => api.get<Employee[]>('/hr/employees') });
-  const enrollments = useQuery({ queryKey: ['learning-enrollments'], queryFn: () => api.get<Enrollment[]>('/hcm/learning/enrollments') });
+  const enrollments = useQuery({
+    queryKey: ['learning-enrollments'],
+    queryFn: () => api.get<Enrollment[]>('/hcm/learning/enrollments'),
+  });
 
   const nameFor = (id: string) => employees.data?.find((e) => e.id === id)?.fullName ?? id;
 
@@ -318,7 +382,8 @@ function EnrollmentsTab() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['learning-enrollments'] }),
   });
   const attend = useMutation({
-    mutationFn: ({ id, attended }: { id: string; attended: boolean }) => api.post(`/hcm/learning/enrollments/${id}/attendance`, { attended }),
+    mutationFn: ({ id, attended }: { id: string; attended: boolean }) =>
+      api.post(`/hcm/learning/enrollments/${id}/attendance`, { attended }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['learning-enrollments'] }),
   });
   const complete = useMutation({
@@ -359,25 +424,41 @@ function EnrollmentsTab() {
                 <td>
                   <StatusChip
                     status={e.status}
-                    tone={e.status === 'completed' ? 'good' : e.status === 'rejected' || e.status === 'no_show' ? 'bad' : 'neutral'}
+                    tone={
+                      e.status === 'completed'
+                        ? 'good'
+                        : e.status === 'rejected' || e.status === 'no_show'
+                          ? 'bad'
+                          : 'neutral'
+                    }
                   />
                 </td>
                 <td className="tabular-nums">{e.score ?? '—'}</td>
                 <td className="text-right space-x-2">
                   {e.status === 'nominated' && (
                     <>
-                      <button className="btn text-2xs" onClick={() => approve.mutate(e.id)}>Approve</button>
-                      <button className="btn text-2xs" onClick={() => reject.mutate(e.id)}>Reject</button>
+                      <button className="btn text-2xs" onClick={() => approve.mutate(e.id)}>
+                        Approve
+                      </button>
+                      <button className="btn text-2xs" onClick={() => reject.mutate(e.id)}>
+                        Reject
+                      </button>
                     </>
                   )}
                   {e.status === 'approved' && (
                     <>
-                      <button className="btn text-2xs" onClick={() => attend.mutate({ id: e.id, attended: true })}>Attended</button>
-                      <button className="btn text-2xs" onClick={() => attend.mutate({ id: e.id, attended: false })}>No-show</button>
+                      <button className="btn text-2xs" onClick={() => attend.mutate({ id: e.id, attended: true })}>
+                        Attended
+                      </button>
+                      <button className="btn text-2xs" onClick={() => attend.mutate({ id: e.id, attended: false })}>
+                        No-show
+                      </button>
                     </>
                   )}
                   {e.status === 'attended' && (
-                    <button className="btn-primary text-2xs" onClick={() => complete.mutate(e.id)}>Complete</button>
+                    <button className="btn-primary text-2xs" onClick={() => complete.mutate(e.id)}>
+                      Complete
+                    </button>
                   )}
                 </td>
               </tr>
@@ -404,7 +485,10 @@ function EnrollmentsTab() {
           value={form.sessionId}
           onChange={(v) => setForm({ ...form, sessionId: v })}
           placeholder="Choose a session"
-          options={(sessions.data ?? []).map((s) => ({ value: s.id, label: `${s.program.title} — ${date(s.startsAt)}` }))}
+          options={(sessions.data ?? []).map((s) => ({
+            value: s.id,
+            label: `${s.program.title} — ${date(s.startsAt)}`,
+          }))}
           required
         />
         <SelectInput
@@ -441,7 +525,10 @@ function CertificationsTab() {
   const [form, setForm] = useState({ employmentRelationshipId: '', name: '', issuer: '', issuedOn: '', expiresOn: '' });
 
   const employees = useQuery({ queryKey: ['learning-employees'], queryFn: () => api.get<Employee[]>('/hr/employees') });
-  const certs = useQuery({ queryKey: ['learning-certifications'], queryFn: () => api.get<Certification[]>('/hcm/learning/certifications') });
+  const certs = useQuery({
+    queryKey: ['learning-certifications'],
+    queryFn: () => api.get<Certification[]>('/hcm/learning/certifications'),
+  });
   const nameFor = (id: string) => employees.data?.find((e) => e.id === id)?.fullName ?? id;
 
   const verify = useMutation({
@@ -490,10 +577,14 @@ function CertificationsTab() {
                 <td>{c.name}</td>
                 <td>{date(c.issuedOn)}</td>
                 <td>{c.expiresOn ? date(c.expiresOn) : 'Never'}</td>
-                <td><StatusChip status={c.verified ? 'verified' : 'unverified'} tone={c.verified ? 'good' : 'neutral'} /></td>
+                <td>
+                  <StatusChip status={c.verified ? 'verified' : 'unverified'} tone={c.verified ? 'good' : 'neutral'} />
+                </td>
                 <td className="text-right">
                   {!c.verified && (
-                    <button className="btn text-2xs" onClick={() => verify.mutate(c.id)}>Verify</button>
+                    <button className="btn text-2xs" onClick={() => verify.mutate(c.id)}>
+                      Verify
+                    </button>
                   )}
                 </td>
               </tr>
@@ -529,9 +620,21 @@ function CertificationsTab() {
         <TextInput label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
         <Row>
           <TextInput label="Issuer" value={form.issuer} onChange={(v) => setForm({ ...form, issuer: v })} />
-          <TextInput label="Issued on" type="date" value={form.issuedOn} onChange={(v) => setForm({ ...form, issuedOn: v })} required />
+          <TextInput
+            label="Issued on"
+            type="date"
+            value={form.issuedOn}
+            onChange={(v) => setForm({ ...form, issuedOn: v })}
+            required
+          />
         </Row>
-        <TextInput label="Expires on" type="date" value={form.expiresOn} onChange={(v) => setForm({ ...form, expiresOn: v })} hint="Leave blank if it never expires" />
+        <TextInput
+          label="Expires on"
+          type="date"
+          value={form.expiresOn}
+          onChange={(v) => setForm({ ...form, expiresOn: v })}
+          hint="Leave blank if it never expires"
+        />
       </CreateModal>
     </Card>
   );
@@ -563,10 +666,19 @@ function MandatoryTab() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ programId: '', dueWithinDaysOfJoin: '30', recurrenceMonths: '' });
 
-  const programs = useQuery({ queryKey: ['learning-programs'], queryFn: () => api.get<Program[]>('/hcm/learning/programs') });
+  const programs = useQuery({
+    queryKey: ['learning-programs'],
+    queryFn: () => api.get<Program[]>('/hcm/learning/programs'),
+  });
   const employees = useQuery({ queryKey: ['learning-employees'], queryFn: () => api.get<Employee[]>('/hr/employees') });
-  const rules = useQuery({ queryKey: ['learning-mandatory-rules'], queryFn: () => api.get<MandatoryRule[]>('/hcm/learning/mandatory-rules') });
-  const status = useQuery({ queryKey: ['learning-mandatory-status'], queryFn: () => api.get<MandatoryRow[]>('/hcm/learning/mandatory-status') });
+  const rules = useQuery({
+    queryKey: ['learning-mandatory-rules'],
+    queryFn: () => api.get<MandatoryRule[]>('/hcm/learning/mandatory-rules'),
+  });
+  const status = useQuery({
+    queryKey: ['learning-mandatory-status'],
+    queryFn: () => api.get<MandatoryRow[]>('/hcm/learning/mandatory-status'),
+  });
   const nameFor = (id: string) => employees.data?.find((e) => e.id === id)?.fullName ?? id;
 
   const overdueCount = status.data?.filter((r) => r.overdue).length ?? 0;
@@ -574,7 +686,11 @@ function MandatoryTab() {
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Metric label="Mandatory rules" value={rules.data?.length ?? '—'} noActionReason="Informational — see the table below to act on one." />
+        <Metric
+          label="Mandatory rules"
+          value={rules.data?.length ?? '—'}
+          noActionReason="Informational — see the table below to act on one."
+        />
         <Metric
           label="Overdue"
           value={overdueCount}
@@ -634,8 +750,19 @@ function MandatoryTab() {
             required
           />
           <Row>
-            <TextInput label="Due within days of join" type="number" value={form.dueWithinDaysOfJoin} onChange={(v) => setForm({ ...form, dueWithinDaysOfJoin: v })} />
-            <TextInput label="Recurs every (months)" type="number" value={form.recurrenceMonths} onChange={(v) => setForm({ ...form, recurrenceMonths: v })} hint="Leave blank if it is a one-time requirement" />
+            <TextInput
+              label="Due within days of join"
+              type="number"
+              value={form.dueWithinDaysOfJoin}
+              onChange={(v) => setForm({ ...form, dueWithinDaysOfJoin: v })}
+            />
+            <TextInput
+              label="Recurs every (months)"
+              type="number"
+              value={form.recurrenceMonths}
+              onChange={(v) => setForm({ ...form, recurrenceMonths: v })}
+              hint="Leave blank if it is a one-time requirement"
+            />
           </Row>
         </CreateModal>
       </Card>
@@ -643,7 +770,9 @@ function MandatoryTab() {
       <Card title="Compliance status" subtitle="Every active employee against every active rule.">
         {status.isLoading && <Loading />}
         {status.error && <ErrorBox error={status.error} />}
-        {status.data && status.data.length === 0 && <EmptyState message="Nothing is due — no active mandatory rules, or every employee is within their window." />}
+        {status.data && status.data.length === 0 && (
+          <EmptyState message="Nothing is due — no active mandatory rules, or every employee is within their window." />
+        )}
         {status.data && status.data.length > 0 && (
           <table className="table">
             <thead>
@@ -660,7 +789,9 @@ function MandatoryTab() {
                   <td>{nameFor(r.employmentRelationshipId)}</td>
                   <td>{r.programTitle}</td>
                   <td>{r.dueDate ? date(r.dueDate) : '—'}</td>
-                  <td><StatusChip status={r.overdue ? 'overdue' : 'on track'} tone={r.overdue ? 'bad' : 'good'} /></td>
+                  <td>
+                    <StatusChip status={r.overdue ? 'overdue' : 'on track'} tone={r.overdue ? 'bad' : 'good'} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -724,10 +855,14 @@ function IdpsTab() {
                 <td>{nameFor(i.employmentRelationshipId)}</td>
                 <td className="max-w-sm text-2xs text-ink-400">{(i.goals?.items ?? []).join('; ') || '—'}</td>
                 <td>{i.reviewDate ? date(i.reviewDate) : '—'}</td>
-                <td><StatusChip status={i.status} tone={i.status === 'active' ? 'good' : 'neutral'} /></td>
+                <td>
+                  <StatusChip status={i.status} tone={i.status === 'active' ? 'good' : 'neutral'} />
+                </td>
                 <td className="text-right">
                   {i.status === 'active' && (
-                    <button className="btn text-2xs" onClick={() => close.mutate(i.id)}>Close</button>
+                    <button className="btn text-2xs" onClick={() => close.mutate(i.id)}>
+                      Close
+                    </button>
                   )}
                 </td>
               </tr>
@@ -744,7 +879,12 @@ function IdpsTab() {
         onSubmit={() =>
           api.post('/hcm/learning/idps', {
             employmentRelationshipId: form.employmentRelationshipId,
-            goals: { items: form.goalsText.split('\n').map((s) => s.trim()).filter(Boolean) },
+            goals: {
+              items: form.goalsText
+                .split('\n')
+                .map((s) => s.trim())
+                .filter(Boolean),
+            },
             reviewDate: form.reviewDate || undefined,
           })
         }
@@ -757,8 +897,17 @@ function IdpsTab() {
           options={(employees.data ?? []).map((e) => ({ value: e.id, label: e.fullName }))}
           required
         />
-        <TextArea label="Goals (one per line)" value={form.goalsText} onChange={(v) => setForm({ ...form, goalsText: v })} />
-        <TextInput label="Review date" type="date" value={form.reviewDate} onChange={(v) => setForm({ ...form, reviewDate: v })} />
+        <TextArea
+          label="Goals (one per line)"
+          value={form.goalsText}
+          onChange={(v) => setForm({ ...form, goalsText: v })}
+        />
+        <TextInput
+          label="Review date"
+          type="date"
+          value={form.reviewDate}
+          onChange={(v) => setForm({ ...form, reviewDate: v })}
+        />
       </CreateModal>
     </Card>
   );
@@ -782,7 +931,10 @@ function BudgetTab() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ fy: '', division: '', amount: '' });
 
-  const budgets = useQuery({ queryKey: ['learning-budgets'], queryFn: () => api.get<Budget[]>('/hcm/learning/budgets') });
+  const budgets = useQuery({
+    queryKey: ['learning-budgets'],
+    queryFn: () => api.get<Budget[]>('/hcm/learning/budgets'),
+  });
 
   return (
     <Card
@@ -823,11 +975,28 @@ function BudgetTab() {
         title="Add a training budget"
         onClose={() => setOpen(false)}
         invalidate={[['learning-budgets']]}
-        onSubmit={() => api.post('/hcm/learning/budgets', { fy: form.fy, division: form.division || undefined, amount: Number(form.amount) || 0 })}
+        onSubmit={() =>
+          api.post('/hcm/learning/budgets', {
+            fy: form.fy,
+            division: form.division || undefined,
+            amount: Number(form.amount) || 0,
+          })
+        }
       >
-        <TextInput label="Financial year" value={form.fy} onChange={(v) => setForm({ ...form, fy: v })} placeholder="FY2026-27" required />
+        <TextInput
+          label="Financial year"
+          value={form.fy}
+          onChange={(v) => setForm({ ...form, fy: v })}
+          placeholder="FY2026-27"
+          required
+        />
         <Row>
-          <TextInput label="Division" value={form.division} onChange={(v) => setForm({ ...form, division: v })} hint="Leave blank for the whole company" />
+          <TextInput
+            label="Division"
+            value={form.division}
+            onChange={(v) => setForm({ ...form, division: v })}
+            hint="Leave blank for the whole company"
+          />
           <MoneyInput label="Amount" value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} required />
         </Row>
       </CreateModal>

@@ -18,7 +18,16 @@ import {
   type CampaignStatus,
   type ChannelKey,
 } from '@kaizen/shared';
-import { Card, EmptyState, ErrorBox, Loading, Metric, PageHeader, RecordCode, StatusChip } from '../../components/ui.js';
+import {
+  Card,
+  EmptyState,
+  ErrorBox,
+  Loading,
+  Metric,
+  PageHeader,
+  RecordCode,
+  StatusChip,
+} from '../../components/ui.js';
 import { CreateModal, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
 import { NewButton } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
@@ -71,7 +80,11 @@ export function Campaigns() {
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Metric label="Live" value={live} noActionReason="Filter the list below by status." />
         <Metric label="Pending approval" value={pending} noActionReason="Filter the list below by status." />
-        <Metric label="Spend vs budget" value={`${money(spend)} / ${money(planned)}`} noActionReason="Open Budget for the breakdown." />
+        <Metric
+          label="Spend vs budget"
+          value={`${money(spend)} / ${money(planned)}`}
+          noActionReason="Open Budget for the breakdown."
+        />
       </div>
 
       <Card className="mb-4" bodyClassName="p-3">
@@ -113,7 +126,10 @@ export function Campaigns() {
         <Loading />
       ) : items.length === 0 ? (
         <Card>
-          <EmptyState message="No campaigns yet." hint="A campaign starts in draft and moves through approval, scheduling and launch." />
+          <EmptyState
+            message="No campaigns yet."
+            hint="A campaign starts in draft and moves through approval, scheduling and launch."
+          />
         </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
@@ -136,7 +152,10 @@ export function Campaigns() {
                     <RecordCode code={c.recordCode} to={`/marketing/campaigns/${c.id}`} />
                   </td>
                   <td>
-                    <Link to={`/marketing/campaigns/${c.id}`} className="text-xs font-medium text-ink-100 hover:text-accent-soft">
+                    <Link
+                      to={`/marketing/campaigns/${c.id}`}
+                      className="text-xs font-medium text-ink-100 hover:text-accent-soft"
+                    >
                       {c.name}
                     </Link>
                     <p className="text-2xs text-ink-500">{c.channelMix.map((k) => CHANNEL_KEY_LABELS[k]).join(', ')}</p>
@@ -178,7 +197,9 @@ function ChannelMixPicker({ value, onChange }: { value: ChannelKey[]; onChange: 
             key={k}
             onClick={() => toggle(k)}
             className={`chip cursor-pointer transition-colors ${
-              value.includes(k) ? 'border-accent/50 bg-accent/10 text-accent-soft' : 'border-ink-700 bg-ink-850 text-ink-400 hover:text-ink-200'
+              value.includes(k)
+                ? 'border-accent/50 bg-accent/10 text-accent-soft'
+                : 'border-ink-700 bg-ink-850 text-ink-400 hover:text-ink-200'
             }`}
           >
             {CHANNEL_KEY_LABELS[k]}
@@ -276,9 +297,21 @@ function CreateCampaignModal({ open, onClose }: { open: boolean; onClose: () => 
       <ChannelMixPicker value={channelMix} onChange={setChannelMix} />
       <Row>
         <TextInput label="Target leads" type="number" value={targetLeads} onChange={setTargetLeads} hint="optional" />
-        <TextInput label="Target enrolments" type="number" value={targetEnrolments} onChange={setTargetEnrolments} hint="optional" />
+        <TextInput
+          label="Target enrolments"
+          type="number"
+          value={targetEnrolments}
+          onChange={setTargetEnrolments}
+          hint="optional"
+        />
       </Row>
-      <TextInput label="Target pipeline value" type="number" value={targetPipelineValue} onChange={setTargetPipelineValue} hint="optional" />
+      <TextInput
+        label="Target pipeline value"
+        type="number"
+        value={targetPipelineValue}
+        onChange={setTargetPipelineValue}
+        hint="optional"
+      />
       <TextArea label="Content brief" value={contentBrief} onChange={setContentBrief} hint="optional" />
     </CreateModal>
   );

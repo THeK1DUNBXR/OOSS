@@ -21,6 +21,7 @@ import { config } from '../platform/config.js';
 import { MAX_ATTEMPTS, TICK_MS, backoffMs, dueOccurrence, isValidCron, leaseFor } from './schedule.js';
 import { asSystem, currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
+import { auditWrite } from '../platform/audit.js';
 import { detectUntouchedLeads } from '../domains/leads.js';
 import { detectStageAgeBreaches, demoteStaleCommits, detectChronicRecommits } from '../domains/opportunities.js';
 import { detectStalledProposals, detectOfferingCoverageGaps } from '../domains/commercial.js';
@@ -341,33 +342,66 @@ async function escalateBreachedSlas(): Promise<number> {
     where: { tenantId: auth.tenantId, state: 'open', slaDueAt: { lt: new Date() }, escalatedAt: null },
     take: 100,
   });
+  let escalated = 0;
   for (const step of staleApprovals) {
-    const nextTier = ['finance_head', 'chairman'][Math.min(step.escalationRung, 1)];
-    const holder = await prisma.affiliation.findFirst({
-      where: { tenantId: auth.tenantId, roleSlug: nextTier, status: 'active' },
-      select: { partyId: true },
-    });
-    await prisma.approvalStep.update({
-      where: { id: step.id },
-      data: {
-        state: 'escalated',
-        escalatedAt: new Date(),
-        escalationRung: step.escalationRung + 1,
-        resolvedApproverRole: nextTier,
-        resolvedApproverId: holder?.partyId ?? step.resolvedApproverId,
-        slaDueAt: new Date(Date.now() + 3 * 86_400_000),
-      },
-    });
-    await emit({
-      name: EVENTS.APPROVAL_STEP_ESCALATED,
-      subject: { entityType: 'approval_step', entityId: step.id },
-      previousState: { tier: step.escalationRung },
-      newState: { tier: step.escalationRung + 1, approverRole: nextTier },
-      reason: { reasonCode: 'sla_expiry' },
-    });
+    if (await escalateApprovalStep(step)) escalated += 1;
   }
 
-  return breached.length + staleApprovals.length;
+  return breached.length + escalated;
+}
+
+/**
+ * Bumps one overdue approval step a tier. `step` is the scan's snapshot, which
+ * may be stale: the approver can decide between the findMany and this write.
+ * The write is guarded on state 'open', so a step decided in that gap is left
+ * as decided, not reverted to 'escalated' with the decider's audit trail
+ * pointing at a state the step no longer has. Returns false when the guard
+ * refused, so the caller does not count or emit an escalation that never
+ * happened.
+ */
+export async function escalateApprovalStep(step: {
+  id: string;
+  escalationRung: number;
+  resolvedApproverId: string | null;
+}): Promise<boolean> {
+  const auth = currentAuth();
+  const nextTier = ['finance_head', 'chairman'][Math.min(step.escalationRung, 1)];
+  const holder = await prisma.affiliation.findFirst({
+    where: { tenantId: auth.tenantId, roleSlug: nextTier, status: 'active' },
+    select: { partyId: true },
+  });
+  const { count } = await prisma.approvalStep.updateMany({
+    where: { id: step.id, state: 'open' },
+    data: {
+      state: 'escalated',
+      escalatedAt: new Date(),
+      escalationRung: { increment: 1 },
+      resolvedApproverRole: nextTier,
+      resolvedApproverId: holder?.partyId ?? step.resolvedApproverId,
+      slaDueAt: new Date(Date.now() + 3 * 86_400_000),
+    },
+  });
+  if (count !== 1) return false;
+
+  // The actor is the principal the tick runs under (asSystem, in the job runner
+  // below), so the row records the system, not a person. Without it an
+  // approval could move tiers with no trace of which automation moved it.
+  await auditWrite({
+    action: 'update',
+    subjectType: 'approval_step',
+    subjectId: step.id,
+    before: { state: 'open', escalationRung: step.escalationRung },
+    after: { state: 'escalated', escalationRung: step.escalationRung + 1, approverRole: nextTier },
+  });
+
+  await emit({
+    name: EVENTS.APPROVAL_STEP_ESCALATED,
+    subject: { entityType: 'approval_step', entityId: step.id },
+    previousState: { tier: step.escalationRung },
+    newState: { tier: step.escalationRung + 1, approverRole: nextTier },
+    reason: { reasonCode: 'sla_expiry' },
+  });
+  return true;
 }
 
 /**

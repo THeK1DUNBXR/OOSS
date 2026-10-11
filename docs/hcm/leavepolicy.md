@@ -61,7 +61,7 @@ veto a leave request at the moment it is written — the honest limit this bring
 than worked around. Two real mechanisms exist instead:
 
 1. `POST /validate` exposes `validateLeaveRequest` for a form to check before `POST
-   /hr/leave-requests` — this is what `/me/leave`'s "Check against policy" button calls, and it is a
+/hr/leave-requests` — this is what `/me/leave`'s "Check against policy" button calls, and it is a
    real, specific, pre-submission gate even though it cannot be a server-side hard block on the write
    itself.
 2. This module subscribes to `EVENTS.LEAVE_REQUEST_CREATED` (via `platform/eventBus.ts`'s
@@ -79,16 +79,16 @@ ever decide a level on their own leave request, checked before the identity bran
 
 ### Routes (`apps/api/src/routes/hcm/leavepolicy.routes.ts`, mounted at `/api/hcm/leavepolicy`)
 
-| Area | Endpoints |
-|---|---|
-| Policies | `GET/POST /policies`, `GET/PATCH /policies/:id`, `GET /policies/applicable?employmentRelationshipId=&leaveTypeId=` |
-| Rules | `GET /policies/:id/rules`, `POST /policies/:id/rules`, `PATCH/DELETE /rules/:id` |
-| Validation | `POST /validate` |
-| Accrual | `POST /accrual-runs`, `GET /accrual-runs` |
-| Approval chains | `GET/POST /approval-chains`, `PATCH/DELETE /approval-chains/:id` |
-| Approvals | `POST /leave-requests/:id/initiate-chain`, `GET /leave-requests/:id/approvals`, `GET /approvals/inbox`, `POST /approvals/:id/decide` |
-| Restricted holidays | `GET/POST /restricted-holiday-elections`, `DELETE /restricted-holiday-elections/:id` |
-| Team calendar | `GET /team-calendar?month=YYYY-MM&orgUnitId=` |
+| Area                | Endpoints                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Policies            | `GET/POST /policies`, `GET/PATCH /policies/:id`, `GET /policies/applicable?employmentRelationshipId=&leaveTypeId=`                   |
+| Rules               | `GET /policies/:id/rules`, `POST /policies/:id/rules`, `PATCH/DELETE /rules/:id`                                                     |
+| Validation          | `POST /validate`                                                                                                                     |
+| Accrual             | `POST /accrual-runs`, `GET /accrual-runs`                                                                                            |
+| Approval chains     | `GET/POST /approval-chains`, `PATCH/DELETE /approval-chains/:id`                                                                     |
+| Approvals           | `POST /leave-requests/:id/initiate-chain`, `GET /leave-requests/:id/approvals`, `GET /approvals/inbox`, `POST /approvals/:id/decide` |
+| Restricted holidays | `GET/POST /restricted-holiday-elections`, `DELETE /restricted-holiday-elections/:id`                                                 |
+| Team calendar       | `GET /team-calendar?month=YYYY-MM&orgUnitId=`                                                                                        |
 
 ### Jobs (`apps/api/src/jobs/hcm/leavepolicy.ts`, not yet wired — see "Wanted from the scaffold")
 
@@ -110,7 +110,7 @@ ever decide a level on their own leave request, checked before the identity bran
 
 Every `assertCan(...)` call in `apps/api/src/domains/hcm/leavepolicy.ts` was checked against the bug
 class the WS5 review found: calling `assertCan({ resource, verb })` with no `record` on a resource
-`employee` holds at `own` scope passes the coarse check and then returns data about *other*
+`employee` holds at `own` scope passes the coarse check and then returns data about _other_
 employments, since the WHERE axis is only evaluated when a record is supplied.
 
 Two paths had it:
@@ -129,7 +129,7 @@ check `view`/`create`/`edit`/`delete`, and `employee`'s only grant on that resou
 intentional company-wide read, not `own`) with no create/edit/delete verb at all; `leave_accruals`
 `create` and `leave_approval_chains` (all verbs) are verbs `employee` holds not at all, so the WHO
 axis already refuses before scope would matter; `leave:approve` inside `decideApprovalLevel` is only
-reached as a fallback for a caller who is *not* the level's resolved approver, and `employee` holds no
+reached as a fallback for a caller who is _not_ the level's resolved approver, and `employee` holds no
 `approve` verb on `leave` at all. Every remaining record-addressed read/write in the file
 (`validateLeaveRequest`, `initiateApprovalChain`, `listApprovalsForRequest`,
 `electRestrictedHoliday`/`withdrawRestrictedHolidayElection`/`listRestrictedHolidayElections`) already
@@ -138,17 +138,17 @@ went through `assertEmploymentVisible`, which resolves the target employment and
 
 ## Acceptance
 
-| ID | What PASS means | Test |
-|---|---|---|
-| HCM-LVP-001 | Pure accrual/pro-rata/sandwich/period-parsing/validation arithmetic is correct in isolation | `HCM-LVP-001a`–`f` |
-| HCM-LVP-002 | A duplicate rule for the same leave type on a policy is refused (409); an employee holds no `leave_policies:create` (403) | `HCM-LVP-002` (×2) |
-| HCM-LVP-003 | Applicability resolution picks the more specific (engagement-type-scoped) policy over the wider default | `HCM-LVP-003` |
-| HCM-LVP-004 | `validateLeaveRequest` flags a real notice-period breach and clears once satisfied; with no rule configured it is permissive and says so | `HCM-LVP-004` (×2) |
-| HCM-LVP-005 | The accrual run is idempotent per `(rule, period)`; a `none`-frequency rule refuses to run | `HCM-LVP-005` (×2) |
+| ID          | What PASS means                                                                                                                                             | Test               |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| HCM-LVP-001 | Pure accrual/pro-rata/sandwich/period-parsing/validation arithmetic is correct in isolation                                                                 | `HCM-LVP-001a`–`f` |
+| HCM-LVP-002 | A duplicate rule for the same leave type on a policy is refused (409); an employee holds no `leave_policies:create` (403)                                   | `HCM-LVP-002` (×2) |
+| HCM-LVP-003 | Applicability resolution picks the more specific (engagement-type-scoped) policy over the wider default                                                     | `HCM-LVP-003`      |
+| HCM-LVP-004 | `validateLeaveRequest` flags a real notice-period breach and clears once satisfied; with no rule configured it is permissive and says so                    | `HCM-LVP-004` (×2) |
+| HCM-LVP-005 | The accrual run is idempotent per `(rule, period)`; a `none`-frequency rule refuses to run                                                                  | `HCM-LVP-005` (×2) |
 | HCM-LVP-006 | An approval chain resolves the requester's actual manager and lets them decide their level; the Self-Dealing Bar refuses the leave-taker deciding their own | `HCM-LVP-006` (×2) |
-| HCM-LVP-007 | A third restricted-holiday election in one FY is refused once the two-per-year limit is reached; withdrawing frees a slot | `HCM-LVP-007` |
-| HCM-LVP-008 | The team calendar returns an empty list rather than erroring for a quiet month; cross-tenant isolation holds | `HCM-LVP-008` (×2) |
-| HCM-LVP-009 | Scope-axis fix: an own-scope employee is refused the team calendar and the accrual-run list, both of which read data about other employments | `HCM-LVP-009` (×2) |
+| HCM-LVP-007 | A third restricted-holiday election in one FY is refused once the two-per-year limit is reached; withdrawing frees a slot                                   | `HCM-LVP-007`      |
+| HCM-LVP-008 | The team calendar returns an empty list rather than erroring for a quiet month; cross-tenant isolation holds                                                | `HCM-LVP-008` (×2) |
+| HCM-LVP-009 | Scope-axis fix: an own-scope employee is refused the team calendar and the accrual-run list, both of which read data about other employments                | `HCM-LVP-009` (×2) |
 
 All 20 `it` blocks pass against `kaizen_test_leavepolicy`
 (`npx vitest run src/tests/hcm/leavepolicy.test.ts`).
@@ -179,7 +179,7 @@ All 20 `it` blocks pass against `kaizen_test_leavepolicy`
 
 - **A `leave_request.before_create` hook point in `platform/hooks.ts`** (payload `{ input }`, vetoable)
   would let this module enforce policy at the point of creation instead of only before (via `POST
-  /validate`) and after (via the `LEAVE_REQUEST_CREATED` subscription raising an exception).
+/validate`) and after (via the `LEAVE_REQUEST_CREATED` subscription raising an exception).
 - **`apps/api/src/jobs/hcm/index.ts`**, mirroring `jobs/compliance/index.ts`'s `COMPLIANCE_JOBS`
   pattern: `export const HCM_JOBS = [...leavepolicyJobs, ...]`, spread into `ALL_JOBS` in
   `scheduler.ts`. Until it exists, `runLeaveAccrualJob` in `apps/api/src/jobs/hcm/leavepolicy.ts` is

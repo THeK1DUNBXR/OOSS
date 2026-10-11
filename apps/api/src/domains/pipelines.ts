@@ -55,10 +55,9 @@ export async function createPipeline(input: PipelineInput) {
     where: { tenantId: auth.tenantId, pipelineCode: input.pipelineCode, effectiveTo: null },
   });
   if (clash) {
-    throw ApiError.conflict(
-      `A pipeline with code ${input.pipelineCode} is already in force for this tenant.`,
-      { existingId: clash.id },
-    );
+    throw ApiError.conflict(`A pipeline with code ${input.pipelineCode} is already in force for this tenant.`, {
+      existingId: clash.id,
+    });
   }
 
   // Exactly one PIPELINE_DEFINITION per tenant may be is_default = true at any
@@ -142,7 +141,13 @@ export async function addStage(pipelineId: string, input: StageInput) {
 
 export async function addTransition(
   pipelineId: string,
-  input: { fromStageKey: string | null; toStageKey: string; requiresApproval?: boolean; requiredPermission?: string; emitsEvent?: string },
+  input: {
+    fromStageKey: string | null;
+    toStageKey: string;
+    requiresApproval?: boolean;
+    requiredPermission?: string;
+    emitsEvent?: string;
+  },
 ) {
   const auth = currentAuth();
   await assertCan({ resource: 'pipeline_transitions', verb: 'create' });
@@ -158,6 +163,61 @@ export async function addTransition(
       emitsEvent: input.emitsEvent ?? EVENTS.OPPORTUNITY_STAGE_CHANGED,
     },
   });
+}
+
+/**
+ * Stage edits are configuration changes to live pipelines: a relabelled stage
+ * or a moved age budget changes what every rep sees on the board, so the
+ * before-state is kept. The route parses and guards the immutable stage_key
+ * before calling in, matching addStage.
+ */
+export async function updateStage(stageId: string, input: Record<string, unknown>) {
+  await assertCan({ resource: 'pipeline_stages', verb: 'edit' });
+
+  const before = await prisma.pipelineStage.findFirst({ where: { id: stageId } });
+  if (!before) throw ApiError.notFound('Pipeline stage');
+
+  const after = await prisma.pipelineStage.update({ where: { id: stageId }, data: input as never });
+  await auditWrite({ action: 'update', subjectType: 'pipeline_stage', subjectId: stageId, before, after });
+  await emit({
+    name: EVENTS.PIPELINE_STAGE_UPDATED,
+    subject: { entityType: 'pipeline_stage', entityId: stageId, recordCode: after.stageKey },
+    newState: {
+      label: after.label,
+      stageAgeBudgetDays: after.stageAgeBudgetDays,
+      defaultProbability: after.defaultProbability,
+    },
+  });
+  return after;
+}
+
+/**
+ * A transition is the edge the platform enforces when a record moves stage, so
+ * removing one changes which moves are legal. The row is gone after the delete,
+ * so the audit keeps the edge's endpoints in `after`: the diff reads from the
+ * `after` argument on a delete, and an empty one would record nothing about
+ * which move was removed.
+ */
+export async function deleteTransition(transitionId: string) {
+  await assertCan({ resource: 'pipeline_transitions', verb: 'delete' });
+
+  const before = await prisma.pipelineTransition.findFirst({ where: { id: transitionId } });
+  if (!before) throw ApiError.notFound('Pipeline transition');
+
+  await prisma.pipelineTransition.delete({ where: { id: transitionId } });
+  await auditWrite({
+    action: 'delete',
+    subjectType: 'pipeline_transition',
+    subjectId: transitionId,
+    after: { pipelineId: before.pipelineId, fromStageKey: before.fromStageKey, toStageKey: before.toStageKey },
+  });
+  await emit({
+    name: EVENTS.PIPELINE_TRANSITION_DELETED,
+    subject: { entityType: 'pipeline_transition', entityId: transitionId, recordCode: before.toStageKey },
+    related: [{ relation: 'belongs_to', entityType: 'pipeline_definition', entityId: before.pipelineId }],
+    newState: { fromStageKey: before.fromStageKey, toStageKey: before.toStageKey },
+  });
+  return { ok: true };
 }
 
 /**
@@ -326,8 +386,12 @@ export async function retireStage(stageId: string) {
   if (!stage) throw ApiError.notFound('Pipeline stage');
 
   const [leads, opps] = await Promise.all([
-    prisma.lead.count({ where: { tenantId: auth.tenantId, pipelineId: stage.pipelineId, stageKey: stage.stageKey, deletedAt: null } }),
-    prisma.opportunity.count({ where: { tenantId: auth.tenantId, pipelineId: stage.pipelineId, stageKey: stage.stageKey, deletedAt: null } }),
+    prisma.lead.count({
+      where: { tenantId: auth.tenantId, pipelineId: stage.pipelineId, stageKey: stage.stageKey, deletedAt: null },
+    }),
+    prisma.opportunity.count({
+      where: { tenantId: auth.tenantId, pipelineId: stage.pipelineId, stageKey: stage.stageKey, deletedAt: null },
+    }),
   ]);
 
   const live = leads + opps;

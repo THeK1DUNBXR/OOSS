@@ -13,7 +13,13 @@
  * support passing per-call.
  */
 
-import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 import type {
   AssetKind,
   AssetStatus,
@@ -67,22 +73,24 @@ import type {
   TouchpointView,
   VendorView,
 } from '@kaizen/shared';
-import { ApiClientError, api, getToken } from './api.js';
+import { ApiClientError, api, fetchWithRenewal, getToken } from './api.js';
 
 // ---------------------------------------------------------------------------
 // Purpose-tagged POST — the same request shape as `api.post`, plus one header
 // ---------------------------------------------------------------------------
 
 async function purposePost<T>(path: string, body?: unknown): Promise<T> {
-  const token = getToken();
-  const res = await fetch(`/api${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Purpose': 'marketing',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
+  const res = await fetchWithRenewal(path, () => {
+    const token = getToken();
+    return {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Purpose': 'marketing',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    };
   });
   if (res.status === 204) return undefined as T;
   const text = await res.text();
@@ -295,7 +303,14 @@ export interface BudgetVarianceRow {
 }
 
 export interface AudienceDetailView extends AudienceView {
-  members: Array<{ id: string; entityType: string; entityId: string; addedAt: string; source: string; suppressed: boolean }>;
+  members: Array<{
+    id: string;
+    entityType: string;
+    entityId: string;
+    addedAt: string;
+    source: string;
+    suppressed: boolean;
+  }>;
 }
 
 export interface AudienceField {
@@ -458,11 +473,15 @@ export const mk = {
   getAttribution: (params: { model: AttributionModel; from?: string; to?: string }) =>
     api.get<AttributionAnalyticsResponse>(`${BASE}/analytics/attribution${qs(params)}`),
   getCohorts: (params?: { by?: 'month' }) => api.get<CohortRow[]>(`${BASE}/analytics/cohorts${qs(params)}`),
-  exportAnalytics: (kind: 'campaigns' | 'channels' | 'leads', fallbackName: string, params?: { from?: string; to?: string }) =>
-    api.download(`${BASE}/analytics/export${qs({ kind, ...params })}`, fallbackName),
+  exportAnalytics: (
+    kind: 'campaigns' | 'channels' | 'leads',
+    fallbackName: string,
+    params?: { from?: string; to?: string },
+  ) => api.download(`${BASE}/analytics/export${qs({ kind, ...params })}`, fallbackName),
 
   // Campaigns ------------------------------------------------------------------
-  listCampaigns: (params?: Params) => api.get<Page<CampaignView> | CampaignView[]>(`${BASE}/campaigns${qs(params)}`).then(normalizePage),
+  listCampaigns: (params?: Params) =>
+    api.get<Page<CampaignView> | CampaignView[]>(`${BASE}/campaigns${qs(params)}`).then(normalizePage),
   getCampaign: (id: string) => api.get<CampaignDetailView>(`${BASE}/campaigns/${id}`),
   createCampaign: (body: {
     name: string;
@@ -488,7 +507,8 @@ export const mk = {
     api.patch<CampaignView>(`${BASE}/campaigns/${id}`, body),
   deleteCampaign: (id: string) => api.del<void>(`${BASE}/campaigns/${id}`),
   submitCampaign: (id: string) => api.post<CampaignView>(`${BASE}/campaigns/${id}/submit`),
-  approveCampaign: (id: string, reason?: string) => api.post<CampaignView>(`${BASE}/campaigns/${id}/approve`, { reason }),
+  approveCampaign: (id: string, reason?: string) =>
+    api.post<CampaignView>(`${BASE}/campaigns/${id}/approve`, { reason }),
   rejectCampaign: (id: string, reason: string) => api.post<CampaignView>(`${BASE}/campaigns/${id}/reject`, { reason }),
   launchCampaign: (id: string) => api.post<CampaignView>(`${BASE}/campaigns/${id}/launch`),
   pauseCampaign: (id: string) => api.post<CampaignView>(`${BASE}/campaigns/${id}/pause`),
@@ -500,7 +520,8 @@ export const mk = {
   getCampaignUtm: (id: string) => api.get<CampaignUtmResponse>(`${BASE}/campaigns/${id}/utm`),
 
   // Plans & calendar -------------------------------------------------------------
-  listPlans: (params?: Params) => api.get<Page<PlanView> | PlanView[]>(`${BASE}/plans${qs(params)}`).then(normalizePage),
+  listPlans: (params?: Params) =>
+    api.get<Page<PlanView> | PlanView[]>(`${BASE}/plans${qs(params)}`).then(normalizePage),
   createPlan: (body: { period: string; division: string; theme: string; goals?: unknown; campaignIds?: string[] }) =>
     api.post<PlanView>(`${BASE}/plans`, body),
   updatePlan: (id: string, body: Partial<Record<string, unknown>>) => api.patch<PlanView>(`${BASE}/plans/${id}`, body),
@@ -509,12 +530,21 @@ export const mk = {
   getCalendar: (params: { from: string; to: string }) => api.get<CalendarItem[]>(`${BASE}/calendar${qs(params)}`),
 
   // Budget & spend ------------------------------------------------------------
-  listBudgets: (params?: { period?: string; division?: string }) => api.get<Page<BudgetView> | BudgetView[]>(`${BASE}/budgets${qs(params)}`).then(normalizePage),
-  createBudget: (body: { period: string; division: string; channelKey?: ChannelKey; campaignId?: string; planned: number; note?: string }) =>
-    api.post<BudgetView>(`${BASE}/budgets`, body),
-  updateBudget: (id: string, body: Partial<Record<string, unknown>>) => api.patch<BudgetView>(`${BASE}/budgets/${id}`, body),
+  listBudgets: (params?: { period?: string; division?: string }) =>
+    api.get<Page<BudgetView> | BudgetView[]>(`${BASE}/budgets${qs(params)}`).then(normalizePage),
+  createBudget: (body: {
+    period: string;
+    division: string;
+    channelKey?: ChannelKey;
+    campaignId?: string;
+    planned: number;
+    note?: string;
+  }) => api.post<BudgetView>(`${BASE}/budgets`, body),
+  updateBudget: (id: string, body: Partial<Record<string, unknown>>) =>
+    api.patch<BudgetView>(`${BASE}/budgets/${id}`, body),
   approveBudget: (id: string) => api.post<BudgetView>(`${BASE}/budgets/${id}/approve`),
-  listSpends: (params?: { campaignId?: string; from?: string; to?: string }) => api.get<Page<SpendView> | SpendView[]>(`${BASE}/spends${qs(params)}`).then(normalizePage),
+  listSpends: (params?: { campaignId?: string; from?: string; to?: string }) =>
+    api.get<Page<SpendView> | SpendView[]>(`${BASE}/spends${qs(params)}`).then(normalizePage),
   createSpend: (body: {
     campaignId?: string;
     channelKey: ChannelKey;
@@ -528,17 +558,27 @@ export const mk = {
   }) => api.post<SpendView>(`${BASE}/spends`, body),
   reconcileSpend: (id: string, body: { transactionId?: string; vendorBillId?: string }) =>
     api.post<SpendView>(`${BASE}/spends/${id}/reconcile`, body),
-  getBudgetVariance: (params: { period: string; division?: string }) => api.get<BudgetVarianceRow[]>(`${BASE}/budgets/variance${qs(params)}`),
+  getBudgetVariance: (params: { period: string; division?: string }) =>
+    api.get<BudgetVarianceRow[]>(`${BASE}/budgets/variance${qs(params)}`),
   listVendors: () => api.get<Page<VendorView> | VendorView[]>(`${BASE}/vendors`).then(normalizePage),
-  createVendor: (body: { organizationId: string; services: string[]; contractRef?: string }) => api.post<VendorView>(`${BASE}/vendors`, body),
-  updateVendor: (id: string, body: Partial<Record<string, unknown>>) => api.patch<VendorView>(`${BASE}/vendors/${id}`, body),
+  createVendor: (body: { organizationId: string; services: string[]; contractRef?: string }) =>
+    api.post<VendorView>(`${BASE}/vendors`, body),
+  updateVendor: (id: string, body: Partial<Record<string, unknown>>) =>
+    api.patch<VendorView>(`${BASE}/vendors/${id}`, body),
 
   // Audiences ------------------------------------------------------------------
-  listAudiences: (params?: Params) => api.get<Page<AudienceView> | AudienceView[]>(`${BASE}/audiences${qs(params)}`).then(normalizePage),
+  listAudiences: (params?: Params) =>
+    api.get<Page<AudienceView> | AudienceView[]>(`${BASE}/audiences${qs(params)}`).then(normalizePage),
   getAudience: (id: string) => api.get<AudienceDetailView>(`${BASE}/audiences/${id}`),
-  createAudience: (body: { name: string; kind: AudienceKind; entityType: AudienceEntityType; rules?: AudienceRule; description?: string }) =>
-    api.post<AudienceView>(`${BASE}/audiences`, body),
-  updateAudience: (id: string, body: Partial<Record<string, unknown>>) => api.patch<AudienceView>(`${BASE}/audiences/${id}`, body),
+  createAudience: (body: {
+    name: string;
+    kind: AudienceKind;
+    entityType: AudienceEntityType;
+    rules?: AudienceRule;
+    description?: string;
+  }) => api.post<AudienceView>(`${BASE}/audiences`, body),
+  updateAudience: (id: string, body: Partial<Record<string, unknown>>) =>
+    api.patch<AudienceView>(`${BASE}/audiences/${id}`, body),
   deleteAudience: (id: string) => api.del<void>(`${BASE}/audiences/${id}`),
   evaluateAudience: (id: string) => api.post<AudienceEvaluateResponse>(`${BASE}/audiences/${id}/evaluate`),
   addAudienceMembers: (id: string, members: Array<{ entityType: string; entityId: string }>) =>
@@ -546,72 +586,132 @@ export const mk = {
   removeAudienceMember: (id: string, memberId: string) => api.del<void>(`${BASE}/audiences/${id}/members/${memberId}`),
   suppressAudienceMember: (id: string, memberId: string, reason: string) =>
     api.post<void>(`${BASE}/audiences/${id}/suppress`, { memberId, reason }),
-  previewAudience: (body: { entityType: string; rules: AudienceRule }) => api.post<AudiencePreviewResponse>(`${BASE}/audiences/preview`, body),
+  previewAudience: (body: { entityType: string; rules: AudienceRule }) =>
+    api.post<AudiencePreviewResponse>(`${BASE}/audiences/preview`, body),
   getAudienceFields: (entityType: string) => api.get<AudienceField[]>(`${BASE}/audiences/fields${qs({ entityType })}`),
 
   // Consent & preferences --------------------------------------------------------
   getPreferences: (personId: string) => api.get<PreferencesResponse>(`${BASE}/preferences${qs({ personId })}`),
-  recordConsent: (body: { personId: string; channel: 'portal' | 'in_app' | 'paper' | 'verbal' | 'guardian_intake'; evidence?: unknown }) =>
-    purposePost<PreferencesResponse>(`${BASE}/preferences/consent`, body),
-  withdrawConsent: (body: { personId: string; reason?: string }) => purposePost<PreferencesResponse>(`${BASE}/preferences/withdraw`, body),
-  setChannelPreference: (body: { personId: string; channelKey: ChannelKey; optedIn: boolean; source?: PreferenceChangeSource }) =>
-    purposePost<PreferenceView>(`${BASE}/preferences/channel`, body),
+  recordConsent: (body: {
+    personId: string;
+    channel: 'portal' | 'in_app' | 'paper' | 'verbal' | 'guardian_intake';
+    evidence?: unknown;
+  }) => purposePost<PreferencesResponse>(`${BASE}/preferences/consent`, body),
+  withdrawConsent: (body: { personId: string; reason?: string }) =>
+    purposePost<PreferencesResponse>(`${BASE}/preferences/withdraw`, body),
+  setChannelPreference: (body: {
+    personId: string;
+    channelKey: ChannelKey;
+    optedIn: boolean;
+    source?: PreferenceChangeSource;
+  }) => purposePost<PreferenceView>(`${BASE}/preferences/channel`, body),
   setDoNotContact: (body: { personId: string; doNotContact: boolean; reason: string }) =>
     purposePost<PreferencesResponse>(`${BASE}/preferences/do-not-contact`, body),
   getPreferenceCoverage: () => api.get<PreferenceCoverageResponse>(`${BASE}/preferences/coverage`),
 
   // Templates --------------------------------------------------------------------
-  listTemplates: (params?: { channelKey?: ChannelKey; status?: TemplateStatus }) => api.get<Page<TemplateView> | TemplateView[]>(`${BASE}/templates${qs(params)}`).then(normalizePage),
+  listTemplates: (params?: { channelKey?: ChannelKey; status?: TemplateStatus }) =>
+    api.get<Page<TemplateView> | TemplateView[]>(`${BASE}/templates${qs(params)}`).then(normalizePage),
   getTemplate: (id: string) => api.get<TemplateView>(`${BASE}/templates/${id}`),
-  createTemplate: (body: { channelKey: ChannelKey; name: string; subject?: string; body: string; language?: string; dltTemplateId?: string; waTemplateName?: string }) =>
-    api.post<TemplateView>(`${BASE}/templates`, body),
-  updateTemplate: (id: string, body: Partial<Record<string, unknown>>) => api.patch<TemplateView>(`${BASE}/templates/${id}`, body),
+  createTemplate: (body: {
+    channelKey: ChannelKey;
+    name: string;
+    subject?: string;
+    body: string;
+    language?: string;
+    dltTemplateId?: string;
+    waTemplateName?: string;
+  }) => api.post<TemplateView>(`${BASE}/templates`, body),
+  updateTemplate: (id: string, body: Partial<Record<string, unknown>>) =>
+    api.patch<TemplateView>(`${BASE}/templates/${id}`, body),
   submitTemplate: (id: string) => api.post<TemplateView>(`${BASE}/templates/${id}/submit`),
   approveTemplate: (id: string) => api.post<TemplateView>(`${BASE}/templates/${id}/approve`),
   rejectTemplate: (id: string, reason: string) => api.post<TemplateView>(`${BASE}/templates/${id}/reject`, { reason }),
   retireTemplate: (id: string) => api.post<TemplateView>(`${BASE}/templates/${id}/retire`),
-  previewTemplate: (id: string, personId?: string) => api.post<TemplatePreviewResponse>(`${BASE}/templates/${id}/preview`, { personId }),
+  previewTemplate: (id: string, personId?: string) =>
+    api.post<TemplatePreviewResponse>(`${BASE}/templates/${id}/preview`, { personId }),
   getMergeFields: () => api.get<MergeField[]>(`${BASE}/templates/merge-fields`),
 
   // Sends ----------------------------------------------------------------------
-  listSends: (params?: Params) => api.get<Page<SendView> | SendView[]>(`${BASE}/sends${qs(params)}`).then(normalizePage),
+  listSends: (params?: Params) =>
+    api.get<Page<SendView> | SendView[]>(`${BASE}/sends${qs(params)}`).then(normalizePage),
   getSend: (id: string) => api.get<SendDetailView>(`${BASE}/sends/${id}`),
-  createSend: (body: { campaignId?: string; templateId: string; channelKey: ChannelKey; audienceId: string; scheduledAt?: string }) =>
-    purposePost<SendView>(`${BASE}/sends`, body),
+  createSend: (body: {
+    campaignId?: string;
+    templateId: string;
+    channelKey: ChannelKey;
+    audienceId: string;
+    scheduledAt?: string;
+  }) => purposePost<SendView>(`${BASE}/sends`, body),
   requestSend: (id: string) => purposePost<SendView>(`${BASE}/sends/${id}/request`),
   approveSend: (id: string) => purposePost<SendView>(`${BASE}/sends/${id}/approve`),
   cancelSend: (id: string) => purposePost<SendView>(`${BASE}/sends/${id}/cancel`),
   dispatchSend: (id: string) => purposePost<SendView>(`${BASE}/sends/${id}/dispatch`),
-  listSendRecipients: (id: string, status?: string) => api.get<SendRecipientView[]>(`${BASE}/sends/${id}/recipients${qs({ status })}`),
+  listSendRecipients: (id: string, status?: string) =>
+    api.get<SendRecipientView[]>(`${BASE}/sends/${id}/recipients${qs({ status })}`),
   getSendDryRun: (id: string) => api.get<DryRunResponse>(`${BASE}/sends/${id}/dry-run`),
-  sendTest: (body: { templateId: string; channelKey: ChannelKey; to: string }) => purposePost<{ ok: boolean }>(`${BASE}/sends/test`, body),
+  sendTest: (body: { templateId: string; channelKey: ChannelKey; to: string }) =>
+    purposePost<{ ok: boolean }>(`${BASE}/sends/test`, body),
 
   // Journeys -----------------------------------------------------------------
-  listJourneys: (params?: Params) => api.get<Page<JourneyView> | JourneyView[]>(`${BASE}/journeys${qs(params)}`).then(normalizePage),
+  listJourneys: (params?: Params) =>
+    api.get<Page<JourneyView> | JourneyView[]>(`${BASE}/journeys${qs(params)}`).then(normalizePage),
   getJourney: (id: string) => api.get<JourneyView>(`${BASE}/journeys/${id}`),
   createJourney: (body: { name: string; triggerKind: JourneyTriggerKind; steps: JourneyStep[]; audienceId?: string }) =>
     api.post<JourneyView>(`${BASE}/journeys`, body),
-  updateJourney: (id: string, body: Partial<Record<string, unknown>>) => api.patch<JourneyView>(`${BASE}/journeys/${id}`, body),
+  updateJourney: (id: string, body: Partial<Record<string, unknown>>) =>
+    api.patch<JourneyView>(`${BASE}/journeys/${id}`, body),
   activateJourney: (id: string) => api.post<JourneyView>(`${BASE}/journeys/${id}/activate`),
   pauseJourney: (id: string) => api.post<JourneyView>(`${BASE}/journeys/${id}/pause`),
   retireJourney: (id: string) => api.post<JourneyView>(`${BASE}/journeys/${id}/retire`),
-  listJourneyRuns: (id: string, status?: string) => api.get<Page<{ id: string; personId: string; personName: string; currentStep: number; status: string; nextAt: string | null }> | { id: string; personId: string; personName: string; currentStep: number; status: string; nextAt: string | null }[]>(`${BASE}/journeys/${id}/runs${qs({ status })}`).then(normalizePage),
+  listJourneyRuns: (id: string, status?: string) =>
+    api
+      .get<
+        | Page<{
+            id: string;
+            personId: string;
+            personName: string;
+            currentStep: number;
+            status: string;
+            nextAt: string | null;
+          }>
+        | {
+            id: string;
+            personId: string;
+            personName: string;
+            currentStep: number;
+            status: string;
+            nextAt: string | null;
+          }[]
+      >(`${BASE}/journeys/${id}/runs${qs({ status })}`)
+      .then(normalizePage),
   enrolInJourney: (id: string, personId: string) => api.post<void>(`${BASE}/journeys/${id}/enrol`, { personId }),
   exitJourneyRun: (runId: string, reason: string) => api.post<void>(`${BASE}/journeys/runs/${runId}/exit`, { reason }),
 
   // Forms, submissions, touchpoints, scoring, links -------------------------
-  listForms: (params?: Params) => api.get<Page<FormView> | FormView[]>(`${BASE}/forms${qs(params)}`).then(normalizePage),
+  listForms: (params?: Params) =>
+    api.get<Page<FormView> | FormView[]>(`${BASE}/forms${qs(params)}`).then(normalizePage),
   getForm: (id: string) => api.get<FormDetailView>(`${BASE}/forms/${id}`),
-  createForm: (body: { name: string; slug: string; fields: unknown[]; vertical: string; defaultCampaignId?: string; thankYouMessage?: string }) =>
-    api.post<FormView>(`${BASE}/forms`, body),
+  createForm: (body: {
+    name: string;
+    slug: string;
+    fields: unknown[];
+    vertical: string;
+    defaultCampaignId?: string;
+    thankYouMessage?: string;
+  }) => api.post<FormView>(`${BASE}/forms`, body),
   updateForm: (id: string, body: Partial<Record<string, unknown>>) => api.patch<FormView>(`${BASE}/forms/${id}`, body),
   publishForm: (id: string) => api.post<FormView>(`${BASE}/forms/${id}/publish`),
   unpublishForm: (id: string) => api.post<FormView>(`${BASE}/forms/${id}/unpublish`),
   rotateFormToken: (id: string) => api.post<FormView>(`${BASE}/forms/${id}/rotate-token`),
   getFormEmbed: (id: string) => api.get<FormEmbedResponse>(`${BASE}/forms/${id}/embed`),
-  listFormSubmissions: (id: string, status?: FormSubmissionStatus) => api.get<Page<FormSubmissionView> | FormSubmissionView[]>(`${BASE}/forms/${id}/submissions${qs({ status })}`).then(normalizePage),
+  listFormSubmissions: (id: string, status?: FormSubmissionStatus) =>
+    api
+      .get<Page<FormSubmissionView> | FormSubmissionView[]>(`${BASE}/forms/${id}/submissions${qs({ status })}`)
+      .then(normalizePage),
   convertSubmission: (id: string) => api.post<FormSubmissionView>(`${BASE}/submissions/${id}/convert`),
-  rejectSubmission: (id: string, reason: string) => api.post<FormSubmissionView>(`${BASE}/submissions/${id}/reject`, { reason }),
+  rejectSubmission: (id: string, reason: string) =>
+    api.post<FormSubmissionView>(`${BASE}/submissions/${id}/reject`, { reason }),
   markSubmissionSpam: (id: string) => api.post<FormSubmissionView>(`${BASE}/submissions/${id}/mark-spam`),
   listTouchpoints: (params?: { personId?: string; leadId?: string; campaignId?: string; from?: string; to?: string }) =>
     api.get<Page<TouchpointView> | TouchpointView[]>(`${BASE}/touchpoints${qs(params)}`).then(normalizePage),
@@ -627,20 +727,29 @@ export const mk = {
     sourceRef?: string;
     cost?: number;
   }) => api.post<TouchpointView>(`${BASE}/touchpoints`, body),
-  recomputeAttribution: (params?: { from?: string; to?: string }) => api.post<{ computed: number }>(`${BASE}/attribution/recompute${qs(params)}`),
+  recomputeAttribution: (params?: { from?: string; to?: string }) =>
+    api.post<{ computed: number }>(`${BASE}/attribution/recompute${qs(params)}`),
   getLeadAttribution: (leadId: string) => api.get<AttributionView[]>(`${BASE}/attribution/lead/${leadId}`),
   listScoreRules: () => api.get<ScoreRuleView[]>(`${BASE}/score-rules`),
-  createScoreRule: (body: { name: string; condition: unknown; points: number; order?: number }) => api.post<ScoreRuleView>(`${BASE}/score-rules`, body),
-  updateScoreRule: (id: string, body: Partial<Record<string, unknown>>) => api.patch<ScoreRuleView>(`${BASE}/score-rules/${id}`, body),
+  createScoreRule: (body: { name: string; condition: unknown; points: number; order?: number }) =>
+    api.post<ScoreRuleView>(`${BASE}/score-rules`, body),
+  updateScoreRule: (id: string, body: Partial<Record<string, unknown>>) =>
+    api.patch<ScoreRuleView>(`${BASE}/score-rules/${id}`, body),
   deleteScoreRule: (id: string) => api.del<void>(`${BASE}/score-rules/${id}`),
   previewScoreRules: (leadId: string) => api.post<ScoreRulePreviewResponse>(`${BASE}/score-rules/preview`, { leadId }),
   applyScoreRules: () => api.post<{ updated: number }>(`${BASE}/score-rules/apply`),
   listLinks: () => api.get<Page<ShortLinkView> | ShortLinkView[]>(`${BASE}/links`).then(normalizePage),
-  createLink: (body: { slug?: string; targetUrl: string; campaignId?: string; channelKey?: ChannelKey; utm?: Record<string, string> }) =>
-    api.post<ShortLinkView>(`${BASE}/links`, body),
+  createLink: (body: {
+    slug?: string;
+    targetUrl: string;
+    campaignId?: string;
+    channelKey?: ChannelKey;
+    utm?: Record<string, string>;
+  }) => api.post<ShortLinkView>(`${BASE}/links`, body),
 
   // Events -----------------------------------------------------------------
-  listEvents: (params?: Params) => api.get<Page<MarketingEventView> | MarketingEventView[]>(`${BASE}/events${qs(params)}`).then(normalizePage),
+  listEvents: (params?: Params) =>
+    api.get<Page<MarketingEventView> | MarketingEventView[]>(`${BASE}/events${qs(params)}`).then(normalizePage),
   getEvent: (id: string) => api.get<EventDetailView>(`${BASE}/events/${id}`),
   createEvent: (body: {
     name: string;
@@ -655,86 +764,141 @@ export const mk = {
     costPlanned?: number;
     division: string;
   }) => api.post<MarketingEventView>(`${BASE}/events`, body),
-  updateEvent: (id: string, body: Partial<Record<string, unknown>>) => api.patch<MarketingEventView>(`${BASE}/events/${id}`, body),
+  updateEvent: (id: string, body: Partial<Record<string, unknown>>) =>
+    api.patch<MarketingEventView>(`${BASE}/events/${id}`, body),
   openEvent: (id: string) => api.post<MarketingEventView>(`${BASE}/events/${id}/open`),
   closeEvent: (id: string) => api.post<MarketingEventView>(`${BASE}/events/${id}/close`),
   startEvent: (id: string) => api.post<MarketingEventView>(`${BASE}/events/${id}/start`),
   completeEvent: (id: string) => api.post<MarketingEventView>(`${BASE}/events/${id}/complete`),
   cancelEvent: (id: string, reason: string) => api.post<MarketingEventView>(`${BASE}/events/${id}/cancel`, { reason }),
-  listRegistrations: (id: string) => api.get<Page<RegistrationView> | RegistrationView[]>(`${BASE}/events/${id}/registrations`).then(normalizePage),
-  registerForEvent: (id: string, body: { personId?: string; person?: { fullName: string; primaryPhone?: string; primaryEmail?: string }; source?: string }) =>
-    api.post<RegistrationView>(`${BASE}/events/${id}/register`, body),
+  listRegistrations: (id: string) =>
+    api.get<Page<RegistrationView> | RegistrationView[]>(`${BASE}/events/${id}/registrations`).then(normalizePage),
+  registerForEvent: (
+    id: string,
+    body: {
+      personId?: string;
+      person?: { fullName: string; primaryPhone?: string; primaryEmail?: string };
+      source?: string;
+    },
+  ) => api.post<RegistrationView>(`${BASE}/events/${id}/register`, body),
   confirmRegistration: (id: string) => api.post<RegistrationView>(`${BASE}/events/registrations/${id}/confirm`),
   checkInRegistration: (id: string) => api.post<RegistrationView>(`${BASE}/events/registrations/${id}/check-in`),
   noShowRegistration: (id: string) => api.post<RegistrationView>(`${BASE}/events/registrations/${id}/no-show`),
   cancelRegistration: (id: string) => api.post<RegistrationView>(`${BASE}/events/registrations/${id}/cancel`),
-  followUpRegistration: (id: string, done: boolean, note?: string) => api.post<RegistrationView>(`${BASE}/events/registrations/${id}/follow-up`, { done, note }),
+  followUpRegistration: (id: string, done: boolean, note?: string) =>
+    api.post<RegistrationView>(`${BASE}/events/registrations/${id}/follow-up`, { done, note }),
   convertAttendees: (id: string) => api.post<{ created: number }>(`${BASE}/events/${id}/convert-attendees`),
   exportEvent: (id: string, fallbackName: string) => api.download(`${BASE}/events/${id}/export`, fallbackName),
 
   // Assets, social, claims --------------------------------------------------
-  listAssets: (params?: Params) => api.get<Page<AssetView> | AssetView[]>(`${BASE}/assets${qs(params)}`).then(normalizePage),
+  listAssets: (params?: Params) =>
+    api.get<Page<AssetView> | AssetView[]>(`${BASE}/assets${qs(params)}`).then(normalizePage),
   getAsset: (id: string) => api.get<AssetView>(`${BASE}/assets/${id}`),
-  createAsset: (body: { name: string; kind: AssetKind; url?: string; campaignId?: string; usageRights?: string; expiresAt?: string; tags?: string[] }) =>
-    api.post<AssetView>(`${BASE}/assets`, body),
-  updateAsset: (id: string, body: Partial<Record<string, unknown>>) => api.patch<AssetView>(`${BASE}/assets/${id}`, body),
+  createAsset: (body: {
+    name: string;
+    kind: AssetKind;
+    url?: string;
+    campaignId?: string;
+    usageRights?: string;
+    expiresAt?: string;
+    tags?: string[];
+  }) => api.post<AssetView>(`${BASE}/assets`, body),
+  updateAsset: (id: string, body: Partial<Record<string, unknown>>) =>
+    api.patch<AssetView>(`${BASE}/assets/${id}`, body),
   submitAsset: (id: string) => api.post<AssetView>(`${BASE}/assets/${id}/submit`),
   approveAsset: (id: string) => api.post<AssetView>(`${BASE}/assets/${id}/approve`),
   rejectAsset: (id: string, reason: string) => api.post<AssetView>(`${BASE}/assets/${id}/reject`, { reason }),
   retireAsset: (id: string) => api.post<AssetView>(`${BASE}/assets/${id}/retire`),
-  listSocialPosts: (params?: { from?: string; to?: string; channelKey?: ChannelKey }) => api.get<Page<SocialPostView> | SocialPostView[]>(`${BASE}/social-posts${qs(params)}`).then(normalizePage),
-  createSocialPost: (body: { channelKey: ChannelKey; campaignId?: string; body: string; assetIds?: string[]; scheduledAt: string }) =>
-    api.post<SocialPostView>(`${BASE}/social-posts`, body),
-  updateSocialPost: (id: string, body: Partial<Record<string, unknown>>) => api.patch<SocialPostView>(`${BASE}/social-posts/${id}`, body),
-  publishSocialPost: (id: string, externalUrl?: string) => api.post<SocialPostView>(`${BASE}/social-posts/${id}/publish`, { externalUrl }),
+  listSocialPosts: (params?: { from?: string; to?: string; channelKey?: ChannelKey }) =>
+    api.get<Page<SocialPostView> | SocialPostView[]>(`${BASE}/social-posts${qs(params)}`).then(normalizePage),
+  createSocialPost: (body: {
+    channelKey: ChannelKey;
+    campaignId?: string;
+    body: string;
+    assetIds?: string[];
+    scheduledAt: string;
+  }) => api.post<SocialPostView>(`${BASE}/social-posts`, body),
+  updateSocialPost: (id: string, body: Partial<Record<string, unknown>>) =>
+    api.patch<SocialPostView>(`${BASE}/social-posts/${id}`, body),
+  publishSocialPost: (id: string, externalUrl?: string) =>
+    api.post<SocialPostView>(`${BASE}/social-posts/${id}/publish`, { externalUrl }),
   cancelSocialPost: (id: string) => api.post<SocialPostView>(`${BASE}/social-posts/${id}/cancel`),
-  recordSocialMetrics: (id: string, body: { likes?: number; comments?: number; shares?: number; reach?: number; clicks?: number }) =>
-    api.post<SocialPostView>(`${BASE}/social-posts/${id}/metrics`, body),
+  recordSocialMetrics: (
+    id: string,
+    body: { likes?: number; comments?: number; shares?: number; reach?: number; clicks?: number },
+  ) => api.post<SocialPostView>(`${BASE}/social-posts/${id}/metrics`, body),
   // The claim handlers are implemented in settings.routes.ts, which
   // index.ts mounts at `/settings` — so the real path is
   // `/settings/claims*`, not `/claims*` (review-web.md #1).
   listClaims: () => api.get<Page<ClaimView> | ClaimView[]>(`${BASE}/settings/claims`).then(normalizePage),
-  createClaim: (body: { text: string; evidenceRef?: string; assetIds?: string[] }) => api.post<ClaimView>(`${BASE}/settings/claims`, body),
+  createClaim: (body: { text: string; evidenceRef?: string; assetIds?: string[] }) =>
+    api.post<ClaimView>(`${BASE}/settings/claims`, body),
   approveClaim: (id: string) => api.post<ClaimView>(`${BASE}/settings/claims/${id}/approve`),
   rejectClaim: (id: string, reason: string) => api.post<ClaimView>(`${BASE}/settings/claims/${id}/reject`, { reason }),
   retireClaim: (id: string) => api.post<ClaimView>(`${BASE}/settings/claims/${id}/retire`),
 
   // Referrals ----------------------------------------------------------------
-  listReferralPrograms: () => api.get<Page<ReferralProgramView> | ReferralProgramView[]>(`${BASE}/referral-programs`).then(normalizePage),
-  createReferralProgram: (body: { name: string; kind: ReferralProgramKind; rewardKind: RewardKind; rewardAmount?: number; terms?: string }) =>
-    api.post<ReferralProgramView>(`${BASE}/referral-programs`, body),
-  updateReferralProgram: (id: string, body: Partial<Record<string, unknown>>) => api.patch<ReferralProgramView>(`${BASE}/referral-programs/${id}`, body),
+  listReferralPrograms: () =>
+    api.get<Page<ReferralProgramView> | ReferralProgramView[]>(`${BASE}/referral-programs`).then(normalizePage),
+  createReferralProgram: (body: {
+    name: string;
+    kind: ReferralProgramKind;
+    rewardKind: RewardKind;
+    rewardAmount?: number;
+    terms?: string;
+  }) => api.post<ReferralProgramView>(`${BASE}/referral-programs`, body),
+  updateReferralProgram: (id: string, body: Partial<Record<string, unknown>>) =>
+    api.patch<ReferralProgramView>(`${BASE}/referral-programs/${id}`, body),
   activateReferralProgram: (id: string) => api.post<ReferralProgramView>(`${BASE}/referral-programs/${id}/activate`),
-  deactivateReferralProgram: (id: string) => api.post<ReferralProgramView>(`${BASE}/referral-programs/${id}/deactivate`),
-  listReferrals: (params?: { programId?: string; status?: ReferralStatus }) => api.get<Page<ReferralView> | ReferralView[]>(`${BASE}/referrals${qs(params)}`).then(normalizePage),
+  deactivateReferralProgram: (id: string) =>
+    api.post<ReferralProgramView>(`${BASE}/referral-programs/${id}/deactivate`),
+  listReferrals: (params?: { programId?: string; status?: ReferralStatus }) =>
+    api.get<Page<ReferralView> | ReferralView[]>(`${BASE}/referrals${qs(params)}`).then(normalizePage),
   issueReferral: (body: { programId: string; referrerPersonId?: string; referrerOrganizationId?: string }) =>
     api.post<ReferralView>(`${BASE}/referrals/issue`, body),
-  redeemReferral: (body: { code: string; referredPersonId?: string; person?: { fullName: string; primaryPhone?: string; primaryEmail?: string } }) =>
-    api.post<ReferralView>(`${BASE}/referrals/redeem`, body),
+  redeemReferral: (body: {
+    code: string;
+    referredPersonId?: string;
+    person?: { fullName: string; primaryPhone?: string; primaryEmail?: string };
+  }) => api.post<ReferralView>(`${BASE}/referrals/redeem`, body),
   qualifyReferral: (id: string) => api.post<ReferralView>(`${BASE}/referrals/${id}/qualify`),
-  rewardReferral: (id: string, rewardTransactionRef?: string) => api.post<ReferralView>(`${BASE}/referrals/${id}/reward`, { rewardTransactionRef }),
+  rewardReferral: (id: string, rewardTransactionRef?: string) =>
+    api.post<ReferralView>(`${BASE}/referrals/${id}/reward`, { rewardTransactionRef }),
   voidReferral: (id: string, reason: string) => api.post<ReferralView>(`${BASE}/referrals/${id}/void`, { reason }),
-  getReferralLeaderboard: (programId: string) => api.get<ReferralLeaderboardRow[]>(`${BASE}/referrals/leaderboard${qs({ programId })}`),
+  getReferralLeaderboard: (programId: string) =>
+    api.get<ReferralLeaderboardRow[]>(`${BASE}/referrals/leaderboard${qs({ programId })}`),
 
   // Settings --------------------------------------------------------------------
   listChannels: () => api.get<Page<ChannelView> | ChannelView[]>(`${BASE}/settings/channels`).then(normalizePage),
-  createChannel: (body: { key: ChannelKey; label: string; kind: ChannelKind; senderIds?: string[]; dltEntityId?: string; config?: unknown }) =>
-    api.post<ChannelView>(`${BASE}/settings/channels`, body),
-  updateChannel: (id: string, body: Partial<Record<string, unknown>>) => api.patch<ChannelView>(`${BASE}/settings/channels/${id}`, body),
+  createChannel: (body: {
+    key: ChannelKey;
+    label: string;
+    kind: ChannelKind;
+    senderIds?: string[];
+    dltEntityId?: string;
+    config?: unknown;
+  }) => api.post<ChannelView>(`${BASE}/settings/channels`, body),
+  updateChannel: (id: string, body: Partial<Record<string, unknown>>) =>
+    api.patch<ChannelView>(`${BASE}/settings/channels/${id}`, body),
   getAdapterStatus: () => api.get<AdapterStatusRow[]>(`${BASE}/settings/adapters`),
   getPolicy: () => api.get<MarketingPolicy>(`${BASE}/settings/policy`),
   updatePolicy: (body: Partial<MarketingPolicy>) => api.patch<MarketingPolicy>(`${BASE}/settings/policy`, body),
   listWebhooks: () => api.get<MarketingWebhookInboundView[]>(`${BASE}/settings/webhooks`),
   getAiTouchpoints: () => api.get<AiTouchpointRow[]>(`${BASE}/settings/ai-touchpoints`),
-  requestAiDraft: (body: { kind: 'campaign_brief' | 'copy' | 'subject_lines' | 'segment' | 'next_best_action'; context: unknown }) =>
-    api.post<AiDraftResponse>(`${BASE}/ai/draft`, body),
+  requestAiDraft: (body: {
+    kind: 'campaign_brief' | 'copy' | 'subject_lines' | 'segment' | 'next_best_action';
+    context: unknown;
+  }) => api.post<AiDraftResponse>(`${BASE}/ai/draft`, body),
 };
 
 // ---------------------------------------------------------------------------
 // Small generic query/mutation helpers
 // ---------------------------------------------------------------------------
 
-function useMkMutation<TVars, TRes>(fn: (vars: TVars) => Promise<TRes>, invalidate: unknown[][]): UseMutationResult<TRes, unknown, TVars> {
+function useMkMutation<TVars, TRes>(
+  fn: (vars: TVars) => Promise<TRes>,
+  invalidate: unknown[][],
+): UseMutationResult<TRes, unknown, TVars> {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: fn,
@@ -757,11 +921,17 @@ export function useMarketingFunnel(params?: { from?: string; to?: string; divisi
 }
 
 export function useChannelPerformance(params?: { from?: string; to?: string }) {
-  return useQuery({ queryKey: ['mkt', 'analytics', 'channels', params], queryFn: () => mk.getChannelPerformance(params) });
+  return useQuery({
+    queryKey: ['mkt', 'analytics', 'channels', params],
+    queryFn: () => mk.getChannelPerformance(params),
+  });
 }
 
 export function useCampaignPerformance(params?: { from?: string; to?: string }) {
-  return useQuery({ queryKey: ['mkt', 'analytics', 'campaigns', params], queryFn: () => mk.getCampaignPerformance(params) });
+  return useQuery({
+    queryKey: ['mkt', 'analytics', 'campaigns', params],
+    queryFn: () => mk.getCampaignPerformance(params),
+  });
 }
 
 export function useAttributionAnalytics(params: { model: AttributionModel; from?: string; to?: string }) {
@@ -781,7 +951,11 @@ export function useCampaigns(params?: Params) {
 }
 
 export function useCampaign(id: string | undefined) {
-  return useQuery({ queryKey: ['mkt', 'campaign', id], queryFn: () => mk.getCampaign(id as string), enabled: Boolean(id) });
+  return useQuery({
+    queryKey: ['mkt', 'campaign', id],
+    queryFn: () => mk.getCampaign(id as string),
+    enabled: Boolean(id),
+  });
 }
 
 export function useCreateCampaign() {
@@ -789,7 +963,13 @@ export function useCreateCampaign() {
 }
 
 export function useUpdateCampaign(id: string) {
-  return useMkMutation((body: Partial<Record<string, unknown>>) => mk.updateCampaign(id, body), [['mkt', 'campaigns'], ['mkt', 'campaign', id]]);
+  return useMkMutation(
+    (body: Partial<Record<string, unknown>>) => mk.updateCampaign(id, body),
+    [
+      ['mkt', 'campaigns'],
+      ['mkt', 'campaign', id],
+    ],
+  );
 }
 
 export function useDeleteCampaign() {
@@ -828,21 +1008,47 @@ export function useArchiveCampaign() {
 }
 
 export function useApproveCampaign(id: string) {
-  return useMkMutation((reason?: string) => mk.approveCampaign(id, reason), [['mkt', 'campaigns'], ['mkt', 'campaign', id]]);
+  return useMkMutation(
+    (reason?: string) => mk.approveCampaign(id, reason),
+    [
+      ['mkt', 'campaigns'],
+      ['mkt', 'campaign', id],
+    ],
+  );
 }
 export function useRejectCampaign(id: string) {
-  return useMkMutation((reason: string) => mk.rejectCampaign(id, reason), [['mkt', 'campaigns'], ['mkt', 'campaign', id]]);
+  return useMkMutation(
+    (reason: string) => mk.rejectCampaign(id, reason),
+    [
+      ['mkt', 'campaigns'],
+      ['mkt', 'campaign', id],
+    ],
+  );
 }
 export function useCancelCampaign(id: string) {
-  return useMkMutation((reason: string) => mk.cancelCampaign(id, reason), [['mkt', 'campaigns'], ['mkt', 'campaign', id]]);
+  return useMkMutation(
+    (reason: string) => mk.cancelCampaign(id, reason),
+    [
+      ['mkt', 'campaigns'],
+      ['mkt', 'campaign', id],
+    ],
+  );
 }
 
 export function useCampaignTimeline(id: string | undefined) {
-  return useQuery({ queryKey: ['mkt', 'campaign', id, 'timeline'], queryFn: () => mk.getCampaignTimeline(id as string), enabled: Boolean(id) });
+  return useQuery({
+    queryKey: ['mkt', 'campaign', id, 'timeline'],
+    queryFn: () => mk.getCampaignTimeline(id as string),
+    enabled: Boolean(id),
+  });
 }
 
 export function useCampaignUtm(id: string | undefined) {
-  return useQuery({ queryKey: ['mkt', 'campaign', id, 'utm'], queryFn: () => mk.getCampaignUtm(id as string), enabled: Boolean(id) });
+  return useQuery({
+    queryKey: ['mkt', 'campaign', id, 'utm'],
+    queryFn: () => mk.getCampaignUtm(id as string),
+    enabled: Boolean(id),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -876,24 +1082,37 @@ export function useBudgets(params?: { period?: string; division?: string }) {
   return useQuery({ queryKey: ['mkt', 'budgets', params], queryFn: () => mk.listBudgets(params) });
 }
 export function useCreateBudget() {
-  return useMkMutation(mk.createBudget, [['mkt', 'budgets'], ['mkt', 'budget', 'variance']]);
+  return useMkMutation(mk.createBudget, [
+    ['mkt', 'budgets'],
+    ['mkt', 'budget', 'variance'],
+  ]);
 }
 export function useUpdateBudget(id: string) {
   return useMkMutation((body: Partial<Record<string, unknown>>) => mk.updateBudget(id, body), [['mkt', 'budgets']]);
 }
 export function useApproveBudget() {
-  return useMkMutation(mk.approveBudget, [['mkt', 'budgets'], ['mkt', 'budget', 'variance']]);
+  return useMkMutation(mk.approveBudget, [
+    ['mkt', 'budgets'],
+    ['mkt', 'budget', 'variance'],
+  ]);
 }
 export function useSpends(params?: { campaignId?: string; from?: string; to?: string }) {
   return useQuery({ queryKey: ['mkt', 'spends', params], queryFn: () => mk.listSpends(params) });
 }
 export function useCreateSpend() {
-  return useMkMutation(mk.createSpend, [['mkt', 'spends'], ['mkt', 'budget', 'variance'], ['mkt', 'campaigns'], ['mkt', 'campaign']]);
+  return useMkMutation(mk.createSpend, [
+    ['mkt', 'spends'],
+    ['mkt', 'budget', 'variance'],
+    ['mkt', 'campaigns'],
+    ['mkt', 'campaign'],
+  ]);
 }
 export function useReconcileSpend() {
-  return useMkMutation(({ id, body }: { id: string; body: { transactionId?: string; vendorBillId?: string } }) => mk.reconcileSpend(id, body), [
-    ['mkt', 'spends'],
-  ]);
+  return useMkMutation(
+    ({ id, body }: { id: string; body: { transactionId?: string; vendorBillId?: string } }) =>
+      mk.reconcileSpend(id, body),
+    [['mkt', 'spends']],
+  );
 }
 export function useBudgetVariance(params: { period: string; division?: string }) {
   return useQuery({ queryKey: ['mkt', 'budget', 'variance', params], queryFn: () => mk.getBudgetVariance(params) });
@@ -916,36 +1135,60 @@ export function useAudiences(params?: Params) {
   return useQuery({ queryKey: ['mkt', 'audiences', params], queryFn: () => mk.listAudiences(params) });
 }
 export function useAudience(id: string | undefined) {
-  return useQuery({ queryKey: ['mkt', 'audience', id], queryFn: () => mk.getAudience(id as string), enabled: Boolean(id) });
+  return useQuery({
+    queryKey: ['mkt', 'audience', id],
+    queryFn: () => mk.getAudience(id as string),
+    enabled: Boolean(id),
+  });
 }
 export function useCreateAudience() {
   return useMkMutation(mk.createAudience, [['mkt', 'audiences']]);
 }
 export function useUpdateAudience(id: string) {
-  return useMkMutation((body: Partial<Record<string, unknown>>) => mk.updateAudience(id, body), [['mkt', 'audiences'], ['mkt', 'audience', id]]);
+  return useMkMutation(
+    (body: Partial<Record<string, unknown>>) => mk.updateAudience(id, body),
+    [
+      ['mkt', 'audiences'],
+      ['mkt', 'audience', id],
+    ],
+  );
 }
 export function useDeleteAudience() {
   return useMkMutation(mk.deleteAudience, [['mkt', 'audiences']]);
 }
 export function useEvaluateAudience(id: string) {
-  return useMkMutation(() => mk.evaluateAudience(id), [['mkt', 'audiences'], ['mkt', 'audience', id]]);
+  return useMkMutation(
+    () => mk.evaluateAudience(id),
+    [
+      ['mkt', 'audiences'],
+      ['mkt', 'audience', id],
+    ],
+  );
 }
 export function useAddAudienceMembers(id: string) {
-  return useMkMutation((members: Array<{ entityType: string; entityId: string }>) => mk.addAudienceMembers(id, members), [['mkt', 'audience', id]]);
+  return useMkMutation(
+    (members: Array<{ entityType: string; entityId: string }>) => mk.addAudienceMembers(id, members),
+    [['mkt', 'audience', id]],
+  );
 }
 export function useRemoveAudienceMember(id: string) {
   return useMkMutation((memberId: string) => mk.removeAudienceMember(id, memberId), [['mkt', 'audience', id]]);
 }
 export function useSuppressAudienceMember(id: string) {
-  return useMkMutation(({ memberId, reason }: { memberId: string; reason: string }) => mk.suppressAudienceMember(id, memberId, reason), [
-    ['mkt', 'audience', id],
-  ]);
+  return useMkMutation(
+    ({ memberId, reason }: { memberId: string; reason: string }) => mk.suppressAudienceMember(id, memberId, reason),
+    [['mkt', 'audience', id]],
+  );
 }
 export function usePreviewAudience() {
   return useMutation({ mutationFn: mk.previewAudience });
 }
 export function useAudienceFields(entityType: string | undefined) {
-  return useQuery({ queryKey: ['mkt', 'audience-fields', entityType], queryFn: () => mk.getAudienceFields(entityType as string), enabled: Boolean(entityType) });
+  return useQuery({
+    queryKey: ['mkt', 'audience-fields', entityType],
+    queryFn: () => mk.getAudienceFields(entityType as string),
+    enabled: Boolean(entityType),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -953,7 +1196,11 @@ export function useAudienceFields(entityType: string | undefined) {
 // ---------------------------------------------------------------------------
 
 export function usePreferences(personId: string | undefined) {
-  return useQuery({ queryKey: ['mkt', 'preferences', personId], queryFn: () => mk.getPreferences(personId as string), enabled: Boolean(personId) });
+  return useQuery({
+    queryKey: ['mkt', 'preferences', personId],
+    queryFn: () => mk.getPreferences(personId as string),
+    enabled: Boolean(personId),
+  });
 }
 export function useRecordConsent() {
   return useMkMutation(mk.recordConsent, [['mkt', 'preferences']]);
@@ -983,13 +1230,23 @@ export function useTemplates(params?: { channelKey?: ChannelKey; status?: Templa
   return useQuery({ queryKey: ['mkt', 'templates', params], queryFn: () => mk.listTemplates(params) });
 }
 export function useTemplate(id: string | undefined) {
-  return useQuery({ queryKey: ['mkt', 'template', id], queryFn: () => mk.getTemplate(id as string), enabled: Boolean(id) });
+  return useQuery({
+    queryKey: ['mkt', 'template', id],
+    queryFn: () => mk.getTemplate(id as string),
+    enabled: Boolean(id),
+  });
 }
 export function useCreateTemplate() {
   return useMkMutation(mk.createTemplate, [['mkt', 'templates']]);
 }
 export function useUpdateTemplate(id: string) {
-  return useMkMutation((body: Partial<Record<string, unknown>>) => mk.updateTemplate(id, body), [['mkt', 'templates'], ['mkt', 'template', id]]);
+  return useMkMutation(
+    (body: Partial<Record<string, unknown>>) => mk.updateTemplate(id, body),
+    [
+      ['mkt', 'templates'],
+      ['mkt', 'template', id],
+    ],
+  );
 }
 export function useSubmitTemplate() {
   return useMkMutation(mk.submitTemplate, [['mkt', 'templates']]);
@@ -998,13 +1255,18 @@ export function useApproveTemplate() {
   return useMkMutation(mk.approveTemplate, [['mkt', 'templates']]);
 }
 export function useRejectTemplate() {
-  return useMkMutation(({ id, reason }: { id: string; reason: string }) => mk.rejectTemplate(id, reason), [['mkt', 'templates']]);
+  return useMkMutation(
+    ({ id, reason }: { id: string; reason: string }) => mk.rejectTemplate(id, reason),
+    [['mkt', 'templates']],
+  );
 }
 export function useRetireTemplate() {
   return useMkMutation(mk.retireTemplate, [['mkt', 'templates']]);
 }
 export function usePreviewTemplate() {
-  return useMutation({ mutationFn: ({ id, personId }: { id: string; personId?: string }) => mk.previewTemplate(id, personId) });
+  return useMutation({
+    mutationFn: ({ id, personId }: { id: string; personId?: string }) => mk.previewTemplate(id, personId),
+  });
 }
 export function useMergeFields() {
   return useQuery({ queryKey: ['mkt', 'templates', 'merge-fields'], queryFn: mk.getMergeFields });
@@ -1046,10 +1308,18 @@ export function useDispatchSend() {
   return useSendAction(mk.dispatchSend);
 }
 export function useSendRecipients(id: string | undefined, status?: string) {
-  return useQuery({ queryKey: ['mkt', 'send', id, 'recipients', status], queryFn: () => mk.listSendRecipients(id as string, status), enabled: Boolean(id) });
+  return useQuery({
+    queryKey: ['mkt', 'send', id, 'recipients', status],
+    queryFn: () => mk.listSendRecipients(id as string, status),
+    enabled: Boolean(id),
+  });
 }
 export function useSendDryRun(id: string | undefined) {
-  return useQuery({ queryKey: ['mkt', 'send', id, 'dry-run'], queryFn: () => mk.getSendDryRun(id as string), enabled: Boolean(id) });
+  return useQuery({
+    queryKey: ['mkt', 'send', id, 'dry-run'],
+    queryFn: () => mk.getSendDryRun(id as string),
+    enabled: Boolean(id),
+  });
 }
 export function useSendTest() {
   return useMutation({ mutationFn: mk.sendTest });
@@ -1063,13 +1333,23 @@ export function useJourneys(params?: Params) {
   return useQuery({ queryKey: ['mkt', 'journeys', params], queryFn: () => mk.listJourneys(params) });
 }
 export function useJourney(id: string | undefined) {
-  return useQuery({ queryKey: ['mkt', 'journey', id], queryFn: () => mk.getJourney(id as string), enabled: Boolean(id) });
+  return useQuery({
+    queryKey: ['mkt', 'journey', id],
+    queryFn: () => mk.getJourney(id as string),
+    enabled: Boolean(id),
+  });
 }
 export function useCreateJourney() {
   return useMkMutation(mk.createJourney, [['mkt', 'journeys']]);
 }
 export function useUpdateJourney(id: string) {
-  return useMkMutation((body: Partial<Record<string, unknown>>) => mk.updateJourney(id, body), [['mkt', 'journeys'], ['mkt', 'journey', id]]);
+  return useMkMutation(
+    (body: Partial<Record<string, unknown>>) => mk.updateJourney(id, body),
+    [
+      ['mkt', 'journeys'],
+      ['mkt', 'journey', id],
+    ],
+  );
 }
 export function useActivateJourney() {
   return useMkMutation(mk.activateJourney, [['mkt', 'journeys']]);
@@ -1081,13 +1361,19 @@ export function useRetireJourney() {
   return useMkMutation(mk.retireJourney, [['mkt', 'journeys']]);
 }
 export function useJourneyRuns(id: string | undefined, status?: string) {
-  return useQuery({ queryKey: ['mkt', 'journey', id, 'runs', status], queryFn: () => mk.listJourneyRuns(id as string, status), enabled: Boolean(id) });
+  return useQuery({
+    queryKey: ['mkt', 'journey', id, 'runs', status],
+    queryFn: () => mk.listJourneyRuns(id as string, status),
+    enabled: Boolean(id),
+  });
 }
 export function useEnrolInJourney(id: string) {
   return useMkMutation((personId: string) => mk.enrolInJourney(id, personId), [['mkt', 'journey', id, 'runs']]);
 }
 export function useExitJourneyRun() {
-  return useMutation({ mutationFn: ({ runId, reason }: { runId: string; reason: string }) => mk.exitJourneyRun(runId, reason) });
+  return useMutation({
+    mutationFn: ({ runId, reason }: { runId: string; reason: string }) => mk.exitJourneyRun(runId, reason),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1104,7 +1390,13 @@ export function useCreateForm() {
   return useMkMutation(mk.createForm, [['mkt', 'forms']]);
 }
 export function useUpdateForm(id: string) {
-  return useMkMutation((body: Partial<Record<string, unknown>>) => mk.updateForm(id, body), [['mkt', 'forms'], ['mkt', 'form', id]]);
+  return useMkMutation(
+    (body: Partial<Record<string, unknown>>) => mk.updateForm(id, body),
+    [
+      ['mkt', 'forms'],
+      ['mkt', 'form', id],
+    ],
+  );
 }
 export function usePublishForm() {
   return useMkMutation(mk.publishForm, [['mkt', 'forms']]);
@@ -1116,21 +1408,38 @@ export function useRotateFormToken() {
   return useMkMutation(mk.rotateFormToken, [['mkt', 'forms']]);
 }
 export function useFormEmbed(id: string | undefined) {
-  return useQuery({ queryKey: ['mkt', 'form', id, 'embed'], queryFn: () => mk.getFormEmbed(id as string), enabled: Boolean(id) });
+  return useQuery({
+    queryKey: ['mkt', 'form', id, 'embed'],
+    queryFn: () => mk.getFormEmbed(id as string),
+    enabled: Boolean(id),
+  });
 }
 export function useFormSubmissions(id: string | undefined, status?: FormSubmissionStatus) {
-  return useQuery({ queryKey: ['mkt', 'form', id, 'submissions', status], queryFn: () => mk.listFormSubmissions(id as string, status), enabled: Boolean(id) });
+  return useQuery({
+    queryKey: ['mkt', 'form', id, 'submissions', status],
+    queryFn: () => mk.listFormSubmissions(id as string, status),
+    enabled: Boolean(id),
+  });
 }
 export function useConvertSubmission() {
   return useMkMutation(mk.convertSubmission, [['mkt', 'form']]);
 }
 export function useRejectSubmission() {
-  return useMkMutation(({ id, reason }: { id: string; reason: string }) => mk.rejectSubmission(id, reason), [['mkt', 'form']]);
+  return useMkMutation(
+    ({ id, reason }: { id: string; reason: string }) => mk.rejectSubmission(id, reason),
+    [['mkt', 'form']],
+  );
 }
 export function useMarkSubmissionSpam() {
   return useMkMutation(mk.markSubmissionSpam, [['mkt', 'form']]);
 }
-export function useTouchpoints(params?: { personId?: string; leadId?: string; campaignId?: string; from?: string; to?: string }) {
+export function useTouchpoints(params?: {
+  personId?: string;
+  leadId?: string;
+  campaignId?: string;
+  from?: string;
+  to?: string;
+}) {
   return useQuery({ queryKey: ['mkt', 'touchpoints', params], queryFn: () => mk.listTouchpoints(params) });
 }
 export function useCreateTouchpoint() {
@@ -1140,7 +1449,11 @@ export function useRecomputeAttribution() {
   return useMutation({ mutationFn: mk.recomputeAttribution });
 }
 export function useLeadAttribution(leadId: string | undefined) {
-  return useQuery({ queryKey: ['mkt', 'attribution', 'lead', leadId], queryFn: () => mk.getLeadAttribution(leadId as string), enabled: Boolean(leadId) });
+  return useQuery({
+    queryKey: ['mkt', 'attribution', 'lead', leadId],
+    queryFn: () => mk.getLeadAttribution(leadId as string),
+    enabled: Boolean(leadId),
+  });
 }
 export function useScoreRules() {
   return useQuery({ queryKey: ['mkt', 'score-rules'], queryFn: mk.listScoreRules });
@@ -1149,7 +1462,10 @@ export function useCreateScoreRule() {
   return useMkMutation(mk.createScoreRule, [['mkt', 'score-rules']]);
 }
 export function useUpdateScoreRule(id: string) {
-  return useMkMutation((body: Partial<Record<string, unknown>>) => mk.updateScoreRule(id, body), [['mkt', 'score-rules']]);
+  return useMkMutation(
+    (body: Partial<Record<string, unknown>>) => mk.updateScoreRule(id, body),
+    [['mkt', 'score-rules']],
+  );
 }
 export function useDeleteScoreRule() {
   return useMkMutation(mk.deleteScoreRule, [['mkt', 'score-rules']]);
@@ -1181,7 +1497,13 @@ export function useCreateMarketingEvent() {
   return useMkMutation(mk.createEvent, [['mkt', 'events']]);
 }
 export function useUpdateMarketingEvent(id: string) {
-  return useMkMutation((body: Partial<Record<string, unknown>>) => mk.updateEvent(id, body), [['mkt', 'events'], ['mkt', 'event', id]]);
+  return useMkMutation(
+    (body: Partial<Record<string, unknown>>) => mk.updateEvent(id, body),
+    [
+      ['mkt', 'events'],
+      ['mkt', 'event', id],
+    ],
+  );
 }
 function useEventAction(fn: (id: string) => Promise<MarketingEventView>) {
   const qc = useQueryClient();
@@ -1206,16 +1528,29 @@ export function useCompleteEvent() {
   return useEventAction(mk.completeEvent);
 }
 export function useCancelEvent() {
-  return useMkMutation(({ id, reason }: { id: string; reason: string }) => mk.cancelEvent(id, reason), [['mkt', 'events']]);
+  return useMkMutation(
+    ({ id, reason }: { id: string; reason: string }) => mk.cancelEvent(id, reason),
+    [['mkt', 'events']],
+  );
 }
 export function useEventRegistrations(id: string | undefined) {
-  return useQuery({ queryKey: ['mkt', 'event', id, 'registrations'], queryFn: () => mk.listRegistrations(id as string), enabled: Boolean(id) });
+  return useQuery({
+    queryKey: ['mkt', 'event', id, 'registrations'],
+    queryFn: () => mk.listRegistrations(id as string),
+    enabled: Boolean(id),
+  });
 }
 export function useRegisterForEvent(id: string) {
   return useMkMutation(
-    (body: { personId?: string; person?: { fullName: string; primaryPhone?: string; primaryEmail?: string }; source?: string }) =>
-      mk.registerForEvent(id, body),
-    [['mkt', 'event', id, 'registrations'], ['mkt', 'event', id]],
+    (body: {
+      personId?: string;
+      person?: { fullName: string; primaryPhone?: string; primaryEmail?: string };
+      source?: string;
+    }) => mk.registerForEvent(id, body),
+    [
+      ['mkt', 'event', id, 'registrations'],
+      ['mkt', 'event', id],
+    ],
   );
 }
 function useRegistrationAction(fn: (id: string) => Promise<RegistrationView>, eventId: string) {
@@ -1234,9 +1569,10 @@ export function useCancelRegistration(eventId: string) {
   return useRegistrationAction(mk.cancelRegistration, eventId);
 }
 export function useFollowUpRegistration(eventId: string) {
-  return useMkMutation(({ id, done, note }: { id: string; done: boolean; note?: string }) => mk.followUpRegistration(id, done, note), [
-    ['mkt', 'event', eventId, 'registrations'],
-  ]);
+  return useMkMutation(
+    ({ id, done, note }: { id: string; done: boolean; note?: string }) => mk.followUpRegistration(id, done, note),
+    [['mkt', 'event', eventId, 'registrations']],
+  );
 }
 export function useConvertAttendees(eventId: string) {
   return useMkMutation(() => mk.convertAttendees(eventId), [['mkt', 'event', eventId, 'registrations']]);
@@ -1256,7 +1592,13 @@ export function useCreateAsset() {
   return useMkMutation(mk.createAsset, [['mkt', 'assets']]);
 }
 export function useUpdateAsset(id: string) {
-  return useMkMutation((body: Partial<Record<string, unknown>>) => mk.updateAsset(id, body), [['mkt', 'assets'], ['mkt', 'asset', id]]);
+  return useMkMutation(
+    (body: Partial<Record<string, unknown>>) => mk.updateAsset(id, body),
+    [
+      ['mkt', 'assets'],
+      ['mkt', 'asset', id],
+    ],
+  );
 }
 export function useSubmitAsset() {
   return useMkMutation(mk.submitAsset, [['mkt', 'assets']]);
@@ -1265,7 +1607,10 @@ export function useApproveAsset() {
   return useMkMutation(mk.approveAsset, [['mkt', 'assets']]);
 }
 export function useRejectAsset() {
-  return useMkMutation(({ id, reason }: { id: string; reason: string }) => mk.rejectAsset(id, reason), [['mkt', 'assets']]);
+  return useMkMutation(
+    ({ id, reason }: { id: string; reason: string }) => mk.rejectAsset(id, reason),
+    [['mkt', 'assets']],
+  );
 }
 export function useRetireAsset() {
   return useMkMutation(mk.retireAsset, [['mkt', 'assets']]);
@@ -1277,18 +1622,29 @@ export function useCreateSocialPost() {
   return useMkMutation(mk.createSocialPost, [['mkt', 'social-posts']]);
 }
 export function useUpdateSocialPost(id: string) {
-  return useMkMutation((body: Partial<Record<string, unknown>>) => mk.updateSocialPost(id, body), [['mkt', 'social-posts']]);
+  return useMkMutation(
+    (body: Partial<Record<string, unknown>>) => mk.updateSocialPost(id, body),
+    [['mkt', 'social-posts']],
+  );
 }
 export function usePublishSocialPost() {
-  return useMkMutation(({ id, externalUrl }: { id: string; externalUrl?: string }) => mk.publishSocialPost(id, externalUrl), [['mkt', 'social-posts']]);
+  return useMkMutation(
+    ({ id, externalUrl }: { id: string; externalUrl?: string }) => mk.publishSocialPost(id, externalUrl),
+    [['mkt', 'social-posts']],
+  );
 }
 export function useCancelSocialPost() {
   return useMkMutation(mk.cancelSocialPost, [['mkt', 'social-posts']]);
 }
 export function useRecordSocialMetrics() {
   return useMkMutation(
-    ({ id, body }: { id: string; body: { likes?: number; comments?: number; shares?: number; reach?: number; clicks?: number } }) =>
-      mk.recordSocialMetrics(id, body),
+    ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: { likes?: number; comments?: number; shares?: number; reach?: number; clicks?: number };
+    }) => mk.recordSocialMetrics(id, body),
     [['mkt', 'social-posts']],
   );
 }
@@ -1302,7 +1658,10 @@ export function useApproveClaim() {
   return useMkMutation(mk.approveClaim, [['mkt', 'claims']]);
 }
 export function useRejectClaim() {
-  return useMkMutation(({ id, reason }: { id: string; reason: string }) => mk.rejectClaim(id, reason), [['mkt', 'claims']]);
+  return useMkMutation(
+    ({ id, reason }: { id: string; reason: string }) => mk.rejectClaim(id, reason),
+    [['mkt', 'claims']],
+  );
 }
 export function useRetireClaim() {
   return useMkMutation(mk.retireClaim, [['mkt', 'claims']]);
@@ -1319,7 +1678,10 @@ export function useCreateReferralProgram() {
   return useMkMutation(mk.createReferralProgram, [['mkt', 'referral-programs']]);
 }
 export function useUpdateReferralProgram(id: string) {
-  return useMkMutation((body: Partial<Record<string, unknown>>) => mk.updateReferralProgram(id, body), [['mkt', 'referral-programs']]);
+  return useMkMutation(
+    (body: Partial<Record<string, unknown>>) => mk.updateReferralProgram(id, body),
+    [['mkt', 'referral-programs']],
+  );
 }
 export function useActivateReferralProgram() {
   return useMkMutation(mk.activateReferralProgram, [['mkt', 'referral-programs']]);
@@ -1340,15 +1702,24 @@ export function useQualifyReferral() {
   return useMkMutation(mk.qualifyReferral, [['mkt', 'referrals']]);
 }
 export function useRewardReferral() {
-  return useMkMutation(({ id, rewardTransactionRef }: { id: string; rewardTransactionRef?: string }) => mk.rewardReferral(id, rewardTransactionRef), [
-    ['mkt', 'referrals'],
-  ]);
+  return useMkMutation(
+    ({ id, rewardTransactionRef }: { id: string; rewardTransactionRef?: string }) =>
+      mk.rewardReferral(id, rewardTransactionRef),
+    [['mkt', 'referrals']],
+  );
 }
 export function useVoidReferral() {
-  return useMkMutation(({ id, reason }: { id: string; reason: string }) => mk.voidReferral(id, reason), [['mkt', 'referrals']]);
+  return useMkMutation(
+    ({ id, reason }: { id: string; reason: string }) => mk.voidReferral(id, reason),
+    [['mkt', 'referrals']],
+  );
 }
 export function useReferralLeaderboard(programId: string | undefined) {
-  return useQuery({ queryKey: ['mkt', 'referrals', 'leaderboard', programId], queryFn: () => mk.getReferralLeaderboard(programId as string), enabled: Boolean(programId) });
+  return useQuery({
+    queryKey: ['mkt', 'referrals', 'leaderboard', programId],
+    queryFn: () => mk.getReferralLeaderboard(programId as string),
+    enabled: Boolean(programId),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1362,7 +1733,10 @@ export function useCreateChannel() {
   return useMkMutation(mk.createChannel, [['mkt', 'settings', 'channels']]);
 }
 export function useUpdateChannel(id: string) {
-  return useMkMutation((body: Partial<Record<string, unknown>>) => mk.updateChannel(id, body), [['mkt', 'settings', 'channels']]);
+  return useMkMutation(
+    (body: Partial<Record<string, unknown>>) => mk.updateChannel(id, body),
+    [['mkt', 'settings', 'channels']],
+  );
 }
 export function useAdapterStatus() {
   return useQuery({ queryKey: ['mkt', 'settings', 'adapters'], queryFn: mk.getAdapterStatus });

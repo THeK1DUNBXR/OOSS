@@ -10,8 +10,13 @@ import { prisma } from '../../../platform/db.js';
 import { currentAuth } from '../../../platform/context.js';
 import { ApiError } from '../../../platform/errors.js';
 import { assertCan } from '../../../platform/permissions.js';
-import { auditWrite } from '../../../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../../../platform/audit.js';
 import { nextCorporateCode } from './codes.js';
+
+// Registered here, not only in compliance/corporate.ts: that registrar is
+// reached through the barrel, and a caller importing this module directly
+// (a job, a script) would otherwise throw "not registered" on its first write.
+registerGovernedEntities('cmp_corporate', ['board_meeting', 'board_resolution']);
 
 export async function listBoardMeetings() {
   await assertCan({ resource: 'board_resolutions', verb: 'view' });
@@ -57,7 +62,12 @@ export async function createBoardMeeting(input: {
       createdById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'board_meeting', subjectId: meeting.id, after: { recordCode, kind: input.kind } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'board_meeting',
+    subjectId: meeting.id,
+    after: { recordCode, kind: input.kind },
+  });
   return meeting;
 }
 
@@ -68,10 +78,18 @@ export async function updateBoardMeetingMinutes(id: string, minutes: string) {
   const meeting = await prisma.complianceBoardMeeting.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!meeting) throw ApiError.notFound('Board meeting');
   if (meeting.status !== 'draft') {
-    throw ApiError.unprocessable('Minutes are only editable while the meeting is a draft. A recorded meeting is final — add a resolution instead.');
+    throw ApiError.unprocessable(
+      'Minutes are only editable while the meeting is a draft. A recorded meeting is final — add a resolution instead.',
+    );
   }
   const updated = await prisma.complianceBoardMeeting.update({ where: { id }, data: { minutes } });
-  await auditWrite({ action: 'update', subjectType: 'board_meeting', subjectId: id, before: { minutes: meeting.minutes }, after: { minutes } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'board_meeting',
+    subjectId: id,
+    before: { minutes: meeting.minutes },
+    after: { minutes },
+  });
   return updated;
 }
 
@@ -84,7 +102,13 @@ export async function recordBoardMeeting(id: string) {
   if (meeting.status === 'recorded') return meeting;
 
   const updated = await prisma.complianceBoardMeeting.update({ where: { id }, data: { status: 'recorded' } });
-  await auditWrite({ action: 'update', subjectType: 'board_meeting', subjectId: id, before: { status: 'draft' }, after: { status: 'recorded' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'board_meeting',
+    subjectId: id,
+    before: { status: 'draft' },
+    after: { status: 'recorded' },
+  });
   return updated;
 }
 
@@ -104,15 +128,21 @@ export async function addBoardResolution(input: {
 }) {
   await assertCan({ resource: 'board_resolutions', verb: 'create' });
   const auth = currentAuth();
-  const meeting = await prisma.complianceBoardMeeting.findFirst({ where: { id: input.meetingId, tenantId: auth.tenantId } });
+  const meeting = await prisma.complianceBoardMeeting.findFirst({
+    where: { id: input.meetingId, tenantId: auth.tenantId },
+  });
   if (!meeting) throw ApiError.notFound('Board meeting');
 
   if (meeting.status === 'recorded' && !input.correctsId) {
-    throw ApiError.unprocessable('This meeting is recorded. A new resolution against it must name the resolution it corrects (correctsId) — a recorded meeting\'s resolutions are immutable.');
+    throw ApiError.unprocessable(
+      "This meeting is recorded. A new resolution against it must name the resolution it corrects (correctsId) — a recorded meeting's resolutions are immutable.",
+    );
   }
 
   if (input.correctsId) {
-    const corrected = await prisma.complianceBoardResolution.findFirst({ where: { id: input.correctsId, tenantId: auth.tenantId } });
+    const corrected = await prisma.complianceBoardResolution.findFirst({
+      where: { id: input.correctsId, tenantId: auth.tenantId },
+    });
     if (!corrected) throw ApiError.notFound('Resolution to correct');
   }
 
@@ -138,6 +168,11 @@ export async function addBoardResolution(input: {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'board_resolution', subjectId: resolution.id, after: { recordCode, meetingId: input.meetingId, number } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'board_resolution',
+    subjectId: resolution.id,
+    after: { recordCode, meetingId: input.meetingId, number },
+  });
   return resolution;
 }

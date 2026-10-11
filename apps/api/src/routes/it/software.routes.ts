@@ -40,7 +40,10 @@ router.get(
   ),
 );
 
-router.get('/applications/summary', handler(async () => applicationsSummary()));
+router.get(
+  '/applications/summary',
+  handler(async () => applicationsSummary()),
+);
 
 router.post(
   '/applications',
@@ -64,7 +67,10 @@ router.post(
   }),
 );
 
-router.get('/applications/:id', handler(async (req) => applicationDetail(req.params.id)));
+router.get(
+  '/applications/:id',
+  handler(async (req) => applicationDetail(req.params.id)),
+);
 
 router.patch(
   '/applications/:id',
@@ -113,7 +119,10 @@ router.get(
   ),
 );
 
-router.get('/licences/summary', handler(async () => licencesSummary()));
+router.get(
+  '/licences/summary',
+  handler(async () => licencesSummary()),
+);
 
 router.post(
   '/licences',
@@ -145,7 +154,10 @@ router.post(
   }),
 );
 
-router.get('/licences/:id', handler(async (req) => licenceDetail(req.params.id)));
+router.get(
+  '/licences/:id',
+  handler(async (req) => licenceDetail(req.params.id)),
+);
 
 router.post(
   '/licences/:id/seats',

@@ -18,9 +18,19 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { asPrincipal, asUser, authFor, expectReject, principalFor, tenantId, unscopedPrisma } from './helpers.js';
 
 const NEW_RESOURCES = [
-  'cap_table', 'share_classes', 'holders', 'share_ledger', 'share_certificates',
-  'valuations', 'entity_documents', 'board_meetings', 'resolutions',
-  'board_documents', 'compliance', 'group', 'holdings',
+  'cap_table',
+  'share_classes',
+  'holders',
+  'share_ledger',
+  'share_certificates',
+  'valuations',
+  'entity_documents',
+  'board_meetings',
+  'resolutions',
+  'board_documents',
+  'compliance',
+  'group',
+  'holdings',
 ] as const;
 
 let HOLDING: string;
@@ -87,19 +97,39 @@ describe('EQT-IDN-001 — one principal, two tenants, two users, one password', 
 
     // The subsidiary — bootstrapped through the same seedBootstrap the CLI
     // script calls, parametrised rather than duplicated.
-    const { tenantId: subTenantId } = await seedBootstrap({ tenantSlug: subSlug, tenantName: 'Kaizen Sub Test', parentTenantSlug: 'kaizen' });
+    const { tenantId: subTenantId } = await seedBootstrap({
+      tenantSlug: subSlug,
+      tenantName: 'Kaizen Sub Test',
+      parentTenantSlug: 'kaizen',
+    });
 
     // The same principal, a second entity: a director affiliation in the
     // subsidiary, under the identical email — this is the fact that makes it
     // one identity rather than two accounts that happen to share a password.
     const principal = await unscopedPrisma.principal.findFirstOrThrow({ where: { email } });
     const subPerson = await unscopedPrisma.person.create({
-      data: { tenantId: subTenantId, recordCode: `PER-9999-${Date.now() % 90000}`, fullName: 'Multi-Entity Holder', primaryEmail: email, primaryEmailNormalised: email, source: 'test' },
+      data: {
+        tenantId: subTenantId,
+        recordCode: `PER-9999-${Date.now() % 90000}`,
+        fullName: 'Multi-Entity Holder',
+        primaryEmail: email,
+        primaryEmailNormalised: email,
+        source: 'test',
+      },
     });
     cleanupPersonIds.push(subPerson.id);
-    await unscopedPrisma.user.create({ data: { tenantId: subTenantId, personId: subPerson.id, email, principalId: principal.id } });
+    await unscopedPrisma.user.create({
+      data: { tenantId: subTenantId, personId: subPerson.id, email, principalId: principal.id },
+    });
     await unscopedPrisma.affiliation.create({
-      data: { tenantId: subTenantId, partyId: subPerson.id, affiliationType: 'director', roleSlug: 'director', status: 'active', primaryFlag: true },
+      data: {
+        tenantId: subTenantId,
+        partyId: subPerson.id,
+        affiliationType: 'director',
+        roleSlug: 'director',
+        status: 'active',
+        primaryFlag: true,
+      },
     });
 
     // Logging in with no tenant named resolves to more than one entity: no
@@ -113,7 +143,8 @@ describe('EQT-IDN-001 — one principal, two tenants, two users, one password', 
     const inHolding = await login(email, first.password!, 'kaizen');
     const inSub = await login(email, first.password!, subSlug);
     if ('entities' in inHolding || 'entities' in inSub) throw new Error('Expected a single-entity login.');
-    if ('mfaRequired' in inHolding || 'mfaRequired' in inSub) throw new Error('Expected no second factor on the seeded accounts.');
+    if ('mfaRequired' in inHolding || 'mfaRequired' in inSub)
+      throw new Error('Expected no second factor on the seeded accounts.');
     expect(inHolding.user.principalId).toBe(inSub.user.principalId);
     expect(inHolding.user.tenantId).toBe(HOLDING);
     expect(inSub.user.tenantId).toBe(subTenantId);
@@ -139,17 +170,37 @@ describe('EQT-IDN-003 — ending the director affiliation makes the next request
   it('switch-entity refuses the tenant the instant the affiliation ends, with no deprovisioning step in between', async () => {
     const subSlug = `eqt-003-sub-${Date.now()}`;
     cleanupTenantSlugs.push(subSlug);
-    const { tenantId: subTenantId } = await seedBootstrap({ tenantSlug: subSlug, tenantName: 'EQT 003 Sub', parentTenantSlug: 'kaizen' });
+    const { tenantId: subTenantId } = await seedBootstrap({
+      tenantSlug: subSlug,
+      tenantName: 'EQT 003 Sub',
+      parentTenantSlug: 'kaizen',
+    });
 
     const email = `eqt-idn-003-${Date.now()}@example.test`;
     const principal = await unscopedPrisma.principal.create({ data: { email, passwordHash: 'x' } });
     const person = await unscopedPrisma.person.create({
-      data: { tenantId: subTenantId, recordCode: `PER-9998-${Date.now() % 90000}`, fullName: 'Ending Director', primaryEmail: email, primaryEmailNormalised: email, source: 'test' },
+      data: {
+        tenantId: subTenantId,
+        recordCode: `PER-9998-${Date.now() % 90000}`,
+        fullName: 'Ending Director',
+        primaryEmail: email,
+        primaryEmailNormalised: email,
+        source: 'test',
+      },
     });
     cleanupPersonIds.push(person.id);
-    await unscopedPrisma.user.create({ data: { tenantId: subTenantId, personId: person.id, email, principalId: principal.id } });
+    await unscopedPrisma.user.create({
+      data: { tenantId: subTenantId, personId: person.id, email, principalId: principal.id },
+    });
     const affiliation = await unscopedPrisma.affiliation.create({
-      data: { tenantId: subTenantId, partyId: person.id, affiliationType: 'director', roleSlug: 'director', status: 'active', primaryFlag: true },
+      data: {
+        tenantId: subTenantId,
+        partyId: person.id,
+        affiliationType: 'director',
+        roleSlug: 'director',
+        status: 'active',
+        primaryFlag: true,
+      },
     });
 
     // Reachable while active.
@@ -169,7 +220,14 @@ describe('EQT-IDN-004 — a portal archetype sees only portal navigation and an 
     const email = `eqt-idn-004-${Date.now()}@example.test`;
     const first = await asUser('chairman@kaizen.co.in', async () => {
       const person = await scopedPrisma.person.create({
-        data: { tenantId: HOLDING, recordCode: await nextRecordCode('PER'), fullName: 'Portal Viewer', primaryEmail: email, primaryEmailNormalised: email, source: 'test' },
+        data: {
+          tenantId: HOLDING,
+          recordCode: await nextRecordCode('PER'),
+          fullName: 'Portal Viewer',
+          primaryEmail: email,
+          primaryEmailNormalised: email,
+          source: 'test',
+        },
       });
       cleanupPersonIds.push(person.id);
       return createOrResetSignIn({ personId: person.id, roleSlug: 'shareholder', email });
@@ -191,7 +249,9 @@ describe('EQT-IDN-004 — a portal archetype sees only portal navigation and an 
 describe('EQT-IDN-005 — the tenant gate still throws inside the holding tenant when a subsidiary model is read with no scope', () => {
   it('a query naming a subsidiary tenantId in its where clause still throws with no context in scope', async () => {
     await expect(
-      runWithContext(newRequestContext({ auth: null }), () => scopedPrisma.person.findMany({ where: { tenantId: HOLDING } as never, take: 1 })),
+      runWithContext(newRequestContext({ auth: null }), () =>
+        scopedPrisma.person.findMany({ where: { tenantId: HOLDING } as never, take: 1 }),
+      ),
     ).rejects.toThrow(TenantScopeError);
   });
 });
@@ -201,7 +261,14 @@ describe('EQT-IDN-006 — the sign-in action returns a password once and only ro
     const email = `eqt-idn-006-${Date.now()}@example.test`;
     const first = await asUser('chairman@kaizen.co.in', async () => {
       const person = await scopedPrisma.person.create({
-        data: { tenantId: HOLDING, recordCode: await nextRecordCode('PER'), fullName: 'Sign-In Subject', primaryEmail: email, primaryEmailNormalised: email, source: 'test' },
+        data: {
+          tenantId: HOLDING,
+          recordCode: await nextRecordCode('PER'),
+          fullName: 'Sign-In Subject',
+          primaryEmail: email,
+          primaryEmailNormalised: email,
+          source: 'test',
+        },
       });
       cleanupPersonIds.push(person.id);
       const result = await createOrResetSignIn({ personId: person.id, roleSlug: 'shareholder', email });
@@ -210,11 +277,15 @@ describe('EQT-IDN-006 — the sign-in action returns a password once and only ro
     expect(first.result.password).toBeTruthy();
     expect(first.result.created).toBe(true);
 
-    const again = await asUser('chairman@kaizen.co.in', () => createOrResetSignIn({ personId: first.personId, roleSlug: 'shareholder', email }));
+    const again = await asUser('chairman@kaizen.co.in', () =>
+      createOrResetSignIn({ personId: first.personId, roleSlug: 'shareholder', email }),
+    );
     expect(again.password).toBeNull();
     expect(again.created).toBe(false);
 
-    const reset = await asUser('chairman@kaizen.co.in', () => createOrResetSignIn({ personId: first.personId, roleSlug: 'shareholder', email, reset: true }));
+    const reset = await asUser('chairman@kaizen.co.in', () =>
+      createOrResetSignIn({ personId: first.personId, roleSlug: 'shareholder', email, reset: true }),
+    );
     expect(reset.password).toBeTruthy();
     expect(reset.password).not.toBe(first.result.password);
   });
@@ -233,13 +304,18 @@ describe('EQT-IDN-007 — boot grant sync gives every existing role its declared
       expect(role, `role ${slug} should be seeded`).toBeTruthy();
       if (!role) continue;
 
-      const rows = await unscopedPrisma.grant.findMany({ where: { tenantId: HOLDING, roleId: role.id, resource: { in: [...NEW_RESOURCES] } } });
+      const rows = await unscopedPrisma.grant.findMany({
+        where: { tenantId: HOLDING, roleId: role.id, resource: { in: [...NEW_RESOURCES] } },
+      });
 
       for (const resource of NEW_RESOURCES) {
         // A resource can carry two cells at two different scopes (`view@all`
         // beside `edit@own`, say) — each becomes its own grant row, so both
         // sides are compared per scope rather than picking the first match.
-        const parsedCells = specs.filter((s) => s.resource === resource).map((s) => parseCell(s.cell)).filter((p): p is NonNullable<typeof p> => p !== null);
+        const parsedCells = specs
+          .filter((s) => s.resource === resource)
+          .map((s) => parseCell(s.cell))
+          .filter((p): p is NonNullable<typeof p> => p !== null);
         const dbRows = rows.filter((r) => r.resource === resource);
 
         if (parsedCells.length === 0) {
@@ -247,7 +323,9 @@ describe('EQT-IDN-007 — boot grant sync gives every existing role its declared
           continue;
         }
 
-        expect(dbRows, `${slug} should hold exactly ${parsedCells.length} grant row(s) for ${resource}`).toHaveLength(parsedCells.length);
+        expect(dbRows, `${slug} should hold exactly ${parsedCells.length} grant row(s) for ${resource}`).toHaveLength(
+          parsedCells.length,
+        );
         for (const parsed of parsedCells) {
           const row = dbRows.find((r) => r.scope === parsed.scope);
           expect(row, `${slug} should hold a grant row for ${resource}@${parsed.scope}`).toBeTruthy();
@@ -268,21 +346,31 @@ describe('EQT-IDN-008 — a tenant that gains a subsidiary becomes a holding and
     const parentBefore = await unscopedPrisma.tenant.findFirstOrThrow({ where: { id: parentId } });
     expect(parentBefore.kind).toBe('standalone');
 
-    const { tenantId: childId } = await seedBootstrap({ tenantSlug: childSlug, tenantName: 'EQT 008 Child', parentTenantSlug: parentSlug });
+    const { tenantId: childId } = await seedBootstrap({
+      tenantSlug: childSlug,
+      tenantName: 'EQT 008 Child',
+      parentTenantSlug: parentSlug,
+    });
 
     const parentAfter = await unscopedPrisma.tenant.findFirstOrThrow({ where: { id: parentId } });
     const childAfter = await unscopedPrisma.tenant.findFirstOrThrow({ where: { id: childId } });
     expect(parentAfter.kind).toBe('holding');
     expect(childAfter.kind).toBe('subsidiary');
 
-    const parentExceptions = await unscopedPrisma.exceptionRecord.findMany({ where: { tenantId: parentId, code: 'EX-EQT-001' } });
-    const childExceptions = await unscopedPrisma.exceptionRecord.findMany({ where: { tenantId: childId, code: 'EX-EQT-001' } });
+    const parentExceptions = await unscopedPrisma.exceptionRecord.findMany({
+      where: { tenantId: parentId, code: 'EX-EQT-001' },
+    });
+    const childExceptions = await unscopedPrisma.exceptionRecord.findMany({
+      where: { tenantId: childId, code: 'EX-EQT-001' },
+    });
     expect(parentExceptions).toHaveLength(1);
     expect(childExceptions).toHaveLength(1);
 
     // Running reconciliation again raises nothing new — it fires once.
     await reconcileTenantKinds();
-    const parentExceptionsAgain = await unscopedPrisma.exceptionRecord.findMany({ where: { tenantId: parentId, code: 'EX-EQT-001' } });
+    const parentExceptionsAgain = await unscopedPrisma.exceptionRecord.findMany({
+      where: { tenantId: parentId, code: 'EX-EQT-001' },
+    });
     expect(parentExceptionsAgain).toHaveLength(1);
   });
 });

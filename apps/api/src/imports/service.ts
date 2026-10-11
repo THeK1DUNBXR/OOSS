@@ -15,20 +15,32 @@ import { assertCan } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { emit } from '../platform/eventBus.js';
+import { auditWrite } from '../platform/audit.js';
 import { EVENTS } from '@kaizen/shared';
 import { parseCsv, readWorkbook, type Grid } from './parse.js';
 import {
-  detectGrid, detectSourceFormat, detectWorkbook, isTallyLedgerSheet,
-  type Detection, type ImportKind,
+  detectGrid,
+  detectSourceFormat,
+  detectWorkbook,
+  isTallyLedgerSheet,
+  type Detection,
+  type ImportKind,
 } from './detect.js';
 import {
   extractAttendance,
-  extractStudentRegister, extractBankStatement, extractEmployees, extractSalary,
-  extractTallyLedger, extractTrialBalance, extractTemplate, type Extraction,
+  extractStudentRegister,
+  extractBankStatement,
+  extractEmployees,
+  extractSalary,
+  extractTallyLedger,
+  extractTrialBalance,
+  extractTemplate,
+  type Extraction,
 } from './extract.js';
 import { extractTallyXml } from './tallyXml.js';
 import { buildChart, type LedgerChart } from './chart.js';
 import { templateByKind } from './templates.js';
+import { isRegulatedCell, isRegulatedField, sealNormalised, sealRawCells, viewStagedObject } from './sealing.js';
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -118,7 +130,7 @@ export async function stageImport(input: {
     sourceLabel = chosen.name;
 
     detection = input.sheetOverride
-      ? detected.perSheet.find((d) => d.sheet === input.sheetOverride) ?? detectGrid(chosen.grid, chosen.name)
+      ? (detected.perSheet.find((d) => d.sheet === input.sheetOverride) ?? detectGrid(chosen.grid, chosen.name))
       : detected.primary;
     if (input.kindOverride) detection = { ...detection, kind: input.kindOverride };
 
@@ -174,6 +186,7 @@ export async function stageImport(input: {
   });
 
   const stats: Record<string, number> = { total: 0, ready: 0, duplicate: 0, skipped: 0, error: 0 };
+  const spec = templateByKind(detection.kind);
 
   await prisma.importRow.createMany({
     data: extraction.rows.map((row) => {
@@ -199,8 +212,10 @@ export async function stageImport(input: {
         tenantId: auth.tenantId,
         batchId: batch.id,
         rowNumber: row.rowNumber,
-        raw: row.raw as never,
-        normalised: (row.normalised ?? undefined) as never,
+        // Sealed before it reaches the table: a staged batch waits for its
+        // commit, and a file left in clear for that long is the exposure.
+        raw: sealRawCells(row.raw as Record<string, unknown>, spec) as never,
+        normalised: sealNormalised(row.normalised ?? undefined) as never,
         status,
         message,
         dedupeKey: row.dedupeKey ?? null,
@@ -301,7 +316,13 @@ export async function getImport(id: string) {
 export async function importRows(id: string, filter: { status?: string; limit?: number } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'imports', verb: 'view' });
-  return prisma.importRow.findMany({
+  const batch = await prisma.importBatch.findFirst({
+    where: { id, tenantId: auth.tenantId },
+    select: { kind: true },
+  });
+  if (!batch) return [];
+  const spec = templateByKind(batch.kind);
+  const rows = await prisma.importRow.findMany({
     where: {
       tenantId: auth.tenantId,
       batchId: id,
@@ -310,6 +331,24 @@ export async function importRows(id: string, filter: { status?: string; limit?: 
     orderBy: { rowNumber: 'asc' },
     take: Math.min(filter.limit ?? 200, 1000),
   });
+  const counter = { opened: 0 };
+  const shown = rows.map((row) => ({
+    ...row,
+    raw: viewStagedObject(row.raw, auth.classificationCeiling, (heading) => isRegulatedCell(heading, spec), counter),
+    normalised: viewStagedObject(row.normalised, auth.classificationCeiling, (key) => isRegulatedField(key), counter),
+  }));
+  // One audit row per request that showed a regulated value in clear, not one
+  // per value: the question an auditor asks is who looked at this batch's
+  // guardian and PAN data, and when, and a request is that answer.
+  if (counter.opened > 0) {
+    await auditWrite({
+      action: 'read',
+      subjectType: 'import_batch',
+      subjectId: id,
+      meta: { rowsShown: rows.length, regulatedValuesShown: counter.opened },
+    });
+  }
+  return shown;
 }
 
 /** Options the commit will honour — target account, division, and so on. */

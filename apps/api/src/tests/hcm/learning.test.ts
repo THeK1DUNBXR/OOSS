@@ -18,12 +18,28 @@ import { asUser, asPrincipal, withFixtureRole, expectReject, prisma, tenantId, u
 import { hire, transitionEmployment } from '../../domains/employment.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import {
-  createProgram, createSession, listSessions, getProgram,
-  nominate, approveEnrollment, rejectEnrollment, markAttendance, completeEnrollment, listEnrollments,
-  addCertification, verifyCertification, listCertifications, runCertificationExpiryLadder,
-  createMandatoryRule, mandatoryComplianceStatus, runMandatoryTrainingOverdueCheck,
-  createIdp, updateIdp, listIdps,
-  createBudget, listBudgets,
+  createProgram,
+  createSession,
+  listSessions,
+  getProgram,
+  nominate,
+  approveEnrollment,
+  rejectEnrollment,
+  markAttendance,
+  completeEnrollment,
+  listEnrollments,
+  addCertification,
+  verifyCertification,
+  listCertifications,
+  runCertificationExpiryLadder,
+  createMandatoryRule,
+  mandatoryComplianceStatus,
+  runMandatoryTrainingOverdueCheck,
+  createIdp,
+  updateIdp,
+  listIdps,
+  createBudget,
+  listBudgets,
 } from '../../domains/hcm/learning.js';
 
 let TENANT: string;
@@ -61,7 +77,10 @@ async function makeEmployee(label: string) {
   });
 }
 
-async function makeProgramAndSession(kind: 'classroom' | 'certification' = 'classroom', extra: Record<string, unknown> = {}) {
+async function makeProgramAndSession(
+  kind: 'classroom' | 'certification' = 'classroom',
+  extra: Record<string, unknown> = {},
+) {
   return asUser('operations@kaizen.co.in', async () => {
     const stamp = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
     const program = await createProgram({ title: `Fixture Program ${stamp}`, kind, ...extra });
@@ -130,9 +149,8 @@ describe('HCM-LEARNING-003 — a nomination cannot be approved by the person nom
             status: 'Open',
           },
         });
-        const employment = await asPrincipal(
-          { ...selfAuth(fixture), roleSlug: 'hr_ops_manager' },
-          () => hire({ personId: fixture.partyId, positionId: position.id, hireEffectiveDate: new Date() }),
+        const employment = await asPrincipal({ ...selfAuth(fixture), roleSlug: 'hr_ops_manager' }, () =>
+          hire({ personId: fixture.partyId, positionId: position.id, hireEffectiveDate: new Date() }),
         );
 
         const enrollment = await nominate({ sessionId: session.id, employmentRelationshipId: employment.id });
@@ -145,7 +163,14 @@ describe('HCM-LEARNING-003 — a nomination cannot be approved by the person nom
   });
 });
 
-function selfAuth(fixture: { tenantId: string; partyId: string; userId: string; affiliationId: string; roleSlug: string; branch: string | null }) {
+function selfAuth(fixture: {
+  tenantId: string;
+  partyId: string;
+  userId: string;
+  affiliationId: string;
+  roleSlug: string;
+  branch: string | null;
+}) {
   return {
     tenantId: fixture.tenantId,
     principalType: 'human' as const,
@@ -311,7 +336,12 @@ describe('HCM-LEARNING-009 — the certification expiry ladder is idempotent per
     const { employment } = await makeEmployee('expiring');
     const expiresOn = new Date(Date.now() + 20 * 86_400_000);
     await asUser('operations@kaizen.co.in', () =>
-      addCertification({ employmentRelationshipId: employment.id, name: 'Fixture Expiring Cert', issuedOn: new Date(), expiresOn }),
+      addCertification({
+        employmentRelationshipId: employment.id,
+        name: 'Fixture Expiring Cert',
+        issuedOn: new Date(),
+        expiresOn,
+      }),
     );
 
     const first = await asUser('operations@kaizen.co.in', () => runCertificationExpiryLadder());
@@ -331,11 +361,16 @@ describe('HCM-LEARNING-010 — mandatory training overdue detection', () => {
     const { employment } = await makeEmployee('mandatory');
     // Backdate the join date so the due window has already passed.
     await asUser('operations@kaizen.co.in', () =>
-      prisma.employmentRelationship.update({ where: { id: employment.id }, data: { hireEffectiveDate: new Date(Date.now() - 60 * 86_400_000) } }),
+      prisma.employmentRelationship.update({
+        where: { id: employment.id },
+        data: { hireEffectiveDate: new Date(Date.now() - 60 * 86_400_000) },
+      }),
     );
 
     const { program } = await makeProgramAndSession('classroom');
-    await asUser('operations@kaizen.co.in', () => createMandatoryRule({ programId: program.id, dueWithinDaysOfJoin: 30 }));
+    await asUser('operations@kaizen.co.in', () =>
+      createMandatoryRule({ programId: program.id, dueWithinDaysOfJoin: 30 }),
+    );
 
     const status = await asUser('operations@kaizen.co.in', () => mandatoryComplianceStatus());
     const row = status.find((r) => r.employmentRelationshipId === employment.id && r.programId === program.id);
@@ -354,7 +389,11 @@ describe('HCM-LEARNING-011 — individual development plans', () => {
   it('creates a plan with a mentor and goals, then closes it', async () => {
     const { employment } = await makeEmployee('idp');
     const idp = await asUser('operations@kaizen.co.in', () =>
-      createIdp({ employmentRelationshipId: employment.id, goals: { items: ['Lead a project'] }, reviewDate: new Date() }),
+      createIdp({
+        employmentRelationshipId: employment.id,
+        goals: { items: ['Lead a project'] },
+        reviewDate: new Date(),
+      }),
     );
     expect(idp.status).toBe('active');
 
@@ -419,31 +458,43 @@ async function hireFixturePerson(personId: string) {
       status: 'Open',
     },
   });
-  return asUser('operations@kaizen.co.in', () => hire({ personId, positionId: position.id, hireEffectiveDate: new Date() }));
+  return asUser('operations@kaizen.co.in', () =>
+    hire({ personId, positionId: position.id, hireEffectiveDate: new Date() }),
+  );
 }
 
-describe('HCM-LEARNING-013 — own-scope callers cannot act on a colleague\'s record', () => {
+describe("HCM-LEARNING-013 — own-scope callers cannot act on a colleague's record", () => {
   it('nominating another employee is refused for an own-scope caller (403), not merely narrowed', async () => {
     const { employment: colleague } = await makeEmployee('scope-nominate-colleague');
     const { session } = await makeProgramAndSession();
 
     const err = await withFixtureRole(
-      { slug: 'learning_own_nominate', grants: [{ resource: 'training_enrollments', verbs: ['view', 'create'], scope: 'own' }] },
+      {
+        slug: 'learning_own_nominate',
+        grants: [{ resource: 'training_enrollments', verbs: ['view', 'create'], scope: 'own' }],
+      },
       () => expectReject(() => nominate({ sessionId: session.id, employmentRelationshipId: colleague.id })),
     );
     expect(err.status).toBe(403);
   });
 
-  it('listing enrollments with no filter returns only the caller\'s own, never a colleague\'s', async () => {
+  it("listing enrollments with no filter returns only the caller's own, never a colleague's", async () => {
     const { employment: colleague } = await makeEmployee('scope-list-enrollments-colleague');
     const { session } = await makeProgramAndSession();
-    await asUser('operations@kaizen.co.in', () => nominate({ sessionId: session.id, employmentRelationshipId: colleague.id }));
+    await asUser('operations@kaizen.co.in', () =>
+      nominate({ sessionId: session.id, employmentRelationshipId: colleague.id }),
+    );
 
     await withFixtureRole(
-      { slug: 'learning_own_list_enrollments', grants: [{ resource: 'training_enrollments', verbs: ['view', 'create'], scope: 'own' }] },
+      {
+        slug: 'learning_own_list_enrollments',
+        grants: [{ resource: 'training_enrollments', verbs: ['view', 'create'], scope: 'own' }],
+      },
       async (fixture) => {
         const mine = await hireFixturePerson(fixture.partyId);
-        await asPrincipal({ ...selfAuth(fixture), roleSlug: 'hr_ops_manager' }, () => nominate({ sessionId: session.id, employmentRelationshipId: mine.id }));
+        await asPrincipal({ ...selfAuth(fixture), roleSlug: 'hr_ops_manager' }, () =>
+          nominate({ sessionId: session.id, employmentRelationshipId: mine.id }),
+        );
 
         const rows = await listEnrollments();
         expect(rows.every((r) => r.employmentRelationshipId === mine.id)).toBe(true);
@@ -455,10 +506,15 @@ describe('HCM-LEARNING-013 — own-scope callers cannot act on a colleague\'s re
   it('approving, rejecting, marking attendance and completing are refused without all-scope, even with the verb granted at own scope', async () => {
     const { employment } = await makeEmployee('scope-approve-target');
     const { session } = await makeProgramAndSession();
-    const enrollment = await asUser('operations@kaizen.co.in', () => nominate({ sessionId: session.id, employmentRelationshipId: employment.id }));
+    const enrollment = await asUser('operations@kaizen.co.in', () =>
+      nominate({ sessionId: session.id, employmentRelationshipId: employment.id }),
+    );
 
     await withFixtureRole(
-      { slug: 'learning_own_approve', grants: [{ resource: 'training_enrollments', verbs: ['view', 'approve', 'edit'], scope: 'own' }] },
+      {
+        slug: 'learning_own_approve',
+        grants: [{ resource: 'training_enrollments', verbs: ['view', 'approve', 'edit'], scope: 'own' }],
+      },
       async () => {
         const approveErr = await expectReject(() => approveEnrollment(enrollment.id));
         expect(approveErr.status).toBe(403);
@@ -472,14 +528,21 @@ describe('HCM-LEARNING-013 — own-scope callers cannot act on a colleague\'s re
     );
   });
 
-  it('verifying a colleague\'s certification is refused without all-scope, and listing with no filter shows only the caller\'s own', async () => {
+  it("verifying a colleague's certification is refused without all-scope, and listing with no filter shows only the caller's own", async () => {
     const { employment: colleague } = await makeEmployee('scope-verify-colleague');
     const colleagueCert = await asUser('operations@kaizen.co.in', () =>
-      addCertification({ employmentRelationshipId: colleague.id, name: 'Fixture Colleague Cert', issuedOn: new Date() }),
+      addCertification({
+        employmentRelationshipId: colleague.id,
+        name: 'Fixture Colleague Cert',
+        issuedOn: new Date(),
+      }),
     );
 
     await withFixtureRole(
-      { slug: 'learning_own_cert', grants: [{ resource: 'certifications', verbs: ['view', 'create', 'approve'], scope: 'own' }] },
+      {
+        slug: 'learning_own_cert',
+        grants: [{ resource: 'certifications', verbs: ['view', 'create', 'approve'], scope: 'own' }],
+      },
       async (fixture) => {
         const err = await expectReject(() => verifyCertification(colleagueCert.id));
         expect(err.status).toBe(403);
@@ -496,7 +559,7 @@ describe('HCM-LEARNING-013 — own-scope callers cannot act on a colleague\'s re
     );
   });
 
-  it('reading and closing a colleague\'s IDP is refused (404); listing with no filter shows only the caller\'s own', async () => {
+  it("reading and closing a colleague's IDP is refused (404); listing with no filter shows only the caller's own", async () => {
     const { employment: colleague } = await makeEmployee('scope-idp-colleague');
     const colleagueIdp = await asUser('operations@kaizen.co.in', () =>
       createIdp({ employmentRelationshipId: colleague.id, goals: { items: ['Not yours'] } }),
@@ -522,7 +585,13 @@ describe('HCM-LEARNING-013 — own-scope callers cannot act on a colleague\'s re
 
   it('the company-wide mandatory-compliance status and the certification-expiry job are refused without all-scope', async () => {
     await withFixtureRole(
-      { slug: 'learning_own_admin_reads', grants: [{ resource: 'training_enrollments', verbs: ['view'], scope: 'own' }, { resource: 'certifications', verbs: ['view'], scope: 'own' }] },
+      {
+        slug: 'learning_own_admin_reads',
+        grants: [
+          { resource: 'training_enrollments', verbs: ['view'], scope: 'own' },
+          { resource: 'certifications', verbs: ['view'], scope: 'own' },
+        ],
+      },
       async () => {
         const statusErr = await expectReject(() => mandatoryComplianceStatus());
         expect(statusErr.status).toBe(403);

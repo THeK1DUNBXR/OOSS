@@ -11,7 +11,7 @@ governs each relationship.
 **`ItVendor`** — a supplier. Name, `organizationId` (bare id, set only when
 the same counterparty is also a party we sell to or partner with —
 `main.prisma` `Organization`), category, tier (1 critical … 4 low, the same
-scale `ItApplication.tier` will use), a *dated* risk rating (`riskRating` +
+scale `ItApplication.tier` will use), a _dated_ risk rating (`riskRating` +
 `riskRatedAt`), a security-assessment status (`not_assessed | in_progress |
 passed | failed | expired`) with `assessmentDueAt` and
 `assessmentNotifiedRungs` (the overdue ladder's own idempotency record), DPA
@@ -73,7 +73,7 @@ so the web page's gate-result modal (below) reads it identically.
   pure arithmetic (`noticeDate`, `noticeRung` in shared) — the job reads them,
   nothing stores a precomputed "days to notice."
 - `contractValueUnderManagement` is a pure sum over `approved | active |
-  expiring` contracts — a `draft`/`proposed` contract has not committed
+expiring` contracts — a `draft`/`proposed` contract has not committed
   spend yet, and a `terminated`/`expired` one no longer does. Currency is
   **not** normalised across rows (an FX layer this does not attempt); every
   contract in the seed and fixtures is INR.
@@ -105,21 +105,21 @@ withholding happens before the response is built, not in the browser.
 
 ## API — mounted at `/api/it`
 
-| Method | Path | What |
-|---|---|---|
-| GET | `/vendors` | List vendors. Query: `status`, `tier`, `riskRating`. |
-| GET | `/vendors/summary` | Vendor summary (shape below). |
-| POST | `/vendors` | Create a vendor. `{ name, category, organizationId?, tier?, riskRating?, contactName?, contactEmail?, dpaSigned?, notes? }`. |
-| GET | `/vendors/:id` | Detail: vendor + `availableTransitions` + `riskAssessments` + `contracts`. |
-| POST | `/vendors/:id/assess` | Record an assessment. `{ assessor, outcome: 'in_progress'\|'passed'\|'failed', assessedAt?, score?, questionnaire?, notes?, evidenceDocumentId?, riskRating? }`. |
-| POST | `/vendors/:id/transition` | `{ event: 'SUSPEND'\|'REINSTATE'\|'OFFBOARD', note? }`. |
-| GET | `/contracts` | List vendor contracts. Query: `status`, `vendorId`. |
-| GET | `/contracts/summary` | Contract summary (shape below). |
-| POST | `/contracts` | Create a draft contract. `{ vendorId, title, value, currency?, termMonths?, startDate?, endDate?, noticeDays?, autoRenew?, slaText?, documentId? }`. |
-| GET | `/contracts/:id` | Detail: contract + `vendorName` + `daysToNotice` + `availableTransitions` + `requiresApprovalFor`. |
-| POST | `/contracts/:id/transition` | `{ toStatus, note? }`. Returns `{ applied, contract, approvalStepId, resolvedApproverRole, resolutionTier, selfDealingBarTripped, reason }`. |
-| POST | `/contracts/:id/renew` | `{ endDate, value?, startDate?, noticeDays?, autoRenew?, slaText? }`. Creates a new draft chained by `renewedFromId`; the predecessor is untouched. |
-| POST | `/contracts/:id/terminate` | `{ reason }` (required). Equivalent to `transition({ toStatus: 'terminated', note: reason })`. |
+| Method | Path                        | What                                                                                                                                                             |
+| ------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/vendors`                  | List vendors. Query: `status`, `tier`, `riskRating`.                                                                                                             |
+| GET    | `/vendors/summary`          | Vendor summary (shape below).                                                                                                                                    |
+| POST   | `/vendors`                  | Create a vendor. `{ name, category, organizationId?, tier?, riskRating?, contactName?, contactEmail?, dpaSigned?, notes? }`.                                     |
+| GET    | `/vendors/:id`              | Detail: vendor + `availableTransitions` + `riskAssessments` + `contracts`.                                                                                       |
+| POST   | `/vendors/:id/assess`       | Record an assessment. `{ assessor, outcome: 'in_progress'\|'passed'\|'failed', assessedAt?, score?, questionnaire?, notes?, evidenceDocumentId?, riskRating? }`. |
+| POST   | `/vendors/:id/transition`   | `{ event: 'SUSPEND'\|'REINSTATE'\|'OFFBOARD', note? }`.                                                                                                          |
+| GET    | `/contracts`                | List vendor contracts. Query: `status`, `vendorId`.                                                                                                              |
+| GET    | `/contracts/summary`        | Contract summary (shape below).                                                                                                                                  |
+| POST   | `/contracts`                | Create a draft contract. `{ vendorId, title, value, currency?, termMonths?, startDate?, endDate?, noticeDays?, autoRenew?, slaText?, documentId? }`.             |
+| GET    | `/contracts/:id`            | Detail: contract + `vendorName` + `daysToNotice` + `availableTransitions` + `requiresApprovalFor`.                                                               |
+| POST   | `/contracts/:id/transition` | `{ toStatus, note? }`. Returns `{ applied, contract, approvalStepId, resolvedApproverRole, resolutionTier, selfDealingBarTripped, reason }`.                     |
+| POST   | `/contracts/:id/renew`      | `{ endDate, value?, startDate?, noticeDays?, autoRenew?, slaText? }`. Creates a new draft chained by `renewedFromId`; the predecessor is untouched.              |
+| POST   | `/contracts/:id/terminate`  | `{ reason }` (required). Equivalent to `transition({ toStatus: 'terminated', note: reason })`.                                                                   |
 
 Input bounds (zod, `routes/it/vendors.routes.ts`): assessment `score` is
 0–100; `termMonths` is a positive integer; `noticeDays` is a non-negative
@@ -137,6 +137,7 @@ integer, on both `/contracts` and `/contracts/:id/renew`.
   "highRiskWithDpa": 2
 }
 ```
+
 `notYetMeasured: true` (with all counts zero/empty) when the tenant has no
 vendors at all.
 
@@ -151,6 +152,7 @@ vendors at all.
   "awaitingApproval": 1
 }
 ```
+
 `valueUnderManagement` sums `approved | active | expiring` contracts
 (`contractValueUnderManagement` in shared) — `null`, not `0`, for a caller
 without `it_vendor_contracts:F` (see "Money is withheld server-side" above).
@@ -212,7 +214,7 @@ the only call site to update.
   `can('it_vendor_contracts:F')` (the `financial` verb — Finance Head and
   chairman hold it; Operations Head does not), "New contract" modal gated on
   `can('it_vendor_contracts:C')`. The `can()` check only decides whether the
-  column is *rendered* — the figures themselves are withheld server-side (see
+  column is _rendered_ — the figures themselves are withheld server-side (see
   "Money is withheld server-side" below), so hiding the column client-side is
   a presentation choice, not the control.
 - **`ItVendorContractDetail`** — transition buttons rendered only from
@@ -226,16 +228,16 @@ the only call site to update.
 
 ## Acceptance
 
-| ID | Test | What it proves |
-|---|---|---|
-| IT-VEN-001 | `IT-VEN-001: a vendor whose security assessment is past its next-due date raises IT_VEN_ASSESSMENT_OVERDUE` | The overdue ladder fires the named exception and is idempotent on a same-day re-run. |
-| IT-VCT-001 | `IT-VCT-001: approving a vendor contract the same actor proposed reroutes to the next tier with the Self-Dealing Bar tripped` | The proposer never approves — even the chairman, the only role holding both `create` and `approve` on vendor contracts, is rerouted when approving their own. |
-| IT-VCT-002 | `IT-VCT-002: the notice ladder fires once per rung and flips expiring then expired` | The 30/7/0 notice ladder is idempotent per rung and the status flips are exactly `expiring` then `expired`. |
-| IT-VCT-003 | `IT-VCT-003: terminating requires a reason and leaves the approval history intact` | Termination without a reason is rejected (400); after termination, `approvedById`/`approvedAt` are unchanged. |
-| — | `the Finance Head cannot create a vendor or a vendor contract` | Grant-matrix permission test: Finance Head holds no `create` on either resource. |
-| — | `the Operations Head cannot approve a vendor contract — the grant has no approve` | Grant-matrix permission test: Operations Head holds `VCEX`, no `approve`. |
-| — | `the Operations Head never receives contract value or currency — withheld server-side, not only hidden in the UI` | `value`/`currency` are `null` on create, list, detail and the summary for a caller without `it_vendor_contracts:F`; Finance Head sees the real figures on the same row. |
-| — | `the employee reaches nothing on vendors or vendor contracts` | The employee holds no grant on either resource at all. |
-| — | pure arithmetic (`noticeDate`, `noticeRung`, `contractValueUnderManagement`) | Tested without a database. |
+| ID         | Test                                                                                                                          | What it proves                                                                                                                                                          |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| IT-VEN-001 | `IT-VEN-001: a vendor whose security assessment is past its next-due date raises IT_VEN_ASSESSMENT_OVERDUE`                   | The overdue ladder fires the named exception and is idempotent on a same-day re-run.                                                                                    |
+| IT-VCT-001 | `IT-VCT-001: approving a vendor contract the same actor proposed reroutes to the next tier with the Self-Dealing Bar tripped` | The proposer never approves — even the chairman, the only role holding both `create` and `approve` on vendor contracts, is rerouted when approving their own.           |
+| IT-VCT-002 | `IT-VCT-002: the notice ladder fires once per rung and flips expiring then expired`                                           | The 30/7/0 notice ladder is idempotent per rung and the status flips are exactly `expiring` then `expired`.                                                             |
+| IT-VCT-003 | `IT-VCT-003: terminating requires a reason and leaves the approval history intact`                                            | Termination without a reason is rejected (400); after termination, `approvedById`/`approvedAt` are unchanged.                                                           |
+| —          | `the Finance Head cannot create a vendor or a vendor contract`                                                                | Grant-matrix permission test: Finance Head holds no `create` on either resource.                                                                                        |
+| —          | `the Operations Head cannot approve a vendor contract — the grant has no approve`                                             | Grant-matrix permission test: Operations Head holds `VCEX`, no `approve`.                                                                                               |
+| —          | `the Operations Head never receives contract value or currency — withheld server-side, not only hidden in the UI`             | `value`/`currency` are `null` on create, list, detail and the summary for a caller without `it_vendor_contracts:F`; Finance Head sees the real figures on the same row. |
+| —          | `the employee reaches nothing on vendors or vendor contracts`                                                                 | The employee holds no grant on either resource at all.                                                                                                                  |
+| —          | pure arithmetic (`noticeDate`, `noticeRung`, `contractValueUnderManagement`)                                                  | Tested without a database.                                                                                                                                              |
 
 Run: `TEST_DATABASE_URL=postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test_vendors?schema=public DATABASE_URL=$TEST_DATABASE_URL npx vitest run src/tests/it/vendors.test.ts` from `apps/api`.

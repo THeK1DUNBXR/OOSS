@@ -69,7 +69,11 @@ const SKIP_REASON_GROUPS: Array<{ key: string; label: string; match: (r: string)
   { key: 'dnc', label: 'Do not contact', match: (r) => r.includes('do_not_contact') || r.includes('dnc') },
   { key: 'opted_out', label: 'Opted out', match: (r) => r.includes('opt') },
   { key: 'suppressed', label: 'Suppressed', match: (r) => r.includes('suppress') },
-  { key: 'no_address', label: 'No address on file', match: (r) => r.includes('address') || r.includes('no_email') || r.includes('no_phone') },
+  {
+    key: 'no_address',
+    label: 'No address on file',
+    match: (r) => r.includes('address') || r.includes('no_email') || r.includes('no_phone'),
+  },
 ];
 
 function groupSkipped(skipped: Array<{ personId: string; reason: string }>) {
@@ -168,7 +172,15 @@ function SendQuickView({ id, onClose }: { id: string; onClose: () => void }) {
 // Wizard
 // ---------------------------------------------------------------------------
 
-function NewSendWizard({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: (id: string) => void }) {
+function NewSendWizard({
+  open,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onDone: (id: string) => void;
+}) {
   const [step, setStep] = useState<'form' | 'review'>('form');
   const [templateId, setTemplateId] = useState('');
   const [audienceId, setAudienceId] = useState('');
@@ -215,7 +227,12 @@ function NewSendWizard({ open, onClose, onDone }: { open: boolean; onClose: () =
               onClick={() => {
                 if (!selectedTemplate) return;
                 create.mutate(
-                  { templateId, channelKey: selectedTemplate.channelKey, audienceId, scheduledAt: scheduledAt || undefined },
+                  {
+                    templateId,
+                    channelKey: selectedTemplate.channelKey,
+                    audienceId,
+                    scheduledAt: scheduledAt || undefined,
+                  },
                   {
                     onSuccess: (res) => {
                       setDraftId(res.id);
@@ -262,7 +279,9 @@ function NewSendWizard({ open, onClose, onDone }: { open: boolean; onClose: () =
       }
     >
       {banner && (
-        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{banner}</p>
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {banner}
+        </p>
       )}
 
       {step === 'form' ? (
@@ -273,9 +292,16 @@ function NewSendWizard({ open, onClose, onDone }: { open: boolean; onClose: () =
             value={templateId}
             onChange={setTemplateId}
             placeholder={templates.data?.items.length ? 'Choose an approved template' : 'No approved templates yet'}
-            options={(templates.data?.items ?? []).map((t) => ({ value: t.id, label: `${t.name} (${CHANNEL_KEY_LABELS[t.channelKey]})` }))}
+            options={(templates.data?.items ?? []).map((t) => ({
+              value: t.id,
+              label: `${t.name} (${CHANNEL_KEY_LABELS[t.channelKey]})`,
+            }))}
           />
-          {selectedTemplate && <p className="text-2xs text-ink-500">Channel is fixed to the template's own: {CHANNEL_KEY_LABELS[selectedTemplate.channelKey]}.</p>}
+          {selectedTemplate && (
+            <p className="text-2xs text-ink-500">
+              Channel is fixed to the template's own: {CHANNEL_KEY_LABELS[selectedTemplate.channelKey]}.
+            </p>
+          )}
           <SelectInput
             label="Audience"
             required
@@ -284,7 +310,13 @@ function NewSendWizard({ open, onClose, onDone }: { open: boolean; onClose: () =
             placeholder={audiences.data?.items.length ? 'Choose an audience' : 'No audiences yet'}
             options={(audiences.data?.items ?? []).map((a) => ({ value: a.id, label: a.name }))}
           />
-          <TextInput label="Schedule for (optional)" type="date" value={scheduledAt} onChange={setScheduledAt} hint="Leave blank to request immediately" />
+          <TextInput
+            label="Schedule for (optional)"
+            type="date"
+            value={scheduledAt}
+            onChange={setScheduledAt}
+            hint="Leave blank to request immediately"
+          />
         </div>
       ) : (
         <div className="space-y-3">
@@ -295,7 +327,12 @@ function NewSendWizard({ open, onClose, onDone }: { open: boolean; onClose: () =
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <Metric label="Eligible" value={dryRun.data?.eligible ?? draft.data?.recipientCount ?? 0} tone="good" noActionReason="Will receive this send once requested." />
+                <Metric
+                  label="Eligible"
+                  value={dryRun.data?.eligible ?? draft.data?.recipientCount ?? 0}
+                  tone="good"
+                  noActionReason="Will receive this send once requested."
+                />
                 <Metric
                   label="Skipped"
                   value={dryRun.data?.skipped.length ?? 0}
@@ -305,7 +342,9 @@ function NewSendWizard({ open, onClose, onDone }: { open: boolean; onClose: () =
               </div>
               {dryRun.data && dryRun.data.skipped.length > 0 && (
                 <div className="rounded-md border border-ink-800 bg-ink-950 p-3">
-                  <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-500">Skipped, by reason</p>
+                  <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-500">
+                    Skipped, by reason
+                  </p>
                   <ul className="space-y-1 text-xs text-ink-300">
                     {groupSkipped(dryRun.data.skipped).map(([label, count]) => (
                       <li key={label} className="flex items-center justify-between">
@@ -317,7 +356,8 @@ function NewSendWizard({ open, onClose, onDone }: { open: boolean; onClose: () =
                 </div>
               )}
               <p className="text-2xs text-ink-500">
-                This send stays a draft until you request it — leaving now keeps it exactly as it is, to request or cancel later from Sends.
+                This send stays a draft until you request it — leaving now keeps it exactly as it is, to request or
+                cancel later from Sends.
               </p>
             </>
           )}
@@ -370,7 +410,9 @@ function SendDetailBody({ id }: { id: string }) {
   return (
     <div className="space-y-4">
       {banner && (
-        <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{banner}</p>
+        <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {banner}
+        </p>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
@@ -390,9 +432,25 @@ function SendDetailBody({ id }: { id: string }) {
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Metric label="Sent" value={send.recipientCount} noActionReason="Total recipients this send targets." />
-        <Metric label="Delivered" value={send.deliveredCount} sub={rate(send.deliveredCount)} tone="good" noActionReason="Confirmed by the channel provider." />
-        <Metric label="Opened" value={send.openedCount} sub={rate(send.openedCount)} noActionReason="Tracked opens, where the channel supports it." />
-        <Metric label="Clicked" value={send.clickedCount} sub={rate(send.clickedCount)} noActionReason="Tracked link clicks." />
+        <Metric
+          label="Delivered"
+          value={send.deliveredCount}
+          sub={rate(send.deliveredCount)}
+          tone="good"
+          noActionReason="Confirmed by the channel provider."
+        />
+        <Metric
+          label="Opened"
+          value={send.openedCount}
+          sub={rate(send.openedCount)}
+          noActionReason="Tracked opens, where the channel supports it."
+        />
+        <Metric
+          label="Clicked"
+          value={send.clickedCount}
+          sub={rate(send.clickedCount)}
+          noActionReason="Tracked link clicks."
+        />
         <Metric
           label="Bounced"
           value={send.bouncedCount}
@@ -409,36 +467,58 @@ function SendDetailBody({ id }: { id: string }) {
         />
       </div>
 
-      {send.status === 'draft' && needsApproval && (
-        isOwnProposal ? (
+      {send.status === 'draft' &&
+        needsApproval &&
+        (isOwnProposal ? (
           <p className="rounded-md border border-band-watch/40 bg-band-watch/10 px-3 py-2 text-xs italic text-band-watch">
-            Awaiting a second person's review — this send is over the approval threshold and you requested it, so you cannot approve it yourself.
+            Awaiting a second person's review — this send is over the approval threshold and you requested it, so you
+            cannot approve it yourself.
           </p>
         ) : (
           !can('marketing_sends:approve') && (
-            <p className="text-2xs italic text-ink-500">Over the approval threshold — needs approval before it can be requested.</p>
+            <p className="text-2xs italic text-ink-500">
+              Over the approval threshold — needs approval before it can be requested.
+            </p>
           )
-        )
-      )}
+        ))}
 
       <div className="flex flex-wrap gap-2 border-t border-ink-800 pt-3">
         {send.status === 'draft' && needsApproval && !isOwnProposal && can('marketing_sends:approve') && (
-          <button className="btn-primary" disabled={approveSend.isPending} onClick={() => approveSend.mutate(send.id, { onError: (e) => setBanner(messageOf(e)) })}>
+          <button
+            className="btn-primary"
+            disabled={approveSend.isPending}
+            onClick={() => approveSend.mutate(send.id, { onError: (e) => setBanner(messageOf(e)) })}
+          >
             Approve
           </button>
         )}
-        {send.status === 'draft' && nextStates.includes('queued') && can('marketing_sends:E') && (!needsApproval || Boolean(send.approvedById)) && (
-          <button className="btn-primary" disabled={requestSend.isPending} onClick={() => requestSend.mutate(send.id, { onError: (e) => setBanner(messageOf(e)) })}>
-            {requestSend.isPending ? 'Requesting…' : 'Request send'}
-          </button>
-        )}
+        {send.status === 'draft' &&
+          nextStates.includes('queued') &&
+          can('marketing_sends:E') &&
+          (!needsApproval || Boolean(send.approvedById)) && (
+            <button
+              className="btn-primary"
+              disabled={requestSend.isPending}
+              onClick={() => requestSend.mutate(send.id, { onError: (e) => setBanner(messageOf(e)) })}
+            >
+              {requestSend.isPending ? 'Requesting…' : 'Request send'}
+            </button>
+          )}
         {send.status === 'queued' && can('marketing_sends:E') && (
-          <button className="btn-primary" disabled={dispatchSend.isPending} onClick={() => dispatchSend.mutate(send.id, { onError: (e) => setBanner(messageOf(e)) })}>
+          <button
+            className="btn-primary"
+            disabled={dispatchSend.isPending}
+            onClick={() => dispatchSend.mutate(send.id, { onError: (e) => setBanner(messageOf(e)) })}
+          >
             {dispatchSend.isPending ? 'Dispatching…' : 'Dispatch now'}
           </button>
         )}
         {nextStates.includes('cancelled') && can('marketing_sends:E') && (
-          <button className="btn-ghost text-band-critical" disabled={cancelSend.isPending} onClick={() => cancelSend.mutate(send.id, { onError: (e) => setBanner(messageOf(e)) })}>
+          <button
+            className="btn-ghost text-band-critical"
+            disabled={cancelSend.isPending}
+            onClick={() => cancelSend.mutate(send.id, { onError: (e) => setBanner(messageOf(e)) })}
+          >
             Cancel
           </button>
         )}
@@ -452,7 +532,11 @@ function SendDetailBody({ id }: { id: string }) {
       <Card
         title="Recipients"
         actions={
-          <select className="input max-w-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RecipientStatus | '')}>
+          <select
+            className="input max-w-xs"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as RecipientStatus | '')}
+          >
             <option value="">Every status</option>
             {RECIPIENT_STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -523,7 +607,13 @@ function SendTestDialog({
   return (
     <Modal open={open} title="Send a test" onClose={onClose}>
       <div className="space-y-3">
-        <TextInput label="Send to" required value={to} onChange={setTo} placeholder="Email, phone, or WhatsApp number" />
+        <TextInput
+          label="Send to"
+          required
+          value={to}
+          onChange={setTo}
+          placeholder="Email, phone, or WhatsApp number"
+        />
         {result && <p className="text-xs text-ink-300">{result}</p>}
         <div className="flex justify-end gap-2">
           <button className="btn" onClick={onClose}>
@@ -536,7 +626,8 @@ function SendTestDialog({
               test.mutate(
                 { templateId, channelKey, to },
                 {
-                  onSuccess: (r) => setResult(r.ok ? 'Test sent.' : 'The adapter reported it could not send this test.'),
+                  onSuccess: (r) =>
+                    setResult(r.ok ? 'Test sent.' : 'The adapter reported it could not send this test.'),
                   onError: (e) => setResult(messageOf(e)),
                 },
               )

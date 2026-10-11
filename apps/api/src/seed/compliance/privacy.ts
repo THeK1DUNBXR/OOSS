@@ -51,7 +51,9 @@ const RETENTION_SCHEDULE = [
 export async function seedPrivacy(): Promise<void> {
   const auth = currentAuth();
 
-  const existingNotice = await prisma.privacyNotice.findFirst({ where: { tenantId: auth.tenantId, status: 'current' } });
+  const existingNotice = await prisma.privacyNotice.findFirst({
+    where: { tenantId: auth.tenantId, status: 'current' },
+  });
   if (!existingNotice) {
     await prisma.privacyNotice.create({
       data: {
@@ -77,7 +79,12 @@ export async function seedPrivacy(): Promise<void> {
     });
     if (existing) continue;
     await prisma.retentionSchedule.create({
-      data: { tenantId: auth.tenantId, retentionClass: row.retentionClass, years: row.years, effectiveFrom: new Date('2026-01-01T00:00:00.000Z') },
+      data: {
+        tenantId: auth.tenantId,
+        retentionClass: row.retentionClass,
+        years: row.years,
+        effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
+      },
     });
   }
 }

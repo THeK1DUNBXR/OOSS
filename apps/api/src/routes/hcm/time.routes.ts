@@ -5,27 +5,52 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { handler, str, date } from '../../lib/http.js';
 import {
-  listShifts, createShift, updateShift,
-  listRosterAssignments, assignRoster, rosterFor,
-  listClockEvents, recordClockEvent, myEmploymentId,
+  listShifts,
+  createShift,
+  updateShift,
+  listRosterAssignments,
+  assignRoster,
+  rosterFor,
+  listClockEvents,
+  recordClockEvent,
+  myEmploymentId,
   deriveAttendanceFromClockEvents,
-  listTimesheets, getTimesheet, addTimesheetEntry, removeTimesheetEntry,
-  submitTimesheet, approveTimesheet, rejectTimesheet,
-  listOvertimeRequests, requestOvertime, approveOvertimeRequest, rejectOvertimeRequest,
+  listTimesheets,
+  getTimesheet,
+  addTimesheetEntry,
+  removeTimesheetEntry,
+  submitTimesheet,
+  approveTimesheet,
+  rejectTimesheet,
+  listOvertimeRequests,
+  requestOvertime,
+  approveOvertimeRequest,
+  rejectOvertimeRequest,
   earnCompOffForHolidayWork,
-  listCompOffs, consumeCompOff, runCompOffExpiry,
-  listRegularisations, submitRegularisation, approveRegularisation, rejectRegularisation,
+  listCompOffs,
+  consumeCompOff,
+  runCompOffExpiry,
+  listRegularisations,
+  submitRegularisation,
+  approveRegularisation,
+  rejectRegularisation,
 } from '../../domains/hcm/time.js';
 
 const router = Router();
 
-router.get('/_status', handler(async () => ({ module: 'time', ready: true })));
+router.get(
+  '/_status',
+  handler(async () => ({ module: 'time', ready: true })),
+);
 
 // ---------------------------------------------------------------------------
 // Shifts
 // ---------------------------------------------------------------------------
 
-router.get('/shifts', handler(async (req) => listShifts(req.query.activeOnly === 'true')));
+router.get(
+  '/shifts',
+  handler(async (req) => listShifts(req.query.activeOnly === 'true')),
+);
 
 router.post(
   '/shifts',
@@ -49,7 +74,12 @@ router.patch(
   '/shifts/:id',
   handler(async (req) => {
     const body = z
-      .object({ name: z.string().min(1).optional(), graceMinutes: z.number().int().min(0).optional(), breakMinutes: z.number().int().min(0).optional(), active: z.boolean().optional() })
+      .object({
+        name: z.string().min(1).optional(),
+        graceMinutes: z.number().int().min(0).optional(),
+        breakMinutes: z.number().int().min(0).optional(),
+        active: z.boolean().optional(),
+      })
       .parse(req.body);
     return updateShift(req.params.id, body);
   }),
@@ -59,7 +89,10 @@ router.patch(
 // Roster
 // ---------------------------------------------------------------------------
 
-router.get('/rosters', handler(async (req) => listRosterAssignments(str(req.query.employmentRelationshipId))));
+router.get(
+  '/rosters',
+  handler(async (req) => listRosterAssignments(str(req.query.employmentRelationshipId))),
+);
 
 router.get(
   '/rosters/mine',
@@ -113,7 +146,13 @@ router.post(
   handler(async (req) => {
     const kind = z.enum(['in', 'out']).parse(req.params.kind);
     const body = z
-      .object({ source: clockSourceEnum.optional(), lat: z.number().nullish(), long: z.number().nullish(), deviceId: z.string().nullish(), note: z.string().nullish() })
+      .object({
+        source: clockSourceEnum.optional(),
+        lat: z.number().nullish(),
+        long: z.number().nullish(),
+        deviceId: z.string().nullish(),
+        note: z.string().nullish(),
+      })
       .parse(req.body ?? {});
     const employmentId = await myEmploymentId();
     return recordClockEvent({
@@ -148,23 +187,32 @@ router.post(
   }),
 );
 
-router.post('/jobs/derive-attendance', handler(async (req) => {
-  const body = z.object({ date: z.coerce.date().optional() }).parse(req.body ?? {});
-  return deriveAttendanceFromClockEvents(body.date);
-}));
+router.post(
+  '/jobs/derive-attendance',
+  handler(async (req) => {
+    const body = z.object({ date: z.coerce.date().optional() }).parse(req.body ?? {});
+    return deriveAttendanceFromClockEvents(body.date);
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Timesheets
 // ---------------------------------------------------------------------------
 
-router.get('/timesheets', handler(async (req) => listTimesheets(str(req.query.employmentRelationshipId))));
+router.get(
+  '/timesheets',
+  handler(async (req) => listTimesheets(str(req.query.employmentRelationshipId))),
+);
 
 router.get(
   '/timesheets/mine',
   handler(async () => listTimesheets(await myEmploymentId())),
 );
 
-router.get('/timesheets/:id', handler(async (req) => getTimesheet(req.params.id)));
+router.get(
+  '/timesheets/:id',
+  handler(async (req) => getTimesheet(req.params.id)),
+);
 
 router.post(
   '/timesheets/entries',
@@ -185,9 +233,15 @@ router.post(
   }),
 );
 
-router.delete('/timesheets/entries/:id', handler(async (req) => removeTimesheetEntry(req.params.id)));
+router.delete(
+  '/timesheets/entries/:id',
+  handler(async (req) => removeTimesheetEntry(req.params.id)),
+);
 
-router.post('/timesheets/:id/submit', handler(async (req) => submitTimesheet(req.params.id)));
+router.post(
+  '/timesheets/:id/submit',
+  handler(async (req) => submitTimesheet(req.params.id)),
+);
 
 router.post(
   '/timesheets/:id/approve',
@@ -209,9 +263,15 @@ router.post(
 // Overtime
 // ---------------------------------------------------------------------------
 
-router.get('/overtime', handler(async (req) => listOvertimeRequests(str(req.query.employmentRelationshipId))));
+router.get(
+  '/overtime',
+  handler(async (req) => listOvertimeRequests(str(req.query.employmentRelationshipId))),
+);
 
-router.get('/overtime/mine', handler(async () => listOvertimeRequests(await myEmploymentId())));
+router.get(
+  '/overtime/mine',
+  handler(async () => listOvertimeRequests(await myEmploymentId())),
+);
 
 router.post(
   '/overtime',
@@ -249,15 +309,26 @@ router.post(
 // Comp-off
 // ---------------------------------------------------------------------------
 
-router.get('/comp-offs', handler(async (req) => listCompOffs(str(req.query.employmentRelationshipId))));
+router.get(
+  '/comp-offs',
+  handler(async (req) => listCompOffs(str(req.query.employmentRelationshipId))),
+);
 
-router.get('/comp-offs/mine', handler(async () => listCompOffs(await myEmploymentId())));
+router.get(
+  '/comp-offs/mine',
+  handler(async () => listCompOffs(await myEmploymentId())),
+);
 
 router.post(
   '/comp-offs/holiday-work',
   handler(async (req) => {
     const body = z
-      .object({ employmentRelationshipId: z.string(), earnedOn: z.coerce.date(), days: z.number().positive(), note: z.string().nullish() })
+      .object({
+        employmentRelationshipId: z.string(),
+        earnedOn: z.coerce.date(),
+        days: z.number().positive(),
+        note: z.string().nullish(),
+      })
       .parse(req.body);
     return earnCompOffForHolidayWork(body);
   }),
@@ -271,15 +342,24 @@ router.post(
   }),
 );
 
-router.post('/jobs/expire-comp-offs', handler(async () => runCompOffExpiry()));
+router.post(
+  '/jobs/expire-comp-offs',
+  handler(async () => runCompOffExpiry()),
+);
 
 // ---------------------------------------------------------------------------
 // Attendance regularisation
 // ---------------------------------------------------------------------------
 
-router.get('/regularisations', handler(async (req) => listRegularisations(str(req.query.employmentRelationshipId))));
+router.get(
+  '/regularisations',
+  handler(async (req) => listRegularisations(str(req.query.employmentRelationshipId))),
+);
 
-router.get('/regularisations/mine', handler(async () => listRegularisations(await myEmploymentId())));
+router.get(
+  '/regularisations/mine',
+  handler(async () => listRegularisations(await myEmploymentId())),
+);
 
 router.post(
   '/regularisations',
@@ -295,7 +375,9 @@ router.post(
 router.post(
   '/regularisations/:id/approve',
   handler(async (req) => {
-    const body = z.object({ note: z.string().optional(), correctedWorkedMinutes: z.number().int().min(0).optional() }).parse(req.body ?? {});
+    const body = z
+      .object({ note: z.string().optional(), correctedWorkedMinutes: z.number().int().min(0).optional() })
+      .parse(req.body ?? {});
     return approveRegularisation(req.params.id, body.note, body.correctedWorkedMinutes);
   }),
 );

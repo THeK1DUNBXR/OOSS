@@ -16,11 +16,27 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { amountInWords, PAYMENT_MODE_LABELS, type PaymentMode, type ReceiptDocumentView, type ReceiptView } from '@kaizen/shared';
+import {
+  amountInWords,
+  PAYMENT_MODE_LABELS,
+  type PaymentMode,
+  type ReceiptDocumentView,
+  type ReceiptView,
+} from '@kaizen/shared';
 import { api, dateTime, money } from '../lib/api.js';
 import { Card, EmptyState, ErrorBox, Loading, Metric, PageHeader, RecordCode } from '../components/ui.js';
 import { fmtDate, fmtINR } from './kaizenInvoice/calc.js';
-import { LedgerHead, InfoGrid, InfoRow, DateBoxGrid, DateBoxItem, TotalsStrip, NoteStrip, SignStrip, type LedgerCompany } from './kaizenInvoice/LedgerSheet.js';
+import {
+  LedgerHead,
+  InfoGrid,
+  InfoRow,
+  DateBoxGrid,
+  DateBoxItem,
+  TotalsStrip,
+  NoteStrip,
+  SignStrip,
+  type LedgerCompany,
+} from './kaizenInvoice/LedgerSheet.js';
 import { DocumentToolbar, DocumentScreen, TwoCopyPrintPage, PrintPortal } from './documents/PrintSheet.js';
 
 export function ReceiptDocument() {
@@ -42,7 +58,11 @@ export function ReceiptDocument() {
     name: 'Kaizen Infinities',
     tagline: 'Training & Education Services',
     legalName: d.supplier.legalName,
-    address: [d.supplier.addressLine1, d.supplier.addressLine2, d.supplier.city ? `${d.supplier.city}-${d.supplier.pincode ?? ''}` : null]
+    address: [
+      d.supplier.addressLine1,
+      d.supplier.addressLine2,
+      d.supplier.city ? `${d.supplier.city}-${d.supplier.pincode ?? ''}` : null,
+    ]
       .filter(Boolean)
       .join(', '),
     location: '—',
@@ -105,7 +125,11 @@ export function ReceiptDocument() {
       )}
 
       <TotalsStrip
-        doc={{ amountInWords: amountInWords(d.position.amountReceivedNow), grandTotal: d.position.amountReceivedNow, label: 'Amount Received' }}
+        doc={{
+          amountInWords: amountInWords(d.position.amountReceivedNow),
+          grandTotal: d.position.amountReceivedNow,
+          label: 'Amount Received',
+        }}
       />
 
       <NoteStrip>
@@ -143,7 +167,11 @@ export function ReceiptDocument() {
  * knowing which invoice first.
  */
 export function Receipts() {
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['receipts'],
     queryFn: () => api.get<ReceiptView[]>('/finance/receipts'),
   });
@@ -155,10 +183,7 @@ export function Receipts() {
 
   return (
     <div>
-      <PageHeader
-        title="Receipts"
-        subtitle="What has been received, instalment by instalment."
-      />
+      <PageHeader title="Receipts" subtitle="What has been received, instalment by instalment." />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Metric label="Receipts" value={data.length} />

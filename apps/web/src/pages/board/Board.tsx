@@ -10,7 +10,12 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import type { BoardMemberView, BoardMeetingView, MeetingKind, MeetingMode } from '@kaizen/shared';
-import { BOARD_MEMBER_ROLE_LABELS, MEETING_KIND_LABELS, MEETING_MODE_LABELS, MEETING_STATUS_LABELS } from '@kaizen/shared';
+import {
+  BOARD_MEMBER_ROLE_LABELS,
+  MEETING_KIND_LABELS,
+  MEETING_MODE_LABELS,
+  MEETING_STATUS_LABELS,
+} from '@kaizen/shared';
 import { api, date, relative } from '../../lib/api.js';
 import { useSession } from '../../lib/session.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip } from '../../components/ui.js';
@@ -66,7 +71,10 @@ export function Board() {
             {meetings.isLoading ? (
               <Loading />
             ) : meetings.data!.items.length === 0 ? (
-              <EmptyState message="No meeting has been called yet." hint="Notices, agendas and minutes appear here once meetings begin being recorded." />
+              <EmptyState
+                message="No meeting has been called yet."
+                hint="Notices, agendas and minutes appear here once meetings begin being recorded."
+              />
             ) : (
               <div className="space-y-2">
                 {meetings.data!.items.map((m) => (
@@ -79,7 +87,10 @@ export function Board() {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="mono">{m.recordCode}</span>
-                          <StatusChip status={MEETING_STATUS_LABELS[m.status]} tone={MEETING_STATUS_TONE[m.status] ?? 'neutral'} />
+                          <StatusChip
+                            status={MEETING_STATUS_LABELS[m.status]}
+                            tone={MEETING_STATUS_TONE[m.status] ?? 'neutral'}
+                          />
                           <span className="chip border-ink-700 text-ink-400">{MEETING_KIND_LABELS[m.kind]}</span>
                         </div>
                         <p className="mt-1 text-sm font-medium text-ink-100">{m.title}</p>
@@ -158,7 +169,8 @@ function AddBoardMember({ open, onClose }: { open: boolean; onClose: () => void 
 
   const people = useQuery({
     queryKey: ['people-picker'],
-    queryFn: () => api.get<{ items: Array<{ id: string; fullName: string; recordCode: string }> }>('/crm/people?pageSize=200'),
+    queryFn: () =>
+      api.get<{ items: Array<{ id: string; fullName: string; recordCode: string }> }>('/crm/people?pageSize=200'),
     enabled: open,
   });
 
@@ -186,7 +198,10 @@ function AddBoardMember({ open, onClose }: { open: boolean; onClose: () => void 
           value={role}
           onChange={(v) => setRole(v as BoardMemberView['role'])}
           placeholder="Select…"
-          options={Object.entries(BOARD_MEMBER_ROLE_LABELS).map(([value, label]) => ({ value: value as BoardMemberView['role'], label }))}
+          options={Object.entries(BOARD_MEMBER_ROLE_LABELS).map(([value, label]) => ({
+            value: value as BoardMemberView['role'],
+            label,
+          }))}
         />
         <TextInput label="DIN" value={din} onChange={setDin} hint="if a director" />
       </Row>
@@ -212,8 +227,16 @@ function DeclareInterests({ open, onClose, member }: { open: boolean; onClose: (
         })
       }
     >
-      <p className="text-2xs text-ink-500">MBP-1: recorded once for this financial year, even if there is nothing to declare.</p>
-      <TextInput label="Entity" value={entity} onChange={setEntity} hint="leave blank for a nil declaration" placeholder="Acme Supplies Pvt Ltd" />
+      <p className="text-2xs text-ink-500">
+        MBP-1: recorded once for this financial year, even if there is nothing to declare.
+      </p>
+      <TextInput
+        label="Entity"
+        value={entity}
+        onChange={setEntity}
+        hint="leave blank for a nil declaration"
+        placeholder="Acme Supplies Pvt Ltd"
+      />
       <TextInput label="Nature of interest" value={nature} onChange={setNature} placeholder="Director" />
     </CreateModal>
   );
@@ -253,14 +276,20 @@ function CallMeeting({ open, onClose }: { open: boolean; onClose: () => void }) 
           required
           value={kind}
           onChange={(v) => setKind(v as MeetingKind)}
-          options={Object.entries(MEETING_KIND_LABELS).map(([value, label]) => ({ value: value as MeetingKind, label }))}
+          options={Object.entries(MEETING_KIND_LABELS).map(([value, label]) => ({
+            value: value as MeetingKind,
+            label,
+          }))}
         />
         <SelectInput
           label="Mode"
           required
           value={mode}
           onChange={(v) => setMode(v as MeetingMode)}
-          options={Object.entries(MEETING_MODE_LABELS).map(([value, label]) => ({ value: value as MeetingMode, label }))}
+          options={Object.entries(MEETING_MODE_LABELS).map(([value, label]) => ({
+            value: value as MeetingMode,
+            label,
+          }))}
         />
       </Row>
       <TextInput label="Title" required value={title} onChange={setTitle} placeholder="Q3 board meeting" />
@@ -273,7 +302,14 @@ function CallMeeting({ open, onClose }: { open: boolean; onClose: () => void }) 
         This is short notice — record director consent
       </label>
       {shortNotice && (
-        <TextArea label="Reason" required value={reason} onChange={setReason} rows={2} placeholder="Why the full notice period could not be given" />
+        <TextArea
+          label="Reason"
+          required
+          value={reason}
+          onChange={setReason}
+          rows={2}
+          placeholder="Why the full notice period could not be given"
+        />
       )}
     </CreateModal>
   );

@@ -9,15 +9,25 @@
  * way types could not catch and only a run against a database showed.
  */
 
-import { EVENTS } from '@kaizen/shared';
+import { EVENTS, istDateKey } from '@kaizen/shared';
 import { z } from 'zod';
 import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan } from '../platform/permissions.js';
+import { auditWrite } from '../platform/audit.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { createAffiliation } from './identity.js';
+import {
+  assertMinorHasGuardian,
+  encryptField,
+  parseStatedDateOfBirth,
+  readRegulated,
+  requireGuardianConsentForMinor,
+} from './compliance/privacy.js';
+
+type PersonRow = NonNullable<Awaited<ReturnType<typeof prisma.person.findFirst>>>;
 
 export const ENROLLMENT_STATUSES = ['reserved', 'confirmed', 'active', 'completed', 'withdrawn', 'deferred'] as const;
 export type EnrollmentStatus = (typeof ENROLLMENT_STATUSES)[number];
@@ -26,6 +36,9 @@ export async function enrolStudent(input: unknown) {
   await assertCan({ resource: 'education', verb: 'create' });
   const auth = currentAuth();
 
+  // `isMinor` is no longer an input. A caller's claim of minority made no
+  // difference the minor rule did not already make: a measured age decides,
+  // and with no age the rule holds unless `adultAttested` says otherwise. FX-64.
   const body = z
     .object({
       cohortId: z.string(),
@@ -34,7 +47,8 @@ export async function enrolStudent(input: unknown) {
       primaryPhone: z.string().nullish(),
       primaryEmail: z.string().nullish(),
       institutionId: z.string().nullish(),
-      isMinor: z.boolean().optional(),
+      dateOfBirth: z.string().nullish(),
+      adultAttested: z.boolean().optional(),
       guardianName: z.string().nullish(),
       guardianPhone: z.string().nullish(),
       guardianEmail: z.string().nullish(),
@@ -70,12 +84,13 @@ export async function enrolStudent(input: unknown) {
     collegeName = college.name;
   }
 
-  // A minor's guardian contact is DPDP-covered. Recording a minor without one
-  // is refused rather than accepted and left incomplete, because the missing
-  // field is the one that matters if anything goes wrong.
-  if (body.isMinor && !body.guardianPhone && !body.guardianEmail) {
-    throw ApiError.badRequest('A student under 18 needs a guardian phone or email on the record.');
-  }
+  // Guardian contact is DPDP-covered and stored encrypted. Minority is measured
+  // from the date of birth, stated here or on file; with neither, the minor
+  // rule holds unless the caller attests adulthood (assertMinorHasGuardian). FX-64.
+  const statedDob = body.dateOfBirth ? parseStatedDateOfBirth(body.dateOfBirth) : null;
+  const guardianName = body.guardianName?.trim() || null;
+  const guardianPhone = body.guardianPhone?.trim() || null;
+  const guardianEmail = body.guardianEmail?.trim() || null;
 
   // A student is a person like any other. Somebody who was a lead last year
   // and is a learner now is one record with two roles, not two people.
@@ -98,10 +113,10 @@ export async function enrolStudent(input: unknown) {
   const phoneKey = body.primaryPhone?.replace(/\D/g, '') || null;
   const emailKey = body.primaryEmail?.toLowerCase() || null;
 
-  let person;
+  let existing: PersonRow | null = null;
   if (body.personId) {
-    person = await prisma.person.findFirst({ where: { id: body.personId, tenantId: auth.tenantId } });
-    if (!person) throw ApiError.notFound('Person');
+    existing = await prisma.person.findFirst({ where: { id: body.personId, tenantId: auth.tenantId } });
+    if (!existing) throw ApiError.notFound('Person');
   } else {
     const matches =
       phoneKey || emailKey
@@ -127,30 +142,84 @@ export async function enrolStudent(input: unknown) {
       );
     }
 
-    person =
-      matches[0] ??
-      (await prisma.person.create({
-        data: {
-          tenantId: auth.tenantId,
-          recordCode: await nextRecordCode('PER'),
-          fullName: body.fullName!,
-          ...(emailKey ? { primaryEmail: body.primaryEmail, primaryEmailNormalised: emailKey } : {}),
-          ...(phoneKey ? { primaryPhone: body.primaryPhone, primaryPhoneNormalised: phoneKey } : {}),
-          source: 'enrollment',
-        },
-      }));
+    existing = matches[0] ?? null;
   }
 
   // The same person on the same batch twice is a mistake every time, and it
-  // is the mistake a list of near-identical rows is made of.
-  const already = await prisma.enrollment.findFirst({
-    where: { tenantId: auth.tenantId, personId: person.id, cohortId: cohort.id },
-  });
-  if (already) {
+  // is the mistake a list of near-identical rows is made of. Checked before
+  // any write, including the date of birth below, so a refusal leaves nothing.
+  if (existing) {
+    const already = await prisma.enrollment.findFirst({
+      where: { tenantId: auth.tenantId, personId: existing.id, cohortId: cohort.id },
+    });
+    if (already) {
+      throw ApiError.conflict(`${existing.fullName} is already on ${cohort.name} as ${already.recordCode}.`);
+    }
+  }
+
+  // A date of birth on file wins. A different one stated here is refused rather
+  // than quietly preferred, because the minor rule turns on it and a second,
+  // conflicting value is how the record ends up disagreeing with itself. FX-64.
+  const onFile = existing?.dateOfBirth ?? null;
+  if (existing && statedDob && onFile && istDateKey(statedDob) !== istDateKey(onFile)) {
     throw ApiError.conflict(
-      `${person.fullName} is already on ${cohort.name} as ${already.recordCode}.`,
+      `${existing.fullName} already has a different date of birth on file. Correct it on their record rather than entering a second one here.`,
     );
   }
+  const dateOfBirth = onFile ?? statedDob;
+  const adultAttested = body.adultAttested === true;
+  const attestedAdult = dateOfBirth === null && adultAttested;
+
+  // Refused before anything is written: a refused enrolment must not leave a
+  // person behind (see the note above). The consent row is written later, once
+  // there is a person to attach it to.
+  const minor = assertMinorHasGuardian({ dateOfBirth, adultAttested, guardianName, guardianPhone });
+
+  let person: PersonRow;
+  if (existing) {
+    person = existing;
+    if (!onFile && statedDob) {
+      person = await prisma.person.update({ where: { id: existing.id }, data: { dateOfBirth: statedDob } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'person',
+        subjectId: person.id,
+        before: { dateOfBirth: null },
+        after: { dateOfBirth: statedDob },
+      });
+    }
+  } else {
+    person = await prisma.person.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('PER'),
+        fullName: body.fullName!,
+        ...(emailKey ? { primaryEmail: body.primaryEmail, primaryEmailNormalised: emailKey } : {}),
+        ...(phoneKey ? { primaryPhone: body.primaryPhone, primaryPhoneNormalised: phoneKey } : {}),
+        ...(statedDob ? { dateOfBirth: statedDob } : {}),
+        source: 'enrollment',
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'person',
+      subjectId: person.id,
+      after: { source: 'enrollment', recordCode: person.recordCode },
+    });
+  }
+
+  // The consent a minor's enrolment rests on. Written only after every refusal
+  // above has passed, and stamped on the enrolment so the rule can be audited
+  // from the enrolment itself.
+  const guardianConsentId = minor
+    ? await requireGuardianConsentForMinor({
+        personId: person.id,
+        dateOfBirth,
+        adultAttested,
+        guardianName,
+        guardianPhone,
+      })
+    : null;
 
   const enrollment = await prisma.enrollment.create({
     data: {
@@ -160,11 +229,23 @@ export async function enrolStudent(input: unknown) {
       cohortId: cohort.id,
       institutionId: body.institutionId ?? null,
       status: 'reserved',
-      isMinor: body.isMinor ?? false,
-      guardianName: body.guardianName ?? null,
-      guardianPhone: body.guardianPhone ?? null,
-      guardianEmail: body.guardianEmail ?? null,
+      isMinor: minor,
+      guardianName: guardianName ? encryptField(guardianName) : null,
+      guardianPhone: guardianPhone ? encryptField(guardianPhone) : null,
+      guardianEmail: guardianEmail ? encryptField(guardianEmail) : null,
+      guardianConsentId,
     },
+  });
+
+  // The attesting party is named on the row when the rule was released on
+  // attestation rather than on a date, so "this learner was treated as an adult
+  // because X said so" can be answered from the log alone. FX-64.
+  await auditWrite({
+    action: 'create',
+    subjectType: 'enrollment',
+    subjectId: enrollment.id,
+    after: { status: 'reserved', cohortId: cohort.id, personId: person.id, isMinor: minor, guardianConsentId },
+    meta: attestedAdult ? { adultAttestedBy: auth.partyId } : undefined,
   });
 
   // Being enrolled is what makes somebody a student, so it is what writes the
@@ -204,7 +285,14 @@ export async function enrolStudent(input: unknown) {
     confidentiality: enrollment.isMinor ? 'restricted' : 'internal',
     impact: { domains: ['edu'] },
   });
-  return enrollment;
+  // Handed back in the clear to the caller who supplied them; what is stored
+  // is the ciphertext.
+  return {
+    ...enrollment,
+    guardianName: readRegulated(enrollment.guardianName),
+    guardianPhone: readRegulated(enrollment.guardianPhone),
+    guardianEmail: readRegulated(enrollment.guardianEmail),
+  };
 }
 
 /**
@@ -240,6 +328,17 @@ export async function setEnrollmentStatus(enrollmentId: string, status: Enrollme
       ...(status === 'confirmed' ? { enrolledAt: new Date() } : {}),
       ...(status === 'completed' ? { completedAt: new Date(), progressPct: 100 } : {}),
     },
+  });
+
+  // Withdrawal, completion and confirmation all change what the enrolment
+  // means for money and for the learner's record, so the change is on the log
+  // before any event announces it. FX-22.
+  await auditWrite({
+    action: 'update',
+    subjectType: 'enrollment',
+    subjectId: updated.id,
+    before: { status: enrollment.status },
+    after: { status: updated.status },
   });
 
   if (status === 'confirmed') {

@@ -72,7 +72,15 @@ export async function listCourses(options: { includeRetired?: boolean } = {}) {
     where: { tenantId: auth.tenantId, ...(options.includeRetired ? {} : { active: true }) },
     include: {
       cohorts: {
-        select: { id: true, name: true, status: true, startDate: true, endDate: true, capacity: true, _count: { select: { enrollments: true } } },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+          capacity: true,
+          _count: { select: { enrollments: true } },
+        },
         orderBy: { startDate: 'desc' },
       },
       feePlans: { orderBy: { tenureMonths: 'asc' } },
@@ -97,10 +105,7 @@ export async function listCourses(options: { includeRetired?: boolean } = {}) {
     // What a customer actually pays, worked out here rather than on four
     // different screens. The tax split still depends on the place of supply,
     // which is an invoice's business and not a course's.
-    feeWithTax:
-      num(c.feeAmount) === null
-        ? null
-        : round2((num(c.feeAmount) ?? 0) * (1 + (num(c.gstRate) ?? 0) / 100)),
+    feeWithTax: num(c.feeAmount) === null ? null : round2((num(c.feeAmount) ?? 0) * (1 + (num(c.gstRate) ?? 0) / 100)),
     batchCount: c.cohorts.length,
     enrolledCount: c.cohorts.reduce((s, h) => s + h._count.enrollments, 0),
     feePlans: c.feePlans.map((p) => ({
@@ -153,7 +158,9 @@ function validateShape(input: Partial<CourseInput>) {
         throw ApiError.badRequest('A fee plan’s tenure is a whole number of months, one or more.');
       }
       if (seen.has(plan.tenureMonths)) {
-        throw ApiError.badRequest(`Two fee plans both name a ${plan.tenureMonths}-month tenure — a course has one rate per tenure.`);
+        throw ApiError.badRequest(
+          `Two fee plans both name a ${plan.tenureMonths}-month tenure — a course has one rate per tenure.`,
+        );
       }
       seen.add(plan.tenureMonths);
       if (plan.monthlyFee < 0) {
@@ -203,7 +210,13 @@ export async function createCourse(input: CourseInput) {
       hours: input.hours ?? null,
       division: input.division ?? 'education',
       feePlans: input.feePlans?.length
-        ? { create: input.feePlans.map((p) => ({ tenantId: auth.tenantId, tenureMonths: p.tenureMonths, monthlyFee: p.monthlyFee })) }
+        ? {
+            create: input.feePlans.map((p) => ({
+              tenantId: auth.tenantId,
+              tenureMonths: p.tenureMonths,
+              monthlyFee: p.monthlyFee,
+            })),
+          }
         : undefined,
       addons: input.addons?.length
         ? {
@@ -287,7 +300,11 @@ export async function updateCourse(courseId: string, input: Partial<CourseInput>
         ? {
             feePlans: {
               deleteMany: {},
-              create: input.feePlans.map((p) => ({ tenantId: auth.tenantId, tenureMonths: p.tenureMonths, monthlyFee: p.monthlyFee })),
+              create: input.feePlans.map((p) => ({
+                tenantId: auth.tenantId,
+                tenureMonths: p.tenureMonths,
+                monthlyFee: p.monthlyFee,
+              })),
             },
           }
         : {}),
@@ -425,7 +442,11 @@ export interface AssignCourseInput {
   primaryPhone?: string | null;
   primaryEmail?: string | null;
   institutionId?: string | null;
-  isMinor?: boolean;
+  /** Stated date of birth; decides the minor rule when there is one. */
+  dateOfBirth?: string | null;
+  /** The enrolling user's attestation that the learner is 18 or over, for a
+   * learner with no date of birth. FX-64. */
+  adultAttested?: boolean;
   guardianName?: string | null;
   guardianPhone?: string | null;
   guardianEmail?: string | null;
@@ -442,9 +463,7 @@ export interface AssignCourseInput {
  */
 export async function assignCourse(input: AssignCourseInput) {
   const auth = currentAuth();
-  const cohortId =
-    input.cohortId ??
-    (await rollingCohortFor(input.courseId)).id;
+  const cohortId = input.cohortId ?? (await rollingCohortFor(input.courseId)).id;
 
   if (input.cohortId) {
     const cohort = await prisma.cohort.findFirst({
@@ -466,7 +485,8 @@ export async function assignCourse(input: AssignCourseInput) {
     primaryPhone: input.primaryPhone ?? null,
     primaryEmail: input.primaryEmail ?? null,
     institutionId: input.institutionId ?? null,
-    isMinor: input.isMinor ?? false,
+    dateOfBirth: input.dateOfBirth ?? null,
+    adultAttested: input.adultAttested === true,
     guardianName: input.guardianName ?? null,
     guardianPhone: input.guardianPhone ?? null,
     guardianEmail: input.guardianEmail ?? null,

@@ -7,7 +7,15 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { ChannelAdapter, ChannelKey, ChannelKind, InboundDeliveryEvent, OutboundMessage, RenderedMessage, SendResult } from './types.js';
+import type {
+  ChannelAdapter,
+  ChannelKey,
+  ChannelKind,
+  InboundDeliveryEvent,
+  OutboundMessage,
+  RenderedMessage,
+  SendResult,
+} from './types.js';
 import { renderMergeFields } from './merge.js';
 
 function envVarFor(kind: ChannelKind): string {

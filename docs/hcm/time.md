@@ -50,16 +50,16 @@ same `prisma`/`assertEmploymentVisible` helpers every other HR domain uses.
 
 ### Routes (`apps/api/src/routes/hcm/time.routes.ts`, mounted at `/api/hcm/time`)
 
-| Area | Endpoints |
-|---|---|
-| Shifts | `GET/POST /shifts`, `PATCH /shifts/:id` |
-| Roster | `GET /rosters`, `GET /rosters/mine`, `POST /rosters` |
-| Clock | `GET /clock`, `GET /clock/mine`, `POST /clock/mine/:kind`, `POST /clock` |
-| Timesheets | `GET /timesheets(/mine)`, `GET /timesheets/:id`, `POST /timesheets/entries`, `DELETE /timesheets/entries/:id`, `POST /timesheets/:id/{submit,approve,reject}` |
-| Overtime | `GET /overtime(/mine)`, `POST /overtime`, `POST /overtime/:id/{approve,reject}` |
-| Comp-off | `GET /comp-offs(/mine)`, `POST /comp-offs/holiday-work`, `POST /comp-offs/:id/consume` |
-| Regularisation | `GET /regularisations(/mine)`, `POST /regularisations`, `POST /regularisations/:id/{approve,reject}` |
-| Jobs (manual trigger) | `POST /jobs/derive-attendance`, `POST /jobs/expire-comp-offs` |
+| Area                  | Endpoints                                                                                                                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shifts                | `GET/POST /shifts`, `PATCH /shifts/:id`                                                                                                                       |
+| Roster                | `GET /rosters`, `GET /rosters/mine`, `POST /rosters`                                                                                                          |
+| Clock                 | `GET /clock`, `GET /clock/mine`, `POST /clock/mine/:kind`, `POST /clock`                                                                                      |
+| Timesheets            | `GET /timesheets(/mine)`, `GET /timesheets/:id`, `POST /timesheets/entries`, `DELETE /timesheets/entries/:id`, `POST /timesheets/:id/{submit,approve,reject}` |
+| Overtime              | `GET /overtime(/mine)`, `POST /overtime`, `POST /overtime/:id/{approve,reject}`                                                                               |
+| Comp-off              | `GET /comp-offs(/mine)`, `POST /comp-offs/holiday-work`, `POST /comp-offs/:id/consume`                                                                        |
+| Regularisation        | `GET /regularisations(/mine)`, `POST /regularisations`, `POST /regularisations/:id/{approve,reject}`                                                          |
+| Jobs (manual trigger) | `POST /jobs/derive-attendance`, `POST /jobs/expire-comp-offs`                                                                                                 |
 
 ### Jobs (`apps/api/src/jobs/hcm/time.ts`, not yet wired — see "Wanted from the scaffold")
 
@@ -77,21 +77,21 @@ same `prisma`/`assertEmploymentVisible` helpers every other HR domain uses.
 
 ## Acceptance
 
-| ID | What PASS means | Test |
-|---|---|---|
-| HCM-TIME-001 | HR defines a shift and assigns an employment's roster to it; the assignment resolves for a covered day | `HCM-TIME-001` in `time.test.ts` |
-| HCM-TIME-002 | An employee clocks in and out for themself; a second clock-in with no clock-out first is refused (422) | `HCM-TIME-002` |
-| HCM-TIME-003 | The nightly deriver folds a punch pair against the roster shift into `WorkAttendance.workedMinutes` | `HCM-TIME-003` |
-| HCM-TIME-004 | A submitted timesheet is approved by someone else; the employee cannot approve their own (403, Self-Dealing Bar); a decided timesheet cannot be decided again (422) | `HCM-TIME-004` |
-| HCM-TIME-005 | Approving an overtime request earns a comp-off; a comp-off can be consumed once, and a second consumption is refused (422); self-approval is refused (403) | `HCM-TIME-005` |
-| HCM-TIME-006 | The expiry sweep marks a past-due comp-off `expired`; it can no longer be consumed (422) | `HCM-TIME-006` |
-| HCM-TIME-007 | Submitting a regularisation disputes the `WorkAttendance` row; approving it regularises the same row; a second approval is refused as an invalid transition (422); self-approval is refused (403) | `HCM-TIME-007` |
-| HCM-TIME-008 | Reading a timesheet id that does not exist in this tenant 404s | `HCM-TIME-008` |
-| HCM-TIME-009 | An employee-scoped principal cannot read a colleague's timesheet by id (404, not 403 — visibility, not authority) | `HCM-TIME-009` |
-| HCM-TIME-010 | An own-scoped caller cannot list a colleague's rosters/timesheets/overtime/comp-offs/regularisations by passing their employment id, and an unfiltered list never includes a colleague's rows | `HCM-TIME-010` (6 cases) |
-| HCM-TIME-011 | The tenant-wide attendance-derivation job is not directly triggerable by an own-scoped principal (403) | `HCM-TIME-011` |
-| HCM-TIME-012 | The tenant-wide comp-off expiry sweep is not directly triggerable by an own-scoped principal (403) | `HCM-TIME-012` |
-| HCM-TIME-013 | An own-scoped caller cannot delete a colleague's timesheet entry by id (404); HR still can | `HCM-TIME-013` |
+| ID           | What PASS means                                                                                                                                                                                   | Test                             |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| HCM-TIME-001 | HR defines a shift and assigns an employment's roster to it; the assignment resolves for a covered day                                                                                            | `HCM-TIME-001` in `time.test.ts` |
+| HCM-TIME-002 | An employee clocks in and out for themself; a second clock-in with no clock-out first is refused (422)                                                                                            | `HCM-TIME-002`                   |
+| HCM-TIME-003 | The nightly deriver folds a punch pair against the roster shift into `WorkAttendance.workedMinutes`                                                                                               | `HCM-TIME-003`                   |
+| HCM-TIME-004 | A submitted timesheet is approved by someone else; the employee cannot approve their own (403, Self-Dealing Bar); a decided timesheet cannot be decided again (422)                               | `HCM-TIME-004`                   |
+| HCM-TIME-005 | Approving an overtime request earns a comp-off; a comp-off can be consumed once, and a second consumption is refused (422); self-approval is refused (403)                                        | `HCM-TIME-005`                   |
+| HCM-TIME-006 | The expiry sweep marks a past-due comp-off `expired`; it can no longer be consumed (422)                                                                                                          | `HCM-TIME-006`                   |
+| HCM-TIME-007 | Submitting a regularisation disputes the `WorkAttendance` row; approving it regularises the same row; a second approval is refused as an invalid transition (422); self-approval is refused (403) | `HCM-TIME-007`                   |
+| HCM-TIME-008 | Reading a timesheet id that does not exist in this tenant 404s                                                                                                                                    | `HCM-TIME-008`                   |
+| HCM-TIME-009 | An employee-scoped principal cannot read a colleague's timesheet by id (404, not 403 — visibility, not authority)                                                                                 | `HCM-TIME-009`                   |
+| HCM-TIME-010 | An own-scoped caller cannot list a colleague's rosters/timesheets/overtime/comp-offs/regularisations by passing their employment id, and an unfiltered list never includes a colleague's rows     | `HCM-TIME-010` (6 cases)         |
+| HCM-TIME-011 | The tenant-wide attendance-derivation job is not directly triggerable by an own-scoped principal (403)                                                                                            | `HCM-TIME-011`                   |
+| HCM-TIME-012 | The tenant-wide comp-off expiry sweep is not directly triggerable by an own-scoped principal (403)                                                                                                | `HCM-TIME-012`                   |
+| HCM-TIME-013 | An own-scoped caller cannot delete a colleague's timesheet entry by id (404); HR still can                                                                                                        | `HCM-TIME-013`                   |
 
 Run: `TEST_DATABASE_URL=postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test_time?schema=public npx vitest run src/tests/hcm/time.test.ts` from `apps/api` — 18/18 passing.
 
@@ -162,7 +162,7 @@ HCM-TIME-010..013.
   (`asSystem`) rather than the filer's or decider's own — gated instead on
   `attendance_regularisations:create`/`:approve`, which are the grants that actually exist for this
   flow. Documented here rather than requesting a grant change, since the system-context approach is
-  the more honest fit: the regularisation *is* the audited action; the attendance transition is its
+  the more honest fit: the regularisation _is_ the audited action; the attendance transition is its
   mechanical consequence.
 - No additional record-code prefix was needed beyond the scaffold's `TSH` (timesheet) — shifts,
   rosters, clock events, overtime requests, comp-offs and regularisations are referred to by id, not

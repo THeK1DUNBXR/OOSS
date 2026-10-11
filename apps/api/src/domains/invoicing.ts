@@ -237,12 +237,8 @@ export function totalsOf(invoice: {
   creditNotes?: Array<{ amount: unknown }>;
 }): InvoiceTotals {
   const payable = invoicePayable(num(invoice.grandTotal as never), lineTotalOf(invoice.lines));
-  const allocated = round2(
-    invoice.receipts.reduce((s, r) => s + (num(r.allocatedAmount as never) ?? 0), 0),
-  );
-  const creditNoted = round2(
-    (invoice.creditNotes ?? []).reduce((s, c) => s + (num(c.amount as never) ?? 0), 0),
-  );
+  const allocated = round2(invoice.receipts.reduce((s, r) => s + (num(r.allocatedAmount as never) ?? 0), 0));
+  const creditNoted = round2((invoice.creditNotes ?? []).reduce((s, c) => s + (num(c.amount as never) ?? 0), 0));
   return {
     payable,
     allocated,
@@ -320,9 +316,7 @@ async function resolveCustomer(input: InvoiceInput): Promise<ResolvedCustomer> {
   const orgId = input.organizationId ?? input.accountId ?? null;
 
   if (!orgId && !input.personId) {
-    throw ApiError.badRequest(
-      'An invoice needs a customer: a student, an institution, or an organisation.',
-    );
+    throw ApiError.badRequest('An invoice needs a customer: a student, an institution, or an organisation.');
   }
   // Both would be ambiguous about whose obligation it is, which is the one
   // question an invoice exists to answer.
@@ -428,8 +422,7 @@ async function resolveTaxReading(
     );
   }
 
-  const placeOfSupply =
-    customer.placeOfSupply ?? stateCodeOf(customerGstin) ?? us.stateCode ?? null;
+  const placeOfSupply = customer.placeOfSupply ?? stateCodeOf(customerGstin) ?? us.stateCode ?? null;
 
   if (input.interState !== null && input.interState !== undefined) {
     return { interState: input.interState, placeOfSupply, customerGstin };
@@ -715,8 +708,7 @@ export async function createInvoice(input: InvoiceInput) {
 
   const profile = await companyProfile();
   const dueDate =
-    input.dueDate ??
-    new Date(issuedDate.getTime() + (input.dueInDays ?? profile.defaultDueDays) * 86_400_000);
+    input.dueDate ?? new Date(issuedDate.getTime() + (input.dueInDays ?? profile.defaultDueDays) * 86_400_000);
   if (dueDate < issuedDate) {
     throw ApiError.badRequest('An invoice cannot fall due before it is issued.');
   }
@@ -740,7 +732,9 @@ export async function createInvoice(input: InvoiceInput) {
     );
   }
   if (payingNow > 0 && !input.payment?.mode) {
-    throw ApiError.badRequest('Say how the money was taken — cash, UPI, bank transfer, cheque or card. It is printed on the invoice.');
+    throw ApiError.badRequest(
+      'Say how the money was taken — cash, UPI, bank transfer, cheque or card. It is printed on the invoice.',
+    );
   }
 
   // The invoice number is allocated only when the document exists, and it is the
@@ -830,9 +824,7 @@ export async function createInvoice(input: InvoiceInput) {
   await emit({
     name: issue ? EVENTS.INVOICE_ISSUED : EVENTS.INVOICE_DRAFTED,
     subject: { entityType: 'invoice', entityId: invoice.id, recordCode: recordCode ?? draftReference },
-    related: input.contractId
-      ? [{ relation: 'bills', entityType: 'contract', entityId: input.contractId }]
-      : [],
+    related: input.contractId ? [{ relation: 'bills', entityType: 'contract', entityId: input.contractId }] : [],
     newState: {
       total: gst.grandTotal,
       taxableValue: gst.taxableValue,
@@ -926,9 +918,7 @@ export async function updateInvoice(
     ...input,
     organizationId: input.organizationId ?? existing.organizationId,
     accountId: input.accountId ?? existing.accountId,
-    personId:
-      input.personId ??
-      (input.organizationId || input.accountId ? null : existing.personId),
+    personId: input.personId ?? (input.organizationId || input.accountId ? null : existing.personId),
     customerGstin: input.customerGstin ?? existing.customerGstin,
     placeOfSupply: input.placeOfSupply ?? existing.placeOfSupply,
     lines: [],
@@ -1020,9 +1010,7 @@ export async function issueInvoiceDraft(
     throw ApiError.unprocessable(`${invoiceLabel(existing)} is already ${existing.status}.`);
   }
   if (existing.lines.length === 0) {
-    throw ApiError.unprocessable(
-      `${invoiceLabel(existing)} has no lines. An invoice for nothing is not a document.`,
-    );
+    throw ApiError.unprocessable(`${invoiceLabel(existing)} has no lines. An invoice for nothing is not a document.`);
   }
 
   const issuedDate = options.issuedDate ?? new Date();
@@ -1617,7 +1605,11 @@ export async function invoiceDocument(invoiceId: string) {
       // "Student" over a name and "Institution" over a college's name are
       // different documents to anybody filing them, and because an invoice that
       // does not say who it is to is the thing this product used to produce.
-      kind: invoice.personId ? ('student' as const) : org?.kind === 'institution' ? ('institution' as const) : ('organization' as const),
+      kind: invoice.personId
+        ? ('student' as const)
+        : org?.kind === 'institution'
+          ? ('institution' as const)
+          : ('organization' as const),
       kindLabel: invoice.personId ? 'Student' : org?.kind === 'institution' ? 'Institution' : 'Organisation',
       name: org?.name ?? person?.fullName ?? '—',
       recordCode: org?.recordCode ?? person?.recordCode ?? null,
@@ -1695,7 +1687,11 @@ export async function invoiceDocument(invoiceId: string) {
             return {
               lineId: l.id,
               hsnSac: l.hsnSac,
-              courseName: isCourseRow ? (l.courseId ? (courseMap.get(l.courseId)?.name ?? l.description) : l.description) : null,
+              courseName: isCourseRow
+                ? l.courseId
+                  ? (courseMap.get(l.courseId)?.name ?? l.description)
+                  : l.description
+                : null,
               addonName: isCourseRow ? null : l.description,
               monthlyFee: unitPrice,
               tenureMonths: l.quantity,
@@ -1841,8 +1837,7 @@ export async function rehydrateReceivablesFor(
 
   const label =
     subjectType === 'account'
-      ? ((await prisma.organization.findFirst({ where: { id: subjectId }, select: { name: true } }))?.name ??
-        subjectId)
+      ? ((await prisma.organization.findFirst({ where: { id: subjectId }, select: { name: true } }))?.name ?? subjectId)
       : subjectId;
 
   return prisma.receivablesProjection.upsert({

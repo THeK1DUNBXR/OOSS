@@ -73,8 +73,7 @@ export function People() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['people', q, group],
-    queryFn: () =>
-      api.get<PeopleResponse>(`/crm/people?q=${encodeURIComponent(q)}&affiliation=${group}`),
+    queryFn: () => api.get<PeopleResponse>(`/crm/people?q=${encodeURIComponent(q)}&affiliation=${group}`),
   });
 
   const { data: candidates = [] } = useQuery({
@@ -105,7 +104,12 @@ export function People() {
       {tab === 'people' && (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <input className="input max-w-sm" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, record code or email…" />
+            <input
+              className="input max-w-sm"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search by name, record code or email…"
+            />
             {/* Counted against the search but not against the selected group, so
                 pressing a group never changes the numbers on the groups. */}
             {(
@@ -122,11 +126,15 @@ export function People() {
                 type="button"
                 onClick={() => setGroup(key)}
                 className={`chip transition-colors ${
-                  group === key ? 'border-accent/60 text-accent-soft' : 'border-ink-800 text-ink-500 hover:border-ink-600'
+                  group === key
+                    ? 'border-accent/60 text-accent-soft'
+                    : 'border-ink-800 text-ink-500 hover:border-ink-600'
                 }`}
               >
                 {label}
-                {data?.counts?.[key] !== undefined && <span className="ml-1 tabular-nums text-ink-600">{data.counts[key]}</span>}
+                {data?.counts?.[key] !== undefined && (
+                  <span className="ml-1 tabular-nums text-ink-600">{data.counts[key]}</span>
+                )}
               </button>
             ))}
           </div>
@@ -165,7 +173,10 @@ export function People() {
                         <RecordCode code={p.recordCode} to={`/crm/people/${p.id}`} />
                       </td>
                       <td>
-                        <Link to={`/crm/people/${p.id}`} className="text-xs font-medium text-ink-100 hover:text-accent-soft">
+                        <Link
+                          to={`/crm/people/${p.id}`}
+                          className="text-xs font-medium text-ink-100 hover:text-accent-soft"
+                        >
                           {p.fullName}
                         </Link>
                       </td>
@@ -176,7 +187,10 @@ export function People() {
                       <td>
                         <div className="flex flex-wrap gap-1">
                           {p.affiliations.length === 0 && (
-                            <span className="text-2xs text-ink-600" title="On file, with no stated relationship to us yet.">
+                            <span
+                              className="text-2xs text-ink-600"
+                              title="On file, with no stated relationship to us yet."
+                            >
                               nothing stated
                             </span>
                           )}
@@ -226,10 +240,7 @@ function MergeQueue({ candidates }: { candidates: any[] }) {
   if (candidates.length === 0) {
     return (
       <Card>
-        <EmptyState
-          message="No open merge candidates."
-          hint="Nothing waiting."
-        />
+        <EmptyState message="No open merge candidates." hint="Nothing waiting." />
       </Card>
     );
   }
@@ -244,7 +255,9 @@ function MergeQueue({ candidates }: { candidates: any[] }) {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="chip border-band-watch/40 text-band-watch">{titleCase(c.raisedReason)}</span>
-                  <span className="chip border-ink-700 text-ink-400">confidence {(c.confidence * 100).toFixed(0)}%</span>
+                  <span className="chip border-ink-700 text-ink-400">
+                    confidence {(c.confidence * 100).toFixed(0)}%
+                  </span>
                   <span className="text-2xs text-ink-500">matched on {c.matchedOn.join(', ')}</span>
                 </div>
 
@@ -334,7 +347,10 @@ export function PersonDetail() {
             ) : (
               <div className="space-y-2">
                 {p.affiliations.map((a: any) => (
-                  <div key={a.id} className="flex items-center justify-between gap-3 rounded border border-ink-800 bg-ink-950 p-3">
+                  <div
+                    key={a.id}
+                    className="flex items-center justify-between gap-3 rounded border border-ink-800 bg-ink-950 p-3"
+                  >
                     <div>
                       <p className="text-xs font-medium text-ink-100">{titleCase(a.affiliationType)}</p>
                       <p className="text-2xs text-ink-500">
@@ -348,7 +364,10 @@ export function PersonDetail() {
                     <div className="flex flex-col items-end gap-1">
                       <StatusChip status={humanize(a.status)} tone={a.status === 'active' ? 'good' : 'neutral'} />
                       {a.statutoryRetentionFloor && (
-                        <span className="chip border-band-watch/40 text-band-watch" title="A dedup match against this person never auto-merges.">
+                        <span
+                          className="chip border-band-watch/40 text-band-watch"
+                          title="A dedup match against this person never auto-merges."
+                        >
                           retention floor
                         </span>
                       )}
@@ -428,7 +447,11 @@ export function PersonDetail() {
 
 export function Interactions() {
   const [creating, setCreating] = useState(false);
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['interactions'],
     queryFn: () => api.get<InteractionView[]>('/crm/interactions?limit=80'),
   });

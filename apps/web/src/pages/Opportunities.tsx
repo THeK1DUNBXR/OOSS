@@ -43,8 +43,7 @@ const FORECAST_TONE: Record<string, 'neutral' | 'accent' | 'good' | 'warn' | 'ba
 export function Opportunities() {
   const [tab, setTab] = useState<'open' | 'commit' | 'won' | 'all'>('open');
 
-  const query =
-    tab === 'open' ? '?open=true' : tab === 'commit' ? '?forecastCategory=commit' : tab === 'won' ? '' : '';
+  const query = tab === 'open' ? '?open=true' : tab === 'commit' ? '?forecastCategory=commit' : tab === 'won' ? '' : '';
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['opportunities', tab],
@@ -60,7 +59,11 @@ export function Opportunities() {
       <PageHeader
         title="Opportunities"
         subtitle="Deals in progress: how far along, and how likely."
-        actions={<Link to="/crm/forecast" className="btn-ghost">Forecast roll-up</Link>}
+        actions={
+          <Link to="/crm/forecast" className="btn-ghost">
+            Forecast roll-up
+          </Link>
+        }
       />
 
       <Tabs
@@ -102,7 +105,10 @@ export function Opportunities() {
                     <RecordCode code={o.recordCode} to={`/crm/opportunities/${o.id}`} />
                   </td>
                   <td>
-                    <Link to={`/crm/opportunities/${o.id}`} className="text-xs font-medium text-ink-100 hover:text-accent-soft">
+                    <Link
+                      to={`/crm/opportunities/${o.id}`}
+                      className="text-xs font-medium text-ink-100 hover:text-accent-soft"
+                    >
                       {o.title}
                     </Link>
                     <p className="text-2xs text-ink-500">{o.organizationName ?? '—'}</p>
@@ -114,7 +120,10 @@ export function Opportunities() {
                     </p>
                   </td>
                   <td>
-                    <StatusChip status={humanize(o.forecastCategory)} tone={FORECAST_TONE[o.forecastCategory] ?? 'neutral'} />
+                    <StatusChip
+                      status={humanize(o.forecastCategory)}
+                      tone={FORECAST_TONE[o.forecastCategory] ?? 'neutral'}
+                    />
                   </td>
                   <td className="text-right tabular-nums text-xs">{money(o.expectedValue, o.currency)}</td>
                   <td className="text-right tabular-nums text-xs text-ink-400">{money(o.weightedValue, o.currency)}</td>
@@ -125,7 +134,9 @@ export function Opportunities() {
                     {o.closeDateStale && <p className="text-2xs text-band-strained">stale</p>}
                   </td>
                   <td>
-                    <span className={`text-xs ${o.stageAgeBreached ? 'text-band-strained' : 'text-ink-400'}`}>{o.stageAgeDays}d</span>
+                    <span className={`text-xs ${o.stageAgeBreached ? 'text-band-strained' : 'text-ink-400'}`}>
+                      {o.stageAgeDays}d
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -182,7 +193,8 @@ export function OpportunityDetail() {
         title={o.title}
         subtitle={
           <span className="mono">
-            {o.recordCode} · {o.pipeline?.pipelineCode} · {currentStage?.label} (position {currentStage?.pipelinePosition})
+            {o.recordCode} · {o.pipeline?.pipelineCode} · {currentStage?.label} (position{' '}
+            {currentStage?.pipelinePosition})
           </span>
         }
         actions={
@@ -216,7 +228,12 @@ export function OpportunityDetail() {
       )}
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric label="Expected value" value={money(o.expectedValue ? Number(o.expectedValue) : null, o.currency)} sub={o.currency} drillTo="/crm/forecast" />
+        <Metric
+          label="Expected value"
+          value={money(o.expectedValue ? Number(o.expectedValue) : null, o.currency)}
+          sub={o.currency}
+          drillTo="/crm/forecast"
+        />
         <Metric
           label="Forecast category"
           value={<span className="text-lg">{titleCase(o.forecastCategory)}</span>}
@@ -226,10 +243,15 @@ export function OpportunityDetail() {
         <Metric
           label="Stage age"
           value={`${Math.floor((Date.now() - new Date(o.stageEnteredAt).getTime()) / 86_400_000)}d`}
-          sub={currentStage?.stageAgeBudgetDays ? `budget ${currentStage.stageAgeBudgetDays}d` : 'no SLA clock on this stage'}
+          sub={
+            currentStage?.stageAgeBudgetDays
+              ? `budget ${currentStage.stageAgeBudgetDays}d`
+              : 'no SLA clock on this stage'
+          }
           tone={
             currentStage?.stageAgeBudgetDays &&
-            Math.floor((Date.now() - new Date(o.stageEnteredAt).getTime()) / 86_400_000) > currentStage.stageAgeBudgetDays
+            Math.floor((Date.now() - new Date(o.stageEnteredAt).getTime()) / 86_400_000) >
+              currentStage.stageAgeBudgetDays
               ? 'warn'
               : 'neutral'
           }
@@ -240,7 +262,11 @@ export function OpportunityDetail() {
           label="Won gate"
           value={data.wonGateSatisfied ? 'Satisfied' : 'Blocked'}
           tone={data.wonGateSatisfied ? 'good' : 'warn'}
-          sub={data.wonGateSatisfied ? 'A contract or MoU reference exists.' : 'Neither a contract nor an MoU is referenced.'}
+          sub={
+            data.wonGateSatisfied
+              ? 'A contract or MoU reference exists.'
+              : 'Neither a contract nor an MoU is referenced.'
+          }
           drillTo="/commercial/agreements"
         />
       </div>
@@ -313,7 +339,13 @@ export function OpportunityDetail() {
               <Field label="Vertical">{titleCase(o.vertical)}</Field>
               <Field label="Strategic value">{o.strategicValue ? titleCase(o.strategicValue) : '—'}</Field>
               <Field label="Expected close">{date(o.expectedCloseDate)}</Field>
-              <Field label="Outcome">{o.outcome ? <StatusChip status={humanize(o.outcome)} tone={o.outcome === 'won' ? 'good' : 'bad'} /> : '—'}</Field>
+              <Field label="Outcome">
+                {o.outcome ? (
+                  <StatusChip status={humanize(o.outcome)} tone={o.outcome === 'won' ? 'good' : 'bad'} />
+                ) : (
+                  '—'
+                )}
+              </Field>
               {o.legacyStage && <Field label="Legacy stage">{o.legacyStage}</Field>}
             </dl>
           </Card>
@@ -324,7 +356,10 @@ export function OpportunityDetail() {
                 {data.proposal ? (
                   <span>
                     <span className="mono">{data.proposal.recordCode}</span>{' '}
-                    <StatusChip status={humanize(data.proposal.response)} tone={data.proposal.response === 'accepted' ? 'good' : 'neutral'} />
+                    <StatusChip
+                      status={humanize(data.proposal.response)}
+                      tone={data.proposal.response === 'accepted' ? 'good' : 'neutral'}
+                    />
                   </span>
                 ) : (
                   <span className="text-ink-500">none — the offered stage is blocked until one exists</span>
@@ -334,7 +369,10 @@ export function OpportunityDetail() {
                 {data.quote ? (
                   <span>
                     <span className="mono">{data.quote.recordCode}</span>{' '}
-                    <StatusChip status={humanize(data.quote.status)} tone={data.quote.status === 'blocked' ? 'bad' : 'neutral'} />
+                    <StatusChip
+                      status={humanize(data.quote.status)}
+                      tone={data.quote.status === 'blocked' ? 'bad' : 'neutral'}
+                    />
                   </span>
                 ) : (
                   '—'
@@ -364,7 +402,9 @@ export function OpportunityDetail() {
           {data.receivables && (
             <Card title="Receivables" subtitle="What is owed on this deal.">
               <dl>
-                <Field label="Outstanding">{money(data.receivables.amountOutstanding ? Number(data.receivables.amountOutstanding) : null)}</Field>
+                <Field label="Outstanding">
+                  {money(data.receivables.amountOutstanding ? Number(data.receivables.amountOutstanding) : null)}
+                </Field>
                 <Field label="Dunning stage">
                   {data.receivables.dunningStage ? humanize(data.receivables.dunningStage) : 'None'}
                 </Field>
@@ -438,7 +478,11 @@ function ForecastModal({
           <button className="btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn-primary" onClick={() => change.mutate()} disabled={change.isPending || (isDemotion && !reason)}>
+          <button
+            className="btn-primary"
+            onClick={() => change.mutate()}
+            disabled={change.isPending || (isDemotion && !reason)}
+          >
             Change
           </button>
         </>
@@ -535,7 +579,12 @@ export function Forecast() {
             sub="Qualified or beyond, across every pipeline in one pass"
             drillTo="/crm/opportunities?open=true"
           />
-          <Metric label="Coverage value" value={money(coverage.value)} sub="Counted on the shared scale, so different kinds of business compare fairly" drillTo="/crm/opportunities" />
+          <Metric
+            label="Coverage value"
+            value={money(coverage.value)}
+            sub="Counted on the shared scale, so different kinds of business compare fairly"
+            drillTo="/crm/opportunities"
+          />
           <Metric
             label="Pipelines"
             value={data?.perPipeline.length ?? 0}
@@ -574,13 +623,18 @@ export function Forecast() {
           >
             <div className="space-y-2">
               {p.buckets.map((b) => (
-                <div key={b.category} className="flex items-center justify-between gap-3 border-b border-ink-850 pb-2 last:border-0">
+                <div
+                  key={b.category}
+                  className="flex items-center justify-between gap-3 border-b border-ink-850 pb-2 last:border-0"
+                >
                   <div>
                     <p className="text-xs text-ink-200">{titleCase(b.category)}</p>
                     <p className="text-2xs text-ink-500">{b.count} deals</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium tabular-nums text-ink-100">{money(b.weightedValue, p.currency)}</p>
+                    <p className="text-sm font-medium tabular-nums text-ink-100">
+                      {money(b.weightedValue, p.currency)}
+                    </p>
                     <p className="text-2xs tabular-nums text-ink-500">raw {money(b.rawValue, p.currency)}</p>
                   </div>
                 </div>
@@ -591,9 +645,7 @@ export function Forecast() {
               <span className="text-ink-500">lost {money(p.closedLost, p.currency)}</span>
             </div>
             {p.forecastMethod === 'manual_commit' && (
-              <p className="mt-2 text-2xs italic text-ink-500">
-                Only committed deals count.
-              </p>
+              <p className="mt-2 text-2xs italic text-ink-500">Only committed deals count.</p>
             )}
           </Card>
         ))}

@@ -9,20 +9,20 @@
  * can be prevented: creation time.
  */
 
-import {
-  EVENTS,
-  STATUTORY_RETENTION_AFFILIATIONS,
-  type AffiliationType,
-  type DedupCandidate,
-} from '@kaizen/shared';
-import { prisma } from '../platform/db.js';
+import { EVENTS, STATUTORY_RETENTION_AFFILIATIONS, type AffiliationType, type DedupCandidate } from '@kaizen/shared';
+import { prisma, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
-import { auditWrite } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { raiseException } from '../platform/exceptions.js';
 import { assertCan } from '../platform/permissions.js';
+import { assertCanAssignRole } from '../platform/roleAssignment.js';
+
+// A merge candidate's resolution decides whether two person rows become one,
+// so every resolution is a governed write like the merge it may trigger.
+registerGovernedEntities('crm', ['merge_candidate']);
 
 // ---------------------------------------------------------------------------
 // Normalisation. Runs before any lookup, on primary and additional values alike.
@@ -87,10 +87,7 @@ export interface PersonInput {
  * Exact equality against the normalised phone/email fields, excluding merged
  * rows, scoped by the caller's declared RESOLUTION_SCOPE.
  */
-export async function findDedupCandidates(
-  input: PersonInput,
-  scope: ResolutionScope,
-): Promise<DedupCandidate[]> {
+export async function findDedupCandidates(input: PersonInput, scope: ResolutionScope): Promise<DedupCandidate[]> {
   const phone = normalisePhone(input.primaryPhone);
   const email = normaliseEmail(input.primaryEmail);
   const extraPhones = (input.additionalPhones ?? []).map(normalisePhone).filter(Boolean) as string[];
@@ -137,8 +134,7 @@ export async function findDedupCandidates(
     // scored below exact so it raises a MERGE_CANDIDATE rather than resolving.
     const suppliedPrimary = [phone, email].filter(Boolean).length;
     const matchedPrimary =
-      (phone && m.primaryPhoneNormalised === phone ? 1 : 0) +
-      (email && m.primaryEmailNormalised === email ? 1 : 0);
+      (phone && m.primaryPhoneNormalised === phone ? 1 : 0) + (email && m.primaryEmailNormalised === email ? 1 : 0);
 
     const confidence =
       suppliedPrimary > 0 && matchedPrimary === suppliedPrimary
@@ -248,28 +244,7 @@ export async function findOrCreatePerson(
 
 /** Creates without a dedup check. Reachable only through findOrCreatePerson. */
 async function createPerson(input: PersonInput, overrideReason?: string) {
-  const auth = currentAuth();
-  const recordCode = await nextRecordCode('PER');
-
-  const person = await prisma.person.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      fullName: input.fullName,
-      primaryPhone: input.primaryPhone ?? null,
-      primaryEmail: input.primaryEmail ?? null,
-      primaryPhoneNormalised: normalisePhone(input.primaryPhone),
-      primaryEmailNormalised: normaliseEmail(input.primaryEmail),
-      additionalPhones: input.additionalPhones ?? [],
-      additionalEmails: input.additionalEmails ?? [],
-      additionalPhonesNormalised: (input.additionalPhones ?? []).map(normalisePhone).filter(Boolean) as string[],
-      additionalEmailsNormalised: (input.additionalEmails ?? []).map(normaliseEmail).filter(Boolean) as string[],
-      externalIds: (input.externalIds ?? []) as never,
-      notes: input.notes ?? null,
-      source: input.source ?? 'manual',
-      createdById: auth.partyId,
-    },
-  });
+  const { person, recordCode } = await insertPersonRow(prisma, input);
 
   await auditWrite({
     action: 'create',
@@ -289,8 +264,65 @@ async function createPerson(input: PersonInput, overrideReason?: string) {
   return person;
 }
 
+/**
+ * The row alone. Split out so a merge-candidate confirmation can write the
+ * incoming person inside the transaction that merges it; audit and events stay
+ * with the caller, which decides when they may fire.
+ */
+async function insertPersonRow(db: DbTx, input: PersonInput) {
+  const auth = currentAuth();
+  const recordCode = await nextRecordCode('PER', new Date(), db);
+
+  const person = await db.person.create({
+    data: {
+      tenantId: auth.tenantId,
+      recordCode,
+      fullName: input.fullName,
+      primaryPhone: input.primaryPhone ?? null,
+      primaryEmail: input.primaryEmail ?? null,
+      primaryPhoneNormalised: normalisePhone(input.primaryPhone),
+      primaryEmailNormalised: normaliseEmail(input.primaryEmail),
+      additionalPhones: input.additionalPhones ?? [],
+      additionalEmails: input.additionalEmails ?? [],
+      additionalPhonesNormalised: (input.additionalPhones ?? []).map(normalisePhone).filter(Boolean) as string[],
+      additionalEmailsNormalised: (input.additionalEmails ?? []).map(normaliseEmail).filter(Boolean) as string[],
+      externalIds: (input.externalIds ?? []) as never,
+      notes: input.notes ?? null,
+      source: input.source ?? 'manual',
+      createdById: auth.partyId,
+    },
+  });
+
+  return { person, recordCode };
+}
+
 /** Exposed so callers can use the sanctioned path explicitly. */
 export const sanctionedCreatePerson = createPerson;
+
+/**
+ * The merge's writes, with no permission check, audit or event: the caller
+ * owns those, and a merge confirmed from a candidate must run them inside the
+ * same transaction that closes the candidate.
+ */
+async function applyPersonMerge(db: DbTx, sourceId: string, targetId: string) {
+  const source = await db.person.findFirst({ where: { id: sourceId } });
+  const target = await db.person.findFirst({ where: { id: targetId } });
+  if (!source || !target) throw ApiError.notFound('Person');
+
+  const updated = await db.person.update({
+    where: { id: sourceId },
+    data: { dedupeStatus: 'merged', mergedIntoId: targetId },
+  });
+
+  // Relationship rows on the merged-away person are left unchanged; traversal
+  // from the surviving id follows the mergedInto chain to assemble full history.
+  await db.affiliation.updateMany({
+    where: { partyId: sourceId, status: 'active' },
+    data: { partyId: targetId },
+  });
+
+  return { source, target, updated };
+}
 
 /**
  * Merge is a distinct, explicit operation, never a side effect of resolution.
@@ -305,12 +337,6 @@ export async function mergePersons(sourceId: string, targetId: string, note: str
 
   if (sourceId === targetId) throw ApiError.badRequest('Cannot merge a person into itself.');
 
-  const [source, target] = await Promise.all([
-    prisma.person.findFirst({ where: { id: sourceId }, include: { affiliations: true } }),
-    prisma.person.findFirst({ where: { id: targetId }, include: { affiliations: true } }),
-  ]);
-  if (!source || !target) throw ApiError.notFound('Person');
-
   // The hard rule preserved verbatim: any merge combining records carrying
   // compensation, performance, disciplinary or background-check data requires
   // human confirmation regardless of confidence score. This path IS the human
@@ -319,17 +345,7 @@ export async function mergePersons(sourceId: string, targetId: string, note: str
     throw ApiError.forbidden('No AI principal may perform a merge, at any AUTHORITY_GRANT size.');
   }
 
-  const updated = await prisma.person.update({
-    where: { id: sourceId },
-    data: { dedupeStatus: 'merged', mergedIntoId: targetId },
-  });
-
-  // Relationship rows on the merged-away person are left unchanged; traversal
-  // from the surviving id follows the mergedInto chain to assemble full history.
-  await prisma.affiliation.updateMany({
-    where: { partyId: sourceId, status: 'active' },
-    data: { partyId: targetId },
-  });
+  const { source, target, updated } = await prisma.$transaction((tx) => applyPersonMerge(tx, sourceId, targetId));
 
   await auditWrite({
     action: 'merge',
@@ -368,39 +384,142 @@ export async function personIdChain(personId: string): Promise<string[]> {
   return [...ids];
 }
 
-export async function resolveMergeCandidate(
-  id: string,
-  disposition: 'confirm' | 'reject' | 'defer',
-  note: string,
-) {
+export async function resolveMergeCandidate(id: string, disposition: 'confirm' | 'reject' | 'defer', note: string) {
   const auth = currentAuth();
+  // Resolving a candidate is the decision to merge or to keep apart. Holding
+  // the queue to the merge grant means nobody can clear it without the right to
+  // make the call, and nothing counts as "resolved" that the grant did not cover.
+  await assertCan({ resource: 'people', verb: 'merge' });
+
   const mc = await prisma.mergeCandidate.findFirst({ where: { id } });
   if (!mc) throw ApiError.notFound('Merge candidate');
   if (mc.state !== 'open') throw ApiError.conflict(`Merge candidate is already ${mc.state}.`);
 
-  if (disposition === 'defer') {
-    return prisma.mergeCandidate.update({ where: { id }, data: { state: 'deferred', resolutionNote: note } });
+  if (disposition === 'confirm') {
+    if (auth.principalType === 'agent') {
+      throw ApiError.forbidden('No AI principal may perform a merge, at any AUTHORITY_GRANT size.');
+    }
+    return confirmMergeCandidate(mc, note);
   }
 
-  const updated = await prisma.mergeCandidate.update({
-    where: { id },
-    data: {
-      state: disposition === 'confirm' ? 'confirmed' : 'rejected',
-      resolvedById: auth.partyId,
-      resolvedAt: new Date(),
-      resolutionNote: note,
-    },
+  // The guard is in the WHERE clause so two resolutions racing on one candidate
+  // cannot both pass the state check above.
+  const state = disposition === 'reject' ? 'rejected' : 'deferred';
+  const now = new Date();
+  const { count } = await prisma.mergeCandidate.updateMany({
+    where: { id, state: 'open' },
+    data:
+      disposition === 'reject'
+        ? { state, resolvedById: auth.partyId, resolvedAt: now, resolutionNote: note }
+        : { state, resolutionNote: note },
+  });
+  if (count !== 1) throw ApiError.conflict('Merge candidate was resolved by someone else.');
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'merge_candidate',
+    subjectId: id,
+    before: { state: 'open' },
+    after: { state },
+    meta: { note },
+  });
+
+  if (disposition === 'reject') {
+    await emit({
+      name: EVENTS.MERGE_CANDIDATE_REJECTED,
+      subject: { entityType: 'merge_candidate', entityId: id },
+      related: [{ relation: 'candidate', entityType: 'person', entityId: mc.candidatePersonId }],
+      newState: { state },
+      reason: { reasonCode: disposition, note },
+    });
+  }
+
+  return prisma.mergeCandidate.findFirstOrThrow({ where: { id } });
+}
+
+/**
+ * The incoming payload was never a person row: the candidate was raised before
+ * anything was written. Confirming therefore writes that person and merges it
+ * into the candidate's existing record, which survives. The merged-away row is
+ * kept, so the incoming details stay on record after the merge.
+ *
+ * The candidate's state change, the new row and the merge commit together, or
+ * not at all. Otherwise a retry after a partial failure would create a second
+ * stray person for the same incoming payload.
+ */
+async function confirmMergeCandidate(
+  mc: { id: string; incomingPayload: unknown; candidatePersonId: string },
+  note: string,
+) {
+  const auth = currentAuth();
+  const now = new Date();
+
+  const outcome = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.mergeCandidate.updateMany({
+      where: { id: mc.id, state: 'open' },
+      data: { state: 'confirmed', resolvedById: auth.partyId, resolvedAt: now, resolutionNote: note },
+    });
+    if (count !== 1) throw ApiError.conflict('Merge candidate was resolved by someone else.');
+
+    const { person: incoming, recordCode } = await insertPersonRow(tx, mc.incomingPayload as PersonInput);
+    const { source, target, updated } = await applyPersonMerge(tx, incoming.id, mc.candidatePersonId);
+
+    // Audited before the commit, so the audit write cannot be lost to a commit
+    // that succeeded without it. auditWrite takes its own chain lock; it does
+    // not touch the rows this transaction holds.
+    await auditWrite({
+      action: 'create',
+      subjectType: 'person',
+      subjectId: incoming.id,
+      after: { fullName: incoming.fullName, recordCode },
+      meta: { mergeCandidateId: mc.id },
+    });
+    await auditWrite({
+      action: 'merge',
+      subjectType: 'person',
+      subjectId: incoming.id,
+      before: { dedupeStatus: source.dedupeStatus },
+      after: { dedupeStatus: 'merged', mergedIntoId: target.id },
+      meta: { note, targetRecordCode: target.recordCode, mergeCandidateId: mc.id },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'merge_candidate',
+      subjectId: mc.id,
+      before: { state: 'open' },
+      after: { state: 'confirmed' },
+      meta: { note },
+    });
+
+    return { incoming, recordCode, source, target, updated };
   });
 
   await emit({
-    name: disposition === 'confirm' ? EVENTS.MERGE_CANDIDATE_CONFIRMED : EVENTS.MERGE_CANDIDATE_REJECTED,
-    subject: { entityType: 'merge_candidate', entityId: id },
-    related: [{ relation: 'candidate', entityType: 'person', entityId: mc.candidatePersonId }],
-    newState: { state: updated.state },
-    reason: { reasonCode: disposition, note },
+    name: EVENTS.PERSON_CREATED,
+    subject: { entityType: 'person', entityId: outcome.incoming.id, recordCode: outcome.recordCode },
+    newState: { fullName: outcome.incoming.fullName },
+    reason: { reasonCode: 'merge_candidate_confirmed', note },
   });
 
-  return updated;
+  await emit({
+    name: EVENTS.PERSON_MERGED,
+    subject: { entityType: 'person', entityId: outcome.incoming.id, recordCode: outcome.recordCode },
+    related: [{ relation: 'merged_into', entityType: 'person', entityId: outcome.target.id }],
+    previousState: { dedupeStatus: outcome.source.dedupeStatus },
+    newState: { dedupeStatus: 'merged', mergedIntoId: outcome.target.id },
+    reason: { reasonCode: 'merge_confirmed', note },
+    confidentiality: 'restricted',
+  });
+
+  await emit({
+    name: EVENTS.MERGE_CANDIDATE_CONFIRMED,
+    subject: { entityType: 'merge_candidate', entityId: mc.id },
+    related: [{ relation: 'candidate', entityType: 'person', entityId: mc.candidatePersonId }],
+    newState: { state: 'confirmed' },
+    reason: { reasonCode: 'confirm', note },
+  });
+
+  return prisma.mergeCandidate.findFirstOrThrow({ where: { id: mc.id } });
 }
 
 /**
@@ -455,6 +574,17 @@ export interface AffiliationInput {
 
 export async function createAffiliation(input: AffiliationInput) {
   const auth = currentAuth();
+  // An affiliation's role is the access role the evaluator reads for this
+  // person, so naming one is granting access. Checked only when a role is
+  // named: the education and import callers create affiliations with none,
+  // and that is not a grant. people:assign alone is not enough: hr_ops_manager
+  // holds it, and without the coverage check it could name chairman and
+  // become superadmin. assertCanAssignRole stops self-assignment and any role
+  // broader than the caller's own grants.
+  if (input.roleSlug) {
+    await assertCan({ resource: 'people', verb: 'assign' });
+    await assertCanAssignRole({ roleSlug: input.roleSlug, targetPartyId: input.partyId });
+  }
   const affiliation = await prisma.affiliation.create({
     data: {
       tenantId: auth.tenantId,
@@ -471,6 +601,13 @@ export async function createAffiliation(input: AffiliationInput) {
       effectiveTo: input.effectiveTo ?? null,
       statutoryRetentionFloor: STATUTORY_RETENTION_AFFILIATIONS.includes(input.affiliationType),
     },
+  });
+
+  await auditWrite({
+    action: 'create',
+    subjectType: 'affiliation',
+    subjectId: affiliation.id,
+    after: { affiliationType: input.affiliationType, roleSlug: input.roleSlug ?? null },
   });
 
   await emit({

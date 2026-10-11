@@ -64,7 +64,10 @@ export async function listLeavePolicies(filter: { status?: string } = {}) {
 export async function getLeavePolicy(id: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'leave_policies', verb: 'view' });
-  const policy = await prisma.leavePolicy.findFirst({ where: { id, tenantId: auth.tenantId }, include: { rules: true } });
+  const policy = await prisma.leavePolicy.findFirst({
+    where: { id, tenantId: auth.tenantId },
+    include: { rules: true },
+  });
   if (!policy) throw ApiError.notFound('Leave policy');
   return policy;
 }
@@ -172,7 +175,10 @@ export async function listPolicyRules(leavePolicyId: string) {
   await assertCan({ resource: 'leave_policies', verb: 'view' });
   const policy = await prisma.leavePolicy.findFirst({ where: { id: leavePolicyId, tenantId: auth.tenantId } });
   if (!policy) throw ApiError.notFound('Leave policy');
-  return prisma.leavePolicyRule.findMany({ where: { tenantId: auth.tenantId, leavePolicyId }, orderBy: { createdAt: 'asc' } });
+  return prisma.leavePolicyRule.findMany({
+    where: { tenantId: auth.tenantId, leavePolicyId },
+    orderBy: { createdAt: 'asc' },
+  });
 }
 
 export async function createPolicyRule(leavePolicyId: string, input: UpsertLeavePolicyRuleInput) {
@@ -189,14 +195,19 @@ export async function createPolicyRule(leavePolicyId: string, input: UpsertLeave
     where: { leavePolicyId_leaveTypeId: { leavePolicyId, leaveTypeId: input.leaveTypeId } },
   });
   if (existing) {
-    throw ApiError.conflict(`${policy.name} already has a rule for ${leaveType.name}. Edit that rule instead of adding another.`, {
-      leavePolicyRuleId: existing.id,
-    });
+    throw ApiError.conflict(
+      `${policy.name} already has a rule for ${leaveType.name}. Edit that rule instead of adding another.`,
+      {
+        leavePolicyRuleId: existing.id,
+      },
+    );
   }
 
   const frequency = assertFrequency(input.accrualFrequency ?? 'monthly');
   if (input.applicableGender && !['male', 'female', 'any'].includes(input.applicableGender)) {
-    throw ApiError.badRequest(`"${input.applicableGender}" is not a gender applicability. Expected male, female or any.`);
+    throw ApiError.badRequest(
+      `"${input.applicableGender}" is not a gender applicability. Expected male, female or any.`,
+    );
   }
 
   const rule = await prisma.leavePolicyRule.create({
@@ -235,7 +246,9 @@ export async function updatePolicyRule(id: string, patch: Partial<UpsertLeavePol
   if (!rule) throw ApiError.notFound('Leave policy rule');
 
   if (patch.applicableGender && !['male', 'female', 'any'].includes(patch.applicableGender)) {
-    throw ApiError.badRequest(`"${patch.applicableGender}" is not a gender applicability. Expected male, female or any.`);
+    throw ApiError.badRequest(
+      `"${patch.applicableGender}" is not a gender applicability. Expected male, female or any.`,
+    );
   }
 
   const updated = await prisma.leavePolicyRule.update({
@@ -250,7 +263,8 @@ export async function updatePolicyRule(id: string, patch: Partial<UpsertLeavePol
       minNoticeDays: patch.minNoticeDays ?? undefined,
       maxConsecutiveDays: patch.maxConsecutiveDays === undefined ? undefined : patch.maxConsecutiveDays,
       sandwichRule: patch.sandwichRule ?? undefined,
-      requiresDocumentAfterDays: patch.requiresDocumentAfterDays === undefined ? undefined : patch.requiresDocumentAfterDays,
+      requiresDocumentAfterDays:
+        patch.requiresDocumentAfterDays === undefined ? undefined : patch.requiresDocumentAfterDays,
       applicableGender: patch.applicableGender === undefined ? undefined : patch.applicableGender,
     },
   });
@@ -335,7 +349,9 @@ export async function resolveApplicablePolicy(
       policy: p,
       specificity: p.engagementTypes.length + p.orgUnitIds.length + p.gradeCodes.length,
     }))
-    .sort((a, b) => b.specificity - a.specificity || b.policy.effectiveFrom.getTime() - a.policy.effectiveFrom.getTime());
+    .sort(
+      (a, b) => b.specificity - a.specificity || b.policy.effectiveFrom.getTime() - a.policy.effectiveFrom.getTime(),
+    );
 
   const best = scored[0]?.policy;
   const rule = best?.rules[0];
@@ -445,7 +461,10 @@ async function employmentsForPolicy(tenantId: string, policy: { engagementTypes:
  * unique constraint — a second call for a period already closed is a no-op
  * that returns the original run, never a double credit.
  */
-export async function runAccrualForRule(leavePolicyRuleId: string, period: string): Promise<{ run: unknown; idempotent: boolean }> {
+export async function runAccrualForRule(
+  leavePolicyRuleId: string,
+  period: string,
+): Promise<{ run: unknown; idempotent: boolean }> {
   const auth = currentAuth();
   if (auth.principalType !== 'system') await assertCan({ resource: 'leave_accruals', verb: 'create' });
 
@@ -478,7 +497,12 @@ export async function runAccrualForRule(leavePolicyRuleId: string, period: strin
     if (credit <= 0) continue;
 
     const balance = await prisma.leaveBalance.findUnique({
-      where: { employmentRelationshipId_leaveTypeId: { employmentRelationshipId: employment.id, leaveTypeId: rule.leaveTypeId } },
+      where: {
+        employmentRelationshipId_leaveTypeId: {
+          employmentRelationshipId: employment.id,
+          leaveTypeId: rule.leaveTypeId,
+        },
+      },
     });
     const currentBalance = num(balance?.balanceDays) ?? 0;
     const creditable = creditableWithinCap(currentBalance, credit, maxBalanceDays);
@@ -604,7 +628,12 @@ export async function listApprovalChains() {
   return prisma.leaveApprovalChain.findMany({ where: { tenantId: auth.tenantId }, orderBy: { createdAt: 'desc' } });
 }
 
-export async function createApprovalChain(input: { name: string; leavePolicyId?: string | null; levels: unknown; isDefault?: boolean }) {
+export async function createApprovalChain(input: {
+  name: string;
+  leavePolicyId?: string | null;
+  levels: unknown;
+  isDefault?: boolean;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'leave_approval_chains', verb: 'create' });
   const levels = validateLevels(input.levels);
@@ -696,8 +725,7 @@ async function resolveManagerPartyId(tenantId: string, employmentRelationshipId:
 
 async function resolveDefaultChain(tenantId: string, leavePolicyId: string | null) {
   return (
-    (leavePolicyId &&
-      (await prisma.leaveApprovalChain.findFirst({ where: { tenantId, leavePolicyId } }))) ??
+    (leavePolicyId && (await prisma.leaveApprovalChain.findFirst({ where: { tenantId, leavePolicyId } }))) ??
     prisma.leaveApprovalChain.findFirst({ where: { tenantId, isDefault: true } })
   );
 }
@@ -721,9 +749,11 @@ export async function initiateApprovalChain(leaveRequestId: string, chainId?: st
   const already = await prisma.leaveRequestApproval.findMany({ where: { tenantId: auth.tenantId, leaveRequestId } });
   if (already.length > 0) return already;
 
-  const resolved = await resolveApplicablePolicy(request.employmentRelationshipId, request.leaveTypeId, request.startDate).catch(
-    () => null,
-  );
+  const resolved = await resolveApplicablePolicy(
+    request.employmentRelationshipId,
+    request.leaveTypeId,
+    request.startDate,
+  ).catch(() => null);
   const chain = chainId
     ? await prisma.leaveApprovalChain.findFirst({ where: { id: chainId, tenantId: auth.tenantId } })
     : await resolveDefaultChain(auth.tenantId, resolved?.policy.id ?? null);
@@ -761,7 +791,10 @@ export async function listApprovalsForRequest(leaveRequestId: string) {
   const request = await prisma.leaveRequest.findFirst({ where: { id: leaveRequestId, tenantId: auth.tenantId } });
   if (!request) throw ApiError.notFound('Leave request');
   await assertEmploymentVisible('leave', request.employmentRelationshipId, 'view');
-  return prisma.leaveRequestApproval.findMany({ where: { tenantId: auth.tenantId, leaveRequestId }, orderBy: { level: 'asc' } });
+  return prisma.leaveRequestApproval.findMany({
+    where: { tenantId: auth.tenantId, leaveRequestId },
+    orderBy: { level: 'asc' },
+  });
 }
 
 /** Every pending level resolved to the caller — no broad grant required, since it is scoped to their own partyId already (see `decideApprovalLevel`'s identity-based authority). */
@@ -796,9 +829,10 @@ export async function decideApprovalLevel(id: string, decision: 'approved' | 're
   if (!request) throw ApiError.notFound('Leave request');
 
   if (auth.partyId && auth.partyId === request.employmentRelationship.personId) {
-    throw ApiError.forbidden('Nobody may approve their own leave — the Self-Dealing Bar applies here as everywhere else.', [
-      { axis: 'WHO', passed: false, reason: 'self_dealing' },
-    ]);
+    throw ApiError.forbidden(
+      'Nobody may approve their own leave — the Self-Dealing Bar applies here as everywhere else.',
+      [{ axis: 'WHO', passed: false, reason: 'self_dealing' }],
+    );
   }
 
   // The level's own resolved approver may decide it on the strength of that
@@ -817,7 +851,12 @@ export async function decideApprovalLevel(id: string, decision: 'approved' | 're
 
   const updated = await prisma.leaveRequestApproval.update({
     where: { id },
-    data: { decision, decidedAt: new Date(), note: note ?? null, approverPartyId: approval.approverPartyId ?? auth.partyId },
+    data: {
+      decision,
+      decidedAt: new Date(),
+      note: note ?? null,
+      approverPartyId: approval.approverPartyId ?? auth.partyId,
+    },
   });
 
   await emit({
@@ -853,19 +892,26 @@ export async function listRestrictedHolidayElections(employmentRelationshipId: s
   });
 }
 
-export async function electRestrictedHoliday(input: { employmentRelationshipId: string; holidayId: string; fy: string }) {
+export async function electRestrictedHoliday(input: {
+  employmentRelationshipId: string;
+  holidayId: string;
+  fy: string;
+}) {
   const auth = currentAuth();
   await assertEmploymentVisible('leave', input.employmentRelationshipId, 'edit');
 
   const holiday = await prisma.holiday.findFirst({ where: { id: input.holidayId, tenantId: auth.tenantId } });
   if (!holiday) throw ApiError.notFound('Holiday');
-  if (holiday.kind !== 'restricted') throw ApiError.unprocessable(`${holiday.name} is a ${holiday.kind} holiday, not restricted.`);
+  if (holiday.kind !== 'restricted')
+    throw ApiError.unprocessable(`${holiday.name} is a ${holiday.kind} holiday, not restricted.`);
 
   const already = await prisma.restrictedHolidayElection.count({
     where: { tenantId: auth.tenantId, employmentRelationshipId: input.employmentRelationshipId, fy: input.fy },
   });
   if (already >= RESTRICTED_HOLIDAY_ANNUAL_LIMIT) {
-    throw ApiError.unprocessable(`Only ${RESTRICTED_HOLIDAY_ANNUAL_LIMIT} restricted holidays may be elected per year; ${input.fy} already has ${already}.`);
+    throw ApiError.unprocessable(
+      `Only ${RESTRICTED_HOLIDAY_ANNUAL_LIMIT} restricted holidays may be elected per year; ${input.fy} already has ${already}.`,
+    );
   }
 
   return prisma.restrictedHolidayElection.create({
@@ -913,9 +959,10 @@ export async function teamCalendar(month: string, orgUnitId?: string) {
   // people's records, and `own` scope cannot answer for that (see
   // docs/hcm/leavepolicy.md's scope-axis fix note).
   if ((await scopeFor('leave', 'view')) !== 'all') {
-    throw ApiError.forbidden('The team calendar shows other employments’ leave — an own-scope view cannot answer for that.', [
-      { axis: 'WHERE', passed: false, reason: 'own_scope_insufficient_for_team_view' },
-    ]);
+    throw ApiError.forbidden(
+      'The team calendar shows other employments’ leave — an own-scope view cannot answer for that.',
+      [{ axis: 'WHERE', passed: false, reason: 'own_scope_insufficient_for_team_view' }],
+    );
   }
 
   const [y, m] = month.split('-').map(Number);
@@ -990,18 +1037,26 @@ subscribe(EVENTS.LEAVE_REQUEST_CREATED, 'hcm.leavepolicy.on_created', async (eve
         },
         include: { rules: { where: { leaveTypeId: request.leaveTypeId } } },
       })
-      .then((policies) =>
-        policies
-          .filter((p) => p.engagementTypes.length === 0 || p.engagementTypes.includes(request.employmentRelationship.engagementType))
-          .sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime())[0],
+      .then(
+        (policies) =>
+          policies
+            .filter(
+              (p) =>
+                p.engagementTypes.length === 0 ||
+                p.engagementTypes.includes(request.employmentRelationship.engagementType),
+            )
+            .sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime())[0],
       );
 
     const chain =
-      (resolved && (await unscopedPrisma.leaveApprovalChain.findFirst({ where: { tenantId, leavePolicyId: resolved.id } }))) ??
+      (resolved &&
+        (await unscopedPrisma.leaveApprovalChain.findFirst({ where: { tenantId, leavePolicyId: resolved.id } }))) ??
       (await unscopedPrisma.leaveApprovalChain.findFirst({ where: { tenantId, isDefault: true } }));
 
     if (chain) {
-      const already = await unscopedPrisma.leaveRequestApproval.count({ where: { tenantId, leaveRequestId: request.id } });
+      const already = await unscopedPrisma.leaveRequestApproval.count({
+        where: { tenantId, leaveRequestId: request.id },
+      });
       if (already === 0) {
         const levels = chain.levels as unknown as ChainLevel[];
         for (const level of levels) {

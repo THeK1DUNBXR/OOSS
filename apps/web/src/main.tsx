@@ -49,7 +49,16 @@ import { CompanyDetails, GstReturns } from './pages/GstReturns.js';
 import { Cohorts, Enrollments, Projects } from './pages/Education.js';
 import { Courses } from './pages/Courses.js';
 import { LearnerQueue, StudentTimeline } from './pages/StudentTimeline.js';
-import { PipelineAdmin, TerritoryAdmin, Governance, Agents, Events, Jobs, Audit, PlatformModel } from './pages/Admin.js';
+import {
+  PipelineAdmin,
+  TerritoryAdmin,
+  Governance,
+  Agents,
+  Events,
+  Jobs,
+  Audit,
+  PlatformModel,
+} from './pages/Admin.js';
 import { Decisions } from './pages/Decisions.js';
 import { Employees, EmployeeDetail, Leave, Attendance, Payroll, Hiring, Skills } from './pages/PeopleOps.js';
 import { Executive } from './pages/Executive.js';
@@ -74,8 +83,24 @@ import { ItAssets, ItAssetDetail } from './pages/it/Assets.js';
 import { ItApplications, ItApplicationDetail, ItLicences, ItLicenceDetail } from './pages/it/Software.js';
 import { ItVendors, ItVendorDetail, ItVendorContracts, ItVendorContractDetail } from './pages/it/Vendors.js';
 import { ItTickets, ItTicketDetail, ItKnowledge, ItKnowledgeDetail, MyIt } from './pages/it/ServiceDesk.js';
-import { ItIncidents, ItIncidentDetail, ItProblems, ItProblemDetail, ItChanges, ItChangeDetail } from './pages/it/Itsm.js';
-import { ItRisks, ItRiskDetail, ItPolicies, ItPolicyDetail, ItControls, ItAccessReviews, ItAccessReviewDetail, ItFindings } from './pages/it/Governance.js';
+import {
+  ItIncidents,
+  ItIncidentDetail,
+  ItProblems,
+  ItProblemDetail,
+  ItChanges,
+  ItChangeDetail,
+} from './pages/it/Itsm.js';
+import {
+  ItRisks,
+  ItRiskDetail,
+  ItPolicies,
+  ItPolicyDetail,
+  ItControls,
+  ItAccessReviews,
+  ItAccessReviewDetail,
+  ItFindings,
+} from './pages/it/Governance.js';
 import { ItPortfolio, ItInitiativeDetail, ItRoadmap, ItBudget, ItTechDebt } from './pages/it/Portfolio.js';
 import { ItContinuity, ItAvailability, ItMaintenance } from './pages/it/Continuity.js';
 import { Cockpit as CeoCockpit } from './pages/ceo/Cockpit.js';
@@ -232,262 +257,265 @@ function Routed() {
   return (
     <Suspense fallback={<Loading label="Preparing the workspace" />}>
       <Routes>
-      <Route element={<Shell />}>
-        {/* The landing surface follows the archetype the role resolves to. */}
-        <Route path="/" element={<Navigate to={user.archetype === 'command' ? '/command' : '/workspace'} replace />} />
+        <Route element={<Shell />}>
+          {/* The landing surface follows the archetype the role resolves to. */}
+          <Route
+            path="/"
+            element={<Navigate to={user.archetype === 'command' ? '/command' : '/workspace'} replace />}
+          />
 
-        <Route path="/command" element={<CommandCenter />} />
-        <Route path="/command/decisions" element={<Decisions />} />
-        <Route path="/command/health/:domainCode" element={<CommandCenter />} />
-        <Route path="/workspace" element={<Workspace />} />
-        <Route path="/exceptions" element={<Exceptions />} />
-        <Route path="/exceptions/:id" element={<Exceptions />} />
+          <Route path="/command" element={<CommandCenter />} />
+          <Route path="/command/decisions" element={<Decisions />} />
+          <Route path="/command/health/:domainCode" element={<CommandCenter />} />
+          <Route path="/workspace" element={<Workspace />} />
+          <Route path="/exceptions" element={<Exceptions />} />
+          <Route path="/exceptions/:id" element={<Exceptions />} />
 
-        <Route path="/crm/pipeline" element={<Pipeline />} />
-        <Route path="/crm/leads" element={<Leads />} />
-        <Route path="/crm/leads/:id" element={<LeadDetail />} />
-        <Route path="/crm/opportunities" element={<Opportunities />} />
-        <Route path="/crm/opportunities/:id" element={<OpportunityDetail />} />
-        <Route path="/crm/forecast" element={<Forecast />} />
-        {/* Three party types, three routes. `/crm/accounts` is kept pointing at
+          <Route path="/crm/pipeline" element={<Pipeline />} />
+          <Route path="/crm/leads" element={<Leads />} />
+          <Route path="/crm/leads/:id" element={<LeadDetail />} />
+          <Route path="/crm/opportunities" element={<Opportunities />} />
+          <Route path="/crm/opportunities/:id" element={<OpportunityDetail />} />
+          <Route path="/crm/forecast" element={<Forecast />} />
+          {/* Three party types, three routes. `/crm/accounts` is kept pointing at
             organisations because links to it exist in the wild — bookmarks,
             notification drill paths — and a dead link teaches nobody anything. */}
-        <Route path="/crm/students" element={<Students />} />
-        <Route path="/crm/students/:id" element={<StudentDetail />} />
-        <Route path="/crm/institutions" element={<Institutions />} />
-        <Route path="/crm/institutions/:id" element={<BodyDetail kind="institution" />} />
-        <Route path="/crm/organizations" element={<Organizations />} />
-        <Route path="/crm/organizations/:id" element={<BodyDetail kind="organization" />} />
-        <Route path="/crm/accounts" element={<Navigate to="/crm/organizations" replace />} />
-        <Route path="/crm/accounts/:id" element={<LegacyAccountLink />} />
-        <Route path="/crm/people" element={<People />} />
-        <Route path="/crm/people/:id" element={<PersonDetail />} />
-        <Route path="/crm/interactions" element={<Interactions />} />
+          <Route path="/crm/students" element={<Students />} />
+          <Route path="/crm/students/:id" element={<StudentDetail />} />
+          <Route path="/crm/institutions" element={<Institutions />} />
+          <Route path="/crm/institutions/:id" element={<BodyDetail kind="institution" />} />
+          <Route path="/crm/organizations" element={<Organizations />} />
+          <Route path="/crm/organizations/:id" element={<BodyDetail kind="organization" />} />
+          <Route path="/crm/accounts" element={<Navigate to="/crm/organizations" replace />} />
+          <Route path="/crm/accounts/:id" element={<LegacyAccountLink />} />
+          <Route path="/crm/people" element={<People />} />
+          <Route path="/crm/people/:id" element={<PersonDetail />} />
+          <Route path="/crm/interactions" element={<Interactions />} />
 
-        <Route path="/commercial/offerings" element={<Offerings />} />
-        <Route path="/commercial/quotes" element={<Quotes />} />
-        <Route path="/commercial/quotes/:id" element={<Quotes />} />
-        <Route path="/commercial/proposals" element={<Proposals />} />
-        <Route path="/commercial/proposals/:id" element={<Proposals />} />
-        <Route path="/commercial/agreements" element={<Agreements />} />
-        <Route path="/commercial/mous/:id" element={<Agreements />} />
-        <Route path="/commercial/contracts/:id" element={<Agreements />} />
-        <Route path="/commercial/partner-agreements/:id" element={<Agreements />} />
-        <Route path="/commercial/approvals" element={<Approvals />} />
-        <Route path="/approvals/:id" element={<Approvals />} />
-        <Route path="/commercial/win-loss" element={<WinLoss />} />
-        <Route path="/commercial/win-loss/:id" element={<WinLoss />} />
+          <Route path="/commercial/offerings" element={<Offerings />} />
+          <Route path="/commercial/quotes" element={<Quotes />} />
+          <Route path="/commercial/quotes/:id" element={<Quotes />} />
+          <Route path="/commercial/proposals" element={<Proposals />} />
+          <Route path="/commercial/proposals/:id" element={<Proposals />} />
+          <Route path="/commercial/agreements" element={<Agreements />} />
+          <Route path="/commercial/mous/:id" element={<Agreements />} />
+          <Route path="/commercial/contracts/:id" element={<Agreements />} />
+          <Route path="/commercial/partner-agreements/:id" element={<Agreements />} />
+          <Route path="/commercial/approvals" element={<Approvals />} />
+          <Route path="/approvals/:id" element={<Approvals />} />
+          <Route path="/commercial/win-loss" element={<WinLoss />} />
+          <Route path="/commercial/win-loss/:id" element={<WinLoss />} />
 
-        <Route path="/equity/cap-table" element={<CapTable />} />
-        <Route path="/equity/register" element={<Register />} />
-        <Route path="/equity/holders" element={<Holders />} />
-        <Route path="/equity/holders/:id" element={<HolderDetail />} />
-        <Route path="/equity/share-classes" element={<ShareClasses />} />
-        <Route path="/equity/valuations" element={<Valuations />} />
-        <Route path="/equity/documents" element={<EquityDocuments />} />
-        <Route path="/equity/group" element={<Group />} />
-        <Route path="/equity/group/:sourceTenantId" element={<GroupEntity />} />
-        <Route path="/equity/certificates/:id/document" element={<CertificateDocument />} />
-        <Route path="/equity/rounds" element={<Rounds />} />
-        <Route path="/equity/scenarios" element={<Scenarios />} />
-        <Route path="/equity/esop" element={<Esop />} />
-        <Route path="/equity/filings" element={<Filings />} />
-        <Route path="/equity/filings/sh-4/:transactionId" element={<Sh4Sheet />} />
-        <Route path="/me/options" element={<MyOptions />} />
+          <Route path="/equity/cap-table" element={<CapTable />} />
+          <Route path="/equity/register" element={<Register />} />
+          <Route path="/equity/holders" element={<Holders />} />
+          <Route path="/equity/holders/:id" element={<HolderDetail />} />
+          <Route path="/equity/share-classes" element={<ShareClasses />} />
+          <Route path="/equity/valuations" element={<Valuations />} />
+          <Route path="/equity/documents" element={<EquityDocuments />} />
+          <Route path="/equity/group" element={<Group />} />
+          <Route path="/equity/group/:sourceTenantId" element={<GroupEntity />} />
+          <Route path="/equity/certificates/:id/document" element={<CertificateDocument />} />
+          <Route path="/equity/rounds" element={<Rounds />} />
+          <Route path="/equity/scenarios" element={<Scenarios />} />
+          <Route path="/equity/esop" element={<Esop />} />
+          <Route path="/equity/filings" element={<Filings />} />
+          <Route path="/equity/filings/sh-4/:transactionId" element={<Sh4Sheet />} />
+          <Route path="/me/options" element={<MyOptions />} />
 
-        <Route path="/business" element={<Executive />} />
-        <Route path="/data/import" element={<ImportPage />} />
-        <Route path="/start" element={<Start />} />
+          <Route path="/business" element={<Executive />} />
+          <Route path="/data/import" element={<ImportPage />} />
+          <Route path="/start" element={<Start />} />
 
-        <Route path="/finance/ledger" element={<Ledger />} />
-        <Route path="/finance/payables" element={<Payables />} />
-        <Route path="/finance/budget" element={<Budget />} />
-        <Route path="/finance/assets" element={<Assets />} />
-        <Route path="/finance/invoices" element={<Invoices />} />
-        <Route path="/finance/invoices/new" element={<NewInvoice />} />
-        <Route path="/finance/invoices/history" element={<InvoiceHistory />} />
-        {/* The document route sits above the detail route: a printable invoice is
+          <Route path="/finance/ledger" element={<Ledger />} />
+          <Route path="/finance/payables" element={<Payables />} />
+          <Route path="/finance/budget" element={<Budget />} />
+          <Route path="/finance/assets" element={<Assets />} />
+          <Route path="/finance/invoices" element={<Invoices />} />
+          <Route path="/finance/invoices/new" element={<NewInvoice />} />
+          <Route path="/finance/invoices/history" element={<InvoiceHistory />} />
+          {/* The document route sits above the detail route: a printable invoice is
             a different surface from the list, not a modal over it. */}
-        <Route path="/finance/invoices/:id/document" element={<InvoiceDocument />} />
-        <Route path="/finance/invoices/:id" element={<Invoices />} />
-        <Route path="/finance/receipts" element={<Receipts />} />
-        <Route path="/finance/receipts/:id" element={<ReceiptDocument />} />
-        <Route path="/finance/final-invoices" element={<FinalInvoices />} />
-        <Route path="/finance/final-invoices/:id" element={<FinalInvoiceDocument />} />
-        <Route path="/finance/payments" element={<Payments />} />
-        <Route path="/finance/payments/:id" element={<Payments />} />
-        <Route path="/finance/receivables" element={<Receivables />} />
-        <Route path="/finance/gst" element={<GstReturns />} />
-        <Route path="/finance/company" element={<CompanyDetails />} />
+          <Route path="/finance/invoices/:id/document" element={<InvoiceDocument />} />
+          <Route path="/finance/invoices/:id" element={<Invoices />} />
+          <Route path="/finance/receipts" element={<Receipts />} />
+          <Route path="/finance/receipts/:id" element={<ReceiptDocument />} />
+          <Route path="/finance/final-invoices" element={<FinalInvoices />} />
+          <Route path="/finance/final-invoices/:id" element={<FinalInvoiceDocument />} />
+          <Route path="/finance/payments" element={<Payments />} />
+          <Route path="/finance/payments/:id" element={<Payments />} />
+          <Route path="/finance/receivables" element={<Receivables />} />
+          <Route path="/finance/gst" element={<GstReturns />} />
+          <Route path="/finance/company" element={<CompanyDetails />} />
 
-        <Route path="/equity/board" element={<EquityBoard />} />
-        <Route path="/equity/board/meetings/:id" element={<MeetingDetail />} />
-        <Route path="/equity/resolutions" element={<Resolutions />} />
-        <Route path="/equity/resolutions/:id" element={<ResolutionDetail />} />
-        <Route path="/equity/compliance" element={<EquityCompliance />} />
+          <Route path="/equity/board" element={<EquityBoard />} />
+          <Route path="/equity/board/meetings/:id" element={<MeetingDetail />} />
+          <Route path="/equity/resolutions" element={<Resolutions />} />
+          <Route path="/equity/resolutions/:id" element={<ResolutionDetail />} />
+          <Route path="/equity/compliance" element={<EquityCompliance />} />
 
-        <Route path="/people/employees" element={<Employees />} />
-        <Route path="/people/employees/:id" element={<EmployeeDetail />} />
-        <Route path="/people/leave" element={<Leave />} />
-        <Route path="/people/attendance" element={<Attendance />} />
-        <Route path="/people/payroll" element={<Payroll />} />
-        <Route path="/people/hiring" element={<Hiring />} />
-        <Route path="/people/skills" element={<Skills />} />
-        <Route path="/people/employees/:id/360" element={<Employee360 />} />
+          <Route path="/people/employees" element={<Employees />} />
+          <Route path="/people/employees/:id" element={<EmployeeDetail />} />
+          <Route path="/people/leave" element={<Leave />} />
+          <Route path="/people/attendance" element={<Attendance />} />
+          <Route path="/people/payroll" element={<Payroll />} />
+          <Route path="/people/hiring" element={<Hiring />} />
+          <Route path="/people/skills" element={<Skills />} />
+          <Route path="/people/employees/:id/360" element={<Employee360 />} />
 
-        <Route path="/people/org-chart" element={<OrgChart />} />
-        <Route path="/people/directory" element={<Directory />} />
-        <Route path="/people/time" element={<HcmTime />} />
-        <Route path="/people/leave-policies" element={<LeavePolicies />} />
-        <Route path="/people/leave-calendar" element={<LeaveCalendar />} />
-        <Route path="/people/recruiting" element={<Recruiting />} />
-        <Route path="/people/performance" element={<HcmPerformance />} />
-        <Route path="/people/learning" element={<HcmLearning />} />
-        <Route path="/people/compensation" element={<Compensation />} />
-        <Route path="/people/payroll-ops" element={<PayrollOps />} />
-        <Route path="/people/engagement" element={<Engagement />} />
-        <Route path="/people/separations" element={<Separations />} />
-        <Route path="/people/assets" element={<HcmAssets />} />
-        <Route path="/people/analytics" element={<HcmAnalytics />} />
-        <Route path="/people/approvals" element={<HcmApprovals />} />
+          <Route path="/people/org-chart" element={<OrgChart />} />
+          <Route path="/people/directory" element={<Directory />} />
+          <Route path="/people/time" element={<HcmTime />} />
+          <Route path="/people/leave-policies" element={<LeavePolicies />} />
+          <Route path="/people/leave-calendar" element={<LeaveCalendar />} />
+          <Route path="/people/recruiting" element={<Recruiting />} />
+          <Route path="/people/performance" element={<HcmPerformance />} />
+          <Route path="/people/learning" element={<HcmLearning />} />
+          <Route path="/people/compensation" element={<Compensation />} />
+          <Route path="/people/payroll-ops" element={<PayrollOps />} />
+          <Route path="/people/engagement" element={<Engagement />} />
+          <Route path="/people/separations" element={<Separations />} />
+          <Route path="/people/assets" element={<HcmAssets />} />
+          <Route path="/people/analytics" element={<HcmAnalytics />} />
+          <Route path="/people/approvals" element={<HcmApprovals />} />
 
-        <Route path="/me/home" element={<MeHome />} />
-        <Route path="/me/leave" element={<MeLeave />} />
-        <Route path="/me/attendance" element={<MeAttendance />} />
-        <Route path="/me/payslips" element={<MePayslips />} />
-        <Route path="/me/performance" element={<MePerformance />} />
-        <Route path="/me/learning" element={<MeLearning />} />
-        <Route path="/me/money" element={<MeMoney />} />
-        <Route path="/me/requests" element={<MeRequests />} />
-        <Route path="/me/exit" element={<MeExit />} />
+          <Route path="/me/home" element={<MeHome />} />
+          <Route path="/me/leave" element={<MeLeave />} />
+          <Route path="/me/attendance" element={<MeAttendance />} />
+          <Route path="/me/payslips" element={<MePayslips />} />
+          <Route path="/me/performance" element={<MePerformance />} />
+          <Route path="/me/learning" element={<MeLearning />} />
+          <Route path="/me/money" element={<MeMoney />} />
+          <Route path="/me/requests" element={<MeRequests />} />
+          <Route path="/me/exit" element={<MeExit />} />
 
-        <Route path="/education/courses" element={<Courses />} />
-        <Route path="/education/cohorts" element={<Cohorts />} />
-        <Route path="/education/enrollments" element={<Enrollments />} />
-        <Route path="/education/enrollments/:id" element={<StudentTimeline />} />
-        <Route path="/education/queries" element={<LearnerQueue />} />
-        <Route path="/delivery/projects" element={<Projects />} />
-        <Route path="/delivery/projects/:id" element={<Projects />} />
+          <Route path="/education/courses" element={<Courses />} />
+          <Route path="/education/cohorts" element={<Cohorts />} />
+          <Route path="/education/enrollments" element={<Enrollments />} />
+          <Route path="/education/enrollments/:id" element={<StudentTimeline />} />
+          <Route path="/education/queries" element={<LearnerQueue />} />
+          <Route path="/delivery/projects" element={<Projects />} />
+          <Route path="/delivery/projects/:id" element={<Projects />} />
 
-        <Route path="/compliance/calendar" element={<ComplianceCalendar />} />
-        <Route path="/compliance/calendar/:id" element={<ComplianceCalendar />} />
-        <Route path="/compliance/gst" element={<ComplianceGst />} />
-        <Route path="/compliance/gst/:id" element={<ComplianceGst />} />
-        <Route path="/compliance/tax" element={<ComplianceTax />} />
-        <Route path="/compliance/tax/:id" element={<ComplianceTax />} />
-        <Route path="/compliance/books" element={<ComplianceBooks />} />
-        <Route path="/compliance/books/:id" element={<ComplianceBooks />} />
-        <Route path="/compliance/payroll" element={<CompliancePayroll />} />
-        <Route path="/compliance/payroll/:id" element={<CompliancePayroll />} />
-        <Route path="/compliance/labour" element={<ComplianceLabour />} />
-        <Route path="/compliance/labour/:id" element={<ComplianceLabour />} />
-        <Route path="/compliance/privacy" element={<CompliancePrivacy />} />
-        <Route path="/compliance/privacy/:id" element={<CompliancePrivacy />} />
-        <Route path="/compliance/corporate" element={<ComplianceCorporate />} />
-        <Route path="/compliance/corporate/:id" element={<ComplianceCorporate />} />
+          <Route path="/compliance/calendar" element={<ComplianceCalendar />} />
+          <Route path="/compliance/calendar/:id" element={<ComplianceCalendar />} />
+          <Route path="/compliance/gst" element={<ComplianceGst />} />
+          <Route path="/compliance/gst/:id" element={<ComplianceGst />} />
+          <Route path="/compliance/tax" element={<ComplianceTax />} />
+          <Route path="/compliance/tax/:id" element={<ComplianceTax />} />
+          <Route path="/compliance/books" element={<ComplianceBooks />} />
+          <Route path="/compliance/books/:id" element={<ComplianceBooks />} />
+          <Route path="/compliance/payroll" element={<CompliancePayroll />} />
+          <Route path="/compliance/payroll/:id" element={<CompliancePayroll />} />
+          <Route path="/compliance/labour" element={<ComplianceLabour />} />
+          <Route path="/compliance/labour/:id" element={<ComplianceLabour />} />
+          <Route path="/compliance/privacy" element={<CompliancePrivacy />} />
+          <Route path="/compliance/privacy/:id" element={<CompliancePrivacy />} />
+          <Route path="/compliance/corporate" element={<ComplianceCorporate />} />
+          <Route path="/compliance/corporate/:id" element={<ComplianceCorporate />} />
 
-        {/* Technology (docs/plan/cio.md) */}
-        <Route path="/it" element={<ItOverview />} />
-        <Route path="/it/my" element={<MyIt />} />
-        <Route path="/it/assets" element={<ItAssets />} />
-        <Route path="/it/assets/:id" element={<ItAssetDetail />} />
-        <Route path="/it/applications" element={<ItApplications />} />
-        <Route path="/it/applications/:id" element={<ItApplicationDetail />} />
-        <Route path="/it/licences" element={<ItLicences />} />
-        <Route path="/it/licences/:id" element={<ItLicenceDetail />} />
-        <Route path="/it/vendors" element={<ItVendors />} />
-        <Route path="/it/vendors/:id" element={<ItVendorDetail />} />
-        <Route path="/it/contracts" element={<ItVendorContracts />} />
-        <Route path="/it/contracts/:id" element={<ItVendorContractDetail />} />
-        <Route path="/it/tickets" element={<ItTickets />} />
-        <Route path="/it/tickets/:id" element={<ItTicketDetail />} />
-        <Route path="/it/knowledge" element={<ItKnowledge />} />
-        <Route path="/it/knowledge/:id" element={<ItKnowledgeDetail />} />
-        <Route path="/it/incidents" element={<ItIncidents />} />
-        <Route path="/it/incidents/:id" element={<ItIncidentDetail />} />
-        <Route path="/it/problems" element={<ItProblems />} />
-        <Route path="/it/problems/:id" element={<ItProblemDetail />} />
-        <Route path="/it/changes" element={<ItChanges />} />
-        <Route path="/it/changes/:id" element={<ItChangeDetail />} />
-        <Route path="/it/risks" element={<ItRisks />} />
-        <Route path="/it/risks/:id" element={<ItRiskDetail />} />
-        <Route path="/it/policies" element={<ItPolicies />} />
-        <Route path="/it/policies/:id" element={<ItPolicyDetail />} />
-        <Route path="/it/controls" element={<ItControls />} />
-        <Route path="/it/access-reviews" element={<ItAccessReviews />} />
-        <Route path="/it/access-reviews/:id" element={<ItAccessReviewDetail />} />
-        <Route path="/it/findings" element={<ItFindings />} />
-        <Route path="/it/portfolio" element={<ItPortfolio />} />
-        <Route path="/it/portfolio/:id" element={<ItInitiativeDetail />} />
-        <Route path="/it/roadmap" element={<ItRoadmap />} />
-        <Route path="/it/budget" element={<ItBudget />} />
-        <Route path="/it/tech-debt" element={<ItTechDebt />} />
-        <Route path="/it/continuity" element={<ItContinuity />} />
-        <Route path="/it/availability" element={<ItAvailability />} />
-        <Route path="/it/maintenance" element={<ItMaintenance />} />
+          {/* Technology (docs/plan/cio.md) */}
+          <Route path="/it" element={<ItOverview />} />
+          <Route path="/it/my" element={<MyIt />} />
+          <Route path="/it/assets" element={<ItAssets />} />
+          <Route path="/it/assets/:id" element={<ItAssetDetail />} />
+          <Route path="/it/applications" element={<ItApplications />} />
+          <Route path="/it/applications/:id" element={<ItApplicationDetail />} />
+          <Route path="/it/licences" element={<ItLicences />} />
+          <Route path="/it/licences/:id" element={<ItLicenceDetail />} />
+          <Route path="/it/vendors" element={<ItVendors />} />
+          <Route path="/it/vendors/:id" element={<ItVendorDetail />} />
+          <Route path="/it/contracts" element={<ItVendorContracts />} />
+          <Route path="/it/contracts/:id" element={<ItVendorContractDetail />} />
+          <Route path="/it/tickets" element={<ItTickets />} />
+          <Route path="/it/tickets/:id" element={<ItTicketDetail />} />
+          <Route path="/it/knowledge" element={<ItKnowledge />} />
+          <Route path="/it/knowledge/:id" element={<ItKnowledgeDetail />} />
+          <Route path="/it/incidents" element={<ItIncidents />} />
+          <Route path="/it/incidents/:id" element={<ItIncidentDetail />} />
+          <Route path="/it/problems" element={<ItProblems />} />
+          <Route path="/it/problems/:id" element={<ItProblemDetail />} />
+          <Route path="/it/changes" element={<ItChanges />} />
+          <Route path="/it/changes/:id" element={<ItChangeDetail />} />
+          <Route path="/it/risks" element={<ItRisks />} />
+          <Route path="/it/risks/:id" element={<ItRiskDetail />} />
+          <Route path="/it/policies" element={<ItPolicies />} />
+          <Route path="/it/policies/:id" element={<ItPolicyDetail />} />
+          <Route path="/it/controls" element={<ItControls />} />
+          <Route path="/it/access-reviews" element={<ItAccessReviews />} />
+          <Route path="/it/access-reviews/:id" element={<ItAccessReviewDetail />} />
+          <Route path="/it/findings" element={<ItFindings />} />
+          <Route path="/it/portfolio" element={<ItPortfolio />} />
+          <Route path="/it/portfolio/:id" element={<ItInitiativeDetail />} />
+          <Route path="/it/roadmap" element={<ItRoadmap />} />
+          <Route path="/it/budget" element={<ItBudget />} />
+          <Route path="/it/tech-debt" element={<ItTechDebt />} />
+          <Route path="/it/continuity" element={<ItContinuity />} />
+          <Route path="/it/availability" element={<ItAvailability />} />
+          <Route path="/it/maintenance" element={<ItMaintenance />} />
 
-        <Route path="/admin/pipelines" element={<PipelineAdmin />} />
-        <Route path="/admin/territories" element={<TerritoryAdmin />} />
-        <Route path="/admin/governance" element={<Governance />} />
-        <Route path="/admin/agents" element={<Agents />} />
-        <Route path="/admin/agents/actions/:id" element={<Agents />} />
-        <Route path="/admin/events" element={<Events />} />
-        <Route path="/admin/jobs" element={<Jobs />} />
-        <Route path="/admin/audit" element={<Audit />} />
-        <Route path="/admin/platform" element={<PlatformModel />} />
+          <Route path="/admin/pipelines" element={<PipelineAdmin />} />
+          <Route path="/admin/territories" element={<TerritoryAdmin />} />
+          <Route path="/admin/governance" element={<Governance />} />
+          <Route path="/admin/agents" element={<Agents />} />
+          <Route path="/admin/agents/actions/:id" element={<Agents />} />
+          <Route path="/admin/events" element={<Events />} />
+          <Route path="/admin/jobs" element={<Jobs />} />
+          <Route path="/admin/audit" element={<Audit />} />
+          <Route path="/admin/platform" element={<PlatformModel />} />
 
-        {/* ---- Chairman's Office (docs/plan/ceo-office.md §6, Phase 0) ---- */}
-        <Route path="/ceo/cockpit" element={<CeoCockpit />} />
-        <Route path="/ceo/kpi-library" element={<CeoKpiLibrary />} />
-        <Route path="/ceo/strategy" element={<CeoStrategy />} />
-        <Route path="/ceo/okrs" element={<CeoOkrs />} />
-        <Route path="/ceo/initiatives" element={<CeoInitiatives />} />
-        <Route path="/ceo/initiatives/:id" element={<CeoInitiatives />} />
-        <Route path="/ceo/meetings" element={<CeoRhythm />} />
-        <Route path="/ceo/meetings/:id" element={<CeoRhythm />} />
-        <Route path="/ceo/delegation" element={<CeoDoa />} />
-        <Route path="/ceo/approvals" element={<CeoApprovals />} />
-        <Route path="/ceo/board-pack" element={<CeoBoardPack />} />
-        <Route path="/ceo/board-pack/:id/document" element={<CeoBoardPack />} />
-        <Route path="/ceo/investor-updates" element={<CeoInvestorUpdates />} />
-        <Route path="/ceo/investor-updates/:id/document" element={<CeoInvestorUpdates />} />
-        <Route path="/ceo/stakeholders" element={<CeoStakeholders />} />
-        <Route path="/ceo/risks" element={<CeoRisk />} />
-        <Route path="/ceo/policies" element={<CeoPolicies />} />
-        <Route path="/ceo/governance" element={<CeoGovernance />} />
-        <Route path="/ceo/financial-plan" element={<CeoFinancialPlan />} />
-        <Route path="/ceo/headcount-plan" element={<CeoHeadcount />} />
-        <Route path="/ceo/leadership" element={<CeoLeadership />} />
-        <Route path="/ceo/one-on-ones" element={<CeoOneOnOnes />} />
-        <Route path="/ceo/succession" element={<CeoSuccession />} />
-        <Route path="/ceo/time-audit" element={<CeoTimeAudit />} />
-        {/* marketing */}
-        <Route path="/marketing" element={<MarketingShell />}>
-          <Route index element={<MarketingOverview />} />
-          <Route path="campaigns" element={<MarketingCampaigns />} />
-          <Route path="campaigns/:id" element={<MarketingCampaignDetail />} />
-          <Route path="calendar" element={<MarketingCalendar />} />
-          <Route path="budget" element={<MarketingBudget />} />
-          <Route path="plans" element={<MarketingPlans />} />
-          <Route path="analytics" element={<MarketingAnalytics />} />
-          <Route path="settings" element={<MarketingSettings />} />
-          <Route path="forms" element={<MarketingForms />} />
-          <Route path="events" element={<MarketingEvents />} />
-          <Route path="events/:id" element={<MarketingEventDetail />} />
-          <Route path="assets" element={<MarketingAssets />} />
-          <Route path="social" element={<MarketingSocial />} />
-          <Route path="referrals" element={<MarketingReferrals />} />
-          <Route path="audiences" element={<MarketingAudiences />} />
-          <Route path="consent" element={<MarketingConsent />} />
-          <Route path="templates" element={<MarketingTemplates />} />
-          <Route path="sends" element={<MarketingSends />} />
-          <Route path="sends/:id" element={<MarketingSendDetail />} />
-          <Route path="journeys" element={<MarketingJourneys />} />
+          {/* ---- Chairman's Office (docs/plan/ceo-office.md §6, Phase 0) ---- */}
+          <Route path="/ceo/cockpit" element={<CeoCockpit />} />
+          <Route path="/ceo/kpi-library" element={<CeoKpiLibrary />} />
+          <Route path="/ceo/strategy" element={<CeoStrategy />} />
+          <Route path="/ceo/okrs" element={<CeoOkrs />} />
+          <Route path="/ceo/initiatives" element={<CeoInitiatives />} />
+          <Route path="/ceo/initiatives/:id" element={<CeoInitiatives />} />
+          <Route path="/ceo/meetings" element={<CeoRhythm />} />
+          <Route path="/ceo/meetings/:id" element={<CeoRhythm />} />
+          <Route path="/ceo/delegation" element={<CeoDoa />} />
+          <Route path="/ceo/approvals" element={<CeoApprovals />} />
+          <Route path="/ceo/board-pack" element={<CeoBoardPack />} />
+          <Route path="/ceo/board-pack/:id/document" element={<CeoBoardPack />} />
+          <Route path="/ceo/investor-updates" element={<CeoInvestorUpdates />} />
+          <Route path="/ceo/investor-updates/:id/document" element={<CeoInvestorUpdates />} />
+          <Route path="/ceo/stakeholders" element={<CeoStakeholders />} />
+          <Route path="/ceo/risks" element={<CeoRisk />} />
+          <Route path="/ceo/policies" element={<CeoPolicies />} />
+          <Route path="/ceo/governance" element={<CeoGovernance />} />
+          <Route path="/ceo/financial-plan" element={<CeoFinancialPlan />} />
+          <Route path="/ceo/headcount-plan" element={<CeoHeadcount />} />
+          <Route path="/ceo/leadership" element={<CeoLeadership />} />
+          <Route path="/ceo/one-on-ones" element={<CeoOneOnOnes />} />
+          <Route path="/ceo/succession" element={<CeoSuccession />} />
+          <Route path="/ceo/time-audit" element={<CeoTimeAudit />} />
+          {/* marketing */}
+          <Route path="/marketing" element={<MarketingShell />}>
+            <Route index element={<MarketingOverview />} />
+            <Route path="campaigns" element={<MarketingCampaigns />} />
+            <Route path="campaigns/:id" element={<MarketingCampaignDetail />} />
+            <Route path="calendar" element={<MarketingCalendar />} />
+            <Route path="budget" element={<MarketingBudget />} />
+            <Route path="plans" element={<MarketingPlans />} />
+            <Route path="analytics" element={<MarketingAnalytics />} />
+            <Route path="settings" element={<MarketingSettings />} />
+            <Route path="forms" element={<MarketingForms />} />
+            <Route path="events" element={<MarketingEvents />} />
+            <Route path="events/:id" element={<MarketingEventDetail />} />
+            <Route path="assets" element={<MarketingAssets />} />
+            <Route path="social" element={<MarketingSocial />} />
+            <Route path="referrals" element={<MarketingReferrals />} />
+            <Route path="audiences" element={<MarketingAudiences />} />
+            <Route path="consent" element={<MarketingConsent />} />
+            <Route path="templates" element={<MarketingTemplates />} />
+            <Route path="sends" element={<MarketingSends />} />
+            <Route path="sends/:id" element={<MarketingSendDetail />} />
+            <Route path="journeys" element={<MarketingJourneys />} />
+          </Route>
+          {/* end marketing */}
+
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
-        {/* end marketing */}
-
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Route>
       </Routes>
     </Suspense>
   );

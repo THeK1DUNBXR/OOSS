@@ -16,7 +16,7 @@ WHAT/HOW MUCH/WHY) rather than a role check in code:
   and skills directories; raises invoices for what they sell and sees only
   the ones they raised.
 - **Operations Head** — the employment lifecycle end to end, payroll
-  *preparation*, disciplinary records, projects, education and the course
+  _preparation_, disciplinary records, projects, education and the course
   catalogue. Proposes pay, cannot approve it.
 - **Finance Head** — the books, GST returns, and approves compensation and
   payroll, without running HR.
@@ -41,8 +41,8 @@ to the paisa.
 
 ## Positioning
 
-Built from a named source document (*Kaizen Infinities Unified Operating
-Platform — Master Architecture*) with numbered, testable requirements: 39
+Built from a named source document (_Kaizen Infinities Unified Operating
+Platform — Master Architecture_) with numbered, testable requirements: 39
 CRM requirements with PASS/FAIL acceptance criteria, an eleven-state HRM
 lifecycle machine, and a defined finance model. What a neighboring product
 could not truthfully copy without the same discipline:
@@ -79,7 +79,7 @@ could not truthfully copy without the same discipline:
   register, or the platform's own templates — never through hand-typed
   demonstration rows in normal operation.
 - Every screen carries a build/data footnote (`web 148 · api 148 · data
-  #12`) so a viewer can tell whether the UI, the API and the seeded rows
+#12`) so a viewer can tell whether the UI, the API and the seeded rows
   are in sync — this is an existing, load-bearing piece of chrome, not
   decoration to remove.
 

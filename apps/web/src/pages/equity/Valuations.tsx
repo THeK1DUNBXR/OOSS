@@ -4,7 +4,13 @@
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { VALUATION_BASES, VALUATION_BASIS_LABELS, type ShareClassView, type ValuationBasis, type ValuationView } from '@kaizen/shared';
+import {
+  VALUATION_BASES,
+  VALUATION_BASIS_LABELS,
+  type ShareClassView,
+  type ValuationBasis,
+  type ValuationView,
+} from '@kaizen/shared';
 import { api, date, money } from '../../lib/api.js';
 import { useSession } from '../../lib/session.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader } from '../../components/ui.js';
@@ -109,7 +115,10 @@ export function Valuations() {
         <Loading />
       ) : rows.length === 0 ? (
         <Card>
-          <EmptyState message="No valuation on record." hint="Record one to give the cap table a per-share figure to show." />
+          <EmptyState
+            message="No valuation on record."
+            hint="Record one to give the cap table a per-share figure to show."
+          />
         </Card>
       ) : (
         <Card bodyClassName="p-0">

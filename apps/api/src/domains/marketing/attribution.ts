@@ -16,12 +16,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import {
-  EVENTS,
-  ATTRIBUTION_MODELS,
-  type AttributionModel,
-  type ChannelKey,
-} from '@kaizen/shared';
+import { EVENTS, ATTRIBUTION_MODELS, type AttributionModel, type ChannelKey } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -62,7 +57,9 @@ export async function recordTouchpoint(input: TouchpointInput) {
   // campaign or a source reference. A touchpoint attached to nothing at all
   // (no person, org, lead, campaign, or source ref) is the only shape refused.
   if (!input.personId && !input.organizationId && !input.leadId && !input.campaignId && !input.sourceRef) {
-    throw ApiError.badRequest('A touchpoint requires at least one of personId, organizationId, leadId, campaignId or sourceRef.');
+    throw ApiError.badRequest(
+      'A touchpoint requires at least one of personId, organizationId, leadId, campaignId or sourceRef.',
+    );
   }
 
   const touchpoint = await prisma.marketingTouchpoint.create({
@@ -89,7 +86,9 @@ export async function recordTouchpoint(input: TouchpointInput) {
     related: [
       ...(input.personId ? [{ relation: 'contact', entityType: 'person', entityId: input.personId }] : []),
       ...(input.leadId ? [{ relation: 'lead', entityType: 'lead', entityId: input.leadId }] : []),
-      ...(input.campaignId ? [{ relation: 'campaign', entityType: 'marketing_campaign', entityId: input.campaignId }] : []),
+      ...(input.campaignId
+        ? [{ relation: 'campaign', entityType: 'marketing_campaign', entityId: input.campaignId }]
+        : []),
     ],
     newState: { channelKey: input.channelKey, touchKind: input.touchKind },
   });
@@ -120,7 +119,11 @@ export async function listTouchpoints(filters: TouchpointFilters = {}) {
       : {}),
   };
 
-  const items = await prisma.marketingTouchpoint.findMany({ where: where as never, orderBy: { occurredAt: 'desc' }, take: 500 });
+  const items = await prisma.marketingTouchpoint.findMany({
+    where: where as never,
+    orderBy: { occurredAt: 'desc' },
+    take: 500,
+  });
   return { items, total: items.length };
 }
 
@@ -221,14 +224,25 @@ export async function computeAttribution(from: Date, to: Date): Promise<number> 
 
   const leads = await prisma.lead.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, createdAt: { gte: from, lte: to } },
-    select: { id: true, personId: true, campaignId: true, channelKey: true, createdAt: true, convertedOpportunityId: true },
+    select: {
+      id: true,
+      personId: true,
+      campaignId: true,
+      channelKey: true,
+      createdAt: true,
+      convertedOpportunityId: true,
+    },
   });
 
   let processed = 0;
   for (const lead of leads) {
     const touches: Touch[] = lead.personId ? await touchesForPerson(lead.personId, lead.createdAt) : [];
     if (lead.campaignId || lead.channelKey) {
-      touches.push({ campaignId: lead.campaignId, channelKey: lead.channelKey ?? UNATTRIBUTED_CHANNEL, occurredAt: lead.createdAt });
+      touches.push({
+        campaignId: lead.campaignId,
+        channelKey: lead.channelKey ?? UNATTRIBUTED_CHANNEL,
+        occurredAt: lead.createdAt,
+      });
     }
     touches.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
 
@@ -351,7 +365,10 @@ export async function createScoreRule(input: ScoreRuleInput) {
 export async function listScoreRules() {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_forms', verb: 'view' });
-  return prisma.marketingLeadScoreRule.findMany({ where: { tenantId: auth.tenantId, deletedAt: null }, orderBy: { order: 'asc' } });
+  return prisma.marketingLeadScoreRule.findMany({
+    where: { tenantId: auth.tenantId, deletedAt: null },
+    orderBy: { order: 'asc' },
+  });
 }
 
 export async function updateScoreRule(id: string, patch: Partial<ScoreRuleInput>) {
@@ -432,7 +449,9 @@ async function scoringContextFor(lead: {
   let engagementOpenedAndClicked = false;
   if (lead.personId) {
     const [opened, clicked] = await Promise.all([
-      prisma.marketingSendRecipient.count({ where: { personId: lead.personId, status: { in: ['opened', 'clicked'] } } }),
+      prisma.marketingSendRecipient.count({
+        where: { personId: lead.personId, status: { in: ['opened', 'clicked'] } },
+      }),
       prisma.marketingSendRecipient.count({ where: { personId: lead.personId, status: 'clicked' } }),
     ]);
     engagementOpenedAndClicked = opened > 0 && clicked > 0;
@@ -461,9 +480,24 @@ export async function seedDefaultScoreRules(tenantId: string): Promise<number> {
   const seeds: Array<{ name: string; condition: ScoreRuleCondition; points: number; order: number }> = [
     { name: 'Referral source', condition: { field: 'source', op: 'eq', value: 'referral' }, points: 20, order: 1 },
     { name: 'Event attended', condition: { field: 'source', op: 'eq', value: 'event' }, points: 15, order: 2 },
-    { name: 'Form from a paid channel', condition: { field: 'formFromPaidChannel', op: 'eq', value: true }, points: 10, order: 3 },
-    { name: 'Three or more touchpoints', condition: { field: 'touchpointCount', op: 'gte', value: 3 }, points: 10, order: 4 },
-    { name: 'Opened and clicked an email', condition: { field: 'engagementOpenedAndClicked', op: 'eq', value: true }, points: 5, order: 5 },
+    {
+      name: 'Form from a paid channel',
+      condition: { field: 'formFromPaidChannel', op: 'eq', value: true },
+      points: 10,
+      order: 3,
+    },
+    {
+      name: 'Three or more touchpoints',
+      condition: { field: 'touchpointCount', op: 'gte', value: 3 },
+      points: 10,
+      order: 4,
+    },
+    {
+      name: 'Opened and clicked an email',
+      condition: { field: 'engagementOpenedAndClicked', op: 'eq', value: true },
+      points: 5,
+      order: 5,
+    },
   ];
 
   let created = 0;

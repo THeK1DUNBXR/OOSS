@@ -1,11 +1,13 @@
 # Marketing Module Implementation Plan
 
 ## Overview
+
 KaiERP Marketing module (bounded context `mkt`, plane P2, health domain `H_MKT`) manages campaigns, audiences, messaging, events, attribution and analytics across all contact channels. The module never writes `Lead.ownerPartyId`, never routes leads, never creates `Person` directly, never records money movement, never sets pipeline stage, and never sends without explicit `marketing` Consent (reused from `compliance/privacy.ts`).
 
 ## Phases
 
 ### Foundation (Week 1-2)
+
 **Schema, shared vocabulary, permissions, adapters**
 
 - Create `apps/api/prisma/schema/marketing.prisma` with all 28 tables: `mkt_campaigns`, `mkt_channels`, `mkt_audiences`, `mkt_audience_members`, `mkt_preferences`, `mkt_templates`, `mkt_sends`, `mkt_send_recipients`, `mkt_journeys`, `mkt_journey_runs`, `mkt_forms`, `mkt_form_submissions`, `mkt_touchpoints`, `mkt_attributions`, `mkt_lead_score_rules`, `mkt_events`, `mkt_event_registrations`, `mkt_assets`, `mkt_social_posts`, `mkt_short_links`, `mkt_referral_programs`, `mkt_referrals`, `mkt_budgets`, `mkt_spends`, `mkt_vendors`, `mkt_claims`, `mkt_plans`, `mkt_webhooks_inbound`.
@@ -19,6 +21,7 @@ KaiERP Marketing module (bounded context `mkt`, plane P2, health domain `H_MKT`)
 - Register 6 AI touchpoints in `packages/shared/src/ai.ts`: AI-MKT-001 through AI-MKT-006 (AI-MKT-007 and AI-MKT-008 are PROHIBITED).
 
 ### Domain Layer (Week 2-4)
+
 **13 domain files, 4 helper modules, 1 adapter registry**
 
 - `apps/api/src/domains/marketing/campaigns.ts`: create, read, list, submit (self-dealing bar), approve, reject, launch, pause, resume, complete, archive, cancel, timeline, utm. budgetActual computed from linked spends. utmCampaign unique slug per tenant from campaign name.
@@ -38,6 +41,7 @@ KaiERP Marketing module (bounded context `mkt`, plane P2, health domain `H_MKT`)
 - `apps/api/src/domains/marketing/settings.ts`: channels (list, add, update label/active/senders/config), policy (thresholds, alert rates, SLAs), webhooks (list recent inbound), AI touchpoints registry.
 
 ### API Routes (Week 3-4)
+
 **13 route files mounted under `/api/marketing`**
 
 - `apps/api/src/routes/marketing/campaigns.routes.ts`: GET /campaigns, POST (C), GET /:id, PATCH /:id (E), DELETE /:id (D), POST /:id/submit (E), POST /:id/approve (approve), POST /:id/reject, POST /:id/launch (E), POST /:id/pause, POST /:id/resume, POST /:id/complete, POST /:id/archive, POST /:id/cancel.
@@ -57,6 +61,7 @@ KaiERP Marketing module (bounded context `mkt`, plane P2, health domain `H_MKT`)
 - `apps/api/src/routes/marketing/index.ts`: mounts all route files under `/api/marketing` and exports router; mounted from `apps/api/src/routes/index.ts`.
 
 ### Web & Settings (Week 4-5)
+
 **18 page components, marketing library, nav registry**
 
 - `apps/web/src/pages/marketing/MarketingOverview.tsx`: KPI tiles (live campaigns, attributed leads, cost-per-lead, consent coverage), funnel stage breakdown, channel performance grid, drill paths to detail views.
@@ -79,6 +84,7 @@ KaiERP Marketing module (bounded context `mkt`, plane P2, health domain `H_MKT`)
 - `apps/web/src/lib/marketingApi.ts`: client library wrapping all `/api/marketing` endpoints with fetch + error handling, type-safe response shapes.
 
 ### Integration & Boot (Week 5)
+
 **Database job, navigation, seeding, event wiring**
 
 - `apps/api/src/jobs/marketing.ts`: hourly job: audience evaluation (dynamic rules → members), journey tick (advance due steps), send dispatch (process adapter), exception checks (bounce/unsub rates, stale campaigns, overdue runs, follow-ups due), lead score rule application (add to scoreReasons).
@@ -90,6 +96,7 @@ KaiERP Marketing module (bounded context `mkt`, plane P2, health domain `H_MKT`)
 - Webhook inbound route for third-party provider events (delivery status, click, open, bounce, unsubscribe) with retry + status recording.
 
 ### Verification (Week 5-6)
+
 **Schema validation, type safety, integration tests**
 
 - `tests/marketingCampaigns.test.ts`: campaign create (draft with name/objective/division/channelMix/budget), state transitions, proposal + approval with self-dealing bar, spend computed from spends, utmCampaign slug unique per tenant.
@@ -180,51 +187,51 @@ apps/api/prisma/schema/
 
 ## Requirements (68 total)
 
-| ID | Feature | PASS/FAIL Criterion | Test File |
-|---|---|---|---|
-| MKT-CMP-001 | A campaign is created in draft with division, objective and channel mix | Campaign created with status=draft, division, objective in CAMPAIGN_OBJECTIVES, channelMix non-empty | tests/marketingCampaigns.test.ts |
-| MKT-CMP-002 | Campaign above approval threshold cannot be scheduled without approval | Campaign with budgetPlanned > threshold is pending_approval, blocks transition to scheduled until approved | tests/marketingCampaigns.test.ts |
-| MKT-CMP-003 | Campaign proposer can never approve their own, even chairman | Self-dealing bar rejects proposer as approver; self-dealing middleware invoked | tests/marketingCampaigns.test.ts |
-| MKT-CMP-004 | Only CAMPAIGN_TRANSITIONS-listed moves are accepted | Any unlisted transition is rejected with 400 error; only valid transitions succeed | tests/marketingCampaigns.test.ts |
-| MKT-CMP-005 | budgetActual is computed from linked spends, never hand-edited | budgetActual equals SUM(MarketingSpend.amount) for campaign; PATCH rejects budgetActual edit | tests/marketingCampaigns.test.ts |
-| MKT-CMP-006 | Live campaign past endAt raises EX-MKT-010 | Exception EX-MKT-010 recorded when campaign.status=live and now > endAt | tests/marketingCampaigns.test.ts |
-| MKT-CMP-007 | Live campaign with no touchpoints for 7 days raises EX-MKT-004 | Exception EX-MKT-004 recorded when campaign.status=live and lastTouchpointAt < now - 7d | tests/marketingCampaigns.test.ts |
-| MKT-CMP-008 | Cancelling campaign cancels queued sends and pauses journeys | Cancel transitions queued sends to cancelled; active journeys to paused | tests/marketingCampaigns.test.ts |
-| MKT-CMP-009 | utmCampaign is unique slug per tenant, generated from name | utmCampaign unique (tenantId, utmCampaign); generated from campaign name via slug function | tests/marketingCampaigns.test.ts |
-| MKT-CMP-010 | Campaign links at most one offering, one course, one audience | Campaign.offeringId, .courseId, .audienceId all optional; only one of each allowed | tests/marketingCampaigns.test.ts |
-| MKT-AUD-001 | Dynamic audience evaluates rule tree into MarketingAudienceMember rows | POST /audiences/:id/evaluate populates members from rules; memberCount matches | tests/marketingAudiences.test.ts |
-| MKT-AUD-002 | Static audience accepts only manual add/remove, never rule evaluation | kind=static audience ignores evaluate; POST /audiences/:id/members adds members; DELETE removes | tests/marketingAudiences.test.ts |
-| MKT-AUD-003 | Suppression audience member is excluded from every send regardless | Send skips recipient if any suppression audience contains them; skip reason recorded | tests/marketingAudiences.test.ts |
-| MKT-AUD-004 | Rule conditions restricted to AUDIENCE_RULE_OPS set | Rule op outside [eq,ne,in,contains,gt,lt,between,is_null,not_null,before,after] rejected | tests/marketingAudiences.test.ts |
-| MKT-AUD-005 | memberCount and lastEvaluatedAt updated only by evaluation job | Only job can update these fields; API POST /evaluate updates them; manual member add/remove does not | tests/marketingAudiences.test.ts |
-| MKT-AUD-006 | Audience declares exactly one AUDIENCE_ENTITY_TYPES value | entityType in [person,student,organization,institution,lead]; required, single value | tests/marketingAudiences.test.ts |
-| MKT-CON-001 | Send never reaches person lacking marketing Consent | Send skips recipient without Consent(purposeCode=marketing, status=granted); skip reason recorded | tests/marketingConsent.test.ts |
-| MKT-CON-002 | Recipient with doNotContact=true is skipped with reason | Send skips recipient where MarketingPreference.doNotContact=true; skip reason=skipped_dnc | tests/marketingConsent.test.ts |
-| MKT-CON-003 | Opt-out via unsubscribe link updates MarketingPreference, never deletes | GET /public/unsubscribe/:token shows form; POST /public/unsubscribe/:token updates optedIn=false, never deletes row | tests/marketingConsent.test.ts |
-| MKT-CON-004 | Preference change always names source (self_service/agent/import/unsubscribe_link/admin) | MarketingPreference.source in [self_service,agent,import,unsubscribe_link,admin]; required | tests/marketingConsent.test.ts |
-| MKT-CON-005 | Consent coverage is H_MKT consent-coverage factor input | H_MKT factor: (consented recipients / contacted recipients) * 100; drill to /preferences/coverage | tests/marketingConsent.test.ts |
-| MKT-MSG-001 | Template moves only along TEMPLATE_TRANSITIONS; retired cannot be sent | Template status in [draft,pending_review,approved,retired]; only approved templates sendable | tests/marketingMessaging.test.ts |
-| MKT-MSG-002 | WhatsApp template requires waTemplateName and dltTemplateId before approval | WhatsApp template pending_review without both fields rejects approval; both required | tests/marketingMessaging.test.ts |
-| MKT-MSG-003 | Send requires approved template and configured channel adapter | Send creation with retired/draft template or unconfigured channel raises error | tests/marketingMessaging.test.ts |
-| MKT-MSG-004 | Unconfigured channel adapter raises EX-MKT-011 not silent queue | POST /sends/:id/request with providerAdapter=null raises EX-MKT-011, stays draft | tests/marketingMessaging.test.ts |
-| MKT-MSG-005 | Every recipient outcome is distinct event | Each of [delivered,opened,clicked,bounced,unsubscribed] fires separate kz.mkt.send.recipient_* event | tests/marketingMessaging.test.ts |
-| MKT-MSG-006 | Bounce rate above 5% on send raises EX-MKT-005 | bouncedCount / recipientCount > 0.05 fires EX-MKT-005 exception | tests/marketingMessaging.test.ts |
-| MKT-MSG-007 | Unsubscribe spike above 2% on send raises EX-MKT-006 | unsubscribedCount / recipientCount > 0.02 fires EX-MKT-006 exception | tests/marketingMessaging.test.ts |
-| MKT-MSG-008 | Journey enrols person on triggerKind, advances steps on delayDays and condition | Journey triggered creates JourneyRun; tick job advances currentStep per delayDays + condition match | tests/marketingJourneys.test.ts |
-| MKT-MSG-009 | Journey run overdue by 2 days raises EX-MKT-015 | JourneyRun.nextAt < now - 2d fires EX-MKT-015 exception | tests/marketingJourneys.test.ts |
-| MKT-MSG-010 | Every outbound send carries X-Purpose: marketing header | All adapter calls include X-Purpose: marketing in request headers | tests/marketingMessaging.test.ts |
-| MKT-CAP-001 | Public form submission accepted only with active publicToken | POST /public/forms/:token/submit with inactive/missing token rejected; active token succeeds | tests/marketingCapture.test.ts |
-| MKT-CAP-002 | Converted submission creates Person via findOrCreatePerson, never duplicate | Convert via findOrCreatePerson ensures no duplicate; Lead created with source=form, campaignId | tests/marketingCapture.test.ts |
-| MKT-CAP-003 | Submission unconverted for 24h raises EX-MKT-007 | FormSubmission.status=received and createdAt < now - 24h fires EX-MKT-007 | tests/marketingCapture.test.ts |
-| MKT-CAP-004 | Touchpoint immutable once recorded; corrections are new rows | MarketingTouchpoint deletedAt always null; corrections = new row with same personId/campaignId | tests/marketingCapture.test.ts |
-| MKT-CAP-005 | Attribution computed per model and stored, never derived at render | POST /attribution/recompute computes all four models; stored in MarketingAttribution; GET /attribution/:leadId reads stored | tests/marketingCapture.test.ts |
-| MKT-CAP-006 | Lead with no attributable touchpoint at creation raises EX-MKT-001 | Lead created with no MarketingTouchpoint record fires EX-MKT-001 | tests/marketingCapture.test.ts |
-| MKT-CAP-007 | Lead score is sum of active rule matches; score_reasons[] names each | Lead.score = SUM(MarketingLeadScoreRule.points WHERE condition matches); each in scoreReasons[] | tests/marketingCapture.test.ts |
-| MKT-CAP-008 | Marketing never writes Lead.ownerPartyId, never routes lead | Domain code has no assignment to Lead.ownerPartyId; Lead.status never changed by marketing routes | tests/marketingCapture.test.ts |
-| MKT-EVT-001 | Marketing event moves only along MARKETING_EVENT_TRANSITIONS | Status in [planned,open,closed,live,completed,cancelled]; only listed transitions accepted | tests/marketingEvents.test.ts |
-| MKT-EVT-002 | Registration cannot exceed capacity-bound event | capacity set and currentRegistrations == capacity rejects new registration | tests/marketingEvents.test.ts |
-| MKT-EVT-003 | Completed event with follow-ups outstanding after 3 days raises EX-MKT-008 | MarketingEventRegistration.followUpDone=false 3 days after event.endAt fires EX-MKT-008 | tests/marketingEvents.test.ts |
-| MKT-EVT-004 | Check-in sets checkedInAt and flips status to attended | POST /events/:id/registrations/:regId/check-in sets checkedInAt=now, status=attended | tests/marketingEvents.test.ts |
+| ID          | Feature                                                                                  | PASS/FAIL Criterion                                                                                                         | Test File                        |
+| ----------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| MKT-CMP-001 | A campaign is created in draft with division, objective and channel mix                  | Campaign created with status=draft, division, objective in CAMPAIGN_OBJECTIVES, channelMix non-empty                        | tests/marketingCampaigns.test.ts |
+| MKT-CMP-002 | Campaign above approval threshold cannot be scheduled without approval                   | Campaign with budgetPlanned > threshold is pending_approval, blocks transition to scheduled until approved                  | tests/marketingCampaigns.test.ts |
+| MKT-CMP-003 | Campaign proposer can never approve their own, even chairman                             | Self-dealing bar rejects proposer as approver; self-dealing middleware invoked                                              | tests/marketingCampaigns.test.ts |
+| MKT-CMP-004 | Only CAMPAIGN_TRANSITIONS-listed moves are accepted                                      | Any unlisted transition is rejected with 400 error; only valid transitions succeed                                          | tests/marketingCampaigns.test.ts |
+| MKT-CMP-005 | budgetActual is computed from linked spends, never hand-edited                           | budgetActual equals SUM(MarketingSpend.amount) for campaign; PATCH rejects budgetActual edit                                | tests/marketingCampaigns.test.ts |
+| MKT-CMP-006 | Live campaign past endAt raises EX-MKT-010                                               | Exception EX-MKT-010 recorded when campaign.status=live and now > endAt                                                     | tests/marketingCampaigns.test.ts |
+| MKT-CMP-007 | Live campaign with no touchpoints for 7 days raises EX-MKT-004                           | Exception EX-MKT-004 recorded when campaign.status=live and lastTouchpointAt < now - 7d                                     | tests/marketingCampaigns.test.ts |
+| MKT-CMP-008 | Cancelling campaign cancels queued sends and pauses journeys                             | Cancel transitions queued sends to cancelled; active journeys to paused                                                     | tests/marketingCampaigns.test.ts |
+| MKT-CMP-009 | utmCampaign is unique slug per tenant, generated from name                               | utmCampaign unique (tenantId, utmCampaign); generated from campaign name via slug function                                  | tests/marketingCampaigns.test.ts |
+| MKT-CMP-010 | Campaign links at most one offering, one course, one audience                            | Campaign.offeringId, .courseId, .audienceId all optional; only one of each allowed                                          | tests/marketingCampaigns.test.ts |
+| MKT-AUD-001 | Dynamic audience evaluates rule tree into MarketingAudienceMember rows                   | POST /audiences/:id/evaluate populates members from rules; memberCount matches                                              | tests/marketingAudiences.test.ts |
+| MKT-AUD-002 | Static audience accepts only manual add/remove, never rule evaluation                    | kind=static audience ignores evaluate; POST /audiences/:id/members adds members; DELETE removes                             | tests/marketingAudiences.test.ts |
+| MKT-AUD-003 | Suppression audience member is excluded from every send regardless                       | Send skips recipient if any suppression audience contains them; skip reason recorded                                        | tests/marketingAudiences.test.ts |
+| MKT-AUD-004 | Rule conditions restricted to AUDIENCE_RULE_OPS set                                      | Rule op outside [eq,ne,in,contains,gt,lt,between,is_null,not_null,before,after] rejected                                    | tests/marketingAudiences.test.ts |
+| MKT-AUD-005 | memberCount and lastEvaluatedAt updated only by evaluation job                           | Only job can update these fields; API POST /evaluate updates them; manual member add/remove does not                        | tests/marketingAudiences.test.ts |
+| MKT-AUD-006 | Audience declares exactly one AUDIENCE_ENTITY_TYPES value                                | entityType in [person,student,organization,institution,lead]; required, single value                                        | tests/marketingAudiences.test.ts |
+| MKT-CON-001 | Send never reaches person lacking marketing Consent                                      | Send skips recipient without Consent(purposeCode=marketing, status=granted); skip reason recorded                           | tests/marketingConsent.test.ts   |
+| MKT-CON-002 | Recipient with doNotContact=true is skipped with reason                                  | Send skips recipient where MarketingPreference.doNotContact=true; skip reason=skipped_dnc                                   | tests/marketingConsent.test.ts   |
+| MKT-CON-003 | Opt-out via unsubscribe link updates MarketingPreference, never deletes                  | GET /public/unsubscribe/:token shows form; POST /public/unsubscribe/:token updates optedIn=false, never deletes row         | tests/marketingConsent.test.ts   |
+| MKT-CON-004 | Preference change always names source (self_service/agent/import/unsubscribe_link/admin) | MarketingPreference.source in [self_service,agent,import,unsubscribe_link,admin]; required                                  | tests/marketingConsent.test.ts   |
+| MKT-CON-005 | Consent coverage is H_MKT consent-coverage factor input                                  | H_MKT factor: (consented recipients / contacted recipients) * 100; drill to /preferences/coverage                           | tests/marketingConsent.test.ts   |
+| MKT-MSG-001 | Template moves only along TEMPLATE_TRANSITIONS; retired cannot be sent                   | Template status in [draft,pending_review,approved,retired]; only approved templates sendable                                | tests/marketingMessaging.test.ts |
+| MKT-MSG-002 | WhatsApp template requires waTemplateName and dltTemplateId before approval              | WhatsApp template pending_review without both fields rejects approval; both required                                        | tests/marketingMessaging.test.ts |
+| MKT-MSG-003 | Send requires approved template and configured channel adapter                           | Send creation with retired/draft template or unconfigured channel raises error                                              | tests/marketingMessaging.test.ts |
+| MKT-MSG-004 | Unconfigured channel adapter raises EX-MKT-011 not silent queue                          | POST /sends/:id/request with providerAdapter=null raises EX-MKT-011, stays draft                                            | tests/marketingMessaging.test.ts |
+| MKT-MSG-005 | Every recipient outcome is distinct event                                                | Each of [delivered,opened,clicked,bounced,unsubscribed] fires separate kz.mkt.send.recipient_* event                        | tests/marketingMessaging.test.ts |
+| MKT-MSG-006 | Bounce rate above 5% on send raises EX-MKT-005                                           | bouncedCount / recipientCount > 0.05 fires EX-MKT-005 exception                                                             | tests/marketingMessaging.test.ts |
+| MKT-MSG-007 | Unsubscribe spike above 2% on send raises EX-MKT-006                                     | unsubscribedCount / recipientCount > 0.02 fires EX-MKT-006 exception                                                        | tests/marketingMessaging.test.ts |
+| MKT-MSG-008 | Journey enrols person on triggerKind, advances steps on delayDays and condition          | Journey triggered creates JourneyRun; tick job advances currentStep per delayDays + condition match                         | tests/marketingJourneys.test.ts  |
+| MKT-MSG-009 | Journey run overdue by 2 days raises EX-MKT-015                                          | JourneyRun.nextAt < now - 2d fires EX-MKT-015 exception                                                                     | tests/marketingJourneys.test.ts  |
+| MKT-MSG-010 | Every outbound send carries X-Purpose: marketing header                                  | All adapter calls include X-Purpose: marketing in request headers                                                           | tests/marketingMessaging.test.ts |
+| MKT-CAP-001 | Public form submission accepted only with active publicToken                             | POST /public/forms/:token/submit with inactive/missing token rejected; active token succeeds                                | tests/marketingCapture.test.ts   |
+| MKT-CAP-002 | Converted submission creates Person via findOrCreatePerson, never duplicate              | Convert via findOrCreatePerson ensures no duplicate; Lead created with source=form, campaignId                              | tests/marketingCapture.test.ts   |
+| MKT-CAP-003 | Submission unconverted for 24h raises EX-MKT-007                                         | FormSubmission.status=received and createdAt < now - 24h fires EX-MKT-007                                                   | tests/marketingCapture.test.ts   |
+| MKT-CAP-004 | Touchpoint immutable once recorded; corrections are new rows                             | MarketingTouchpoint deletedAt always null; corrections = new row with same personId/campaignId                              | tests/marketingCapture.test.ts   |
+| MKT-CAP-005 | Attribution computed per model and stored, never derived at render                       | POST /attribution/recompute computes all four models; stored in MarketingAttribution; GET /attribution/:leadId reads stored | tests/marketingCapture.test.ts   |
+| MKT-CAP-006 | Lead with no attributable touchpoint at creation raises EX-MKT-001                       | Lead created with no MarketingTouchpoint record fires EX-MKT-001                                                            | tests/marketingCapture.test.ts   |
+| MKT-CAP-007 | Lead score is sum of active rule matches; score_reasons[] names each                     | Lead.score = SUM(MarketingLeadScoreRule.points WHERE condition matches); each in scoreReasons[]                             | tests/marketingCapture.test.ts   |
+| MKT-CAP-008 | Marketing never writes Lead.ownerPartyId, never routes lead                              | Domain code has no assignment to Lead.ownerPartyId; Lead.status never changed by marketing routes                           | tests/marketingCapture.test.ts   |
+| MKT-EVT-001 | Marketing event moves only along MARKETING_EVENT_TRANSITIONS                             | Status in [planned,open,closed,live,completed,cancelled]; only listed transitions accepted                                  | tests/marketingEvents.test.ts    |
+| MKT-EVT-002 | Registration cannot exceed capacity-bound event                                          | capacity set and currentRegistrations == capacity rejects new registration                                                  | tests/marketingEvents.test.ts    |
+| MKT-EVT-003 | Completed event with follow-ups outstanding after 3 days raises EX-MKT-008               | MarketingEventRegistration.followUpDone=false 3 days after event.endAt fires EX-MKT-008                                     | tests/marketingEvents.test.ts    |
+| MKT-EVT-004 | Check-in sets checkedInAt and flips status to attended                                   | POST /events/:id/registrations/:regId/check-in sets checkedInAt=now, status=attended                                        | tests/marketingEvents.test.ts    |
 
 | MKT-AST-001 | Asset moves only along ASSET_TRANSITIONS; only approved used in send/post | status in [draft,in_review,approved,retired]; send/post rejects unapproved assetIds | tests/marketingAssets.test.ts |
 | MKT-AST-002 | Asset used past usageRights expiresAt raises EX-MKT-012 | Send/post with asset where expiresAt < now fires EX-MKT-012 exception | tests/marketingAssets.test.ts |
@@ -248,7 +255,7 @@ apps/api/prisma/schema/
 | MKT-GOV-002 | Every state transition emits kz.mkt.<entity>.<verb> event | All campaign/send/journey/event/template/asset/referral/budget transitions fire canonical events | tests/marketingEvents.test.ts |
 | MKT-GOV-003 | AI-MKT-007 (send approval) and AI-MKT-008 (budget approval) PROHIBITED | AI tier for send/budget approval is PROHIBITED; AgentAction.propose rejects | tests/marketingGovernance.test.ts |
 | MKT-GOV-004 | Marketing never approves own campaign/budget; self-dealing bar applies | platform/approvals.ts reroutes interested approver away from self | tests/marketingGovernance.test.ts |
-| MKT-INT-001 | Inbound webhook accepted only from recognised provider, recorded before processing | POST /public/webhooks/:provider validates provider in [email,sms,whatsapp,forms]; stores MarketingWebhookInbound before parse | tests/marketingIntegration.test.ts |
+| MKT-INT-001 | Inbound webhook accepted only from recognised provider, recorded before processing | POST /api/marketing/public/webhooks/:provider/:endpointToken (routes/marketing/public.routes.ts:61); the token names the tenant, provider in [email,sms,whatsapp,forms] (capture.ts:700); stores MarketingWebhookInbound before parse (capture.ts:813) | tests/marketingIntegration.test.ts |
 | MKT-INT-002 | Provider webhook failure retried, never silently dropped | Webhook parse error recorded in status; job retries; error field populated | tests/marketingIntegration.test.ts |
 | MKT-INT-003 | Channel with providerAdapter null treated as not configured, never silent no-op | Send with providerAdapter=null raises EX-MKT-011, not queued silently | tests/marketingIntegration.test.ts |
 
@@ -274,8 +281,8 @@ cd apps/api && npx vitest run src/tests/marketing
 ```
 
 When all tests pass, the module is ready for:
+
 - Local development: `pnpm dev`
 - Tenant seeding: channels, default lead score rules, navigation
 - Integration testing: end-to-end campaign creation through send dispatch
 - Performance baseline: concurrent send dispatch, audience evaluation, attribution recompute
-

@@ -15,7 +15,7 @@ instead of appending to `ceo-office.md` itself):
 
 - `packages/shared/src/ceo.ts` (new) — every DTO type/enum for Phases 1-9,
   derived field-by-field from §5. Re-exported from `packages/shared/src/
-  index.ts`.
+index.ts`.
 - `packages/shared/src/permissions.ts` — 21 new resources added to
   `RESOURCES`.
 - `apps/api/src/seed/grants.ts` — the same 21 resources added to
@@ -32,12 +32,12 @@ instead of appending to `ceo-office.md` itself):
   in §6's master table, plus `ceo_kpi_library` — see Deviation 1 below), all
   `group: 'ceo'`, `archetypes: ['command', 'workspace', 'console']`.
 - `apps/api/src/routes/index.ts` — `router.use('/ceo', requireAuth,
-  ceoRoutes)`.
+ceoRoutes)`.
 - `apps/api/src/routes/ceo/index.ts` (new) — mounts the 9 area routers at
   `/cockpit`, `/strategy`, `/initiatives`, `/rhythm`, `/doa`, `/board`,
   `/risk`, `/finance`, `/people`.
 - `apps/api/src/routes/ceo/{cockpit,strategy,initiatives,rhythm,doa,board,
-  risk,finance,people}.routes.ts` (new, 9 files) — each a wildcard stub:
+risk,finance,people}.routes.ts` (new, 9 files) — each a wildcard stub:
   every `GET` returns `{ items: [] }`, every `POST`/`PATCH`/`DELETE` returns
   501 `{ message: 'Not built yet.' }`.
 - `apps/web/src/main.tsx` — 24 `<Route>` entries (20 unique stub pages, 4
@@ -45,7 +45,7 @@ instead of appending to `ceo-office.md` itself):
   the master table's "same component" rows).
 - `apps/web/src/pages/ceo/*.tsx` (new, 20 files — see Deviation 1) — each
   `<PageHeader/><Card><EmptyState message="This screen is not built yet."
-  /></Card>`.
+/></Card>`.
 - `apps/web/src/components/Shell.tsx` — `'ceo'` added to `GROUP_ORDER`
   (after `'equity'`, before `'people'` — still satisfies "after equity,
   before compliance"); `ceo: "Chairman's Office"` added to `GROUP_LABELS`.
@@ -58,7 +58,7 @@ instead of appending to `ceo-office.md` itself):
 - `apps/api/src/domains/ceo/detectors.ts` (new) — imports each area's
   `detectors` array and runs them all; the scheduler's only touch point.
 - `apps/api/src/domains/ceo/{cockpit,strategy,initiatives,rhythm,doa,board,
-  risk,finance,people}.detectors.ts` (new, 9 stub files) — each exports an
+risk,finance,people}.detectors.ts` (new, 9 stub files) — each exports an
   empty `detectors` array.
 - `apps/api/src/jobs/scheduler.ts` — one job registration,
   `runCeoDetectorsJob`, calling `runCeoDetectors()`.
@@ -148,9 +148,9 @@ replaces its own file wholesale — see the note under Deviation 2.
 
 4. **The test database was reseeded (`scripts/test-db.sh --reseed`).** The
    grant-matrix drift test (`the durable grant rows match the declared
-   matrix, with no drift`, `acceptance.test.ts`) compares the seeded
+matrix, with no drift`, `acceptance.test.ts`) compares the seeded
    tenant's actual `Grant` rows against `ROLE_GRANT_MATRIX` — a `prisma db
-   push` alone does not backfill new resources into an already-seeded
+push` alone does not backfill new resources into an already-seeded
    database's grant rows (that is `addMissingGrants`'s job, which runs at
    API boot or via `reconcileGrants --apply`, neither of which the test run
    invokes). Reseeding was the correct remedy per §7's own guidance ("if

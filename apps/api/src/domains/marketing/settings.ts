@@ -7,7 +7,14 @@
  * recent inbound webhooks, and the AI-MKT touchpoint catalogue.
  */
 
-import { AI_TOUCHPOINTS, CHANNEL_KEY_LABELS, CHANNEL_KEYS, EVENTS, type ChannelKey, type ChannelKind } from '@kaizen/shared';
+import {
+  AI_TOUCHPOINTS,
+  CHANNEL_KEY_LABELS,
+  CHANNEL_KEYS,
+  EVENTS,
+  type ChannelKey,
+  type ChannelKind,
+} from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
@@ -22,6 +29,8 @@ registerGovernedEntities('mkt', ['channel', 'claim']);
 // ---------------------------------------------------------------------------
 // Channels
 // ---------------------------------------------------------------------------
+
+registerGovernedEntities('mkt', ['tenant']);
 
 /** `owned | paid | earned | direct`, per the skeleton — distinct from the adapter registry's `email|sms|whatsapp|social|ads` kind. */
 const DEFAULT_CHANNEL_KIND: Record<ChannelKey, string> = {
@@ -67,7 +76,10 @@ export async function ensureDefaultChannels(tenantId: string): Promise<number> {
 export async function listChannels() {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_settings', verb: 'view' });
-  const channels = await prisma.marketingChannel.findMany({ where: { tenantId: auth.tenantId, deletedAt: null }, orderBy: { key: 'asc' } });
+  const channels = await prisma.marketingChannel.findMany({
+    where: { tenantId: auth.tenantId, deletedAt: null },
+    orderBy: { key: 'asc' },
+  });
   const statuses = new Map(adapterStatus().map((s) => [s.channelKey, s]));
 
   return channels.map((c) => {
@@ -80,7 +92,14 @@ export async function listChannels() {
   });
 }
 
-export async function createChannel(input: { key: string; label: string; kind: string; providerAdapter?: string | null; config?: Record<string, unknown>; senderIds?: string[] }) {
+export async function createChannel(input: {
+  key: string;
+  label: string;
+  kind: string;
+  providerAdapter?: string | null;
+  config?: Record<string, unknown>;
+  senderIds?: string[];
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_settings', verb: 'create' });
 
@@ -105,7 +124,17 @@ export async function createChannel(input: { key: string; label: string; kind: s
   return channel;
 }
 
-export async function updateChannel(id: string, patch: { label?: string; active?: boolean; senderIds?: string[]; dltEntityId?: string | null; config?: Record<string, unknown>; providerAdapter?: string | null }) {
+export async function updateChannel(
+  id: string,
+  patch: {
+    label?: string;
+    active?: boolean;
+    senderIds?: string[];
+    dltEntityId?: string | null;
+    config?: Record<string, unknown>;
+    providerAdapter?: string | null;
+  },
+) {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_settings', verb: 'edit' });
   const channel = await prisma.marketingChannel.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
@@ -123,7 +152,13 @@ export async function updateChannel(id: string, patch: { label?: string; active?
       updatedById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'update', subjectType: 'channel', subjectId: id, before: { active: channel.active }, after: { active: updated.active } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'channel',
+    subjectId: id,
+    before: { active: channel.active },
+    after: { active: updated.active },
+  });
   return updated;
 }
 
@@ -174,8 +209,17 @@ export async function patchPolicy(patch: Partial<MarketingPolicy>) {
   const current = { ...DEFAULT_MARKETING_POLICY, ...((config.marketing as Partial<MarketingPolicy>) ?? {}) };
   const next = { ...current, ...patch };
 
-  await prisma.tenant.update({ where: { id: auth.tenantId }, data: { config: { ...config, marketing: next } as never } });
-  await auditWrite({ action: 'update', subjectType: 'tenant', subjectId: auth.tenantId, before: { marketingPolicy: current }, after: { marketingPolicy: next }, force: true });
+  await prisma.tenant.update({
+    where: { id: auth.tenantId },
+    data: { config: { ...config, marketing: next } as never },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'tenant',
+    subjectId: auth.tenantId,
+    before: { marketingPolicy: current },
+    after: { marketingPolicy: next },
+  });
   return next;
 }
 
@@ -201,7 +245,11 @@ export async function createClaim(input: { text: string; evidenceRef?: string | 
     },
   });
   await auditWrite({ action: 'create', subjectType: 'claim', subjectId: claim.id, after: { text: claim.text } });
-  await emit({ name: EVENTS.MKT_CLAIM_PROPOSED, subject: { entityType: 'claim', entityId: claim.id, recordCode }, impact: { domains: ['mkt'] } });
+  await emit({
+    name: EVENTS.MKT_CLAIM_PROPOSED,
+    subject: { entityType: 'claim', entityId: claim.id, recordCode },
+    impact: { domains: ['mkt'] },
+  });
   return claim;
 }
 
@@ -231,9 +279,22 @@ export async function approveClaim(id: string) {
     throw ApiError.forbidden('The Self-Dealing Bar is unconditional: a proposer may never approve their own claim.');
   }
 
-  const updated = await prisma.marketingClaim.update({ where: { id }, data: { status: 'approved', approvedById: auth.partyId } });
-  await auditWrite({ action: 'update', subjectType: 'claim', subjectId: id, before: { status: 'proposed' }, after: { status: 'approved' } });
-  await emit({ name: EVENTS.MKT_CLAIM_APPROVED, subject: { entityType: 'claim', entityId: id, recordCode: claim.recordCode }, impact: { domains: ['mkt'] } });
+  const updated = await prisma.marketingClaim.update({
+    where: { id },
+    data: { status: 'approved', approvedById: auth.partyId },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'claim',
+    subjectId: id,
+    before: { status: 'proposed' },
+    after: { status: 'approved' },
+  });
+  await emit({
+    name: EVENTS.MKT_CLAIM_APPROVED,
+    subject: { entityType: 'claim', entityId: id, recordCode: claim.recordCode },
+    impact: { domains: ['mkt'] },
+  });
   return updated;
 }
 
@@ -244,7 +305,13 @@ export async function rejectClaim(id: string, reason: string) {
   if (claim.status !== 'proposed') throw ApiError.unprocessable(`A claim at '${claim.status}' cannot be rejected.`);
 
   const updated = await prisma.marketingClaim.update({ where: { id }, data: { status: 'rejected' } });
-  await auditWrite({ action: 'update', subjectType: 'claim', subjectId: id, before: { status: 'proposed' }, after: { status: 'rejected', reason } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'claim',
+    subjectId: id,
+    before: { status: 'proposed' },
+    after: { status: 'rejected', reason },
+  });
   await emit({
     name: EVENTS.MKT_CLAIM_REJECTED,
     subject: { entityType: 'claim', entityId: id, recordCode: claim.recordCode },
@@ -259,10 +326,17 @@ export async function retireClaim(id: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_assets', verb: 'edit' });
   const claim = await getClaimOr404(id);
-  if (claim.status !== 'approved') throw ApiError.unprocessable(`Only an approved claim can be retired (currently '${claim.status}').`);
+  if (claim.status !== 'approved')
+    throw ApiError.unprocessable(`Only an approved claim can be retired (currently '${claim.status}').`);
 
   const updated = await prisma.marketingClaim.update({ where: { id }, data: { status: 'retired' } });
-  await auditWrite({ action: 'update', subjectType: 'claim', subjectId: id, before: { status: 'approved' }, after: { status: 'retired' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'claim',
+    subjectId: id,
+    before: { status: 'approved' },
+    after: { status: 'retired' },
+  });
   void auth;
   return updated;
 }

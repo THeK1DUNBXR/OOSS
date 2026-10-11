@@ -1,0 +1,14 @@
+// Platform infrastructure models: rows the request edge needs before a tenant
+// is known. Nothing here is business data, so these do not follow the
+// tenantId-on-every-row rule in main.prisma.
+
+/// Shared counters for express-rate-limit (platform/rateLimitStore.ts). Keyed
+/// by a limiter name and the caller's address, never by tenant: the limit has
+/// to bite on an unauthenticated login, which has no tenant yet. Read and
+/// written only through the store, via raw SQL, so the tenant-scope extension
+/// never sees it.
+model RateLimitBucket {
+  key         String   @id
+  hits        Int      @default(0)
+  windowStart DateTime @default(now())
+}

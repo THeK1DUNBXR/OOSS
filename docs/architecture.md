@@ -4,18 +4,18 @@ The platform is organised as ten planes. A plane is not a layer in a stack —
 several of them are active in the same request. A plane is a question the
 system answers exactly once, in exactly one place.
 
-| | Plane | The question it answers once |
-|---|---|---|
-| P0 | Tenancy | Whose data is this? |
-| P1 | Party / Identity | Who is this, and are they one person or two? |
-| P2 | World Model | What kinds of things exist, and what may they become? |
-| P3 | Relationship Graph | How is anything connected to anything else? |
-| P4 | Event Fabric | What happened, in what order, and can we prove it? |
-| P5 | Automation | What should follow from that, without a human? |
-| P6 | Intelligence | What does it mean, and what would we do about it? |
-| P7 | Governance | Who may do this, and under what authority? |
-| P8 | Memory | What did we decide, and why? |
-| P9 | Experience | How does a person see and act on all of it? |
+|     | Plane              | The question it answers once                          |
+| --- | ------------------ | ----------------------------------------------------- |
+| P0  | Tenancy            | Whose data is this?                                   |
+| P1  | Party / Identity   | Who is this, and are they one person or two?          |
+| P2  | World Model        | What kinds of things exist, and what may they become? |
+| P3  | Relationship Graph | How is anything connected to anything else?           |
+| P4  | Event Fabric       | What happened, in what order, and can we prove it?    |
+| P5  | Automation         | What should follow from that, without a human?        |
+| P6  | Intelligence       | What does it mean, and what would we do about it?     |
+| P7  | Governance         | Who may do this, and under what authority?            |
+| P8  | Memory             | What did we decide, and why?                          |
+| P9  | Experience         | How does a person see and act on all of it?           |
 
 Each module declares not only what it does but what it **never** does
 (`packages/shared/src/planes.ts`). CRM never holds money movement. Finance
@@ -82,13 +82,13 @@ the audit trail survives the merge.
 Three kinds of body, separated because they are read, billed, reported and
 worked differently:
 
-| On screen | What it is | Stored as | Grant family |
-|---|---|---|---|
-| **Customers** | somebody who takes a course | `Person` + `StudentProfile` | `students` |
-| **Institutions** | a school, college or polytechnic | `Organization` `kind='institution'` + `InstitutionProfile` | `institutions` |
-| **Organisations** | a trust, a foundation, a business | `Organization` `kind='organization'` + billing | `organizations` |
+| On screen         | What it is                        | Stored as                                                  | Grant family    |
+| ----------------- | --------------------------------- | ---------------------------------------------------------- | --------------- |
+| **Customers**     | somebody who takes a course       | `Person` + `StudentProfile`                                | `students`      |
+| **Institutions**  | a school, college or polytechnic  | `Organization` `kind='institution'` + `InstitutionProfile` | `institutions`  |
+| **Organisations** | a trust, a foundation, a business | `Organization` `kind='organization'` + billing             | `organizations` |
 
-The screen names are the company's own: a *customer* here is a learner who buys
+The screen names are the company's own: a _customer_ here is a learner who buys
 a course — from its own phrase, "Customer (Student)" — and the two bodies are
 named for what they are. The code keeps `student`, because that is what the
 record is and what the invoice calls it; the label is what a person looks for.
@@ -99,7 +99,7 @@ that a college might also buy training and keeping two records of one legal body
 is how a CRM starts lying to you. That reasoning was right about billing and
 wrong about identity: the product ended up with a single list called "Companies
 & Colleges" that answered neither "which colleges do we work with" nor "who are
-our corporate clients", and with one word — *customer* — covering a fifteen-year-old
+our corporate clients", and with one word — _customer_ — covering a fifteen-year-old
 learner, a government polytechnic and a manufacturer.
 
 So:
@@ -114,7 +114,7 @@ So:
   already a contact attaches a profile rather than forking them.
 - **"Customer" is a role on a document, not a kind of record.** It exists on an
   invoice — which of the three this obligation is owed by — and nowhere else.
-  The document prints which, because *Student* over a name and *Institution*
+  The document prints which, because _Student_ over a name and _Institution_
   over a college's name are different documents to whoever files them.
 - **Getting the kind wrong is correctable, not editable.** `reclassifyOrganization`
   asks for a reason and refuses while learners name the row as where they came
@@ -143,8 +143,8 @@ its own reports as nothing.
 takes people at the end of a cohort, `government` is a department or state skill
 agency appointing partners. A manufacturer that funds a CSR cohort and hires out
 of it is both, and the best relationships are. This is the opposite call from
-institution-versus-organisation: what a body *is* is one exclusive thing, what it
-*does with us* is several, and flattening the second into the first is what
+institution-versus-organisation: what a body _is_ is one exclusive thing, what it
+_does with us_ is several, and flattening the second into the first is what
 produced a list nobody could read.
 
 **An institution is a partnership at a stated depth.** The six engagements come
@@ -195,7 +195,7 @@ confidentiality, retention class — and an integrity block:
 integrity.hash = sha256(prevHash | canonical-json(body))
 ```
 
-The durable write happens *before* subscriber dispatch, so a handler crash
+The durable write happens _before_ subscriber dispatch, so a handler crash
 cannot lose the fact. `verifyChain()` walks the chain independently of the
 request context that wrote it, which is what makes it an audit rather than a
 self-report. Tampering with any event breaks every subsequent link.
@@ -216,13 +216,13 @@ logging, so a process restart does not lose an in-flight retry.
 Every access decision passes through one `evaluate()`, which returns a per-axis
 outcome rather than a boolean, so a denial can say which axis denied it.
 
-| Axis | Question | Source |
-|---|---|---|
-| WHO | Does this principal hold a grant on this resource and verb? | GRANT rows |
-| WHERE | Is this record in scope — `own`, `own_or_unowned`, `all`? | scope + resolver |
-| WHAT | Does their classification ceiling clear this record's class? | role ceiling |
-| HOW MUCH | Is the magnitude within their authority ceiling? | AUTHORITY_GRANT |
-| WHY | Is a purpose declared, and does it permit this? | request purpose |
+| Axis     | Question                                                     | Source           |
+| -------- | ------------------------------------------------------------ | ---------------- |
+| WHO      | Does this principal hold a grant on this resource and verb?  | GRANT rows       |
+| WHERE    | Is this record in scope — `own`, `own_or_unowned`, `all`?    | scope + resolver |
+| WHAT     | Does their classification ceiling clear this record's class? | role ceiling     |
+| HOW MUCH | Is the magnitude within their authority ceiling?             | AUTHORITY_GRANT  |
+| WHY      | Is a purpose declared, and does it permit this?              | request purpose  |
 
 Nothing is cached at login. A grant revoked mid-session takes effect on the next
 query, because the next query re-evaluates.
@@ -236,7 +236,7 @@ the source. Where a narrowing looks like a role list, it is expressed as data:
 - need-to-know on a concealed interaction → a `restricted_interactions:view`
   grant
 
-Holding the grant *is* the condition. Re-pointing any of them is a matrix edit,
+Holding the grant _is_ the condition. Re-pointing any of them is a matrix edit,
 not a code change.
 
 An empty cell in the legacy matrix translates to an **explicit grant absence** —
@@ -251,8 +251,8 @@ translation time rather than left for a permission check to interpret.
 - **Structural exclusion** — the field is absent from the response shape
   entirely. Used for regulated fields. The stronger guarantee, because a masked
   field's presence is itself information.
-- **Concealing** — the record is absent from the payload, the schema *and any
-  count*. Used where the existence of the record is the sensitive fact.
+- **Concealing** — the record is absent from the payload, the schema _and any
+  count_. Used where the existence of the record is the sensitive fact.
 
 ---
 
@@ -314,10 +314,10 @@ is never a number without a route to its evidence, at most three hops away.
 Two rules matter more than the arithmetic:
 
 - **"Not yet measured" is never zero.** A domain with insufficient inputs
-  renders as unmeasured. Rendering it as 0.0 would state a fact — *this is
-  going badly* — that the system does not know.
+  renders as unmeasured. Rendering it as 0.0 would state a fact — _this is
+  going badly_ — that the system does not know.
 - **The falsifiability check.** A factor that cannot move in both directions is
-  not a measurement. `H_RSK` is a rollup of whether risk is being *managed*
+  not a measurement. `H_RSK` is a rollup of whether risk is being _managed_
   (unacknowledged severe exceptions, SLA breaches, ownership completeness), not
   a count of how much risk exists — otherwise a working detector suite would
   bottom out the domain it is protecting, and the better the instrumentation the
@@ -397,7 +397,7 @@ copy in the customer's file has to still read the same in three years. A payment
 arriving next week is a new fact with its own document, not an amendment to an
 old one.
 
-So the surfaces split what the invoice *says* from where the account *stands*.
+So the surfaces split what the invoice _says_ from where the account _stands_.
 The printed sheet carries only the figures fixed at issue; the live position, the
 receipts and the statements sit in the application chrome, which does not print.
 
@@ -442,7 +442,7 @@ holds across the product:
 
 > **Plain words lead. The code stays available.**
 
-A tile is headed *Money*, not `H_FIN`. A chip reads *High risk*, not
+A tile is headed _Money_, not `H_FIN`. A chip reads _High risk_, not
 `S3_HIGH_RISK` — and its tooltip carries the code, for the person whose job
 needs it. A grant cell still shows `VCEA@own`, because that audience reads it
 fluently, and hovering spells it out as a sentence so nobody has to decode it
@@ -452,7 +452,7 @@ Two things this rule is not:
 
 - **It is not "avoid business terms."** A salesperson knows what a lead, a
   pipeline, a quote and a forecast are. Renaming those would make the product
-  worse for the people who use it. What gets translated is the *engineering*
+  worse for the people who use it. What gets translated is the _engineering_
   vocabulary underneath.
 - **It is not renaming anything in the database.** `packages/shared` and the
   schema are unchanged. The translation lives in one module,
@@ -460,8 +460,8 @@ Two things this rule is not:
   emits.
 
 Empty states say what is true rather than which threshold was not crossed:
-*"Nothing significant has changed since you last looked"*, not *"Nothing
-crossed the materiality floor in this window."* And where a score has too
+_"Nothing significant has changed since you last looked"_, not _"Nothing
+crossed the materiality floor in this window."_ And where a score has too
 little evidence, the screen says **Nothing to measure yet** — never a zero,
 because a zero asserts that things are going badly, which is a different claim
 from not knowing.

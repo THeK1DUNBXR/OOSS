@@ -39,13 +39,7 @@ export type ItAssetEventKind = (typeof IT_ASSET_EVENT_KINDS)[number];
 
 export type ItAssetStatus = 'in_stock' | 'assigned' | 'in_repair' | 'retired' | 'disposed';
 
-export type ItAssetLifecycleEvent =
-  | 'ASSIGN'
-  | 'RETURN'
-  | 'SEND_TO_REPAIR'
-  | 'BACK_FROM_REPAIR'
-  | 'RETIRE'
-  | 'DISPOSE';
+export type ItAssetLifecycleEvent = 'ASSIGN' | 'RETURN' | 'SEND_TO_REPAIR' | 'BACK_FROM_REPAIR' | 'RETIRE' | 'DISPOSE';
 
 /** Past-tense verb per transition, for the event name and the audit trail. */
 export const IT_ASSET_EVENT_VERB: Record<ItAssetLifecycleEvent, string> = {
@@ -92,7 +86,10 @@ export const DEFAULT_IT_ASSET_WARRANTY_RUNGS = [90, 30, 7, 0] as const;
  * `packages/shared/src/compliance/calendar.ts`: the widest rung crossed is
  * mildest, the tightest is what describes the situation right now.
  */
-export function warrantyRung(daysLeft: number, rungs: readonly number[] = DEFAULT_IT_ASSET_WARRANTY_RUNGS): number | null {
+export function warrantyRung(
+  daysLeft: number,
+  rungs: readonly number[] = DEFAULT_IT_ASSET_WARRANTY_RUNGS,
+): number | null {
   const sorted = [...rungs].sort((a, b) => b - a);
   const crossed = sorted.filter((r) => daysLeft <= r);
   if (!crossed.length) return null;

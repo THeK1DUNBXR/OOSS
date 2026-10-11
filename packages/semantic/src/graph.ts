@@ -40,11 +40,17 @@ export interface MetricGraph {
   metrics: Record<string, MetricDefinition>;
 }
 
-export function defineEntity(name: string, definition: EntityDefinition): { name: string; definition: EntityDefinition } {
+export function defineEntity(
+  name: string,
+  definition: EntityDefinition,
+): { name: string; definition: EntityDefinition } {
   return { name, definition };
 }
 
-export function defineMetric(name: string, definition: MetricDefinition): { name: string; definition: MetricDefinition } {
+export function defineMetric(
+  name: string,
+  definition: MetricDefinition,
+): { name: string; definition: MetricDefinition } {
   return { name, definition };
 }
 

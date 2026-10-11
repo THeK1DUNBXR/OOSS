@@ -53,16 +53,25 @@ const updatePlanBody = z.object({
   status: z.enum(['active', 'retired']).optional(),
 });
 
-router.get('/continuity/summary', handler(async () => continuitySummary()));
+router.get(
+  '/continuity/summary',
+  handler(async () => continuitySummary()),
+);
 
 router.get(
   '/continuity/plans',
   handler(async (req) => listPlans({ tier: numeric(req.query.tier), status: str(req.query.status) })),
 );
 
-router.post('/continuity/plans', handler(async (req) => createPlan(createPlanBody.parse(req.body))));
+router.post(
+  '/continuity/plans',
+  handler(async (req) => createPlan(createPlanBody.parse(req.body))),
+);
 
-router.get('/continuity/plans/:id', handler(async (req) => planDetail(req.params.id)));
+router.get(
+  '/continuity/plans/:id',
+  handler(async (req) => planDetail(req.params.id)),
+);
 
 router.patch(
   '/continuity/plans/:id',
@@ -84,7 +93,10 @@ const recordTestBody = z.object({
   evidenceDocumentId: z.string().nullish(),
 });
 
-router.get('/continuity/plans/:id/tests', handler(async (req) => listTests(req.params.id)));
+router.get(
+  '/continuity/plans/:id/tests',
+  handler(async (req) => listTests(req.params.id)),
+);
 
 router.post(
   '/continuity/plans/:id/tests',
@@ -108,14 +120,22 @@ const recordAvailabilityBody = z.object({
   note: z.string().nullish(),
 });
 
-router.get('/availability/summary', handler(async () => availabilitySummary()));
+router.get(
+  '/availability/summary',
+  handler(async () => availabilitySummary()),
+);
 
 router.get(
   '/availability/readings',
-  handler(async (req) => listAvailabilityReadings({ period: str(req.query.period), applicationId: str(req.query.applicationId) })),
+  handler(async (req) =>
+    listAvailabilityReadings({ period: str(req.query.period), applicationId: str(req.query.applicationId) }),
+  ),
 );
 
-router.post('/availability/readings', handler(async (req) => recordAvailabilityReading(recordAvailabilityBody.parse(req.body))));
+router.post(
+  '/availability/readings',
+  handler(async (req) => recordAvailabilityReading(recordAvailabilityBody.parse(req.body))),
+);
 
 // ---------------------------------------------------------------------------
 // Maintenance windows
@@ -146,12 +166,17 @@ router.post(
   }),
 );
 
-router.get('/maintenance/:id', handler(async (req) => maintenanceWindowDetail(req.params.id)));
+router.get(
+  '/maintenance/:id',
+  handler(async (req) => maintenanceWindowDetail(req.params.id)),
+);
 
 router.post(
   '/maintenance/:id/cancel',
   handler(async (req) => {
-    const body = z.object({ reason: z.string().min(1, 'Cancelling a maintenance window needs a reason.') }).parse(req.body);
+    const body = z
+      .object({ reason: z.string().min(1, 'Cancelling a maintenance window needs a reason.') })
+      .parse(req.body);
     return cancelMaintenanceWindow(req.params.id, body.reason);
   }),
 );

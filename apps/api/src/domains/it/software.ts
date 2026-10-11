@@ -145,7 +145,12 @@ export async function createApplication(input: CreateApplicationInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_application', subjectId: app.id, after: { recordCode, name: app.name } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_application',
+    subjectId: app.id,
+    after: { recordCode, name: app.name },
+  });
   await emit({
     name: EVENTS.IT_APPLICATION_CREATED,
     subject: { entityType: 'it_application', entityId: app.id, recordCode },
@@ -378,7 +383,12 @@ export async function createLicence(input: CreateLicenceInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_licence', subjectId: licence.id, after: { recordCode, applicationId: input.applicationId } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_licence',
+    subjectId: licence.id,
+    after: { recordCode, applicationId: input.applicationId },
+  });
   await emit({
     name: EVENTS.IT_LICENCE_CREATED,
     subject: { entityType: 'it_licence', entityId: licence.id, recordCode },
@@ -416,7 +426,9 @@ export async function listLicences(filter: LicenceFilter = {}) {
   let filtered = rows;
   if (filter.view === 'renewing') {
     const now = new Date();
-    filtered = rows.filter((r) => r.renewalDate && daysUntilLicenceDate(r.renewalDate, now) <= 90 && r.status !== 'cancelled');
+    filtered = rows.filter(
+      (r) => r.renewalDate && daysUntilLicenceDate(r.renewalDate, now) <= 90 && r.status !== 'cancelled',
+    );
   } else if (filter.view === 'over_allocated') {
     filtered = rows.filter((r) => seatUtilisation(r.seatsPurchased, r.seatsInUse).overAllocated);
   }
@@ -453,10 +465,16 @@ export async function licenceDetail(id: string) {
 export async function updateSeats(id: string, seatsInUse: number, note?: string) {
   const auth = currentAuth();
   const licence = await loadLicence(id);
-  await assertCan({ resource: 'it_licences', verb: 'edit', record: { ownerPartyId: licence.application.ownerPartyId } });
+  await assertCan({
+    resource: 'it_licences',
+    verb: 'edit',
+    record: { ownerPartyId: licence.application.ownerPartyId },
+  });
 
-  if (!Number.isInteger(seatsInUse) || seatsInUse < 0) throw ApiError.badRequest('Seats in use must be a non-negative whole number.');
-  if (licence.status === 'cancelled') throw ApiError.conflict(`${licence.recordCode ?? id} is cancelled; its seat count is no longer live.`);
+  if (!Number.isInteger(seatsInUse) || seatsInUse < 0)
+    throw ApiError.badRequest('Seats in use must be a non-negative whole number.');
+  if (licence.status === 'cancelled')
+    throw ApiError.conflict(`${licence.recordCode ?? id} is cancelled; its seat count is no longer live.`);
 
   const before = licence.seatsInUse;
   const updated = await prisma.itLicence.update({
@@ -474,7 +492,13 @@ export async function updateSeats(id: string, seatsInUse: number, note?: string)
       detail: { before, after: seatsInUse },
     },
   });
-  await auditWrite({ action: 'update', subjectType: 'it_licence', subjectId: id, before: { seatsInUse: before }, after: { seatsInUse } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_licence',
+    subjectId: id,
+    before: { seatsInUse: before },
+    after: { seatsInUse },
+  });
 
   return updated;
 }
@@ -528,9 +552,14 @@ export interface RenewalGateResult {
 export async function proposeRenewal(id: string, input: ProposeRenewalInput): Promise<RenewalGateResult> {
   const auth = currentAuth();
   const licence = await loadLicence(id);
-  await assertCan({ resource: 'it_licences', verb: 'edit', record: { ownerPartyId: licence.application.ownerPartyId } });
+  await assertCan({
+    resource: 'it_licences',
+    verb: 'edit',
+    record: { ownerPartyId: licence.application.ownerPartyId },
+  });
 
-  if (licence.status === 'cancelled') throw ApiError.conflict(`${licence.recordCode ?? id} is cancelled and cannot be renewed.`);
+  if (licence.status === 'cancelled')
+    throw ApiError.conflict(`${licence.recordCode ?? id} is cancelled and cannot be renewed.`);
   if (licence.pendingRenewalApprovalStepId) {
     throw ApiError.conflict(`${licence.recordCode ?? id} already has a renewal proposal awaiting a decision.`);
   }
@@ -556,6 +585,8 @@ export async function proposeRenewal(id: string, input: ProposeRenewalInput): Pr
       subjectId: id,
       subjectLabel: licence.recordCode ?? id,
       action: 'it_licence.renew',
+      // approveRenewal checks `it_licences:approve`; the step must carry the same grant.
+      resource: 'it_licences',
       requestedById: auth.partyId ?? 'system',
       requestedValue: annualised,
       currency: licence.currency,
@@ -585,7 +616,12 @@ export async function proposeRenewal(id: string, input: ProposeRenewalInput): Pr
       kind: 'renewal_proposed',
       actorPartyId: auth.partyId,
       note: input.note ?? null,
-      detail: { approvalStepId: step.id, newTermEnd: input.newTermEnd, newCostPerPeriod: costPerPeriod, annualisedCost: annualised },
+      detail: {
+        approvalStepId: step.id,
+        newTermEnd: input.newTermEnd,
+        newCostPerPeriod: costPerPeriod,
+        annualisedCost: annualised,
+      },
     },
   });
 
@@ -668,10 +704,28 @@ export async function approveRenewal(id: string, approve: boolean, note = ''): P
       },
     });
     await prisma.itLicenceEvent.create({
-      data: { tenantId: auth.tenantId, licenceId: id, kind: 'renewal_declined', actorPartyId: auth.partyId, note: note || null },
+      data: {
+        tenantId: auth.tenantId,
+        licenceId: id,
+        kind: 'renewal_declined',
+        actorPartyId: auth.partyId,
+        note: note || null,
+      },
     });
-    await auditWrite({ action: 'update', subjectType: 'it_licence', subjectId: id, before: { status: licence.status }, after: { renewalDeclined: true } });
-    return { applied: false, licence: cleared, approvalStepId: decided.id, resolvedApproverRole: decided.resolvedApproverRole, reason: 'Declined.' };
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_licence',
+      subjectId: id,
+      before: { status: licence.status },
+      after: { renewalDeclined: true },
+    });
+    return {
+      applied: false,
+      licence: cleared,
+      approvalStepId: decided.id,
+      resolvedApproverRole: decided.resolvedApproverRole,
+      reason: 'Declined.',
+    };
   }
 
   const updated = await prisma.itLicence.update({
@@ -700,7 +754,13 @@ export async function approveRenewal(id: string, approve: boolean, note = ''): P
       detail: { termEnd: updated.termEnd, costPerPeriod: num(updated.costPerPeriod) },
     },
   });
-  await auditWrite({ action: 'update', subjectType: 'it_licence', subjectId: id, before: { status: licence.status }, after: { status: 'active', termEnd: updated.termEnd } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_licence',
+    subjectId: id,
+    before: { status: licence.status },
+    after: { status: 'active', termEnd: updated.termEnd },
+  });
   await emit({
     name: EVENTS.IT_LICENCE_RENEWED,
     subject: { entityType: 'it_licence', entityId: id, recordCode: licence.recordCode },
@@ -710,13 +770,23 @@ export async function approveRenewal(id: string, approve: boolean, note = ''): P
     impact: { domains: [IT_DOMAIN] },
   });
 
-  return { applied: true, licence: updated, approvalStepId: decided.id, resolvedApproverRole: decided.resolvedApproverRole, reason: 'Renewed.' };
+  return {
+    applied: true,
+    licence: updated,
+    approvalStepId: decided.id,
+    resolvedApproverRole: decided.resolvedApproverRole,
+    reason: 'Renewed.',
+  };
 }
 
 export async function cancelLicence(id: string, reason: string) {
   const auth = currentAuth();
   const licence = await loadLicence(id);
-  await assertCan({ resource: 'it_licences', verb: 'edit', record: { ownerPartyId: licence.application.ownerPartyId } });
+  await assertCan({
+    resource: 'it_licences',
+    verb: 'edit',
+    record: { ownerPartyId: licence.application.ownerPartyId },
+  });
 
   const trimmed = reason?.trim();
   if (!trimmed) throw ApiError.badRequest('Cancelling a licence needs a reason — it is a decision, not a shrug.');
@@ -739,7 +809,13 @@ export async function cancelLicence(id: string, reason: string) {
   await prisma.itLicenceEvent.create({
     data: { tenantId: auth.tenantId, licenceId: id, kind: 'cancelled', actorPartyId: auth.partyId, note: trimmed },
   });
-  await auditWrite({ action: 'update', subjectType: 'it_licence', subjectId: id, before: { status: licence.status }, after: { status: 'cancelled', reason: trimmed } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_licence',
+    subjectId: id,
+    before: { status: licence.status },
+    after: { status: 'cancelled', reason: trimmed },
+  });
   await emit({
     name: EVENTS.IT_LICENCE_CANCELLED,
     subject: { entityType: 'it_licence', entityId: id, recordCode: licence.recordCode },
@@ -756,13 +832,22 @@ export async function cancelLicence(id: string, reason: string) {
 // Ladder / exception detectors (called by the daily job)
 // ---------------------------------------------------------------------------
 
-export async function runRenewalLadder(): Promise<{ notified: number; flippedToExpiring: number; flippedToExpired: number }> {
+export async function runRenewalLadder(): Promise<{
+  notified: number;
+  flippedToExpiring: number;
+  flippedToExpired: number;
+}> {
   const auth = currentAuth();
   const threshold = await currentThreshold();
   const rungs = threshold?.renewalLadderRungs ?? undefined;
 
   const rows = await prisma.itLicence.findMany({
-    where: { tenantId: auth.tenantId, deletedAt: null, status: { in: ['active', 'expiring'] }, renewalDate: { not: null } },
+    where: {
+      tenantId: auth.tenantId,
+      deletedAt: null,
+      status: { in: ['active', 'expiring'] },
+      renewalDate: { not: null },
+    },
     include: { application: true },
   });
 
@@ -789,7 +874,9 @@ export async function runRenewalLadder(): Promise<{ notified: number; flippedToE
     const overdue = rung <= 0;
     await raiseException({
       code: overdue ? 'IT_LIC_EXPIRED' : 'IT_LIC_RENEWAL_DUE',
-      label: overdue ? `${row.application.name} licence expired` : `${row.application.name} licence renews in ${rung} day${rung === 1 ? '' : 's'}`,
+      label: overdue
+        ? `${row.application.name} licence expired`
+        : `${row.application.name} licence renews in ${rung} day${rung === 1 ? '' : 's'}`,
       severity: overdue ? 'S3_HIGH_RISK' : rung <= 7 ? 'S2_WARNING' : 'S1_ATTENTION',
       subjectType: 'it_licence',
       subjectId: row.id,
@@ -911,7 +998,11 @@ export async function applicationsSummary(): Promise<ApplicationsSummary> {
 export interface LicencesSummary extends ItSummaryBase {
   /** `null` — present, withheld — for a caller without `it_licences:financial`. */
   annualisedSpend: number | null;
-  annualisedSpendByApplication: Array<{ applicationId: string; applicationName: string; annualisedCost: number | null }>;
+  annualisedSpendByApplication: Array<{
+    applicationId: string;
+    applicationName: string;
+    annualisedCost: number | null;
+  }>;
   renewingIn90Days: number;
   overAllocated: number;
   underUsed: number;
@@ -962,7 +1053,11 @@ export async function licencesSummary(): Promise<LicencesSummary> {
       annualisedCost: (existing?.annualisedCost ?? 0) + cost,
     });
 
-    if (row.renewalDate && daysUntilLicenceDate(row.renewalDate, now) <= 90 && daysUntilLicenceDate(row.renewalDate, now) >= 0) {
+    if (
+      row.renewalDate &&
+      daysUntilLicenceDate(row.renewalDate, now) <= 90 &&
+      daysUntilLicenceDate(row.renewalDate, now) >= 0
+    ) {
       renewingIn90Days += 1;
     }
     if (seatUtilisation(row.seatsPurchased, row.seatsInUse).overAllocated) overAllocated += 1;
@@ -976,7 +1071,9 @@ export async function licencesSummary(): Promise<LicencesSummary> {
   return {
     notYetMeasured: false,
     annualisedSpend: seesMoney
-      ? totalAnnualisedSpend(rows.map((r) => ({ costPerPeriod: num(r.costPerPeriod), billingCycle: r.billingCycle as ItBillingCycle })))
+      ? totalAnnualisedSpend(
+          rows.map((r) => ({ costPerPeriod: num(r.costPerPeriod), billingCycle: r.billingCycle as ItBillingCycle })),
+        )
       : null,
     annualisedSpendByApplication: seesMoney
       ? spendByApplication

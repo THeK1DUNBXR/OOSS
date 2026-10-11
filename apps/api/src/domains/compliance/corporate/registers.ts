@@ -10,8 +10,11 @@ import { prisma } from '../../../platform/db.js';
 import { currentAuth } from '../../../platform/context.js';
 import { ApiError } from '../../../platform/errors.js';
 import { assertCan } from '../../../platform/permissions.js';
-import { auditWrite } from '../../../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../../../platform/audit.js';
 import { nextCorporateCode } from './codes.js';
+
+// Registered beside the writer for the reason given in corporate/board.ts.
+registerGovernedEntities('cmp_corporate', ['register_entry']);
 
 export interface RegisterEntryInput {
   registerKind: RegisterKind;
@@ -50,7 +53,9 @@ export async function createRegisterEntry(input: RegisterEntryInput) {
       orderBy: { createdAt: 'desc' },
     });
     if (head?.id !== input.supersedesId) {
-      throw ApiError.unprocessable('This entry is not the current head of its subject\'s chain. Supersede the latest entry, not an earlier one — that keeps the register a straight line.');
+      throw ApiError.unprocessable(
+        "This entry is not the current head of its subject's chain. Supersede the latest entry, not an earlier one — that keeps the register a straight line.",
+      );
     }
   }
 
@@ -67,7 +72,12 @@ export async function createRegisterEntry(input: RegisterEntryInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'register_entry', subjectId: entry.id, after: { recordCode, registerKind: input.registerKind, subjectKey: input.subjectKey } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'register_entry',
+    subjectId: entry.id,
+    after: { recordCode, registerKind: input.registerKind, subjectKey: input.subjectKey },
+  });
   return entry;
 }
 

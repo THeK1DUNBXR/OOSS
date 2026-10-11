@@ -11,13 +11,7 @@
  */
 
 import { useState } from 'react';
-import {
-  ASSET_KINDS,
-  ASSET_KIND_LABELS,
-  ASSET_TRANSITIONS,
-  type AssetKind,
-  type AssetView,
-} from '@kaizen/shared';
+import { ASSET_KINDS, ASSET_KIND_LABELS, ASSET_TRANSITIONS, type AssetKind, type AssetView } from '@kaizen/shared';
 import { date, titleCase } from '../../lib/api.js';
 import {
   useAssets,
@@ -53,13 +47,18 @@ export function Assets() {
         subtitle="The content library, and the claims register that governs what it's allowed to say."
         actions={
           can('marketing_assets:C') &&
-          (tab === 'assets' ? (
-            <NewButton label="New asset" onClick={() => setCreating(true)} />
-          ) : null)
+          (tab === 'assets' ? <NewButton label="New asset" onClick={() => setCreating(true)} /> : null)
         }
       />
 
-      <Tabs tabs={[{ key: 'assets', label: 'Assets' }, { key: 'claims', label: 'Claims register' }]} active={tab} onChange={setTab} />
+      <Tabs
+        tabs={[
+          { key: 'assets', label: 'Assets' },
+          { key: 'claims', label: 'Claims register' },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
 
       {tab === 'assets' ? <AssetsList onEdit={setEditing} /> : <ClaimsRegister />}
 
@@ -87,25 +86,53 @@ function AssetsList({ onEdit }: { onEdit: (a: AssetView) => void }) {
   return (
     <div>
       <Row>
-        <SelectInput label="Kind" value={kindFilter} onChange={(v) => setKindFilter(v as AssetKind)} placeholder="All kinds" options={ASSET_KINDS.map((k) => ({ value: k, label: ASSET_KIND_LABELS[k] }))} />
-        <SelectInput label="Status" value={statusFilter} onChange={setStatusFilter} placeholder="All statuses" options={['draft', 'in_review', 'approved', 'retired'].map((s) => ({ value: s, label: titleCase(s) }))} />
+        <SelectInput
+          label="Kind"
+          value={kindFilter}
+          onChange={(v) => setKindFilter(v as AssetKind)}
+          placeholder="All kinds"
+          options={ASSET_KINDS.map((k) => ({ value: k, label: ASSET_KIND_LABELS[k] }))}
+        />
+        <SelectInput
+          label="Status"
+          value={statusFilter}
+          onChange={setStatusFilter}
+          placeholder="All statuses"
+          options={['draft', 'in_review', 'approved', 'retired'].map((s) => ({ value: s, label: titleCase(s) }))}
+        />
       </Row>
 
-      {error && <p className="my-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="my-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
 
       {items.length === 0 ? (
-        <Card className="mt-4"><EmptyState message="No assets match." hint="Only approved assets may be used in a send or social post." /></Card>
+        <Card className="mt-4">
+          <EmptyState message="No assets match." hint="Only approved assets may be used in a send or social post." />
+        </Card>
       ) : (
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {items.map((a) => {
             const next = ASSET_TRANSITIONS[a.status] ?? [];
-            const expiringSoon = a.expiresAt && !a.expired && new Date(a.expiresAt).getTime() - Date.now() < 1000 * 60 * 60 * 24 * 30;
+            const expiringSoon =
+              a.expiresAt && !a.expired && new Date(a.expiresAt).getTime() - Date.now() < 1000 * 60 * 60 * 24 * 30;
             return (
               <Card
                 key={a.id}
                 title={a.name}
-                subtitle={<span className="mono">{a.recordCode} · v{a.version}</span>}
-                actions={<StatusChip status={a.status} tone={a.status === 'approved' ? 'good' : a.status === 'retired' ? 'neutral' : 'neutral'} />}
+                subtitle={
+                  <span className="mono">
+                    {a.recordCode} · v{a.version}
+                  </span>
+                }
+                actions={
+                  <StatusChip
+                    status={a.status}
+                    tone={a.status === 'approved' ? 'good' : a.status === 'retired' ? 'neutral' : 'neutral'}
+                  />
+                }
               >
                 <dl className="grid grid-cols-2 gap-x-4">
                   <Field label="Kind">{ASSET_KIND_LABELS[a.kind]}</Field>
@@ -122,7 +149,12 @@ function AssetsList({ onEdit }: { onEdit: (a: AssetView) => void }) {
                   </Field>
                 </dl>
                 {a.url && (
-                  <a href={a.url} target="_blank" rel="noreferrer" className="mt-2 block truncate text-2xs text-accent-soft hover:underline">
+                  <a
+                    href={a.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 block truncate text-2xs text-accent-soft hover:underline"
+                  >
                     {a.url}
                   </a>
                 )}
@@ -133,13 +165,25 @@ function AssetsList({ onEdit }: { onEdit: (a: AssetView) => void }) {
                 )}
                 <div className="mt-3 flex flex-wrap gap-1.5 border-t border-ink-800 pt-3">
                   {can('marketing_assets:E') && (a.status === 'draft' || a.status === 'in_review') && (
-                    <button className="btn-quiet btn-sm" onClick={() => onEdit(a)}>Edit</button>
+                    <button className="btn-quiet btn-sm" onClick={() => onEdit(a)}>
+                      Edit
+                    </button>
                   )}
                   {can('marketing_assets:E') && next.includes('in_review') && (
-                    <button className="btn-quiet btn-sm" onClick={() => submit.mutate(a.id, { onError: (e) => setError(messageOf(e)) })}>Submit for review</button>
+                    <button
+                      className="btn-quiet btn-sm"
+                      onClick={() => submit.mutate(a.id, { onError: (e) => setError(messageOf(e)) })}
+                    >
+                      Submit for review
+                    </button>
                   )}
                   {can('marketing_assets:approve') && next.includes('approved') && (
-                    <button className="btn-quiet btn-sm" onClick={() => approve.mutate(a.id, { onError: (e) => setError(messageOf(e)) })}>Approve</button>
+                    <button
+                      className="btn-quiet btn-sm"
+                      onClick={() => approve.mutate(a.id, { onError: (e) => setError(messageOf(e)) })}
+                    >
+                      Approve
+                    </button>
                   )}
                   {can('marketing_assets:approve') && a.status === 'in_review' && (
                     <button
@@ -153,7 +197,12 @@ function AssetsList({ onEdit }: { onEdit: (a: AssetView) => void }) {
                     </button>
                   )}
                   {can('marketing_assets:E') && next.includes('retired') && (
-                    <button className="btn-quiet btn-sm" onClick={() => retire.mutate(a.id, { onError: (e) => setError(messageOf(e)) })}>Retire</button>
+                    <button
+                      className="btn-quiet btn-sm"
+                      onClick={() => retire.mutate(a.id, { onError: (e) => setError(messageOf(e)) })}
+                    >
+                      Retire
+                    </button>
                   )}
                 </div>
               </Card>
@@ -187,7 +236,10 @@ function AssetModal({ open, asset, onClose }: { open: boolean; asset?: AssetView
     campaignId: campaignId || undefined,
     usageRights: usageRights || undefined,
     expiresAt: expiresAt || undefined,
-    tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
+    tags: tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean),
   });
 
   return (
@@ -201,12 +253,28 @@ function AssetModal({ open, asset, onClose }: { open: boolean; asset?: AssetView
     >
       <TextInput label="Name" required value={name} onChange={setName} />
       <Row>
-        <SelectInput label="Kind" value={kind} onChange={(v) => setKind(v as AssetKind)} options={ASSET_KINDS.map((k) => ({ value: k, label: ASSET_KIND_LABELS[k] }))} />
-        <SelectInput label="Campaign" value={campaignId} onChange={setCampaignId} placeholder="No campaign" options={(campaigns.data?.items ?? []).map((c) => ({ value: c.id, label: c.name }))} />
+        <SelectInput
+          label="Kind"
+          value={kind}
+          onChange={(v) => setKind(v as AssetKind)}
+          options={ASSET_KINDS.map((k) => ({ value: k, label: ASSET_KIND_LABELS[k] }))}
+        />
+        <SelectInput
+          label="Campaign"
+          value={campaignId}
+          onChange={setCampaignId}
+          placeholder="No campaign"
+          options={(campaigns.data?.items ?? []).map((c) => ({ value: c.id, label: c.name }))}
+        />
       </Row>
       <TextInput label="URL" value={url} onChange={setUrl} placeholder="https://…" />
       <Row>
-        <TextInput label="Usage rights" value={usageRights} onChange={setUsageRights} placeholder="Web and print, India, 12 months" />
+        <TextInput
+          label="Usage rights"
+          value={usageRights}
+          onChange={setUsageRights}
+          placeholder="Web and print, India, 12 months"
+        />
         <TextInput label="Expires" type="date" value={expiresAt} onChange={setExpiresAt} />
       </Row>
       <TextInput label="Tags" value={tags} onChange={setTags} placeholder="brochure, festival-offer" />
@@ -235,29 +303,53 @@ function ClaimsRegister() {
       <div className="mb-4 flex justify-end">
         {can('marketing_assets:C') && <NewButton label="Propose a claim" onClick={() => setCreating(true)} />}
       </div>
-      {error && <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
       {items.length === 0 ? (
-        <Card><EmptyState message="No claims proposed yet." hint="Only approved claims may be printed or published." /></Card>
+        <Card>
+          <EmptyState message="No claims proposed yet." hint="Only approved claims may be printed or published." />
+        </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
           <table className="table">
-            <thead><tr><th>Claim</th><th>Evidence</th><th>Status</th><th /></tr></thead>
+            <thead>
+              <tr>
+                <th>Claim</th>
+                <th>Evidence</th>
+                <th>Status</th>
+                <th />
+              </tr>
+            </thead>
             <tbody>
               {items.map((c) => (
                 <tr key={c.id}>
                   <td className="max-w-md text-xs text-ink-100">{c.text}</td>
                   <td className="text-2xs text-ink-400">{c.evidenceRef || '—'}</td>
-                  <td><StatusChip status={c.status} tone={c.status === 'approved' ? 'good' : c.status === 'rejected' ? 'bad' : 'neutral'} /></td>
+                  <td>
+                    <StatusChip
+                      status={c.status}
+                      tone={c.status === 'approved' ? 'good' : c.status === 'rejected' ? 'bad' : 'neutral'}
+                    />
+                  </td>
                   <td>
                     <div className="flex flex-wrap justify-end gap-1.5">
                       {can('marketing_assets:approve') && c.status === 'proposed' && (
                         <>
-                          <button className="btn-quiet btn-sm" onClick={() => approve.mutate(c.id, { onError: (e) => setError(messageOf(e)) })}>Approve</button>
+                          <button
+                            className="btn-quiet btn-sm"
+                            onClick={() => approve.mutate(c.id, { onError: (e) => setError(messageOf(e)) })}
+                          >
+                            Approve
+                          </button>
                           <button
                             className="btn-quiet btn-sm"
                             onClick={() => {
                               const reason = prompt('Reason for rejecting this claim?');
-                              if (reason) reject.mutate({ id: c.id, reason }, { onError: (e) => setError(messageOf(e)) });
+                              if (reason)
+                                reject.mutate({ id: c.id, reason }, { onError: (e) => setError(messageOf(e)) });
                             }}
                           >
                             Reject
@@ -265,7 +357,12 @@ function ClaimsRegister() {
                         </>
                       )}
                       {can('marketing_assets:E') && c.status === 'approved' && (
-                        <button className="btn-quiet btn-sm" onClick={() => retire.mutate(c.id, { onError: (e) => setError(messageOf(e)) })}>Retire</button>
+                        <button
+                          className="btn-quiet btn-sm"
+                          onClick={() => retire.mutate(c.id, { onError: (e) => setError(messageOf(e)) })}
+                        >
+                          Retire
+                        </button>
                       )}
                     </div>
                   </td>
@@ -283,8 +380,20 @@ function ClaimsRegister() {
         invalidate={[]}
         onSubmit={() => create.mutateAsync({ text, evidenceRef: evidenceRef || undefined })}
       >
-        <TextArea label="Claim text" required value={text} onChange={setText} rows={3} placeholder="'India's #1 full stack bootcamp'" />
-        <TextInput label="Evidence reference" value={evidenceRef} onChange={setEvidenceRef} placeholder="a report, survey, or ranking" />
+        <TextArea
+          label="Claim text"
+          required
+          value={text}
+          onChange={setText}
+          rows={3}
+          placeholder="'India's #1 full stack bootcamp'"
+        />
+        <TextInput
+          label="Evidence reference"
+          value={evidenceRef}
+          onChange={setEvidenceRef}
+          placeholder="a report, survey, or ranking"
+        />
       </CreateModal>
     </div>
   );

@@ -10,11 +10,128 @@
 
 export type EventName = string;
 
-/** The canonical event-name grammar. Used to validate every emission. */
-export const EVENT_NAME_PATTERN = /^kz\.[a-z]{2,4}\.[a-z_]+\.[a-z_]+$/;
+/**
+ * The canonical event-name grammar, `kz.<domain>.<object>.<verb>`. The verb is
+ * captured so the tense can be checked. An event records a fact that already
+ * happened, so the verb is past tense, and a present-tense name is refused at
+ * both ends (emit and outbox dispatch) rather than stored.
+ */
+export const EVENT_NAME_PATTERN = /^kz\.[a-z]{2,4}\.[a-z_]+\.([a-z0-9_]+)$/;
+// The verb admits digits because `onboarding.day1_activated` is a fact the
+// onboarding machine already emits (ACTIVATE_DAY1). Refusing the digit made the
+// outbox dead-letter that event as permanent; renaming it would orphan history.
+
+/**
+ * Past-tense verbs that do not end in -ed. Listed rather than inferred: a rule
+ * that guessed would accept `kz.x.y.set` only by luck and refuse `kz.x.y.sent`.
+ */
+const IRREGULAR_PAST = new Set([
+  'built',
+  'begun',
+  'brought',
+  'bought',
+  'caught',
+  'cast',
+  'cut',
+  'done',
+  'given',
+  'got',
+  'held',
+  'hit',
+  'kept',
+  'known',
+  'laid',
+  'led',
+  'left',
+  'let',
+  'lost',
+  'made',
+  'met',
+  'paid',
+  'put',
+  'read',
+  'reset',
+  'run',
+  'sent',
+  'set',
+  'shut',
+  'sold',
+  'spent',
+  'split',
+  'taken',
+  'told',
+  'withdrawn',
+  'won',
+  'written',
+]);
+
+/**
+ * Names that predate the tense rule and are still emitted, subscribed to, or
+ * stored in event_records, so renaming them would orphan that history and the
+ * subscribers that read it. They are exempt from the tense check only. Any
+ * new name must pass it, and removing an entry here means renaming the event
+ * with a dual-publish window (CRM-FOUND-002 pattern), not just editing this list.
+ */
+export const TENSE_GRANDFATHERED: ReadonlySet<string> = new Set([
+  // Lifecycle names whose verb is the state the record moved into, not a past
+  // participle. Emitted by `platform/lifecycle.transition` from the machine's
+  // verb map, so they are the names on the wire today. Each is a state, which
+  // is why none has a participle to find.
+  'kz.hr.compensation.effective', // CompensationRecord ACTIVATE (employment.ts:1036)
+  'kz.hr.leave.extension_in_progress', // LeaveRequest EXTENSION_RUNNING (leave.ts:341)
+  'kz.hr.ticket.waiting', // IT ticket WAIT (it/servicedesk.ts, via lifecycle.transition)
+  'kz.ceo.key_result.checked_in',
+  'kz.crm.contract.expiring',
+  'kz.crm.opportunity.handed_off',
+  'kz.eqt.allotment.effective',
+  'kz.eqt.bonus.effective',
+  'kz.eqt.buyback.effective',
+  'kz.eqt.conversion.effective',
+  'kz.eqt.redemption.effective',
+  'kz.eqt.transfer.effective',
+  'kz.it.asset.warranty_approaching',
+  'kz.it.licence.renewal_approaching',
+  'kz.it.vendor_contract.expiring',
+  'kz.mkt.event.live',
+  'kz.mkt.event.no_show',
+]);
+
+/** Words that end in -ed but are base forms, so they are not past tense. */
+const ED_BASE_FORMS = new Set([
+  'bleed',
+  'breed',
+  'embed',
+  'exceed',
+  'feed',
+  'heed',
+  'need',
+  'proceed',
+  'seed',
+  'shed',
+  'speed',
+  'succeed',
+  'weed',
+]);
+
+function isPastTenseWord(word: string): boolean {
+  if (IRREGULAR_PAST.has(word)) return true;
+  return word.length > 2 && word.endsWith('ed') && !ED_BASE_FORMS.has(word);
+}
+
+/**
+ * A verb is past tense when any of its underscore-separated words is: the
+ * participle is not always last (`submitted_for_review`, `routed_for_approval`,
+ * `day1_activated`, `status_changed`). A present-tense verb has no past word
+ * anywhere, so `create` and `pay` are still refused.
+ */
+export function isPastTenseVerb(verb: string): boolean {
+  return verb.split('_').some(isPastTenseWord);
+}
 
 export function isCanonicalEventName(name: string): boolean {
-  return EVENT_NAME_PATTERN.test(name);
+  const match = EVENT_NAME_PATTERN.exec(name);
+  if (match === null) return false;
+  return TENSE_GRANDFATHERED.has(name) || isPastTenseVerb(match[1]!);
 }
 
 /**
@@ -68,6 +185,12 @@ export const EVENTS = {
   AFFILIATION_ENDED: 'kz.idn.affiliation.ended',
   ORGANIZATION_CREATED: 'kz.idn.organization.created',
   SESSION_CONTEXT_SWITCHED: 'kz.idn.session.context_switched',
+  SESSION_ISSUED: 'kz.idn.session.issued',
+  SESSION_REVOKED: 'kz.idn.session.revoked',
+  /// A rotated-away refresh secret was presented again: the whole session is revoked.
+  SESSION_REFRESH_REUSED: 'kz.idn.session.refresh_reused',
+  /// A refresh whose response was lost, recovered because the rotated secret was never used.
+  SESSION_REFRESH_RECOVERED: 'kz.idn.session.refresh_recovered',
   /// A sign-in created for an outsider — a shareholder or board member with no
   /// employment here (§1.10). Never fires on the founding-account seed path.
   SIGN_IN_CREATED: 'kz.idn.sign_in.created',
@@ -233,6 +356,14 @@ export const EVENTS = {
   /// question, a piece of feedback, a problem, a note.
   LEARNER_LOG_RECORDED: 'kz.edu.learner_log.recorded',
   LEARNER_LOG_RESOLVED: 'kz.edu.learner_log.resolved',
+  /// A batch is the unit that attendance, progress and fees are booked against,
+  /// so its creation is a fact the rest of the platform has to be able to see.
+  COHORT_CREATED: 'kz.edu.cohort.created',
+  /// Projects carry delivery status and hand-off, and are governed under the
+  /// `prj` domain (registered in routes/education.routes.ts), so their events
+  /// use that domain too rather than `edu`.
+  PROJECT_CREATED: 'kz.prj.project.created',
+  PROJECT_UPDATED: 'kz.prj.project.updated',
 
   // --- Governance -----------------------------------------------------------
   POLICY_VERSION_PUBLISHED: 'kz.gov.policy_version.published',
@@ -263,6 +394,7 @@ export const EVENTS = {
   AGENT_ACTION_EXECUTED: 'kz.agt.action.executed',
   AGENT_ACTION_REJECTED: 'kz.agt.action.rejected',
   AGENT_AUTHORITY_SHORTFALL: 'kz.agt.action.authority_shortfall_detected',
+  AGENT_PRINCIPAL_STATUS_CHANGED: 'kz.agt.principal.status_changed',
 
   // --- People (hr) ----------------------------------------------------------
   // Every §14.3 lifecycle transition also publishes
@@ -284,6 +416,8 @@ export const EVENTS = {
   PERFORMANCE_EVIDENCE_RECORDED: 'kz.hr.performance_evidence.recorded',
   LEARNING_RECORD_ENROLLED: 'kz.hr.learning_record.enrolled',
   LEARNING_RECORD_COMPLETED: 'kz.hr.learning_record.completed',
+  SKILL_CREATED: 'kz.hr.skill.created',
+  EVIDENCE_ADDED: 'kz.hr.evidence.added',
   CAPABILITY_CLAIM_ASSERTED: 'kz.hr.capability_claim.asserted',
   CAPABILITY_CLAIM_VERIFIED: 'kz.hr.capability_claim.verified',
   CAPABILITY_CLAIM_CONTRADICTED: 'kz.hr.capability_claim.contradicted',
@@ -448,6 +582,10 @@ export const EVENTS = {
   IMPORT_STAGED: 'kz.fin.import.staged',
   IMPORT_COMMITTED: 'kz.fin.import.committed',
   IMPORT_REVERTED: 'kz.fin.import.reverted',
+  // The staged cells of a committed import are blanked once the books hold
+  // what they said. A separate event, not IMPORT_COMMITTED again, so a
+  // subscriber counting commits does not count the purge as a second one.
+  IMPORT_PURGED: 'kz.fin.import.purged',
 
   // --- Equity register (eqt), phase 1 ---------------------------------------
   SHARE_CLASS_CREATED: 'kz.eqt.share_class.created',
@@ -595,6 +733,7 @@ export const EVENTS = {
   MKT_PLAN_APPROVED: 'kz.mkt.plan.approved',
   MKT_PLAN_CLOSED: 'kz.mkt.plan.closed',
   MKT_WEBHOOK_RECEIVED: 'kz.mkt.webhook.received',
+  MKT_WEBHOOK_ENDPOINT_PROVISIONED: 'kz.mkt.webhook.endpoint_provisioned',
 
   // --- Filings, demat, FEMA (eqt), phase 6a ---------------------------------
   FILING_RECORDED: 'kz.eqt.filing.recorded',
@@ -605,6 +744,11 @@ export const EVENTS = {
   COMPLIANCE_OBLIGATIONS_GENERATED: 'kz.cmp.obligation.generated',
   COMPLIANCE_OBLIGATION_FILED: 'kz.cmp.obligation.filed',
   COMPLIANCE_OBLIGATION_WAIVED: 'kz.cmp.obligation.waived',
+  // Statutory rule parameters (FIXES P2). Approval is the fact that lets a rate
+  // reach a payslip, so it is an event of its own, separate from drafting.
+  STATUTORY_RULE_DRAFTED: 'kz.cmp.statutory_rule.drafted',
+  STATUTORY_RULE_APPROVED: 'kz.cmp.statutory_rule.approved',
+  STATUTORY_RULE_HELD: 'kz.cmp.statutory_rule.held',
 
   // --- Technology (docs/plan/cio.md) ----------------------------------------
   // A. Assets and devices

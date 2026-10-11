@@ -66,7 +66,11 @@ async function makeEmployee(label: string) {
         source: 'test',
       },
     });
-    const employment = await hire({ personId: person.id, positionId: position.id, hireEffectiveDate: new Date('2020-01-01') });
+    const employment = await hire({
+      personId: person.id,
+      positionId: position.id,
+      hireEffectiveDate: new Date('2020-01-01'),
+    });
     await transitionEmployment(employment.id, 'ACTIVATE');
     return { employment, person, position };
   });
@@ -83,7 +87,14 @@ async function makeSoloRun(employmentRelationshipId: string, payPeriod: string) 
     const recordCode = await nextRecordCode('PRN');
     const run = await prisma.payrollRun.create({ data: { tenantId: TENANT, recordCode, payPeriod } });
     await prisma.payrollInstruction.create({
-      data: { tenantId: TENANT, employmentRelationshipId, payrollRunId: run.id, payPeriod, grossAmount: 0, netAmount: 0 },
+      data: {
+        tenantId: TENANT,
+        employmentRelationshipId,
+        payrollRunId: run.id,
+        payPeriod,
+        grossAmount: 0,
+        netAmount: 0,
+      },
     });
     return run;
   });
@@ -94,7 +105,14 @@ async function makeSoloRun(employmentRelationshipId: string, payPeriod: string) 
 // ===========================================================================
 
 describe('statutory arithmetic (packages/shared/src/compliance/payroll.ts)', () => {
-  const pfRates = { employeeRate: 0.12, employerRate: 0.12, epsRate: 0.0833, edliRate: 0.005, adminRate: 0.005, wageCeiling: 15_000 };
+  const pfRates = {
+    employeeRate: 0.12,
+    employerRate: 0.12,
+    epsRate: 0.0833,
+    edliRate: 0.005,
+    adminRate: 0.005,
+    wageCeiling: 15_000,
+  };
 
   it('CMP-PAY-001: PF splits 12% employee and 12% employer (EPS + remainder) from the dated table, capped at the wage ceiling', () => {
     const result = computePf(20_000, pfRates); // above the ceiling
@@ -129,7 +147,7 @@ describe('statutory arithmetic (packages/shared/src/compliance/payroll.ts)', () 
     expect(computePt(10_000, slabs)).toBe(0);
   });
 
-  it('LWF is due only in the table\'s due month', () => {
+  it("LWF is due only in the table's due month", () => {
     const rates = { employeeAmount: 20, employerAmount: 40, dueMonth: 12 };
     expect(computeLwf('2026-12', rates)).toEqual({ lwfEmployee: 20, lwfEmployer: 40 });
     expect(computeLwf('2026-06', rates)).toEqual({ lwfEmployee: 0, lwfEmployer: 0 });
@@ -139,7 +157,12 @@ describe('statutory arithmetic (packages/shared/src/compliance/payroll.ts)', () 
     const lines = statutoryLines(
       20_000,
       { basicPay: 12_000, hra: 6_000, otherAllowances: 2_000 },
-      { pf: pfRates, esi: { employeeRate: 0.0075, employerRate: 0.0325, wageCeiling: 21_000 }, pt: [{ minGross: 0, maxGross: null, halfYearlyAmount: 0 }], lwf: { employeeAmount: 20, employerAmount: 40, dueMonth: 12 } },
+      {
+        pf: pfRates,
+        esi: { employeeRate: 0.0075, employerRate: 0.0325, wageCeiling: 21_000 },
+        pt: [{ minGross: 0, maxGross: null, halfYearlyAmount: 0 }],
+        lwf: { employeeAmount: 20, employerAmount: 40, dueMonth: 12 },
+      },
       { payPeriod: '2026-06' },
     );
     expect(lines.netAmount).toBe(20_000 - lines.totalDeductions);
@@ -187,9 +210,13 @@ describe('payroll runs against the dated tables (real database)', () => {
         specialAllowance: 4_000,
       });
     });
-    const proposed = await asUser('chairman@kaizen.co.in', () => prisma.salaryStructure.findFirstOrThrow({ where: { tenantId: TENANT, employmentRelationshipId: emp.id } }));
+    const proposed = await asUser('chairman@kaizen.co.in', () =>
+      prisma.salaryStructure.findFirstOrThrow({ where: { tenantId: TENANT, employmentRelationshipId: emp.id } }),
+    );
 
-    const selfApprove = await expectReject(() => asUser('chairman@kaizen.co.in', () => approveSalaryStructure(proposed.id)));
+    const selfApprove = await expectReject(() =>
+      asUser('chairman@kaizen.co.in', () => approveSalaryStructure(proposed.id)),
+    );
     expect(selfApprove.message).toMatch(/Self-Dealing/i);
 
     await asUser('finance@kaizen.co.in', () => approveSalaryStructure(proposed.id));
@@ -203,7 +230,9 @@ describe('payroll runs against the dated tables (real database)', () => {
     // preparer of record and is the one the Self-Dealing Bar has to catch.
     const run = await makeSoloRun(emp.id, payPeriod);
     await asUser('finance@kaizen.co.in', () => transitionPayrollRun(run.id, 'COMPUTE'));
-    const instruction = await asUser('chairman@kaizen.co.in', () => prisma.payrollInstruction.findFirstOrThrow({ where: { payrollRunId: run.id, employmentRelationshipId: emp.id } }));
+    const instruction = await asUser('chairman@kaizen.co.in', () =>
+      prisma.payrollInstruction.findFirstOrThrow({ where: { payrollRunId: run.id, employmentRelationshipId: emp.id } }),
+    );
     expect(instruction.computedFrom).not.toBeNull();
     expect(Number(instruction.pfEmployee)).toBeGreaterThan(0);
     expect(Number(instruction.esiEmployee)).toBeGreaterThanOrEqual(0);
@@ -211,7 +240,9 @@ describe('payroll runs against the dated tables (real database)', () => {
     await asUser('finance@kaizen.co.in', () => transitionPayrollRun(run.id, 'SUBMIT_REVIEW'));
 
     // CMP-PAY-002: Finance computed (prepared) this run and cannot also approve it.
-    const preparerApproves = await expectReject(() => asUser('finance@kaizen.co.in', () => transitionPayrollRun(run.id, 'APPROVE')));
+    const preparerApproves = await expectReject(() =>
+      asUser('finance@kaizen.co.in', () => transitionPayrollRun(run.id, 'APPROVE')),
+    );
     expect(preparerApproves.message).toMatch(/CMP-PAY-002|prepared/i);
 
     // The chairman did not prepare it, so the chairman can.
@@ -262,7 +293,9 @@ describe('payroll runs against the dated tables (real database)', () => {
     const run = await makeSoloRun(emp.id, payPeriod);
     await asUser('operations@kaizen.co.in', () => computeInstruction(run.id));
 
-    const instruction = await asUser('chairman@kaizen.co.in', () => prisma.payrollInstruction.findFirstOrThrow({ where: { payrollRunId: run.id, employmentRelationshipId: emp.id } }));
+    const instruction = await asUser('chairman@kaizen.co.in', () =>
+      prisma.payrollInstruction.findFirstOrThrow({ where: { payrollRunId: run.id, employmentRelationshipId: emp.id } }),
+    );
     expect(Number(instruction.pfEmployee)).toBe(0);
     expect(Number(instruction.esiEmployee)).toBe(0);
     expect(Number(instruction.professionalTax)).toBe(0);
@@ -277,7 +310,12 @@ describe('payroll runs against the dated tables (real database)', () => {
     // a real run would trip the "not computed" gate first rather than the
     // one this test is about.
     await asUser('finance@kaizen.co.in', () =>
-      createMinimumWageTable({ state: 'Tamil Nadu', category: 'general', monthlyAmount: 999_999, effectiveFrom: new Date('2025-01-01') }),
+      createMinimumWageTable({
+        state: 'Tamil Nadu',
+        category: 'general',
+        monthlyAmount: 999_999,
+        effectiveFrom: new Date('2025-01-01'),
+      }),
     );
     const { employment: emp } = await makeEmployee('below-min-wage');
 
@@ -286,7 +324,14 @@ describe('payroll runs against the dated tables (real database)', () => {
       return expectReject(() =>
         runHooks('payroll_run.before_approve', {
           run: { id: 'synthetic-run', preparedById: null, payPeriod: '2031-03' },
-          instructions: [{ id: 'synthetic-instr', computedFrom: { structureId: 'x' }, grossAmount: 9_000, employmentRelationshipId: emp.id }],
+          instructions: [
+            {
+              id: 'synthetic-instr',
+              computedFrom: { structureId: 'x' },
+              grossAmount: 9_000,
+              employmentRelationshipId: emp.id,
+            },
+          ],
           approverPartyId: 'someone-else',
         }),
       );
@@ -297,9 +342,20 @@ describe('payroll runs against the dated tables (real database)', () => {
   it('ECR export uses the # ~ # delimited EPFO text format', async () => {
     const { employment: emp } = await makeEmployee('ecr');
     await asUser('operations@kaizen.co.in', async () => {
-      await proposeSalaryStructure({ employmentRelationshipId: emp.id, effectiveFrom: new Date('2020-01-01'), ctcAnnual: 240_000, basic: 12_000, hra: 4_000 });
+      await proposeSalaryStructure({
+        employmentRelationshipId: emp.id,
+        effectiveFrom: new Date('2020-01-01'),
+        ctcAnnual: 240_000,
+        basic: 12_000,
+        hra: 4_000,
+      });
     });
-    const structure = await asUser('chairman@kaizen.co.in', () => prisma.salaryStructure.findFirstOrThrow({ where: { tenantId: TENANT, employmentRelationshipId: emp.id }, orderBy: { createdAt: 'desc' } }));
+    const structure = await asUser('chairman@kaizen.co.in', () =>
+      prisma.salaryStructure.findFirstOrThrow({
+        where: { tenantId: TENANT, employmentRelationshipId: emp.id },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
     await asUser('finance@kaizen.co.in', () => approveSalaryStructure(structure.id));
 
     const payPeriod = '2031-04';
@@ -318,14 +374,32 @@ describe('payroll runs against the dated tables (real database)', () => {
   it('full-and-final settlement computes gratuity, leave encashment and bonus from years of service', async () => {
     const { employment: emp } = await makeEmployee('settle');
     // Backdate the hire well past the five-year gratuity floor.
-    await asUser('chairman@kaizen.co.in', () => prisma.employmentRelationship.update({ where: { id: emp.id }, data: { hireEffectiveDate: new Date('2015-01-01') } }));
+    await asUser('chairman@kaizen.co.in', () =>
+      prisma.employmentRelationship.update({
+        where: { id: emp.id },
+        data: { hireEffectiveDate: new Date('2015-01-01') },
+      }),
+    );
     await asUser('operations@kaizen.co.in', async () => {
-      await proposeSalaryStructure({ employmentRelationshipId: emp.id, effectiveFrom: new Date('2015-01-01'), ctcAnnual: 360_000, basic: 20_000, hra: 8_000 });
+      await proposeSalaryStructure({
+        employmentRelationshipId: emp.id,
+        effectiveFrom: new Date('2015-01-01'),
+        ctcAnnual: 360_000,
+        basic: 20_000,
+        hra: 8_000,
+      });
     });
-    const structure = await asUser('chairman@kaizen.co.in', () => prisma.salaryStructure.findFirstOrThrow({ where: { tenantId: TENANT, employmentRelationshipId: emp.id }, orderBy: { createdAt: 'desc' } }));
+    const structure = await asUser('chairman@kaizen.co.in', () =>
+      prisma.salaryStructure.findFirstOrThrow({
+        where: { tenantId: TENANT, employmentRelationshipId: emp.id },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
     await asUser('finance@kaizen.co.in', () => approveSalaryStructure(structure.id));
 
-    const offboarding = await asUser('chairman@kaizen.co.in', () => prisma.offboarding.create({ data: { tenantId: TENANT, employmentRelationshipId: emp.id, status: 'Initiated' } }));
+    const offboarding = await asUser('chairman@kaizen.co.in', () =>
+      prisma.offboarding.create({ data: { tenantId: TENANT, employmentRelationshipId: emp.id, status: 'Initiated' } }),
+    );
     const result = await asUser('finance@kaizen.co.in', () => settleOffboarding(offboarding.id));
 
     expect(result.gratuityEligible).toBe(true);

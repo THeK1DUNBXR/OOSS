@@ -277,7 +277,13 @@ async function effectiveBalanceAsOf(holderId: string, shareClassId: string, asOf
   const auth = currentAuth();
   const [intoRows, outRows] = await Promise.all([
     prisma.shareTransaction.findMany({
-      where: { tenantId: auth.tenantId, shareClassId, toHolderId: holderId, status: 'effective', effectiveOn: { lte: asOf } },
+      where: {
+        tenantId: auth.tenantId,
+        shareClassId,
+        toHolderId: holderId,
+        status: 'effective',
+        effectiveOn: { lte: asOf },
+      },
       select: { count: true },
     }),
     prisma.shareTransaction.findMany({
@@ -286,7 +292,10 @@ async function effectiveBalanceAsOf(holderId: string, shareClassId: string, asOf
         fromHolderId: holderId,
         status: 'effective',
         effectiveOn: { lte: asOf },
-        OR: [{ shareClassId, type: { not: 'conversion' } }, { fromShareClassId: shareClassId, type: 'conversion' }],
+        OR: [
+          { shareClassId, type: { not: 'conversion' } },
+          { fromShareClassId: shareClassId, type: 'conversion' },
+        ],
       },
       select: { count: true, type: true, meta: true },
     }),
@@ -373,11 +382,7 @@ export function latestHalfYearEnd(now: Date): Date {
   const y = istYearMonth(now).year;
   const sep30 = istEndOfDay(y, 9, 30);
   const mar31 = istEndOfDay(y, 3, 31);
-  const candidates = [
-    istEndOfDay(y - 1, 9, 30),
-    mar31,
-    sep30,
-  ].filter((d) => d <= now);
+  const candidates = [istEndOfDay(y - 1, 9, 30), mar31, sep30].filter((d) => d <= now);
   return candidates.reduce((latest, d) => (d > latest ? d : latest));
 }
 
@@ -422,7 +427,9 @@ export async function pas6(): Promise<Pas6View> {
   await assertCan({ resource: 'compliance', verb: 'view' });
 
   const profile = await companyProfile();
-  const classes = await prisma.shareClass.findMany({ where: { tenantId: auth.tenantId, kind: { in: ['equity', 'preference'] } } });
+  const classes = await prisma.shareClass.findMany({
+    where: { tenantId: auth.tenantId, kind: { in: ['equity', 'preference'] } },
+  });
   const holders = await prisma.holder.findMany({ where: { tenantId: auth.tenantId, deletedAt: null } });
 
   const classes_: Pas6ClassFigure[] = [];
@@ -447,7 +454,12 @@ export async function pas6(): Promise<Pas6View> {
     });
   }
 
-  return { asOf: new Date().toISOString(), isin: profile.isin, dematStatus: profile.dematStatus as never, classes: classes_ };
+  return {
+    asOf: new Date().toISOString(),
+    isin: profile.isin,
+    dematStatus: profile.dematStatus as never,
+    classes: classes_,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -478,12 +490,13 @@ async function mgt1RowsForClass(shareClassId: string): Promise<Mgt1Row[]> {
     const lastOutgoing = [...transactions].reverse().find((t) => t.fromHolderId === holderId);
     const ceasedOn = balance <= 0 && lastOutgoing ? lastOutgoing.effectiveOn : null;
 
-    const certs = balance > 0
-      ? await prisma.shareCertificate.findMany({
-          where: { tenantId: auth.tenantId, holderId, shareClassId, status: 'issued' },
-          orderBy: { distinctiveFrom: 'asc' },
-        })
-      : [];
+    const certs =
+      balance > 0
+        ? await prisma.shareCertificate.findMany({
+            where: { tenantId: auth.tenantId, holderId, shareClassId, status: 'issued' },
+            orderBy: { distinctiveFrom: 'asc' },
+          })
+        : [];
 
     const shareClass = await prisma.shareClass.findFirstOrThrow({ where: { id: shareClassId } });
     const faceValue = num(shareClass.faceValue);
@@ -517,7 +530,9 @@ async function mgt1RowsForClass(shareClassId: string): Promise<Mgt1Row[]> {
   return rows;
 }
 
-export async function mgt1Register(shareClassId?: string): Promise<Array<{ shareClass: { id: string; name: string }; rows: Mgt1Row[] }>> {
+export async function mgt1Register(
+  shareClassId?: string,
+): Promise<Array<{ shareClass: { id: string; name: string }; rows: Mgt1Row[] }>> {
   const auth = currentAuth();
   await assertCan({ resource: 'compliance', verb: 'view' });
 
@@ -541,7 +556,10 @@ export async function mgt2Register(): Promise<Array<{ shareClass: { id: string; 
   const auth = currentAuth();
   await assertCan({ resource: 'compliance', verb: 'view' });
 
-  const classes = await prisma.shareClass.findMany({ where: { tenantId: auth.tenantId, kind: 'debenture' }, orderBy: { createdAt: 'asc' } });
+  const classes = await prisma.shareClass.findMany({
+    where: { tenantId: auth.tenantId, kind: 'debenture' },
+    orderBy: { createdAt: 'asc' },
+  });
   const out: Array<{ shareClass: { id: string; name: string }; rows: Mgt1Row[] }> = [];
   for (const cls of classes) {
     out.push({ shareClass: { id: cls.id, name: cls.name }, rows: await mgt1RowsForClass(cls.id) });
@@ -550,16 +568,42 @@ export async function mgt2Register(): Promise<Array<{ shareClass: { id: string; 
 }
 
 const MGT1_HEADER = [
-  'Folio', 'Name', 'Address', 'Email', 'PAN / CIN', 'Father / spouse name', 'Occupation',
-  'Nationality / residency', 'Date of becoming member', 'Date of cessation', 'Distinctive numbers held',
-  'Certificate numbers', 'Nominal value', 'Amount paid up', 'Lock-in', 'Remarks',
+  'Folio',
+  'Name',
+  'Address',
+  'Email',
+  'PAN / CIN',
+  'Father / spouse name',
+  'Occupation',
+  'Nationality / residency',
+  'Date of becoming member',
+  'Date of cessation',
+  'Distinctive numbers held',
+  'Certificate numbers',
+  'Nominal value',
+  'Amount paid up',
+  'Lock-in',
+  'Remarks',
 ];
 
 function mgt1SheetRows(rows: Mgt1Row[]): unknown[][] {
   return rows.map((r) => [
-    r.folioNumber, r.holderName, r.address, r.email, r.panOrCin, r.guardianOrSpouseName, r.occupation,
-    r.nationality, r.becameMemberOn, r.ceasedOn, r.distinctiveNumbers, r.certificateNumbers,
-    r.nominalValue, r.amountPaidUp, r.lockIn, r.remarks,
+    r.folioNumber,
+    r.holderName,
+    r.address,
+    r.email,
+    r.panOrCin,
+    r.guardianOrSpouseName,
+    r.occupation,
+    r.nationality,
+    r.becameMemberOn,
+    r.ceasedOn,
+    r.distinctiveNumbers,
+    r.certificateNumbers,
+    r.nominalValue,
+    r.amountPaidUp,
+    r.lockIn,
+    r.remarks,
   ]);
 }
 
@@ -662,7 +706,9 @@ export async function pas3AllotteeList(roundId: string): Promise<{ round: Record
 /** Total issued equity + preference nominal capital effective as of a date — the header block's pre/post figure. */
 async function capitalAsOf(asOf: Date): Promise<number> {
   const auth = currentAuth();
-  const classes = await prisma.shareClass.findMany({ where: { tenantId: auth.tenantId, kind: { in: ['equity', 'preference'] } } });
+  const classes = await prisma.shareClass.findMany({
+    where: { tenantId: auth.tenantId, kind: { in: ['equity', 'preference'] } },
+  });
   const transactions = await prisma.shareTransaction.findMany({
     where: { tenantId: auth.tenantId, status: 'effective', effectiveOn: { lte: asOf } },
   });
@@ -680,9 +726,31 @@ async function capitalAsOf(asOf: Date): Promise<number> {
 
 export async function pas3Export(roundId: string): Promise<Buffer> {
   const { round, rows } = await pas3AllotteeList(roundId);
-  const header = ['Name', 'Address', 'PAN', 'Nationality', 'Class', 'Count', 'Nominal value', 'Premium', 'Total', 'Consideration', 'Date'];
+  const header = [
+    'Name',
+    'Address',
+    'PAN',
+    'Nationality',
+    'Class',
+    'Count',
+    'Nominal value',
+    'Premium',
+    'Total',
+    'Consideration',
+    'Date',
+  ];
   const body = rows.map((r) => [
-    r.holderName, r.address, r.pan, r.nationality, r.shareClassName, r.count, r.nominalValue, r.premium, r.total, r.consideration, r.effectiveOn,
+    r.holderName,
+    r.address,
+    r.pan,
+    r.nationality,
+    r.shareClassName,
+    r.count,
+    r.nominalValue,
+    r.premium,
+    r.total,
+    r.consideration,
+    r.effectiveOn,
   ]);
   const book = XLSX.utils.book_new();
   const headerBlock: unknown[][] = [
@@ -714,7 +782,8 @@ export async function sh4Data(transactionId: string): Promise<Sh4Data> {
   const txn = await prisma.shareTransaction.findFirst({ where: { id: transactionId, tenantId: auth.tenantId } });
   if (!txn) throw ApiError.notFound('Share transaction');
   if (txn.type !== 'transfer') throw ApiError.badRequest('SH-4 pre-fill applies to a transfer transaction only.');
-  if (!txn.fromHolderId || !txn.toHolderId) throw ApiError.unprocessable('This transfer has no transferor or transferee on record.');
+  if (!txn.fromHolderId || !txn.toHolderId)
+    throw ApiError.unprocessable('This transfer has no transferor or transferee on record.');
 
   const [profile, fromHolder, toHolder, shareClass] = await Promise.all([
     companyProfile(),
@@ -724,9 +793,12 @@ export async function sh4Data(transactionId: string): Promise<Sh4Data> {
   ]);
   const [fromView, toView] = await Promise.all([holderView(fromHolder), holderView(toHolder)]);
 
-  const certs = txn.status === 'effective'
-    ? await prisma.shareCertificate.findMany({ where: { tenantId: auth.tenantId, issuedForTransactionId: txn.id, holderId: toHolder.id } })
-    : [];
+  const certs =
+    txn.status === 'effective'
+      ? await prisma.shareCertificate.findMany({
+          where: { tenantId: auth.tenantId, issuedForTransactionId: txn.id, holderId: toHolder.id },
+        })
+      : [];
 
   const count = num(txn.count) ?? 0;
   const price = num(txn.pricePerShare);
@@ -791,7 +863,8 @@ export async function recordFiling(input: RecordFilingInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'compliance', verb: 'create' });
 
-  if (!FILING_FORMS.includes(input.form)) throw ApiError.badRequest(`"${input.form}" is not a form this platform files.`);
+  if (!FILING_FORMS.includes(input.form))
+    throw ApiError.badRequest(`"${input.form}" is not a form this platform files.`);
 
   const row = await prisma.filing.create({
     data: {
@@ -833,7 +906,10 @@ export async function recordFiling(input: RecordFilingInput) {
           orderBy: { createdAt: 'desc' },
         });
         if (open) {
-          await resolveException(open.id, input.note ?? `Closed by recording ${input.form}${input.srn ? ` (SRN ${input.srn})` : ''}.`);
+          await resolveException(
+            open.id,
+            input.note ?? `Closed by recording ${input.form}${input.srn ? ` (SRN ${input.srn})` : ''}.`,
+          );
         }
       }
     }
@@ -863,9 +939,19 @@ export async function listFilings(form?: string): Promise<FilingView[]> {
 }
 
 function filingView(row: {
-  id: string; recordCode: string; form: string; relatedType: string | null; relatedId: string | null;
-  periodOrEvent: string; srn: string | null; filedOn: Date | null; dueOn: Date | null; status: string;
-  note: string | null; recordedByPartyId: string; createdAt: Date;
+  id: string;
+  recordCode: string;
+  form: string;
+  relatedType: string | null;
+  relatedId: string | null;
+  periodOrEvent: string;
+  srn: string | null;
+  filedOn: Date | null;
+  dueOn: Date | null;
+  status: string;
+  note: string | null;
+  recordedByPartyId: string;
+  createdAt: Date;
 }): FilingView {
   return {
     id: row.id,

@@ -28,7 +28,11 @@ import {
   listVendors,
   listVendorContracts,
 } from '../../domains/it/vendors.js';
-import { runVendorAssessmentOverdueJob, runVendorContractNoticeLadder, runVendorDpaMissingJob } from '../../jobs/it/vendors.js';
+import {
+  runVendorAssessmentOverdueJob,
+  runVendorContractNoticeLadder,
+  runVendorDpaMissingJob,
+} from '../../jobs/it/vendors.js';
 
 const stamp = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
@@ -94,9 +98,13 @@ describe('vendors and contracts — domain and wiring', () => {
 
     // A second run the same day fires nothing new — the rung is already
     // recorded on the row.
-    const before = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_VEN_ASSESSMENT_OVERDUE', subjectId: vendor.id } });
+    const before = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_VEN_ASSESSMENT_OVERDUE', subjectId: vendor.id },
+    });
     await asUser('operations@kaizen.co.in', () => runVendorAssessmentOverdueJob());
-    const after = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_VEN_ASSESSMENT_OVERDUE', subjectId: vendor.id } });
+    const after = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_VEN_ASSESSMENT_OVERDUE', subjectId: vendor.id },
+    });
     expect(after).toBe(before);
   });
 
@@ -115,7 +123,13 @@ describe('vendors and contracts — domain and wiring', () => {
 
   it('a high/critical vendor with no DPA on file raises IT_VEN_DPA_MISSING', async () => {
     const vendor = await asUser('operations@kaizen.co.in', () =>
-      createVendor({ name: `No DPA Vendor ${stamp()}`, category: 'cloud', tier: 1, riskRating: 'critical', dpaSigned: false }),
+      createVendor({
+        name: `No DPA Vendor ${stamp()}`,
+        category: 'cloud',
+        tier: 1,
+        riskRating: 'critical',
+        dpaSigned: false,
+      }),
     );
     await asUser('operations@kaizen.co.in', () => runVendorDpaMissingJob());
     const exception = await unscopedPrisma.exceptionRecord.findFirst({
@@ -125,14 +139,21 @@ describe('vendors and contracts — domain and wiring', () => {
   });
 
   it('IT-VCT-001: approving a vendor contract the same actor proposed reroutes to the next tier with the Self-Dealing Bar tripped', async () => {
-    const vendor = await asUser('operations@kaizen.co.in', () => createVendor({ name: `Self-Deal Vendor ${stamp()}`, category: 'infra' }));
+    const vendor = await asUser('operations@kaizen.co.in', () =>
+      createVendor({ name: `Self-Deal Vendor ${stamp()}`, category: 'infra' }),
+    );
     // The chairman holds both create and approve on it_vendor_contracts (the
     // only role that does — Finance Head holds approve but not create, and
     // Operations Head holds create but not approve), so the chairman is the
     // only account that can even attempt to approve its own proposal. Every
     // other actor is stopped earlier, at the missing grant.
     const contract = await asUser('chairman@kaizen.co.in', () =>
-      createVendorContract({ vendorId: vendor.id, title: 'Cloud hosting', value: 500000, endDate: new Date('2099-01-01') }),
+      createVendorContract({
+        vendorId: vendor.id,
+        title: 'Cloud hosting',
+        value: 500000,
+        endDate: new Date('2099-01-01'),
+      }),
     );
     await asUser('chairman@kaizen.co.in', () => transitionVendorContract(contract.id, 'proposed'));
 
@@ -146,9 +167,16 @@ describe('vendors and contracts — domain and wiring', () => {
   });
 
   it('within-ceiling approval by someone who did not propose it applies directly', async () => {
-    const vendor = await asUser('operations@kaizen.co.in', () => createVendor({ name: `Approvable Vendor ${stamp()}`, category: 'infra' }));
+    const vendor = await asUser('operations@kaizen.co.in', () =>
+      createVendor({ name: `Approvable Vendor ${stamp()}`, category: 'infra' }),
+    );
     const contract = await asUser('operations@kaizen.co.in', () =>
-      createVendorContract({ vendorId: vendor.id, title: 'Support contract', value: 10000, endDate: new Date('2099-01-01') }),
+      createVendorContract({
+        vendorId: vendor.id,
+        title: 'Support contract',
+        value: 10000,
+        endDate: new Date('2099-01-01'),
+      }),
     );
     await asUser('operations@kaizen.co.in', () => transitionVendorContract(contract.id, 'proposed'));
 
@@ -161,7 +189,9 @@ describe('vendors and contracts — domain and wiring', () => {
   });
 
   it('IT-VCT-002: the notice ladder fires once per rung and flips expiring then expired', async () => {
-    const vendor = await asUser('operations@kaizen.co.in', () => createVendor({ name: `Ladder Vendor ${stamp()}`, category: 'infra' }));
+    const vendor = await asUser('operations@kaizen.co.in', () =>
+      createVendor({ name: `Ladder Vendor ${stamp()}`, category: 'infra' }),
+    );
     const contract = await asUser('operations@kaizen.co.in', () =>
       createVendorContract({ vendorId: vendor.id, title: `Ladder Contract ${stamp()}`, value: 50000, noticeDays: 30 }),
     );
@@ -176,11 +206,15 @@ describe('vendors and contracts — domain and wiring', () => {
     expect(afterFirst.status).toBe('expiring');
     expect(afterFirst.noticeNotifiedRungs).toContain(7);
 
-    const firstCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_VCT_NOTICE', subjectId: contract.id } });
+    const firstCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_VCT_NOTICE', subjectId: contract.id },
+    });
     expect(firstCount).toBe(1);
 
     await asUser('operations@kaizen.co.in', () => runVendorContractNoticeLadder());
-    const secondCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_VCT_NOTICE', subjectId: contract.id } });
+    const secondCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_VCT_NOTICE', subjectId: contract.id },
+    });
     expect(secondCount).toBe(1);
 
     // Now push it past the end date — the job must flip it to expired
@@ -195,9 +229,16 @@ describe('vendors and contracts — domain and wiring', () => {
   });
 
   it('IT-VCT-003: terminating requires a reason and leaves the approval history intact', async () => {
-    const vendor = await asUser('operations@kaizen.co.in', () => createVendor({ name: `Terminable Vendor ${stamp()}`, category: 'infra' }));
+    const vendor = await asUser('operations@kaizen.co.in', () =>
+      createVendor({ name: `Terminable Vendor ${stamp()}`, category: 'infra' }),
+    );
     const contract = await asUser('operations@kaizen.co.in', () =>
-      createVendorContract({ vendorId: vendor.id, title: 'To be terminated', value: 20000, endDate: new Date('2099-01-01') }),
+      createVendorContract({
+        vendorId: vendor.id,
+        title: 'To be terminated',
+        value: 20000,
+        endDate: new Date('2099-01-01'),
+      }),
     );
     await asUser('operations@kaizen.co.in', () => transitionVendorContract(contract.id, 'proposed'));
     const approved = await asUser('finance@kaizen.co.in', () => transitionVendorContract(contract.id, 'approved'));
@@ -216,7 +257,9 @@ describe('vendors and contracts — domain and wiring', () => {
     const approvedById = approvedRow.approvedById;
     const approvedAt = approvedRow.approvedAt;
 
-    const noReason = await expectReject(() => asUser('operations@kaizen.co.in', () => terminateVendorContract(contract.id, '')));
+    const noReason = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => terminateVendorContract(contract.id, '')),
+    );
     expect(noReason.status).toBe(400);
 
     const terminated = await asUser('operations@kaizen.co.in', () =>
@@ -232,19 +275,29 @@ describe('vendors and contracts — domain and wiring', () => {
   });
 
   it('a vendor transitions active -> suspended -> active and -> offboarded (terminal)', async () => {
-    const vendor = await asUser('operations@kaizen.co.in', () => createVendor({ name: `Lifecycle Vendor ${stamp()}`, category: 'infra' }));
+    const vendor = await asUser('operations@kaizen.co.in', () =>
+      createVendor({ name: `Lifecycle Vendor ${stamp()}`, category: 'infra' }),
+    );
     const suspended = await asUser('operations@kaizen.co.in', () => transitionVendor(vendor.id, { event: 'SUSPEND' }));
     expect(suspended.status).toBe('suspended');
-    const reinstated = await asUser('operations@kaizen.co.in', () => transitionVendor(vendor.id, { event: 'REINSTATE' }));
+    const reinstated = await asUser('operations@kaizen.co.in', () =>
+      transitionVendor(vendor.id, { event: 'REINSTATE' }),
+    );
     expect(reinstated.status).toBe('active');
-    const offboarded = await asUser('operations@kaizen.co.in', () => transitionVendor(vendor.id, { event: 'OFFBOARD' }));
+    const offboarded = await asUser('operations@kaizen.co.in', () =>
+      transitionVendor(vendor.id, { event: 'OFFBOARD' }),
+    );
     expect(offboarded.status).toBe('offboarded');
-    const rejected = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionVendor(vendor.id, { event: 'REINSTATE' })));
+    const rejected = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => transitionVendor(vendor.id, { event: 'REINSTATE' })),
+    );
     expect(rejected.status).toBe(422);
   });
 
   it('renewing a vendor contract chains a new one by renewedFromId without mutating the predecessor', async () => {
-    const vendor = await asUser('operations@kaizen.co.in', () => createVendor({ name: `Renewable Vendor ${stamp()}`, category: 'infra' }));
+    const vendor = await asUser('operations@kaizen.co.in', () =>
+      createVendor({ name: `Renewable Vendor ${stamp()}`, category: 'infra' }),
+    );
     const contract = await asUser('operations@kaizen.co.in', () =>
       createVendorContract({ vendorId: vendor.id, title: 'Renewable', value: 15000, endDate: new Date('2099-01-01') }),
     );
@@ -284,7 +337,9 @@ describe('vendors and contracts — domain and wiring', () => {
   });
 
   it('vendorContractDetail exposes availableTransitions so the UI cannot render a dead button', async () => {
-    const vendor = await asUser('operations@kaizen.co.in', () => createVendor({ name: `Detail Vendor ${stamp()}`, category: 'infra' }));
+    const vendor = await asUser('operations@kaizen.co.in', () =>
+      createVendor({ name: `Detail Vendor ${stamp()}`, category: 'infra' }),
+    );
     const contract = await asUser('operations@kaizen.co.in', () =>
       createVendorContract({ vendorId: vendor.id, title: 'Detail', value: 1000, endDate: new Date('2099-01-01') }),
     );
@@ -302,21 +357,34 @@ describe('vendors and contracts — domain and wiring', () => {
     );
     expect(deniedVendor.status).toBe(403);
 
-    const vendor = await asUser('operations@kaizen.co.in', () => createVendor({ name: `Host For Denial ${stamp()}`, category: 'infra' }));
+    const vendor = await asUser('operations@kaizen.co.in', () =>
+      createVendor({ name: `Host For Denial ${stamp()}`, category: 'infra' }),
+    );
     const deniedContract = await expectReject(() =>
-      asUser('finance@kaizen.co.in', () => createVendorContract({ vendorId: vendor.id, title: 'Denied', value: 100, endDate: new Date('2099-01-01') })),
+      asUser('finance@kaizen.co.in', () =>
+        createVendorContract({ vendorId: vendor.id, title: 'Denied', value: 100, endDate: new Date('2099-01-01') }),
+      ),
     );
     expect(deniedContract.status).toBe(403);
   });
 
   it('the Operations Head cannot approve a vendor contract — the grant has no approve', async () => {
-    const vendor = await asUser('operations@kaizen.co.in', () => createVendor({ name: `Ops Denied Vendor ${stamp()}`, category: 'infra' }));
+    const vendor = await asUser('operations@kaizen.co.in', () =>
+      createVendor({ name: `Ops Denied Vendor ${stamp()}`, category: 'infra' }),
+    );
     const contract = await asUser('operations@kaizen.co.in', () =>
-      createVendorContract({ vendorId: vendor.id, title: 'Ops cannot approve', value: 5000, endDate: new Date('2099-01-01') }),
+      createVendorContract({
+        vendorId: vendor.id,
+        title: 'Ops cannot approve',
+        value: 5000,
+        endDate: new Date('2099-01-01'),
+      }),
     );
     await asUser('operations@kaizen.co.in', () => transitionVendorContract(contract.id, 'proposed'));
 
-    const denied = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionVendorContract(contract.id, 'approved')));
+    const denied = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => transitionVendorContract(contract.id, 'approved')),
+    );
     expect(denied.status).toBe(403);
 
     const stillProposed = await unscopedPrisma.itVendorContract.findFirstOrThrow({ where: { id: contract.id } });
@@ -324,9 +392,16 @@ describe('vendors and contracts — domain and wiring', () => {
   });
 
   it('the Operations Head never receives contract value or currency — withheld server-side, not only hidden in the UI', async () => {
-    const vendor = await asUser('operations@kaizen.co.in', () => createVendor({ name: `Money Masked Vendor ${stamp()}`, category: 'infra' }));
+    const vendor = await asUser('operations@kaizen.co.in', () =>
+      createVendor({ name: `Money Masked Vendor ${stamp()}`, category: 'infra' }),
+    );
     const created = await asUser('operations@kaizen.co.in', () =>
-      createVendorContract({ vendorId: vendor.id, title: 'Masked from creation', value: 42000, endDate: new Date('2099-01-01') }),
+      createVendorContract({
+        vendorId: vendor.id,
+        title: 'Masked from creation',
+        value: 42000,
+        endDate: new Date('2099-01-01'),
+      }),
     );
     expect(created.value).toBeNull();
     expect(created.currency).toBeNull();

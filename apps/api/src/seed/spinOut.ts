@@ -33,9 +33,7 @@
  */
 
 import { unscopedPrisma } from '../platform/db.js';
-import {
-  previewSpinOut, commitSpinOut, revertSpinOut, MODEL_LABEL, type SpinOutModel,
-} from './spinOutEngine.js';
+import { previewSpinOut, commitSpinOut, revertSpinOut, MODEL_LABEL, type SpinOutModel } from './spinOutEngine.js';
 
 function parseArgs(argv: string[]): Record<string, string | true> {
   const out: Record<string, string | true> = {};
@@ -110,11 +108,15 @@ async function main() {
     const fromSlug = args.from ? String(args.from) : undefined;
     const toSlug = args.to ? String(args.to) : undefined;
     if (!fromSlug || !toSlug) {
-      console.error('Usage: tsx src/seed/spinOut.ts --revert <batchId> --from <holding-slug> --to <subsidiary-slug> --yes');
+      console.error(
+        'Usage: tsx src/seed/spinOut.ts --revert <batchId> --from <holding-slug> --to <subsidiary-slug> --yes',
+      );
       process.exit(1);
     }
     if (!args.yes) {
-      console.error('This removes what this spin-out batch created in the subsidiary. Re-run with --yes if that is what you want.');
+      console.error(
+        'This removes what this spin-out batch created in the subsidiary. Re-run with --yes if that is what you want.',
+      );
       process.exit(1);
     }
     const holding = await unscopedPrisma.tenant.findFirstOrThrow({ where: { slug: fromSlug } });

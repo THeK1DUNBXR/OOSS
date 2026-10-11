@@ -136,7 +136,12 @@ export async function recordPayment(input: {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'payment', subjectId: payment.id, after: { recordCode, amount: input.amount } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'payment',
+    subjectId: payment.id,
+    after: { recordCode, amount: input.amount },
+  });
   await emit({
     name: EVENTS.PAYMENT_RECEIVED,
     subject: { entityType: 'payment', entityId: payment.id, recordCode },
@@ -305,7 +310,9 @@ export async function allocatePayment(input: {
     related: [
       { relation: 'from', entityType: 'payment', entityId: input.paymentId },
       ...(input.invoiceId ? [{ relation: 'against', entityType: 'invoice', entityId: input.invoiceId }] : []),
-      ...(input.feeInstalmentId ? [{ relation: 'against', entityType: 'fee_instalment', entityId: input.feeInstalmentId }] : []),
+      ...(input.feeInstalmentId
+        ? [{ relation: 'against', entityType: 'fee_instalment', entityId: input.feeInstalmentId }]
+        : []),
     ],
     newState: { allocatedAmount: input.amount },
     impact: { domains: ['fin'] },
@@ -379,7 +386,12 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
   const { documentNumbering } = await import('./companyProfile.js');
   const { DOCUMENT_SERIES, nextDocumentNumber } = await import('../platform/documentNumber.js');
   const numbering = await documentNumbering();
-  const recordCode = await nextDocumentNumber(DOCUMENT_SERIES.creditNote, numbering.prefix, new Date(), numbering.yearFormat);
+  const recordCode = await nextDocumentNumber(
+    DOCUMENT_SERIES.creditNote,
+    numbering.prefix,
+    new Date(),
+    numbering.yearFormat,
+  );
   const note = await prisma.creditNote.create({
     data: {
       tenantId: auth.tenantId,
@@ -420,10 +432,7 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
 // rebuild, discard, or re-hydrate at any time.
 // ---------------------------------------------------------------------------
 
-export async function rehydrateReceivables(
-  subjectId: string | null,
-  subjectType: 'account' | 'opportunity',
-) {
+export async function rehydrateReceivables(subjectId: string | null, subjectType: 'account' | 'opportunity') {
   return rehydrateReceivablesFor(subjectId, subjectType);
 }
 

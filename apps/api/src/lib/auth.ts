@@ -11,7 +11,7 @@
  * grants. Switching mutates the existing session; no new session is issued.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import {
@@ -34,10 +34,35 @@ import { resolveGrants } from '../platform/permissions.js';
 import { config } from '../platform/config.js';
 import { formatGrant } from '@kaizen/shared';
 import { generateTotpSecret, otpauthUri, verifyTotp } from '../domains/compliance/corporate/totp.js';
-import { createChainedAuditRecord } from '../platform/audit.js';
+import { auditWrite, createChainedAuditRecord } from '../platform/audit.js';
 
 const JWT_SECRET = config.JWT_SECRET;
-const TOKEN_TTL = '12h';
+/**
+ * The access token is short because it is the only thing a stolen copy can
+ * use, and the Session row is what makes even this window closeable: logout
+ * and reuse detection take effect on the next request, not on expiry.
+ */
+const TOKEN_TTL = '15m';
+/**
+ * Lifetime of a whole session, measured from sign-in. Rotation does not extend
+ * it: a session that keeps refreshing still ends thirty days after the login
+ * that started it, so a forgotten browser cannot stay signed in indefinitely.
+ */
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * How long a rotated-away refresh secret still counts as a second tab rather
+ * than a thief. Two tabs refresh at about the same moment; the second arrives
+ * with the secret the first has just replaced. Ten seconds covers that and
+ * nothing a person would do by hand.
+ */
+const REFRESH_GRACE_MS = 10_000;
+/**
+ * How long a completed second factor counts once the session has it. No step-up
+ * window was defined anywhere in the codebase, so this is set to the access
+ * token's own fifteen minutes: step-up never outlives the token that first
+ * carried it. Owner to confirm; see the 0.2 report.
+ */
+const STEP_UP_WINDOW_MS = 15 * 60 * 1000;
 const MFA_CHALLENGE_TTL = '5m';
 const SELECTION_TOKEN_TTL = '5m';
 
@@ -98,6 +123,8 @@ export interface TokenPayload {
   tenantId: string;
   affiliationId: string;
   stepUp: boolean;
+  /** Names the Session row this access token belongs to. Tokens without one are refused. */
+  jti: string;
 }
 
 /**
@@ -113,6 +140,50 @@ export interface SelectionTokenPayload {
 
 export function signToken(payload: TokenPayload): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_TTL });
+}
+
+/** SHA-256 hex of a refresh secret. See the Session model for why this is not `hashPassword`. */
+export function hashRefreshSecret(secret: string): string {
+  return createHash('sha256').update(secret).digest('hex');
+}
+
+/**
+ * The Session behind an access token, or null when the token must not be
+ * honoured: no `jti` (issued before sessions existed), no row, revoked, past
+ * its lifetime, or not the user and tenant the token was minted for.
+ */
+export async function liveSessionFor(payload: TokenPayload) {
+  if (!payload.jti) return null;
+  const session = await unscopedPrisma.session.findUnique({ where: { jti: payload.jti } });
+  if (!session || session.revokedAt || session.expiresAt <= new Date()) return null;
+  if (session.userId !== payload.userId || session.tenantId !== payload.tenantId) return null;
+  return session;
+}
+
+/**
+ * Audit and event writes made before a request context exists (login, refresh)
+ * run as the signed-in human, not as the system, so the record names who
+ * actually acted. `auditWrite` and `emit` both read the context they are given.
+ */
+function actingAs(tenantId: string, partyId: string | null, roleSlug: string | null) {
+  return newRequestContext({
+    auth: {
+      tenantId,
+      principalType: 'human',
+      partyId,
+      userId: null,
+      agentId: null,
+      onBehalfOfPartyId: null,
+      affiliationId: null,
+      roleSlug,
+      branch: null,
+      orgUnitId: null,
+      classificationCeiling: 'internal',
+      purpose: 'operational',
+      consentCodes: [],
+      stepUpVerified: false,
+    },
+  });
 }
 
 export function verifyToken(token: string): TokenPayload {
@@ -174,17 +245,25 @@ function generatePassword(): string {
  * untouched" — the same three-way `SeededAccount.password` shape the founding
  * accounts already use.
  */
-export async function ensureSignInPrincipal(email: string, reset: boolean): Promise<{ principalId: string; password: string | null }> {
+export async function ensureSignInPrincipal(
+  email: string,
+  reset: boolean,
+): Promise<{ principalId: string; password: string | null }> {
   const lower = email.toLowerCase();
   let principal = await unscopedPrisma.principal.findFirst({ where: { email: lower } });
   let password: string | null = null;
 
   if (!principal) {
     password = generatePassword();
-    principal = await unscopedPrisma.principal.create({ data: { email: lower, passwordHash: await hashPassword(password) } });
+    principal = await unscopedPrisma.principal.create({
+      data: { email: lower, passwordHash: await hashPassword(password) },
+    });
   } else if (reset) {
     password = generatePassword();
-    principal = await unscopedPrisma.principal.update({ where: { id: principal.id }, data: { passwordHash: await hashPassword(password) } });
+    principal = await unscopedPrisma.principal.update({
+      where: { id: principal.id },
+      data: { passwordHash: await hashPassword(password) },
+    });
   }
 
   return { principalId: principal.id, password };
@@ -220,7 +299,9 @@ async function entitiesFor(principalId: string, emailForHint?: string): Promise<
       name: user.tenant.name,
       kind: user.tenant.kind as TenantKind,
       parentTenantId: user.tenant.parentTenantId,
-      roleSlugs: [...new Set(affiliations.map((a) => a.roleSlug ?? 'sales'))],
+      // An affiliation with no role contributes no role here, rather than a
+      // default one (see http.ts, where the same fallback was removed).
+      roleSlugs: [...new Set(affiliations.flatMap((a) => (a.roleSlug ? [a.roleSlug] : [])))],
       ...(suggested ? { suggested: true } : {}),
     });
   }
@@ -254,7 +335,10 @@ export function assertPasswordAllowed(password: string, email?: string | null): 
   }
 }
 
-/** Finishes a login: audits it, resets the failure counters, issues the real token. */
+/**
+ * Finishes a login: opens the Session, audits and emits it, resets the failure
+ * counters, and issues the access token and the first refresh secret.
+ */
 async function completeLogin(
   user: { id: string; tenantId: string; personId: string },
   active: { id: string; roleSlug: string | null },
@@ -270,26 +354,42 @@ async function completeLogin(
     },
   });
 
-  await asSystem(user.tenantId, async () => {
-    // Through the chained writer, so a sign-in is a link in the audit chain
-    // rather than a row that breaks it.
-    await createChainedAuditRecord({
+  const refreshSecret = randomBytes(32).toString('base64url');
+  const jti = randomUUID();
+  const session = await unscopedPrisma.session.create({
+    data: {
       tenantId: user.tenantId,
-      action: 'login',
-      subjectType: 'user',
-      subjectId: user.id,
-      actorType: 'human',
-      actorId: user.personId,
-      actorLabel: active.roleSlug,
+      userId: user.id,
+      jti,
+      refreshTokenHash: hashRefreshSecret(refreshSecret),
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+      stepUpAt: stepUp ? new Date() : null,
+    },
+  });
+
+  await runWithContext(actingAs(user.tenantId, user.personId, active.roleSlug), async () => {
+    await auditWrite({ action: 'login', subjectType: 'session', subjectId: session.id, meta: { userId: user.id } });
+    await emit({
+      name: EVENTS.SESSION_ISSUED,
+      subject: { entityType: 'session', entityId: session.id },
+      newState: { userId: user.id, affiliationId: active.id },
     });
   });
 
-  const token = signToken({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id, stepUp });
-  return { token, user: await buildSessionUser(user.id, user.tenantId, active.id, stepUp) };
+  const token = signToken({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id, stepUp, jti });
+  return {
+    token,
+    refreshToken: `${session.id}.${refreshSecret}`,
+    refreshExpiresAt: session.expiresAt,
+    user: await buildSessionUser(user.id, user.tenantId, active.id, stepUp),
+  };
 }
 
 export interface LoginResult {
   token: string;
+  /** `<sessionId>.<secret>`. Set as a cookie by the route, never returned in a body. Rotates on every refresh. */
+  refreshToken: string;
+  refreshExpiresAt: Date;
   user: SessionUser;
 }
 
@@ -335,7 +435,9 @@ export async function login(
       where: { email: lower, principalId: null, passwordHash: { not: null }, status: 'active' },
     });
     if (unmigrated?.passwordHash) {
-      principal = await unscopedPrisma.principal.create({ data: { email: lower, passwordHash: unmigrated.passwordHash } });
+      principal = await unscopedPrisma.principal.create({
+        data: { email: lower, passwordHash: unmigrated.passwordHash },
+      });
       await unscopedPrisma.user.updateMany({
         where: { email: lower, principalId: null },
         data: { principalId: principal.id, passwordHash: null },
@@ -389,7 +491,9 @@ export async function login(
   }
 
   if (candidates.length === 0) {
-    throw ApiError.forbidden('This account holds no active affiliation. Access derives from affiliations, never from the person record.');
+    throw ApiError.forbidden(
+      'This account holds no active affiliation. Access derives from affiliations, never from the person record.',
+    );
   }
 
   await unscopedPrisma.principal.update({ where: { id: principal.id }, data: { lastLoginAt: new Date() } });
@@ -410,7 +514,13 @@ export async function login(
  * gate, and only then issue a session.
  */
 async function issueSessionFor(
-  user: { id: string; tenantId: string; personId: string; activeAffiliationId: string | null; mfaEnabledAt: Date | null },
+  user: {
+    id: string;
+    tenantId: string;
+    personId: string;
+    activeAffiliationId: string | null;
+    mfaEnabledAt: Date | null;
+  },
   stepUp: boolean,
 ): Promise<LoginResult | MfaRequiredResult> {
   const affiliations = await unscopedPrisma.affiliation.findMany({
@@ -418,7 +528,9 @@ async function issueSessionFor(
     orderBy: [{ primaryFlag: 'desc' }, { createdAt: 'asc' }],
   });
   if (affiliations.length === 0) {
-    throw ApiError.forbidden('This account holds no active affiliation. Access derives from affiliations, never from the person record.');
+    throw ApiError.forbidden(
+      'This account holds no active affiliation. Access derives from affiliations, never from the person record.',
+    );
   }
 
   // Selection order: exactly one active -> silent; primary_flag; most recently
@@ -434,7 +546,10 @@ async function issueSessionFor(
   // own — `verifyMfaChallenge` is the only thing that accepts it, and only at
   // `/auth/mfa/verify`.
   if (user.mfaEnabledAt) {
-    return { mfaRequired: true, challengeToken: signMfaChallenge({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id }) };
+    return {
+      mfaRequired: true,
+      challengeToken: signMfaChallenge({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id }),
+    };
   }
 
   return completeLogin(user, active, stepUp);
@@ -447,7 +562,9 @@ export async function verifyMfaAndLogin(challengeToken: string, code: string): P
   if (!user || !user.mfaSecret) throw ApiError.unauthorized('MFA challenge is invalid or expired. Sign in again.');
 
   if (!verifyTotp(user.mfaSecret, code)) {
-    throw ApiError.unauthorized('That code is not correct. Codes are valid for about thirty seconds — check the app is still showing a current one.');
+    throw ApiError.unauthorized(
+      'That code is not correct. Codes are valid for about thirty seconds — check the app is still showing a current one.',
+    );
   }
 
   const affiliation = await unscopedPrisma.affiliation.findFirst({
@@ -502,13 +619,19 @@ export async function changePassword(userId: string, currentPassword: string, ne
   });
   // The credential is one thing across entities, so the "last changed" stamp
   // lands on every user of the principal, not only the one that asked.
-  await unscopedPrisma.user.updateMany({ where: { principalId: principal.id }, data: { passwordChangedAt: new Date() } });
+  await unscopedPrisma.user.updateMany({
+    where: { principalId: principal.id },
+    data: { passwordChangedAt: new Date() },
+  });
 }
 
 /** `GET /auth/entities` — the same list `login()` would have offered, for a principal already holding a normal token. */
-export async function entitiesForToken(payload: TokenPayload): Promise<EntityOption[]> {
+export async function entitiesForToken(payload: Omit<TokenPayload, 'jti'>): Promise<EntityOption[]> {
   const user = await unscopedPrisma.user.findFirstOrThrow({ where: { id: payload.userId } });
-  if (!user.principalId) throw ApiError.unauthorized('This account has no principal — sign-in cannot resolve its entities. Contact whoever created the account.');
+  if (!user.principalId)
+    throw ApiError.unauthorized(
+      'This account has no principal — sign-in cannot resolve its entities. Contact whoever created the account.',
+    );
   return entitiesFor(user.principalId);
 }
 
@@ -518,7 +641,9 @@ export async function entitiesForToken(payload: TokenPayload): Promise<EntityOpt
  * are told apart by shape (`purpose: 'select-entity'` versus `userId`), not by
  * which header carried them, so one route handles both.
  */
-export async function identifySwitchCaller(token: string): Promise<{ principalId: string; sourceTenantId?: string; sourceUserId?: string }> {
+export async function identifySwitchCaller(
+  token: string,
+): Promise<{ principalId: string; sourceTenantId?: string; sourceUserId?: string; sourceSessionId?: string }> {
   let decoded: unknown;
   try {
     decoded = jwt.verify(token, JWT_SECRET);
@@ -531,9 +656,17 @@ export async function identifySwitchCaller(token: string): Promise<{ principalId
     return { principalId: payload.principalId };
   }
   if (payload.userId && payload.tenantId) {
+    // A revoked session cannot be used to reach another entity either.
+    const session = await liveSessionFor(payload as TokenPayload);
+    if (!session) throw ApiError.unauthorized('Session token is invalid or expired.');
     const user = await unscopedPrisma.user.findFirst({ where: { id: payload.userId, status: 'active' } });
     if (!user?.principalId) throw ApiError.unauthorized('This account has no principal.');
-    return { principalId: user.principalId, sourceTenantId: payload.tenantId, sourceUserId: payload.userId };
+    return {
+      principalId: user.principalId,
+      sourceTenantId: payload.tenantId,
+      sourceUserId: payload.userId,
+      sourceSessionId: session.id,
+    };
   }
   throw ApiError.unauthorized('Not a recognised session token.');
 }
@@ -546,11 +679,16 @@ export async function identifySwitchCaller(token: string): Promise<{ principalId
  * posture the tenant gate itself takes for a cross-tenant reach.
  */
 export async function switchEntity(
-  caller: { principalId: string; sourceTenantId?: string; sourceUserId?: string },
+  caller: { principalId: string; sourceTenantId?: string; sourceUserId?: string; sourceSessionId?: string },
   targetTenantId: string,
 ) {
   const target = await unscopedPrisma.user.findFirst({
-    where: { principalId: caller.principalId, tenantId: targetTenantId, status: 'active', tenant: { status: 'active' } },
+    where: {
+      principalId: caller.principalId,
+      tenantId: targetTenantId,
+      status: 'active',
+      tenant: { status: 'active' },
+    },
   });
   if (!target) throw ApiError.notFound('Entity');
 
@@ -581,6 +719,16 @@ export async function switchEntity(
   const issued = await issueSessionFor(target, false);
   if ('mfaRequired' in issued) return issued;
 
+  // The session the caller arrived on is replaced by the one just opened, so a
+  // principal does not keep two live sessions from one sign-in. Only a caller
+  // holding a session token has one; the selection-token path does not.
+  if (caller.sourceSessionId) {
+    await unscopedPrisma.session.updateMany({
+      where: { id: caller.sourceSessionId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
   await asSystem(target.tenantId, async () => {
     await emit({
       name: EVENTS.ENTITY_SWITCHED,
@@ -589,6 +737,260 @@ export async function switchEntity(
     });
   });
   return issued;
+}
+
+/** What a refresh hands back. A grace-window answer carries no new secret, so the cookie is left alone. */
+export interface SessionRefresh {
+  token: string;
+  refreshToken?: string;
+  refreshExpiresAt?: Date;
+  user: SessionUser;
+}
+
+function splitRefreshCookie(value: string): { sessionId: string; secretHash: string } | null {
+  const dot = value.indexOf('.');
+  if (dot <= 0 || dot === value.length - 1) return null;
+  return { sessionId: value.slice(0, dot), secretHash: hashRefreshSecret(value.slice(dot + 1)) };
+}
+
+/**
+ * `POST /auth/refresh`. Rotates the refresh secret and issues a new access
+ * token under a new jti, which the Session row now records as the live one.
+ * The secret comes from the httpOnly cookie only.
+ *
+ * Presenting the secret rotated away from has two readings. Inside
+ * REFRESH_GRACE_MS of the rotation it is the same person's second tab: a new
+ * access token for the same session is issued, with no further rotation and no
+ * cookie change, so the winner's secret keeps working. After the grace it is
+ * reuse: the session is revoked and the event audited.
+ *
+ * Step-up carries through: the stamp on the session counts for the new token
+ * only while its own window is open.
+ */
+export async function refreshSession(refreshCookie: string): Promise<SessionRefresh> {
+  const refused = () => ApiError.unauthorized('This session has ended. Sign in again.');
+  const parts = splitRefreshCookie(refreshCookie);
+  if (!parts) throw refused();
+  const presented = parts.secretHash;
+
+  const session = await unscopedPrisma.session.findUnique({ where: { id: parts.sessionId } });
+  if (!session || session.revokedAt || session.expiresAt <= new Date()) throw refused();
+
+  const user = await unscopedPrisma.user.findFirst({ where: { id: session.userId, status: 'active' } });
+  if (!user) throw refused();
+
+  const active = user.activeAffiliationId
+    ? await unscopedPrisma.affiliation.findFirst({
+        where: { id: user.activeAffiliationId, tenantId: user.tenantId, status: 'active' },
+      })
+    : null;
+  if (!active) throw refused();
+
+  const inGrace = (row: { rotatedAt: Date | null }) =>
+    row.rotatedAt !== null && Date.now() - row.rotatedAt.getTime() < REFRESH_GRACE_MS;
+  const stepUp = (row: { stepUpAt: Date | null }) =>
+    row.stepUpAt !== null && Date.now() - row.stepUpAt.getTime() < STEP_UP_WINDOW_MS;
+  const sameSessionAnswer = async (row: { jti: string; stepUpAt: Date | null }): Promise<SessionRefresh> => ({
+    token: signToken({
+      userId: user.id,
+      tenantId: user.tenantId,
+      affiliationId: active.id,
+      stepUp: stepUp(row),
+      jti: row.jti,
+    }),
+    user: await buildSessionUser(user.id, user.tenantId, active.id, stepUp(row)),
+  });
+
+  if (presented === session.refreshTokenHash) {
+    const nextSecret = randomBytes(32).toString('base64url');
+    const jti = randomUUID();
+    // Conditional on the hash still being current, so two requests racing with
+    // the same secret cannot both rotate it. The loser reads the winner's row below.
+    const rotated = await unscopedPrisma.session.updateMany({
+      where: { id: session.id, refreshTokenHash: session.refreshTokenHash, revokedAt: null },
+      data: {
+        refreshTokenHash: hashRefreshSecret(nextSecret),
+        previousRefreshTokenHash: session.refreshTokenHash,
+        olderRefreshTokenHash: session.previousRefreshTokenHash,
+        rotatedAt: new Date(),
+        jti,
+      },
+    });
+    if (rotated.count === 1) {
+      const token = signToken({
+        userId: user.id,
+        tenantId: user.tenantId,
+        affiliationId: active.id,
+        stepUp: stepUp(session),
+        jti,
+      });
+      return {
+        token,
+        refreshToken: `${session.id}.${nextSecret}`,
+        refreshExpiresAt: session.expiresAt,
+        user: await buildSessionUser(user.id, user.tenantId, active.id, stepUp(session)),
+      };
+    }
+    const fresh = await unscopedPrisma.session.findUnique({ where: { id: session.id } });
+    if (fresh && !fresh.revokedAt && fresh.previousRefreshTokenHash === presented && inGrace(fresh)) {
+      return sameSessionAnswer(fresh);
+    }
+    throw await refuseReuse(session.id, user.tenantId, user.personId, active.roleSlug);
+  }
+
+  if (session.previousRefreshTokenHash && presented === session.previousRefreshTokenHash) {
+    // Inside the grace this is a second tab; no further rotation.
+    if (inGrace(session)) return sameSessionAnswer(session);
+    // Past it: the replaced secret comes back only when the rotated-in secret
+    // was never presented, because presenting that one would have moved this
+    // value out of the previous slot. So the response carrying the rotated-in
+    // secret was lost, and the session is recovered rather than revoked.
+    return recoverLostRefresh(session, presented, user.id, user.tenantId, user.personId, active);
+  }
+
+  // The rotated-in secret a lost-response recovery dropped unused. Only a holder
+  // of a copy the session did not hand to the victim can present it.
+  if (session.abandonedRefreshTokenHash && presented === session.abandonedRefreshTokenHash) {
+    throw await refuseReuse(session.id, user.tenantId, user.personId, active.roleSlug, 'abandoned_secret_presented');
+  }
+
+  // A secret the session rotated away from two or more times ago. The newer one
+  // was used since, so this presenter holds a copy the session has moved past.
+  if (session.olderRefreshTokenHash && presented === session.olderRefreshTokenHash) {
+    throw await refuseReuse(session.id, user.tenantId, user.personId, active.roleSlug);
+  }
+
+  // A secret this session never issued: refused, and the session is left alone,
+  // because whoever sent it has learned nothing about the session.
+  throw refused();
+}
+
+/**
+ * Recovers a refresh whose response was lost. Rotates to a fresh secret, keeps
+ * the presented one in the previous slot so that a further lost response can
+ * be recovered the same way, and drops the unused rotated-in secret into the
+ * abandoned slot. Bounded by the session's own lifetime, which the caller has
+ * already checked.
+ *
+ * Residual risk, accepted: if a thief presents the replaced secret before the
+ * victim has used the rotated-in one, this is indistinguishable from a lost
+ * response. The thief keeps the session until the victim presents the abandoned
+ * secret, which revokes it (refreshSession). Until the victim returns, the
+ * thief's session is live. Only the most recent abandoned secret is kept, so a
+ * second recovery before the victim returns overwrites the first.
+ */
+async function recoverLostRefresh(
+  session: { id: string; refreshTokenHash: string; expiresAt: Date; stepUpAt: Date | null },
+  presented: string,
+  userId: string,
+  tenantId: string,
+  personId: string,
+  active: { id: string; roleSlug: string | null },
+): Promise<SessionRefresh> {
+  const nextSecret = randomBytes(32).toString('base64url');
+  const jti = randomUUID();
+  // Conditional on both slots still holding what this request read, so two
+  // recoveries racing for the same lost response cannot both succeed.
+  const recovered = await unscopedPrisma.session.updateMany({
+    where: {
+      id: session.id,
+      refreshTokenHash: session.refreshTokenHash,
+      previousRefreshTokenHash: presented,
+      revokedAt: null,
+    },
+    data: {
+      refreshTokenHash: hashRefreshSecret(nextSecret),
+      previousRefreshTokenHash: presented,
+      olderRefreshTokenHash: null,
+      abandonedRefreshTokenHash: session.refreshTokenHash,
+      abandonedAt: new Date(),
+      rotatedAt: new Date(),
+      jti,
+    },
+  });
+  if (recovered.count !== 1) throw ApiError.unauthorized('This session has ended. Sign in again.');
+
+  await runWithContext(actingAs(tenantId, personId, active.roleSlug), async () => {
+    await auditWrite({ action: 'refresh_recovered', subjectType: 'session', subjectId: session.id });
+    await emit({ name: EVENTS.SESSION_REFRESH_RECOVERED, subject: { entityType: 'session', entityId: session.id } });
+  });
+
+  const stepUpOpen = session.stepUpAt !== null && Date.now() - session.stepUpAt.getTime() < STEP_UP_WINDOW_MS;
+  return {
+    token: signToken({ userId, tenantId, affiliationId: active.id, stepUp: stepUpOpen, jti }),
+    refreshToken: `${session.id}.${nextSecret}`,
+    refreshExpiresAt: session.expiresAt,
+    user: await buildSessionUser(userId, tenantId, active.id, stepUpOpen),
+  };
+}
+
+/**
+ * `POST /auth/logout` without a bearer token: the access token had expired, so
+ * the refresh cookie is the only thing that names the session. Only the current
+ * or the immediately previous secret counts, so a stale cookie cannot end a
+ * session it no longer belongs to.
+ */
+export async function logoutWithRefreshCookie(refreshCookie: string): Promise<void> {
+  const parts = splitRefreshCookie(refreshCookie);
+  if (!parts) return;
+  const session = await unscopedPrisma.session.findUnique({ where: { id: parts.sessionId } });
+  if (!session || session.revokedAt) return;
+  if (parts.secretHash !== session.refreshTokenHash && parts.secretHash !== session.previousRefreshTokenHash) return;
+
+  const revoked = await unscopedPrisma.session.updateMany({
+    where: { id: session.id, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  if (revoked.count !== 1) return;
+  const user = await unscopedPrisma.user.findFirst({ where: { id: session.userId } });
+  await runWithContext(actingAs(session.tenantId, user?.personId ?? null, null), async () => {
+    await auditWrite({ action: 'logout', subjectType: 'session', subjectId: session.id });
+    await emit({ name: EVENTS.SESSION_REVOKED, subject: { entityType: 'session', entityId: session.id } });
+  });
+}
+
+/** Revokes the session on a reused refresh secret, audits and emits it, and returns the error to throw. */
+async function refuseReuse(
+  sessionId: string,
+  tenantId: string,
+  personId: string,
+  roleSlug: string | null,
+  reason?: string,
+) {
+  const revoked = await unscopedPrisma.session.updateMany({
+    where: { id: sessionId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  if (revoked.count === 1) {
+    await runWithContext(actingAs(tenantId, personId, roleSlug), async () => {
+      await auditWrite({
+        action: 'refresh_reuse',
+        subjectType: 'session',
+        subjectId: sessionId,
+        meta: reason ? { reason } : undefined,
+      });
+      await emit({ name: EVENTS.SESSION_REFRESH_REUSED, subject: { entityType: 'session', entityId: sessionId } });
+    });
+  }
+  return ApiError.unauthorized('This session has ended. Sign in again.');
+}
+
+/**
+ * `POST /auth/logout`. Revokes the caller's own session, so the access token
+ * still within its fifteen minutes stops working on its next request.
+ *
+ * No `assertCan`: the session is the caller's own, and the bearer token that
+ * reached this point is the authority for ending it. Refusing a sign-out on a
+ * grant would leave a user unable to close a session they are holding.
+ */
+export async function logoutSession(sessionId: string): Promise<void> {
+  const revoked = await unscopedPrisma.session.updateMany({
+    where: { id: sessionId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  if (revoked.count !== 1) return;
+  await auditWrite({ action: 'logout', subjectType: 'session', subjectId: sessionId });
+  await emit({ name: EVENTS.SESSION_REVOKED, subject: { entityType: 'session', entityId: sessionId } });
 }
 
 export async function buildSessionUser(
@@ -608,12 +1010,22 @@ export async function buildSessionUser(
   });
 
   const active = affiliations.find((a) => a.id === affiliationId) ?? affiliations[0];
-  const roleSlug = active?.roleSlug ?? 'sales';
+  // No role is no role: see http.ts. The session carries null and no grants.
+  const roleSlug = active?.roleSlug ?? null;
 
-  const role = await unscopedPrisma.accessRole.findFirst({ where: { tenantId, slug: roleSlug } });
-  const ceiling = (role?.classificationCeiling ?? ROLE_CLASSIFICATION_CEILING[roleSlug] ?? 'internal') as SensitivityClass;
+  const role = roleSlug ? await unscopedPrisma.accessRole.findFirst({ where: { tenantId, slug: roleSlug } }) : null;
+  const ceiling = (
+    roleSlug ? (role?.classificationCeiling ?? ROLE_CLASSIFICATION_CEILING[roleSlug] ?? 'internal') : 'public'
+  ) as SensitivityClass;
 
-  const auth = toAuthContext({ userId, tenantId, affiliationId: active.id, stepUp }, user.personId, roleSlug, user.branch, active.orgUnitId, ceiling);
+  const auth = toAuthContext(
+    { userId, tenantId, affiliationId: active.id, stepUp },
+    user.personId,
+    roleSlug,
+    user.branch,
+    active.orgUnitId,
+    ceiling,
+  );
 
   const [grants, authorityGrants, entityCount] = await Promise.all([
     runWithContext(newRequestContext({ auth }), () => resolveGrants(auth)),
@@ -625,7 +1037,7 @@ export async function buildSessionUser(
     id: a.id,
     affiliationType: a.affiliationType,
     counterpartyName: a.counterpartyName,
-    roleSlug: a.roleSlug ?? 'sales',
+    roleSlug: a.roleSlug,
     primaryFlag: a.primaryFlag,
     status: a.status,
     effectiveFrom: a.effectiveFrom.toISOString(),
@@ -663,9 +1075,9 @@ export async function buildSessionUser(
 }
 
 export function toAuthContext(
-  payload: TokenPayload,
+  payload: Omit<TokenPayload, 'jti'>,
   partyId: string,
-  roleSlug: string,
+  roleSlug: string | null,
   branch: string | null,
   orgUnitId: string | null,
   ceiling: SensitivityClass,
@@ -694,7 +1106,13 @@ export function toAuthContext(
  * Reach never unions across contexts. Switching re-composes the screen against
  * the new affiliation's grants alone.
  */
-export async function switchContext(userId: string, tenantId: string, affiliationId: string, stepUpProvided: boolean) {
+export async function switchContext(
+  userId: string,
+  tenantId: string,
+  affiliationId: string,
+  stepUpProvided: boolean,
+  sessionId: string,
+) {
   const affiliation = await unscopedPrisma.affiliation.findFirst({ where: { id: affiliationId, tenantId } });
   if (!affiliation) throw ApiError.notFound('Affiliation');
 
@@ -708,14 +1126,19 @@ export async function switchContext(userId: string, tenantId: string, affiliatio
 
   const requiresStepUp = STEP_UP_ROLES.has(affiliation.roleSlug ?? '');
   if (requiresStepUp && !stepUpProvided) {
-    throw ApiError.forbidden(
-      `Switching into the ${affiliation.roleSlug} context requires step-up re-authentication.`,
-      [{ axis: 'WHO', passed: false, reason: 'step_up_required' }],
-    );
+    throw ApiError.forbidden(`Switching into the ${affiliation.roleSlug} context requires step-up re-authentication.`, [
+      { axis: 'WHO', passed: false, reason: 'step_up_required' },
+    ]);
   }
 
-  // Mutates the existing session; no new session is issued.
+  // Mutates the existing session; no new session is issued. The access token
+  // is re-keyed to a fresh jti, so the Session row is told which token is live.
+  const jti = randomUUID();
   await unscopedPrisma.user.update({ where: { id: userId }, data: { activeAffiliationId: affiliationId } });
+  await unscopedPrisma.session.update({
+    where: { id: sessionId },
+    data: { jti, stepUpAt: stepUpProvided ? new Date() : null },
+  });
 
   await asSystem(tenantId, async () => {
     await emit({
@@ -725,6 +1148,6 @@ export async function switchContext(userId: string, tenantId: string, affiliatio
     });
   });
 
-  const token = signToken({ userId, tenantId, affiliationId, stepUp: stepUpProvided });
+  const token = signToken({ userId, tenantId, affiliationId, stepUp: stepUpProvided, jti });
   return { token, user: await buildSessionUser(userId, tenantId, affiliationId, stepUpProvided) };
 }

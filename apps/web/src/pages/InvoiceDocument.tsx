@@ -64,7 +64,11 @@ export function InvoiceDocument() {
   const [error, setError] = useState<string | null>(null);
   const [printKey, setPrintKey] = useState<number | null>(null);
 
-  const { data, isLoading, error: loadError } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: loadError,
+  } = useQuery({
     queryKey: ['invoice-document', id],
     queryFn: () => api.get<InvoiceDocumentView>(`/finance/invoices/${id}/document`),
     enabled: Boolean(id),
@@ -88,20 +92,33 @@ export function InvoiceDocument() {
   // underlying document, a different printed shape.
   if (data.ledger) return <KaizenInvoiceDocument doc={data} />;
 
-  const standing = [...data.statements].filter((st) => st.status !== 'superseded').sort((a, b) => b.issuedAt.localeCompare(a.issuedAt))[0];
-  const d: InvoiceDocumentViewWithFinal = { ...data, finalInvoice: standing ? { recordCode: standing.recordCode, issuedAt: standing.issuedAt } : null };
+  const standing = [...data.statements]
+    .filter((st) => st.status !== 'superseded')
+    .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt))[0];
+  const d: InvoiceDocumentViewWithFinal = {
+    ...data,
+    finalInvoice: standing ? { recordCode: standing.recordCode, issuedAt: standing.issuedAt } : null,
+  };
   const paymentLabel = PAYMENT_TYPE_LABELS[d.payment.type as PaymentType] ?? d.payment.type;
   const modeLabel = d.payment.mode ? (PAYMENT_MODE_LABELS[d.payment.mode as PaymentMode] ?? d.payment.mode) : null;
   // A discount column is only worth the ink when at least one line actually
   // carries one — an invoice with none should not print a column of dashes.
   const hasDiscount = d.lines.some((l) => l.discountAmount > 0);
-  const docType = d.isTempInvoice ? 'Temp Invoice' : d.invoiceType === 'bill_of_supply' ? 'Bill of Supply' : 'Tax Invoice';
+  const docType = d.isTempInvoice
+    ? 'Temp Invoice'
+    : d.invoiceType === 'bill_of_supply'
+      ? 'Bill of Supply'
+      : 'Tax Invoice';
 
   const company: LedgerCompany = {
     name: 'Kaizen Infinities',
     tagline: 'Training & Education Services',
     legalName: d.supplier.legalName,
-    address: [d.supplier.addressLine1, d.supplier.addressLine2, d.supplier.city ? `${d.supplier.city}-${d.supplier.pincode ?? ''}` : null]
+    address: [
+      d.supplier.addressLine1,
+      d.supplier.addressLine2,
+      d.supplier.city ? `${d.supplier.city}-${d.supplier.pincode ?? ''}` : null,
+    ]
       .filter(Boolean)
       .join(', '),
     location: d.supplier.stateName ?? '—',
@@ -118,7 +135,9 @@ export function InvoiceDocument() {
   const sheet = (
     <>
       {(d.status === 'draft' || d.status === 'void') && <Watermark text={d.status === 'draft' ? 'DRAFT' : 'VOID'} />}
-      {d.status !== 'draft' && d.status !== 'void' && d.isTempInvoice && <Watermark text="INTERNAL — NOT A TAX INVOICE" />}
+      {d.status !== 'draft' && d.status !== 'void' && d.isTempInvoice && (
+        <Watermark text="INTERNAL — NOT A TAX INVOICE" />
+      )}
       <LedgerHead company={company} />
       <InfoGrid>
         <InfoRow k="No." v={d.recordCode ?? 'not yet issued'} />
@@ -126,10 +145,7 @@ export function InvoiceDocument() {
         <InfoRow k="Student/Customer Name" v={d.customer.name} />
         <InfoRow k="Contact No." v={d.customer.phone ?? '—'} />
         <InfoRow k="From Tamil Nadu?" v={d.interState ? 'No' : 'Yes'} />
-        <InfoRow
-          k="Tax Basis"
-          v={d.interState ? 'IGST @18% (inter-state)' : 'CGST + SGST (intra-state)'}
-        />
+        <InfoRow k="Tax Basis" v={d.interState ? 'IGST @18% (inter-state)' : 'CGST + SGST (intra-state)'} />
       </InfoGrid>
       <DateBoxGrid columns={d.reverseCharge ? 3 : 2}>
         <DateBoxItem k="Due" v={fmtDate(d.dueDate)} />
@@ -171,7 +187,9 @@ export function InvoiceDocument() {
                 {hasDiscount && (
                   <>
                     <td>{fmtINR(line.grossAmount)}</td>
-                    <td>{line.discountAmount > 0 ? `${fmtINR(line.discountAmount)} (${line.discountPercent}%)` : '—'}</td>
+                    <td>
+                      {line.discountAmount > 0 ? `${fmtINR(line.discountAmount)} (${line.discountPercent}%)` : '—'}
+                    </td>
                   </>
                 )}
                 <td>{fmtINR(line.amount)}</td>
@@ -219,7 +237,9 @@ export function InvoiceDocument() {
         </p>
       )}
 
-      <TotalsStrip doc={{ amountInWords: d.totals.inWords, grandTotal: d.totals.totalPayable, label: 'Total Payable' }} />
+      <TotalsStrip
+        doc={{ amountInWords: d.totals.inWords, grandTotal: d.totals.totalPayable, label: 'Total Payable' }}
+      />
 
       <NoteStrip>
         {d.isTempInvoice
@@ -232,7 +252,8 @@ export function InvoiceDocument() {
             d.totals.balanceAtIssue,
           )} payable by ${date(d.dueDate)}, receipted separately as each instalment is received. `}
         {d.payment.type === 'full' && 'Received in full on issue. Nothing further is due on this invoice. '}
-        {d.payment.type === 'credit' && `Nothing collected on issue. ${money(d.totals.totalPayable)} payable by ${date(d.dueDate)}. `}
+        {d.payment.type === 'credit' &&
+          `Nothing collected on issue. ${money(d.totals.totalPayable)} payable by ${date(d.dueDate)}. `}
         {modeLabel && `Mode of payment: ${modeLabel}${d.payment.reference ? ` — ${d.payment.reference}` : ''}. `}
         {d.isTempInvoice
           ? 'Each instalment is acknowledged by its own receipt voucher. The tax invoice for this course is raised automatically once the fees are paid in full or the student withdraws — the student never receives this document.'

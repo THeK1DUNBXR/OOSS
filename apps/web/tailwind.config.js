@@ -44,9 +44,14 @@ export default {
         gold: { DEFAULT: '#FFC20E', soft: '#FFF3CE', deep: '#8a6a00' },
         paper: { DEFAULT: '#F2F2F4', surface: '#ffffff' },
         band: {
-          strong: '#1a7a4c', stable: '#3d8f68', good: '#3d8f68',
-          watch: '#b5570c', warn: '#b5570c', warning: '#b5570c',
-          strained: '#a8481a', critical: '#ad2c22',
+          strong: '#1a7a4c',
+          stable: '#3d8f68',
+          good: '#3d8f68',
+          watch: '#b5570c',
+          warn: '#b5570c',
+          warning: '#b5570c',
+          strained: '#a8481a',
+          critical: '#ad2c22',
         },
         /**
          * The three divisions the company runs, plus the shared function.

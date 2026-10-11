@@ -43,7 +43,12 @@ import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { registerHook } from '../../platform/hooks.js';
 
+// payroll_run is owned by domains/payroll.ts, but apply-salary-TDS (below)
+// audits an update to it from here. Registered here too, so a job importing
+// only this module does not throw on that audit; the registry is a set, so the
+// second registration is harmless.
 registerGovernedEntities('cmp_tax', [
+  'payroll_run',
   'tds_section_rate',
   'tds_applicability_rule',
   'tds_decision',
@@ -129,12 +134,20 @@ async function rateFor(section: string, at: Date) {
     where: { tenantId: auth.tenantId, section, effectiveFrom: { lte: at } },
     orderBy: { effectiveFrom: 'desc' },
   });
-  if (!row) throw ApiError.unprocessable(`No TDS rate is on file for ${section} effective on or before ${at.toISOString().slice(0, 10)}.`);
+  if (!row)
+    throw ApiError.unprocessable(
+      `No TDS rate is on file for ${section} effective on or before ${at.toISOString().slice(0, 10)}.`,
+    );
   return row;
 }
 
 /** Sum of subtotal on other bills to the same payee, same section, same FY, up to (not including) this bill. */
-async function cumulativeFyForVendor(vendorKey: string, section: string, billDate: Date, excludeBillId: string): Promise<number> {
+async function cumulativeFyForVendor(
+  vendorKey: string,
+  section: string,
+  billDate: Date,
+  excludeBillId: string,
+): Promise<number> {
   const auth = currentAuth();
   const { from, to } = fyRange(fyOf(billDate));
   const bills = await prisma.vendorBill.findMany({
@@ -169,7 +182,9 @@ export async function computeVendorTds(billId: string, input: ComputeVendorTdsIn
   const bill = await prisma.vendorBill.findFirst({ where: { id: billId, tenantId: auth.tenantId, deletedAt: null } });
   if (!bill) throw ApiError.notFound('Vendor bill');
   if (bill.status === 'paid' || bill.status === 'cancelled') {
-    throw ApiError.unprocessable(`${bill.recordCode} is already ${bill.status}. TDS is decided before a bill is paid, not after.`);
+    throw ApiError.unprocessable(
+      `${bill.recordCode} is already ${bill.status}. TDS is decided before a bill is paid, not after.`,
+    );
   }
 
   const rate = await rateFor(input.section, bill.billDate);
@@ -232,7 +247,8 @@ export async function computeVendorTds(billId: string, input: ComputeVendorTdsIn
 export async function waiveVendorTds(billId: string, reason: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'create' });
-  if (!reason.trim()) throw ApiError.badRequest('A waiver needs a reason — "not applicable" is a finding, not a default.');
+  if (!reason.trim())
+    throw ApiError.badRequest('A waiver needs a reason — "not applicable" is a finding, not a default.');
 
   const bill = await prisma.vendorBill.findFirst({ where: { id: billId, tenantId: auth.tenantId, deletedAt: null } });
   if (!bill) throw ApiError.notFound('Vendor bill');
@@ -274,7 +290,11 @@ async function latestDecision(billId: string) {
  * category is a bill nobody decided on, which is exactly the gap Sec 40(a)(ia)
  * disallowance comes from.
  */
-async function assertVendorBillTdsSettled(bill: { id: string; categoryId: string | null; recordCode: string }): Promise<void> {
+async function assertVendorBillTdsSettled(bill: {
+  id: string;
+  categoryId: string | null;
+  recordCode: string;
+}): Promise<void> {
   const auth = currentAuth();
   const existing = await latestDecision(bill.id);
   if (existing) return;
@@ -315,7 +335,10 @@ export async function listVendorBillsForTds(filter: { status?: string } = {}) {
 export async function tdsSectionRates() {
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'view' });
-  return prisma.tdsSectionRate.findMany({ where: { tenantId: auth.tenantId }, orderBy: [{ section: 'asc' }, { effectiveFrom: 'desc' }] });
+  return prisma.tdsSectionRate.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: [{ section: 'asc' }, { effectiveFrom: 'desc' }],
+  });
 }
 
 export async function listApplicabilityRules() {
@@ -324,12 +347,23 @@ export async function listApplicabilityRules() {
   return prisma.tdsApplicabilityRule.findMany({ where: { tenantId: auth.tenantId }, orderBy: { categoryId: 'asc' } });
 }
 
-export async function setApplicabilityRule(input: { categoryId: string; section: string; active?: boolean; note?: string | null }) {
+export async function setApplicabilityRule(input: {
+  categoryId: string;
+  section: string;
+  active?: boolean;
+  note?: string | null;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'edit' });
   return prisma.tdsApplicabilityRule.upsert({
     where: { tenantId_categoryId: { tenantId: auth.tenantId, categoryId: input.categoryId } },
-    create: { tenantId: auth.tenantId, categoryId: input.categoryId, section: input.section, active: input.active ?? true, note: input.note ?? null },
+    create: {
+      tenantId: auth.tenantId,
+      categoryId: input.categoryId,
+      section: input.section,
+      active: input.active ?? true,
+      note: input.note ?? null,
+    },
     update: { section: input.section, active: input.active ?? true, note: input.note ?? null },
   });
 }
@@ -344,7 +378,8 @@ export async function setMsmeTerms(billId: string, input: { udyamNumber: string;
 
   const bill = await prisma.vendorBill.findFirst({ where: { id: billId, tenantId: auth.tenantId, deletedAt: null } });
   if (!bill) throw ApiError.notFound('Vendor bill');
-  if (!input.udyamNumber.trim()) throw ApiError.badRequest('A Udyam registration number is needed to flag this vendor as an MSME.');
+  if (!input.udyamNumber.trim())
+    throw ApiError.badRequest('A Udyam registration number is needed to flag this vendor as an MSME.');
 
   const due = msmeDueDate(bill.billDate, input.agreedTermDays ?? null);
   const updated = await prisma.vendorBill.update({
@@ -428,7 +463,10 @@ export async function runMsmeLadder(): Promise<number> {
 // ---------------------------------------------------------------------------
 
 /** Sum of TDS deducted for one section group in one month — vendor bills plus (for '192') payroll. */
-export async function pendingTdsLiability(month: string, sectionGroup: string): Promise<{ amount: number; deducteeCount: number }> {
+export async function pendingTdsLiability(
+  month: string,
+  sectionGroup: string,
+): Promise<{ amount: number; deducteeCount: number }> {
   const auth = currentAuth();
   const { from, to } = monthRange(month);
 
@@ -444,7 +482,13 @@ export async function pendingTdsLiability(month: string, sectionGroup: string): 
   }
 
   const rows = await prisma.vendorBill.findMany({
-    where: { tenantId: auth.tenantId, deletedAt: null, tdsSection: sectionGroup, billDate: { gte: from, lt: to }, tdsAmount: { gt: 0 } },
+    where: {
+      tenantId: auth.tenantId,
+      deletedAt: null,
+      tdsSection: sectionGroup,
+      billDate: { gte: from, lt: to },
+      tdsAmount: { gt: 0 },
+    },
     select: { tdsAmount: true, vendorPan: true, vendorName: true },
   });
   return {
@@ -457,7 +501,11 @@ export async function listChallans(filter: { month?: string; status?: string } =
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'view' });
   return prisma.tdsChallan.findMany({
-    where: { tenantId: auth.tenantId, ...(filter.month ? { month: filter.month } : {}), ...(filter.status ? { status: filter.status } : {}) },
+    where: {
+      tenantId: auth.tenantId,
+      ...(filter.month ? { month: filter.month } : {}),
+      ...(filter.status ? { status: filter.status } : {}),
+    },
     orderBy: [{ month: 'desc' }, { sectionGroup: 'asc' }],
   });
 }
@@ -498,7 +546,12 @@ export async function createChallan(input: CreateChallanInput) {
       preparedById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'tds_challan', subjectId: challan.id, after: { month: input.month, sectionGroup: input.sectionGroup, amount } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'tds_challan',
+    subjectId: challan.id,
+    after: { month: input.month, sectionGroup: input.sectionGroup, amount },
+  });
   return challan;
 }
 
@@ -528,22 +581,41 @@ export async function markChallanPaid(id: string, input: MarkChallanPaidInput) {
     );
   }
   if (!input.bsrCode.trim() || !input.challanNo.trim()) {
-    throw ApiError.badRequest('A challan is marked paid against its BSR code and challan number — a payment with neither was not recorded by the bank.');
+    throw ApiError.badRequest(
+      'A challan is marked paid against its BSR code and challan number — a payment with neither was not recorded by the bank.',
+    );
   }
 
   const paid = await prisma.tdsChallan.update({
     where: { id },
-    data: { status: 'paid', bsrCode: input.bsrCode, challanNo: input.challanNo, paidOn: input.paidOn, paidById: auth.partyId },
+    data: {
+      status: 'paid',
+      bsrCode: input.bsrCode,
+      challanNo: input.challanNo,
+      paidOn: input.paidOn,
+      paidById: auth.partyId,
+    },
   });
 
   // Stamp the bills this challan covers, so a bill can answer "which challan was this deposited in".
   const { from, to } = monthRange(challan.month);
   await prisma.vendorBill.updateMany({
-    where: { tenantId: auth.tenantId, tdsSection: challan.sectionGroup, tdsChallanId: null, billDate: { gte: from, lt: to } },
+    where: {
+      tenantId: auth.tenantId,
+      tdsSection: challan.sectionGroup,
+      tdsChallanId: null,
+      billDate: { gte: from, lt: to },
+    },
     data: { tdsChallanId: paid.id },
   });
 
-  await auditWrite({ action: 'update', subjectType: 'tds_challan', subjectId: paid.id, before: { status: 'pending' }, after: { status: 'paid', bsrCode: input.bsrCode, challanNo: input.challanNo } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'tds_challan',
+    subjectId: paid.id,
+    before: { status: 'pending' },
+    after: { status: 'paid', bsrCode: input.bsrCode, challanNo: input.challanNo },
+  });
   await emit({
     name: 'kz.fin.tds.deposited',
     subject: { entityType: 'tds_challan', entityId: paid.id, recordCode: paid.recordCode },
@@ -568,14 +640,25 @@ export async function runTdsDepositDueJob(today: Date = new Date()): Promise<num
   const daysUntil = Math.round((due.getTime() - today.getTime()) / 86_400_000);
   if (daysUntil > 3) return 0;
 
-  const groups = [...(await prisma.tdsSectionRate.findMany({ where: { tenantId: auth.tenantId }, select: { section: true }, distinct: ['section'] })).map((r) => r.section), '192'];
+  const groups = [
+    ...(
+      await prisma.tdsSectionRate.findMany({
+        where: { tenantId: auth.tenantId },
+        select: { section: true },
+        distinct: ['section'],
+      })
+    ).map((r) => r.section),
+    '192',
+  ];
 
   let raised = 0;
   for (const group of [...new Set(groups)]) {
     const liability = await pendingTdsLiability(month, group);
     if (liability.amount <= 0) continue;
 
-    const alreadyPaid = await prisma.tdsChallan.findFirst({ where: { tenantId: auth.tenantId, month, sectionGroup: group, status: 'paid' } });
+    const alreadyPaid = await prisma.tdsChallan.findFirst({
+      where: { tenantId: auth.tenantId, month, sectionGroup: group, status: 'paid' },
+    });
     if (alreadyPaid) continue;
 
     const rung = daysUntil > 0 ? 1 : daysUntil === 0 ? 2 : 3;
@@ -618,15 +701,26 @@ async function slabTableFor(fy: string, regime: TaxRegime): Promise<SlabTable> {
   };
 }
 
-export async function upsertDeclaration(employmentId: string, input: { fy: string; regime: TaxRegime; declaredDeductions?: Record<string, unknown> }) {
+export async function upsertDeclaration(
+  employmentId: string,
+  input: { fy: string; regime: TaxRegime; declaredDeductions?: Record<string, unknown> },
+) {
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'edit' });
 
-  const employment = await prisma.employmentRelationship.findFirst({ where: { id: employmentId, tenantId: auth.tenantId, deletedAt: null } });
+  const employment = await prisma.employmentRelationship.findFirst({
+    where: { id: employmentId, tenantId: auth.tenantId, deletedAt: null },
+  });
   if (!employment) throw ApiError.notFound('Employment relationship');
 
   const row = await prisma.taxDeclaration.upsert({
-    where: { tenantId_employmentRelationshipId_fy: { tenantId: auth.tenantId, employmentRelationshipId: employmentId, fy: input.fy } },
+    where: {
+      tenantId_employmentRelationshipId_fy: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: employmentId,
+        fy: input.fy,
+      },
+    },
     create: {
       tenantId: auth.tenantId,
       employmentRelationshipId: employmentId,
@@ -636,7 +730,12 @@ export async function upsertDeclaration(employmentId: string, input: { fy: strin
     },
     update: { regime: input.regime, declaredDeductions: (input.declaredDeductions ?? {}) as never },
   });
-  await auditWrite({ action: 'update', subjectType: 'tax_declaration', subjectId: row.id, after: { fy: input.fy, regime: input.regime } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'tax_declaration',
+    subjectId: row.id,
+    after: { fy: input.fy, regime: input.regime },
+  });
   return row;
 }
 
@@ -672,12 +771,15 @@ export async function salaryProjection(employmentId: string, fy?: string): Promi
   await assertCan({ resource: 'tds', verb: 'view' });
   const targetFy = fy ?? fyOf(new Date());
 
-  const declaration = await prisma.taxDeclaration.findFirst({ where: { tenantId: auth.tenantId, employmentRelationshipId: employmentId, fy: targetFy } });
+  const declaration = await prisma.taxDeclaration.findFirst({
+    where: { tenantId: auth.tenantId, employmentRelationshipId: employmentId, fy: targetFy },
+  });
   const regime = (declaration?.regime as TaxRegime) ?? 'new';
   const slabs = await slabTableFor(targetFy, regime);
 
   const grossEstimate = await annualGrossEstimate(employmentId, targetFy);
-  const deductionTotal = regime === 'old' ? declaredDeductionTotal((declaration?.declaredDeductions as Record<string, unknown>) ?? {}) : 0;
+  const deductionTotal =
+    regime === 'old' ? declaredDeductionTotal((declaration?.declaredDeductions as Record<string, unknown>) ?? {}) : 0;
   const taxableIncome = Math.max(0, round2(grossEstimate - deductionTotal));
   const annualTax = computeAnnualTax(regime, taxableIncome, slabs);
 
@@ -717,10 +819,15 @@ export async function applySalaryTds(payrollRunId: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'edit' });
 
-  const run = await prisma.payrollRun.findFirst({ where: { id: payrollRunId, tenantId: auth.tenantId }, include: { instructions: true } });
+  const run = await prisma.payrollRun.findFirst({
+    where: { id: payrollRunId, tenantId: auth.tenantId },
+    include: { instructions: true },
+  });
   if (!run) throw ApiError.notFound('Payroll run');
   if (!['Draft', 'Computed'].includes(run.status)) {
-    throw ApiError.unprocessable(`${run.recordCode} is ${run.status}. Salary TDS is applied before a run is approved, not after.`);
+    throw ApiError.unprocessable(
+      `${run.recordCode} is ${run.status}. Salary TDS is applied before a run is approved, not after.`,
+    );
   }
 
   const fy = fyOf(monthRange(run.payPeriod).from);
@@ -738,7 +845,12 @@ export async function applySalaryTds(payrollRunId: string) {
     updated.push(row);
   }
 
-  await auditWrite({ action: 'update', subjectType: 'payroll_run', subjectId: run.id, meta: { operation: 'apply_salary_tds', count: updated.length }, force: true });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'payroll_run',
+    subjectId: run.id,
+    meta: { operation: 'apply_salary_tds', count: updated.length },
+  });
   return updated;
 }
 
@@ -748,7 +860,10 @@ export async function applySalaryTds(payrollRunId: string) {
 
 export async function advanceTaxRate(): Promise<{ ratePercent: number; effectiveFrom: Date }> {
   const auth = currentAuth();
-  const row = await prisma.corporateTaxRate.findFirst({ where: { tenantId: auth.tenantId, regime: '115BAA' }, orderBy: { effectiveFrom: 'desc' } });
+  const row = await prisma.corporateTaxRate.findFirst({
+    where: { tenantId: auth.tenantId, regime: '115BAA' },
+    orderBy: { effectiveFrom: 'desc' },
+  });
   if (!row) throw ApiError.unprocessable('No corporate tax rate is on file.');
   return { ratePercent: num(row.effectiveRatePercent) ?? 25.17, effectiveFrom: row.effectiveFrom };
 }
@@ -762,7 +877,10 @@ export interface AdvanceTaxEstimate {
 }
 
 /** Estimates the year's tax from books P&L to date, and shows the Sec 211 instalment schedule against what has actually been paid. */
-export async function advanceTaxEstimateFor(fy: string, profitAndLoss: (period: string) => Promise<{ net: number }>): Promise<AdvanceTaxEstimate> {
+export async function advanceTaxEstimateFor(
+  fy: string,
+  profitAndLoss: (period: string) => Promise<{ net: number }>,
+): Promise<AdvanceTaxEstimate> {
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'view' });
 
@@ -780,7 +898,10 @@ export async function advanceTaxEstimateFor(fy: string, profitAndLoss: (period: 
   const annualisedProfit = round2((ytdProfit / monthsElapsed) * 12);
   const estimatedAnnualTax = round2((Math.max(0, annualisedProfit) * rate.ratePercent) / 100);
 
-  const payments = await prisma.advanceTaxPayment.findMany({ where: { tenantId: auth.tenantId, fy }, orderBy: { instalmentDate: 'asc' } });
+  const payments = await prisma.advanceTaxPayment.findMany({
+    where: { tenantId: auth.tenantId, fy },
+    orderBy: { instalmentDate: 'asc' },
+  });
   const startYear = fyStartYear(fy);
   const buckets = [0, 0, 0, 0];
   const windows = [
@@ -804,7 +925,13 @@ export async function advanceTaxEstimateFor(fy: string, profitAndLoss: (period: 
   };
 }
 
-export async function recordAdvanceTaxPayment(input: { fy: string; instalmentDate: Date; amount: number; paidOn: Date; reference?: string | null }) {
+export async function recordAdvanceTaxPayment(input: {
+  fy: string;
+  instalmentDate: Date;
+  amount: number;
+  paidOn: Date;
+  reference?: string | null;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'create' });
   const row = await prisma.advanceTaxPayment.create({
@@ -818,7 +945,12 @@ export async function recordAdvanceTaxPayment(input: { fy: string; instalmentDat
       createdById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'advance_tax_payment', subjectId: row.id, after: { fy: input.fy, amount: input.amount } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'advance_tax_payment',
+    subjectId: row.id,
+    after: { fy: input.fy, amount: input.amount },
+  });
   return row;
 }
 
@@ -861,7 +993,10 @@ async function returnRows(fy: string, quarter: Quarter, form: '24Q' | '26Q'): Pr
   const challanCodes = new Map<string, string>();
   const challanIds = [...new Set(bills.map((b) => b.tdsChallanId).filter(Boolean) as string[])];
   if (challanIds.length) {
-    const challans = await prisma.tdsChallan.findMany({ where: { id: { in: challanIds } }, select: { id: true, recordCode: true } });
+    const challans = await prisma.tdsChallan.findMany({
+      where: { id: { in: challanIds } },
+      select: { id: true, recordCode: true },
+    });
     for (const c of challans) challanCodes.set(c.id, c.recordCode);
   }
   return bills.map((b) => ({
@@ -883,24 +1018,43 @@ export async function prepareTdsReturn(fy: string, quarter: Quarter, form: '24Q'
   const auth = currentAuth();
   await assertCan({ resource: 'tax_filings', verb: 'create' });
 
-  const alreadyFiled = await prisma.tdsReturn.findFirst({ where: { tenantId: auth.tenantId, fy, quarter, form, status: 'filed' } });
+  const alreadyFiled = await prisma.tdsReturn.findFirst({
+    where: { tenantId: auth.tenantId, fy, quarter, form, status: 'filed' },
+  });
   if (alreadyFiled) {
-    throw ApiError.conflict(`${form} for ${fy} ${quarter} was already filed. A filed return is corrected by a later quarter, not re-prepared.`);
+    throw ApiError.conflict(
+      `${form} for ${fy} ${quarter} was already filed. A filed return is corrected by a later quarter, not re-prepared.`,
+    );
   }
 
   const rows = await returnRows(fy, quarter, form);
   const totalTds = round2(rows.reduce((s, r) => s + r.tds, 0));
   const snapshot = { fy, quarter, form, rows, totals: { deducteeCount: rows.length, totalTds } };
 
-  const superseded = await prisma.tdsReturn.findMany({ where: { tenantId: auth.tenantId, fy, quarter, form, status: 'prepared' } });
+  const superseded = await prisma.tdsReturn.findMany({
+    where: { tenantId: auth.tenantId, fy, quarter, form, status: 'prepared' },
+  });
   const row = await prisma.tdsReturn.create({
-    data: { tenantId: auth.tenantId, fy, quarter, form, status: 'prepared', snapshot: snapshot as never, preparedById: auth.partyId },
+    data: {
+      tenantId: auth.tenantId,
+      fy,
+      quarter,
+      form,
+      status: 'prepared',
+      snapshot: snapshot as never,
+      preparedById: auth.partyId,
+    },
   });
   for (const old of superseded) {
     await prisma.tdsReturn.update({ where: { id: old.id }, data: { status: 'superseded', supersededById: row.id } });
   }
 
-  await auditWrite({ action: 'create', subjectType: 'tds_return', subjectId: row.id, after: { fy, quarter, form, totalTds } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'tds_return',
+    subjectId: row.id,
+    after: { fy, quarter, form, totalTds },
+  });
   await emit({
     name: 'kz.fin.tds_return.prepared',
     subject: { entityType: 'tds_return', entityId: row.id },
@@ -919,11 +1073,24 @@ export async function fileTdsReturn(id: string, ack: string) {
   const row = await prisma.tdsReturn.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('TDS return');
   if (row.status === 'filed') throw ApiError.conflict(`${row.form} for ${row.fy} ${row.quarter} is already filed.`);
-  if (row.status === 'superseded') throw ApiError.unprocessable('This preparation was superseded by a later one. File that one instead.');
-  if (!ack.trim()) throw ApiError.badRequest('The acknowledgement token is what the portal gives back — a return with none was not filed.');
+  if (row.status === 'superseded')
+    throw ApiError.unprocessable('This preparation was superseded by a later one. File that one instead.');
+  if (!ack.trim())
+    throw ApiError.badRequest(
+      'The acknowledgement token is what the portal gives back — a return with none was not filed.',
+    );
 
-  const filed = await prisma.tdsReturn.update({ where: { id }, data: { status: 'filed', ack, token: ack, filedAt: new Date(), filedById: auth.partyId } });
-  await auditWrite({ action: 'update', subjectType: 'tds_return', subjectId: id, before: { status: 'prepared' }, after: { status: 'filed', ack } });
+  const filed = await prisma.tdsReturn.update({
+    where: { id },
+    data: { status: 'filed', ack, token: ack, filedAt: new Date(), filedById: auth.partyId },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'tds_return',
+    subjectId: id,
+    before: { status: 'prepared' },
+    after: { status: 'filed', ack },
+  });
   await emit({
     name: 'kz.fin.tds_return.filed',
     subject: { entityType: 'tds_return', entityId: id },
@@ -938,7 +1105,11 @@ export async function listTdsReturns(filter: { fy?: string; form?: string } = {}
   const auth = currentAuth();
   await assertCan({ resource: 'tax_filings', verb: 'view' });
   return prisma.tdsReturn.findMany({
-    where: { tenantId: auth.tenantId, ...(filter.fy ? { fy: filter.fy } : {}), ...(filter.form ? { form: filter.form } : {}) },
+    where: {
+      tenantId: auth.tenantId,
+      ...(filter.fy ? { fy: filter.fy } : {}),
+      ...(filter.form ? { form: filter.form } : {}),
+    },
     orderBy: [{ fy: 'desc' }, { quarter: 'desc' }],
   });
 }
@@ -957,7 +1128,14 @@ export async function exportTdsReturnCsv(id: string): Promise<string> {
   const snapshot = row.snapshot as unknown as { rows: TdsReturnRow[] };
   const header = 'PAN,Name,Section,Amount Paid,TDS,Challan';
   const lines = snapshot.rows.map((r) =>
-    [r.pan ?? '', r.name.replace(/,/g, ' '), r.section, r.amountPaid.toFixed(2), r.tds.toFixed(2), r.challan ?? ''].join(','),
+    [
+      r.pan ?? '',
+      r.name.replace(/,/g, ' '),
+      r.section,
+      r.amountPaid.toFixed(2),
+      r.tds.toFixed(2),
+      r.challan ?? '',
+    ].join(','),
   );
   return [header, ...lines].join('\n');
 }
@@ -989,23 +1167,46 @@ export async function issueCertificate(input: IssueCertificateInput) {
 
   if (input.form === '16A') {
     const { from, to } = input.quarter
-      ? { from: monthRange(periodsOfQuarter(input.fy, input.quarter)[0]).from, to: monthRange(periodsOfQuarter(input.fy, input.quarter)[2]).to }
+      ? {
+          from: monthRange(periodsOfQuarter(input.fy, input.quarter)[0]).from,
+          to: monthRange(periodsOfQuarter(input.fy, input.quarter)[2]).to,
+        }
       : fyRange(input.fy);
     const bills = await prisma.vendorBill.findMany({
-      where: { tenantId: auth.tenantId, deletedAt: null, billDate: { gte: from, lt: to }, tdsAmount: { gt: 0 }, OR: [{ vendorPan: input.deducteeRef }, { vendorPan: null, vendorName: input.deducteeRef }] },
+      where: {
+        tenantId: auth.tenantId,
+        deletedAt: null,
+        billDate: { gte: from, lt: to },
+        tdsAmount: { gt: 0 },
+        OR: [{ vendorPan: input.deducteeRef }, { vendorPan: null, vendorName: input.deducteeRef }],
+      },
     });
-    if (!bills.length) throw ApiError.unprocessable('No TDS was deducted for this vendor in the period — nothing to certify.');
+    if (!bills.length)
+      throw ApiError.unprocessable('No TDS was deducted for this vendor in the period — nothing to certify.');
     deducteeName = bills[0].vendorName;
     snapshot = {
-      rows: bills.map((b) => ({ recordCode: b.recordCode, billDate: b.billDate.toISOString().slice(0, 10), section: b.tdsSection, amountPaid: num(b.subtotal), tds: num(b.tdsAmount) })),
+      rows: bills.map((b) => ({
+        recordCode: b.recordCode,
+        billDate: b.billDate.toISOString().slice(0, 10),
+        section: b.tdsSection,
+        amountPaid: num(b.subtotal),
+        tds: num(b.tdsAmount),
+      })),
       totalTds: round2(bills.reduce((s, b) => s + (num(b.tdsAmount) ?? 0), 0)),
     };
   } else {
-    const employment = await prisma.employmentRelationship.findFirst({ where: { id: input.deducteeRef, tenantId: auth.tenantId }, include: { person: { select: { fullName: true } } } });
+    const employment = await prisma.employmentRelationship.findFirst({
+      where: { id: input.deducteeRef, tenantId: auth.tenantId },
+      include: { person: { select: { fullName: true } } },
+    });
     if (!employment) throw ApiError.notFound('Employment relationship');
     deducteeName = employment.person.fullName;
     const rows = await prisma.payrollInstruction.findMany({
-      where: { tenantId: auth.tenantId, employmentRelationshipId: input.deducteeRef, payPeriod: { in: fyMonths(input.fy) } },
+      where: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.deducteeRef,
+        payPeriod: { in: fyMonths(input.fy) },
+      },
     });
     snapshot = {
       rows: rows.map((r) => ({ payPeriod: r.payPeriod, grossAmount: num(r.grossAmount), tds: num(r.tdsAmount) })),
@@ -1015,7 +1216,13 @@ export async function issueCertificate(input: IssueCertificateInput) {
   }
 
   const superseded = await prisma.tdsCertificate.findFirst({
-    where: { tenantId: auth.tenantId, form: input.form, deducteeRef: input.deducteeRef, fy: input.fy, quarter: input.quarter ?? null },
+    where: {
+      tenantId: auth.tenantId,
+      form: input.form,
+      deducteeRef: input.deducteeRef,
+      fy: input.fy,
+      quarter: input.quarter ?? null,
+    },
     orderBy: { issuedAt: 'desc' },
   });
 
@@ -1034,7 +1241,12 @@ export async function issueCertificate(input: IssueCertificateInput) {
       supersedesId: superseded?.id ?? null,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'tds_certificate', subjectId: cert.id, after: { form: input.form, deducteeRef: input.deducteeRef, fy: input.fy, number } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'tds_certificate',
+    subjectId: cert.id,
+    after: { form: input.form, deducteeRef: input.deducteeRef, fy: input.fy, number },
+  });
   return cert;
 }
 
@@ -1042,7 +1254,11 @@ export async function listCertificates(filter: { form?: string; fy?: string } = 
   const auth = currentAuth();
   await assertCan({ resource: 'tax_filings', verb: 'view' });
   return prisma.tdsCertificate.findMany({
-    where: { tenantId: auth.tenantId, ...(filter.form ? { form: filter.form } : {}), ...(filter.fy ? { fy: filter.fy } : {}) },
+    where: {
+      tenantId: auth.tenantId,
+      ...(filter.form ? { form: filter.form } : {}),
+      ...(filter.fy ? { fy: filter.fy } : {}),
+    },
     orderBy: { issuedAt: 'desc' },
   });
 }

@@ -117,7 +117,12 @@ export async function createAccount(input: {
     action: 'create',
     subjectType: 'ledger_account',
     subjectId: account.id,
-    after: { name: account.name, accountType: account.accountType, ledgerGroup: account.ledgerGroup, openingBalance: num(account.openingBalance) },
+    after: {
+      name: account.name,
+      accountType: account.accountType,
+      ledgerGroup: account.ledgerGroup,
+      openingBalance: num(account.openingBalance),
+    },
   });
   return account;
 }
@@ -241,7 +246,10 @@ export async function groupCounterpartyOptions(): Promise<Array<{ tenantId: stri
   const auth = currentAuth();
   await assertCan({ resource: 'transactions', verb: 'view' });
 
-  const self = await unscopedPrisma.tenant.findFirst({ where: { id: auth.tenantId }, select: { parentTenantId: true } });
+  const self = await unscopedPrisma.tenant.findFirst({
+    where: { id: auth.tenantId },
+    select: { parentTenantId: true },
+  });
   const parentId = self?.parentTenantId ?? null;
 
   const [parent, siblings, children] = await Promise.all([
@@ -249,9 +257,15 @@ export async function groupCounterpartyOptions(): Promise<Array<{ tenantId: stri
       ? unscopedPrisma.tenant.findFirst({ where: { id: parentId }, select: { id: true, slug: true, name: true } })
       : Promise.resolve(null),
     parentId
-      ? unscopedPrisma.tenant.findMany({ where: { parentTenantId: parentId, id: { not: auth.tenantId } }, select: { id: true, slug: true, name: true } })
+      ? unscopedPrisma.tenant.findMany({
+          where: { parentTenantId: parentId, id: { not: auth.tenantId } },
+          select: { id: true, slug: true, name: true },
+        })
       : Promise.resolve([]),
-    unscopedPrisma.tenant.findMany({ where: { parentTenantId: auth.tenantId }, select: { id: true, slug: true, name: true } }),
+    unscopedPrisma.tenant.findMany({
+      where: { parentTenantId: auth.tenantId },
+      select: { id: true, slug: true, name: true },
+    }),
   ]);
 
   const out: Array<{ tenantId: string; slug: string; name: string }> = [];
@@ -325,7 +339,14 @@ export async function recordTransaction(input: TransactionInput) {
     action: 'create',
     subjectType: 'transaction',
     subjectId: txn.id,
-    after: { recordCode, direction: input.direction, amount: input.amount, accountId: input.accountId, categoryId: input.categoryId ?? null, txnDate: input.txnDate },
+    after: {
+      recordCode,
+      direction: input.direction,
+      amount: input.amount,
+      accountId: input.accountId,
+      categoryId: input.categoryId ?? null,
+      txnDate: input.txnDate,
+    },
   });
 
   await emit({
@@ -417,7 +438,13 @@ export async function reverseTransaction(id: string, reason: string) {
     action: 'create',
     subjectType: 'transaction',
     subjectId: reversal.id,
-    after: { recordCode, reversalOfId: original.id, amount: num(original.amount), direction: reversal.direction, reason },
+    after: {
+      recordCode,
+      reversalOfId: original.id,
+      amount: num(original.amount),
+      direction: reversal.direction,
+      reason,
+    },
   });
 
   await emit({
@@ -434,15 +461,17 @@ export async function reverseTransaction(id: string, reason: string) {
   return reversal;
 }
 
-export async function listTransactions(filter: {
-  from?: Date;
-  to?: Date;
-  categoryId?: string;
-  division?: string;
-  accountId?: string;
-  source?: string;
-  take?: number;
-} = {}) {
+export async function listTransactions(
+  filter: {
+    from?: Date;
+    to?: Date;
+    categoryId?: string;
+    division?: string;
+    accountId?: string;
+    source?: string;
+    take?: number;
+  } = {},
+) {
   const auth = currentAuth();
   await assertCan({ resource: 'transactions', verb: 'view' });
 
@@ -545,7 +574,10 @@ export async function recordVendorBill(input: {
  * own private notion of money — and the bill's status follows from what has
  * been paid rather than being set independently.
  */
-export async function payVendorBill(id: string, input: { amount: number; accountId: string; paidOn: Date; reference?: string | null }) {
+export async function payVendorBill(
+  id: string,
+  input: { amount: number; accountId: string; paidOn: Date; reference?: string | null },
+) {
   const auth = currentAuth();
   await assertCan({ resource: 'vendor_bills', verb: 'edit' });
 
@@ -673,7 +705,12 @@ export async function detectOverdueBills(): Promise<number> {
  */
 export async function priceInvoiceGst(
   invoiceId: string,
-  input: { interState: boolean; placeOfSupply?: string | null; customerGstin?: string | null; division?: string | null },
+  input: {
+    interState: boolean;
+    placeOfSupply?: string | null;
+    customerGstin?: string | null;
+    division?: string | null;
+  },
 ) {
   const auth = currentAuth();
   await assertCan({ resource: 'invoices', verb: 'edit' });
@@ -785,7 +822,12 @@ export async function setBudgetLine(input: {
   await assertCan({ resource: 'budgets', verb: 'create' });
 
   const existing = await prisma.budgetLine.findFirst({
-    where: { tenantId: auth.tenantId, period: input.period, categoryId: input.categoryId, division: input.division ?? '' },
+    where: {
+      tenantId: auth.tenantId,
+      period: input.period,
+      categoryId: input.categoryId,
+      division: input.division ?? '',
+    },
   });
 
   const line = await prisma.budgetLine.upsert({
@@ -1194,7 +1236,10 @@ export async function profitAndLoss(period: string): Promise<ProfitAndLoss> {
 
   const byId = new Map(categories.map((c) => [c.id, c]));
   const divisions = new Map<string, { division: string; income: number; expense: number; net: number }>();
-  const byCategory = new Map<string, { categoryId: string | null; categoryName: string; kind: string; amount: number }>();
+  const byCategory = new Map<
+    string,
+    { categoryId: string | null; categoryName: string; kind: string; amount: number }
+  >();
 
   let income = 0;
   let expense = 0;
@@ -1287,9 +1332,7 @@ export async function cashPosition(months = 3) {
   // The current month is still running, so averaging it in would understate
   // the burn every time this is read before month end.
   const complete = trend.slice(0, -1).slice(-months);
-  const averageNet = complete.length
-    ? round2(complete.reduce((s, m) => s + m.net, 0) / complete.length)
-    : 0;
+  const averageNet = complete.length ? round2(complete.reduce((s, m) => s + m.net, 0) / complete.length) : 0;
 
   return {
     cash,

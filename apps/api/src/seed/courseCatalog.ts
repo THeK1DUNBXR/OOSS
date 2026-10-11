@@ -93,7 +93,9 @@ export async function seedCourseCatalog() {
         created += 1;
       }
     }
-    console.log(`Course catalogue: ${created} created, ${updated} updated, ${COURSE_ADDONS.length} add-on rows across them.`);
+    console.log(
+      `Course catalogue: ${created} created, ${updated} updated, ${COURSE_ADDONS.length} add-on rows across them.`,
+    );
   });
 }
 

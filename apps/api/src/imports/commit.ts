@@ -15,16 +15,16 @@
 import { prisma, dec } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { assertCan } from '../platform/permissions.js';
+import { assertCanAssignRole } from '../platform/roleAssignment.js';
 import { ApiError } from '../platform/errors.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { emit } from '../platform/eventBus.js';
 import { EVENTS, DIVISION_LABELS, DIVISIONS, type Division } from '@kaizen/shared';
 import { matchFailure, matchPerson } from './matchName.js';
-import {
-  classifyLedger, divisionFor, isAccountName,
-  JOURNAL_ACCOUNT_NAME, JOURNAL_ACCOUNT_TYPE,
-} from './classify.js';
+import { classifyLedger, divisionFor, isAccountName, JOURNAL_ACCOUNT_NAME, JOURNAL_ACCOUNT_TYPE } from './classify.js';
 import { UNSTATED_LEDGER_KIND } from './chart.js';
+import { openStagedNormalised, purgeStagedRaw } from './sealing.js';
+import { logger } from '../platform/logger.js';
 
 /**
  * Where the cash half of a split voucher is filed.
@@ -89,7 +89,9 @@ export async function commitImport(id: string): Promise<CommitResult> {
   });
 
   if (rows.length === 0) {
-    throw ApiError.badRequest('Every row in this import is a duplicate, a blank or an error. There is nothing to commit.');
+    throw ApiError.badRequest(
+      'Every row in this import is a duplicate, a blank or an error. There is nothing to commit.',
+    );
   }
 
   const options = (batch.options ?? {}) as Record<string, unknown>;
@@ -99,7 +101,10 @@ export async function commitImport(id: string): Promise<CommitResult> {
   };
 
   for (const row of rows) {
-    const data = row.normalised as Record<string, unknown> | null;
+    // Opened here, and only here: the domain functions below seal what they
+    // are given for their own records, so a staged ciphertext would be sealed
+    // a second time and come out unreadable.
+    const data = openStagedNormalised(row.normalised);
     if (!data) {
       result.skipped += 1;
       continue;
@@ -198,6 +203,19 @@ export async function commitImport(id: string): Promise<CommitResult> {
     newState: { kind: batch.kind, ...result.created, errors: result.errors.length },
     impact: { domains: ['fin'] },
   });
+
+  // After the commit, not before: the books now hold what the file said, so
+  // the file's own cells are no longer needed. A failure here is logged and
+  // does not undo the commit, which has already happened; the cells stay until
+  // someone purges them, and the log says which batch.
+  try {
+    await purgeStagedRaw(id);
+  } catch (err) {
+    logger.error(
+      { component: 'imports', tenantId: auth.tenantId, batchId: id, err },
+      'staged cells not purged after commit',
+    );
+  }
 
   return result;
 }
@@ -395,7 +413,9 @@ const DIVISION_NAMES: Record<string, string> = {
 
 /** A division cell, however it was written. */
 const divisionCodeOf = (v: unknown): string => {
-  const raw = String(v ?? '').toUpperCase().trim();
+  const raw = String(v ?? '')
+    .toUpperCase()
+    .trim();
   if (!raw) return '';
   return DIVISION_CODES[raw] ? raw : (DIVISION_NAMES[raw] ?? raw);
 };
@@ -543,6 +563,18 @@ async function commitEmployeeRow(data: Record<string, unknown>) {
   if (matched.kind === 'ambiguous') throw new Error(matchFailure(fullName, matched));
   const existing = matched.kind === 'matched' ? candidates.find((p) => p.id === matched.id) : undefined;
 
+  // The employee affiliation written below carries roleSlug 'employee' when it
+  // is created, which is a role assignment. Checked before any person write
+  // here, so a refused row writes nothing; the importer must cover the role.
+  const existingEmployee = existing
+    ? await prisma.affiliation.findFirst({
+        where: { tenantId: auth.tenantId, partyId: existing.id, affiliationType: 'employee' },
+      })
+    : null;
+  if (!existingEmployee) {
+    await assertCanAssignRole({ roleSlug: 'employee', targetPartyId: existing?.id ?? null });
+  }
+
   // Only fields the file actually carried are written. A staff list that omits
   // a birthday must not blank one somebody typed in.
   const held = {
@@ -577,9 +609,10 @@ async function commitEmployeeRow(data: Record<string, unknown>) {
         partyId: person.id,
         affiliationType: 'employee',
         counterpartyName: 'Kaizen Infinities',
-        // Everybody imported from a staff list is an employee. Authority is a
-        // separate decision, made in the product by somebody who holds it — an
-        // import must never be a way to grant somebody a role.
+        // Everybody imported from a staff list is an employee, so the row names
+        // the employee role. That is a grant, and assertCanAssignRole above is
+        // what stops an importer naming a role they do not cover. Authority
+        // beyond employee stays a separate decision made in the product.
         roleSlug: 'employee',
         primaryFlag: true,
         status: 'active',
@@ -621,7 +654,9 @@ async function commitSalaryRow(data: Record<string, unknown>) {
     orderBy: { createdAt: 'desc' },
   });
   if (!employment) {
-    throw new Error(`"${fullName}" is on file but holds no employment relationship, so there is nothing to attach pay to.`);
+    throw new Error(
+      `"${fullName}" is on file but holds no employment relationship, so there is nothing to attach pay to.`,
+    );
   }
 
   const existing = await prisma.compensationRecord.findFirst({
@@ -738,12 +773,18 @@ export async function revertImport(id: string) {
         case 'shareTransaction':
           // Certificates carry a foreign key to the transaction that
           // produced them, so they go first.
-          await prisma.shareCertificate.deleteMany({ where: { tenantId: auth.tenantId, issuedForTransactionId: row.entityId } });
+          await prisma.shareCertificate.deleteMany({
+            where: { tenantId: auth.tenantId, issuedForTransactionId: row.entityId },
+          });
           await prisma.shareTransaction.delete({ where: { id: row.entityId } });
           break;
         case 'workAttendance':
           await prisma.workAttendance.deleteMany({
-            where: { tenantId: auth.tenantId, employmentRelationshipId: row.entityId, note: { startsWith: 'Imported:' } },
+            where: {
+              tenantId: auth.tenantId,
+              employmentRelationshipId: row.entityId,
+              note: { startsWith: 'Imported:' },
+            },
           });
           break;
         case 'person':
@@ -770,7 +811,10 @@ export async function revertImport(id: string) {
           continue;
       }
       removed[row.entityType] = (removed[row.entityType] ?? 0) + 1;
-      await prisma.importRow.update({ where: { id: row.id }, data: { status: 'ready', entityId: null, entityType: null } });
+      await prisma.importRow.update({
+        where: { id: row.id },
+        data: { status: 'ready', entityId: null, entityType: null },
+      });
     } catch {
       // A row whose record has since been edited into something else is left
       // alone and reported, rather than cascading into records the import did
@@ -784,7 +828,11 @@ export async function revertImport(id: string) {
 
   await prisma.importBatch.update({
     where: { id },
-    data: { status: 'reverted', revertedAt: new Date(), stats: { ...(batch.stats as object), reverted: removed } as never },
+    data: {
+      status: 'reverted',
+      revertedAt: new Date(),
+      stats: { ...(batch.stats as object), reverted: removed } as never,
+    },
   });
 
   await emit({
@@ -827,7 +875,9 @@ async function organizationByName(name: string) {
     take: 2,
   });
   if (matches.length > 1) {
-    throw new Error(`"${name}" matches more than one organisation on file. Rename one of them, or import this row by hand.`);
+    throw new Error(
+      `"${name}" matches more than one organisation on file. Rename one of them, or import this row by hand.`,
+    );
   }
   return matches[0] ?? null;
 }
@@ -872,7 +922,8 @@ async function commitBatchRow(data: Record<string, unknown>) {
   const collegeName = text(data.institutionName);
   if (collegeName) {
     const college = await organizationByName(collegeName);
-    if (!college) throw new Error(`"${collegeName}" is not on file. Import the Colleges template first, or correct the name.`);
+    if (!college)
+      throw new Error(`"${collegeName}" is not on file. Import the Colleges template first, or correct the name.`);
     if (!college.institutionProfile) {
       throw new Error(`"${collegeName}" is on file but is not marked as a college, so a batch cannot run at it.`);
     }
@@ -975,20 +1026,24 @@ async function commitStudentRow(data: Record<string, unknown>) {
 
   const cohort = await prisma.cohort.findFirst({ where: { tenantId: auth.tenantId, name: cohortName } });
   if (!cohort) {
-    throw new Error(`No batch is called "${cohortName}". Import the Training batches template first, or correct the name.`);
+    throw new Error(
+      `No batch is called "${cohortName}". Import the Training batches template first, or correct the name.`,
+    );
   }
 
   let institutionId: string | null = null;
   const collegeName = text(data.institutionName);
   if (collegeName) {
     const college = await organizationByName(collegeName);
-    if (!college) throw new Error(`"${collegeName}" is not on file. Import the Colleges template first, or correct the name.`);
+    if (!college)
+      throw new Error(`"${collegeName}" is not on file. Import the Colleges template first, or correct the name.`);
     institutionId = college.id;
   }
 
   // Through the same function the form calls, so an imported student and a
   // typed one are the same act: the same college check, the same guardian rule,
   // the same student affiliation, the same refusal to enrol somebody twice.
+  const ageBasis = learnerAgeBasis(data);
   const { enrolStudent } = await import('../domains/education.js');
   const enrollment = await enrolStudent({
     cohortId: cohort.id,
@@ -996,11 +1051,40 @@ async function commitStudentRow(data: Record<string, unknown>) {
     primaryPhone: text(data.primaryPhone),
     primaryEmail: text(data.primaryEmail),
     institutionId,
-    isMinor: data.isMinor === true,
+    dateOfBirth: ageBasis.dateOfBirth,
+    adultAttested: ageBasis.adultAttested,
     guardianName: text(data.guardianName),
     guardianPhone: text(data.guardianPhone),
   });
   return { entityType: 'enrollment', entityId: enrollment.id };
+}
+
+/**
+ * The age basis an imported learner row brings, checked before anything is
+ * written. A row with no date of birth and no guardian is refused as a row
+ * error unless the template's adult-attestation column says Yes: the same rule
+ * `enrolStudent` applies to a typed enrolment, stated here so the import reports
+ * it in the row's own terms. FX-64.
+ */
+function learnerAgeBasis(data: Record<string, unknown>): {
+  dateOfBirth: string | null;
+  adultAttested: boolean;
+} {
+  const raw = data.dateOfBirth;
+  let dateOfBirth: string | null = null;
+  if (raw) {
+    const d = raw instanceof Date ? raw : new Date(String(raw));
+    if (Number.isNaN(d.getTime())) throw new Error('The date of birth is not a valid date. Use DD/MM/YYYY.');
+    dateOfBirth = d.toISOString();
+  }
+  const adultAttested = data.adultAttested === true;
+  const hasGuardian = !!(text(data.guardianName) && text(data.guardianPhone));
+  if (!dateOfBirth && !hasGuardian && !adultAttested) {
+    throw new Error(
+      'This learner has no date of birth and no guardian. Give a date of birth, or a guardian name and phone, or mark "Adult (18 or over)" Yes if you have confirmed they are an adult.',
+    );
+  }
+  return { dateOfBirth, adultAttested };
 }
 
 /**
@@ -1031,6 +1115,9 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
   const fullName = text(data.fullName);
   const courseName = text(data.courseName);
   if (!fullName || !courseName) return null;
+  // Before the course and batch are created: a refused learner must not leave
+  // a course behind that nobody enrolled anyone on. FX-64.
+  const ageBasis = learnerAgeBasis(data);
 
   // ---- The course ---------------------------------------------------------
   //
@@ -1066,7 +1153,9 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
   // and the student's own dates go on their enrolment. Making a batch per
   // distinct date pair would report nine batches of one.
   const batchName = `${course.name} — rolling`;
-  let cohort = await prisma.cohort.findFirst({ where: { tenantId: auth.tenantId, courseId: course.id, name: batchName } });
+  let cohort = await prisma.cohort.findFirst({
+    where: { tenantId: auth.tenantId, courseId: course.id, name: batchName },
+  });
   const startsOn = data.startsOn ? new Date(String(data.startsOn)) : null;
   if (!cohort) {
     cohort = await prisma.cohort.create({
@@ -1097,6 +1186,10 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
     fullName,
     primaryPhone: text(data.primaryPhone),
     primaryEmail: text(data.primaryEmail),
+    dateOfBirth: ageBasis.dateOfBirth,
+    adultAttested: ageBasis.adultAttested,
+    guardianName: text(data.guardianName),
+    guardianPhone: text(data.guardianPhone),
   });
 
   // The register's own identifiers and dates, which the enrolment is the right
@@ -1131,8 +1224,7 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
     // the preview. The student is still created, without it, rather than the
     // row failing.
     const numberFree =
-      !registrationNumber ||
-      !(await prisma.studentProfile.findFirst({ where: { registrationNumber } }));
+      !registrationNumber || !(await prisma.studentProfile.findFirst({ where: { registrationNumber } }));
     await prisma.studentProfile.create({
       data: {
         tenantId: auth.tenantId,
@@ -1198,7 +1290,10 @@ async function commitContactRow(data: Record<string, unknown>) {
             tenantId: auth.tenantId,
             deletedAt: null,
             dedupeStatus: { not: 'merged' },
-            OR: [...(email ? [{ primaryEmailNormalised: email }] : []), ...(phone ? [{ primaryPhoneNormalised: phone }] : [])],
+            OR: [
+              ...(email ? [{ primaryEmailNormalised: email }] : []),
+              ...(phone ? [{ primaryPhoneNormalised: phone }] : []),
+            ],
           },
         })
       : null;
@@ -1219,7 +1314,10 @@ async function commitContactRow(data: Record<string, unknown>) {
   const orgName = text(data.organizationName);
   if (orgName) {
     const org = await organizationByName(orgName);
-    if (!org) throw new Error(`"${orgName}" is not on file. Import the Clients or Colleges template first, or correct the name.`);
+    if (!org)
+      throw new Error(
+        `"${orgName}" is not on file. Import the Clients or Colleges template first, or correct the name.`,
+      );
 
     // Which kind of contact they are follows from what the organisation is to
     // us, rather than being asked again in a column the person filling this in
@@ -1274,13 +1372,22 @@ function accountTypeOf(v: unknown): string {
 }
 
 const CATEGORY_KIND_WORDS: Record<string, string> = {
-  income: 'income', revenue: 'income',
-  expense: 'expense', cost: 'expense',
-  'asset purchase': 'asset_purchase', asset: 'asset_purchase', 'fixed asset': 'asset_purchase',
-  tax: 'tax', statutory: 'tax',
+  income: 'income',
+  revenue: 'income',
+  expense: 'expense',
+  cost: 'expense',
+  'asset purchase': 'asset_purchase',
+  asset: 'asset_purchase',
+  'fixed asset': 'asset_purchase',
+  tax: 'tax',
+  statutory: 'tax',
   transfer: 'transfer',
-  equity: 'equity', 'capital in': 'equity', 'capital introduced': 'equity',
-  drawings: 'drawings', 'capital out': 'drawings', 'capital taken out': 'drawings',
+  equity: 'equity',
+  'capital in': 'equity',
+  'capital introduced': 'equity',
+  drawings: 'drawings',
+  'capital out': 'drawings',
+  'capital taken out': 'drawings',
 };
 
 /** "Asset purchase", "Tax or statutory due" and the like, to the stored kind. */
@@ -1292,10 +1399,19 @@ function categoryKindOf(v: unknown): string {
 }
 
 const CATEGORY_BEHAVIOUR_WORDS: Record<string, string> = {
-  'recurring fixed': 'recurring_fixed', fixed: 'recurring_fixed', 'same every month': 'recurring_fixed',
-  variable: 'variable', varies: 'variable',
-  'one-time': 'one_time', 'one time': 'one_time', onetime: 'one_time', 'one-off': 'one_time', 'one off': 'one_time',
-  annual: 'annual', yearly: 'annual', 'once a year': 'annual',
+  'recurring fixed': 'recurring_fixed',
+  fixed: 'recurring_fixed',
+  'same every month': 'recurring_fixed',
+  variable: 'variable',
+  varies: 'variable',
+  'one-time': 'one_time',
+  'one time': 'one_time',
+  onetime: 'one_time',
+  'one-off': 'one_time',
+  'one off': 'one_time',
+  annual: 'annual',
+  yearly: 'annual',
+  'once a year': 'annual',
 };
 
 /** "Same every month" and its kin, to the stored behaviour. */
@@ -1350,7 +1466,10 @@ async function commitLedgerCategoryTemplateRow(data: Record<string, unknown>) {
   const parentName = text(data.parentName);
   if (parentName) {
     const parent = await ledgerCategoryByName(parentName);
-    if (!parent) throw new Error(`"${parentName}" is not on file. Import it first, with Parent category left blank, or correct the name.`);
+    if (!parent)
+      throw new Error(
+        `"${parentName}" is not on file. Import it first, with Parent category left blank, or correct the name.`,
+      );
     parentId = parent.id;
   }
 
@@ -1379,7 +1498,10 @@ async function commitVendorBillTemplateRow(data: Record<string, unknown>) {
   const categoryName = text(data.categoryName);
   if (categoryName) {
     const category = await ledgerCategoryByName(categoryName);
-    if (!category) throw new Error(`"${categoryName}" is not on file. Import the Ledger categories template first, or correct the name.`);
+    if (!category)
+      throw new Error(
+        `"${categoryName}" is not on file. Import the Ledger categories template first, or correct the name.`,
+      );
     categoryId = category.id;
   }
 
@@ -1464,11 +1586,17 @@ async function commitOpeningRegisterRow(data: Record<string, unknown>) {
   if (kind === 'person') {
     const email = text(data.email)?.toLowerCase() ?? null;
     const phone = text(data.phone);
-    const resolved = await findOrCreatePerson({ fullName: holderName, primaryEmail: email, primaryPhone: phone, source: 'import' });
+    const resolved = await findOrCreatePerson({
+      fullName: holderName,
+      primaryEmail: email,
+      primaryPhone: phone,
+      source: 'import',
+    });
     personId = resolved.person.id;
   } else {
     const org = await organizationByName(holderName);
-    if (!org) throw new Error(`"${holderName}" is not on file as an organisation. Import it first, or correct the name.`);
+    if (!org)
+      throw new Error(`"${holderName}" is not on file as an organisation. Import it first, or correct the name.`);
     organizationId = org.id;
   }
 

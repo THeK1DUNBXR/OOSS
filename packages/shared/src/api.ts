@@ -44,83 +44,12 @@ export interface Filtered<T> {
   withheld: WithheldEntry[];
 }
 
-export const FIELD_PURPOSES = {
-  fullName: 'identity',
-  email: 'identity',
-  phone: 'identity',
-  dateOfBirth: 'identity',
-  panNumber: 'tax',
-  aadhaarReference: 'identity',
-  bankAccountNumber: 'finance',
-  bankAccountName: 'finance',
-  bankIfsc: 'finance',
-  guardianName: 'identity',
-  guardianPhone: 'identity',
-  guardianConsentId: 'consent',
-} as const;
-
-export function applyFieldVisibility<T extends Record<string, unknown>>(
-  payload: T,
-  options: {
-    canSeeMoney?: boolean;
-    ceiling?: SensitivityClass;
-    fieldClassifications?: Record<string, SensitivityClass>;
-    fieldPurposes?: Record<string, string>;
-    withholdPaths?: Array<{ path: string; reason: 'classification_ceiling' | 'no_permission' }>;
-  },
-): { data: T; withheld: Array<{ path: string; reason: 'classification_ceiling' | 'no_permission' }> } {
-  const withholdPaths = options.withholdPaths ?? [];
-  const seen = new Set<string>();
-
-  const walk = (value: unknown, path: string): unknown => {
-    if (value === null || value === undefined) return value;
-    if (Array.isArray(value)) return value.map((item, index) => walk(item, `${path}[${index}]`));
-    if (typeof value === 'object') {
-      const record = value as Record<string, unknown>;
-      const out: Record<string, unknown> = {};
-      for (const [key, child] of Object.entries(record)) {
-        const nextPath = path ? `${path}.${key}` : key;
-        const classification = options.fieldClassifications?.[key] ?? 'public';
-        const purpose = options.fieldPurposes?.[key] ?? 'general';
-        const canReveal =
-          classification === 'public' ||
-          (classification === 'internal' && options.ceiling !== 'public') ||
-          (classification === 'restricted' && options.canSeeMoney) ||
-          (classification === 'confidential' && purpose !== 'finance') ||
-          (classification === 'regulated' && purpose === 'identity');
-
-        if (!canReveal) {
-          const reason = options.ceiling === 'regulated' ? 'classification_ceiling' : 'no_permission';
-          withholdPaths.push({ path: nextPath, reason });
-          seen.add(nextPath);
-          continue;
-        }
-        out[key] = walk(child, nextPath);
-      }
-      return out;
-    }
-    return value;
-  };
-
-  const data = walk(payload, '') as T;
-  return {
-    data,
-    withheld: withholdPaths.filter((entry) => {
-      if (seen.has(entry.path)) return true;
-      return !seen.has(entry.path);
-    }),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Session & identity
-// ---------------------------------------------------------------------------
-
 export interface AffiliationSummary {
   id: string;
   affiliationType: string;
   counterpartyName: string | null;
-  roleSlug: string;
+  /** Null when no role was ever set: the holder has no access through it. */
+  roleSlug: string | null;
   primaryFlag: boolean;
   status: string;
   effectiveFrom: string;
@@ -143,7 +72,8 @@ export interface SessionUser {
   /** How many tenants this principal holds an active affiliation in — the entity picker shows itself when this is more than one. */
   entityCount: number;
   activeAffiliationId: string;
-  roleSlug: string;
+  /** Null for an affiliation with no role: no grants, the lowest ceiling. */
+  roleSlug: string | null;
   archetype: SurfaceArchetype;
   classificationCeiling: SensitivityClass;
   affiliations: AffiliationSummary[];
@@ -242,14 +172,7 @@ export const TENANT_ONBOARDING_STATES = [
 export type TenantOnboardingState = (typeof TENANT_ONBOARDING_STATES)[number];
 
 export type TenantOnboardingEvent =
-  | 'START'
-  | 'SETUP_COMPANY'
-  | 'CONFIGURE_STATUTORY'
-  | 'IMPORT_OPENINGS'
-  | 'VERIFY'
-  | 'ACTIVATE'
-  | 'BLOCK'
-  | 'RESUME';
+  'START' | 'SETUP_COMPANY' | 'CONFIGURE_STATUTORY' | 'IMPORT_OPENINGS' | 'VERIFY' | 'ACTIVATE' | 'BLOCK' | 'RESUME';
 
 export interface TenantOnboardingStateRecord {
   status: TenantOnboardingState;
@@ -786,7 +709,13 @@ export interface InteractionView {
   actorPartyId: string | null;
   actorName: string | null;
   participantPartyIds: string[];
-  relatedReferences: { contextCode: string; entityType: string; entityId: string; displayLabel: string | null; recordCode: string | null }[];
+  relatedReferences: {
+    contextCode: string;
+    entityType: string;
+    entityId: string;
+    displayLabel: string | null;
+    recordCode: string | null;
+  }[];
   /** Computed as the max classification across every related reference. Never assigned by the logging user. */
   sensitivityClass: SensitivityClass;
   nextAction: string | null;

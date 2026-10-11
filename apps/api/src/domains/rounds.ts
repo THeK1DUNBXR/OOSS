@@ -112,18 +112,26 @@ export async function updateRound(id: string, input: Partial<FundingRoundInput>)
   const existing = await prisma.fundingRound.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!existing) throw ApiError.notFound('Round');
   if (existing.status !== 'draft') {
-    throw ApiError.conflict('Only a draft round can be edited; an open or closed round is a record of what actually happened.');
+    throw ApiError.conflict(
+      'Only a draft round can be edited; an open or closed round is a record of what actually happened.',
+    );
   }
 
   const updated = await prisma.fundingRound.update({
     where: { id },
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.preMoneyValuation !== undefined ? { preMoneyValuation: input.preMoneyValuation == null ? null : dec(input.preMoneyValuation) } : {}),
-      ...(input.pricePerShareByClass !== undefined ? { pricePerShareByClass: (input.pricePerShareByClass ?? undefined) as never } : {}),
+      ...(input.preMoneyValuation !== undefined
+        ? { preMoneyValuation: input.preMoneyValuation == null ? null : dec(input.preMoneyValuation) }
+        : {}),
+      ...(input.pricePerShareByClass !== undefined
+        ? { pricePerShareByClass: (input.pricePerShareByClass ?? undefined) as never }
+        : {}),
       ...(input.valuationId !== undefined ? { valuationId: input.valuationId } : {}),
       ...(input.boardResolutionRef !== undefined ? { boardResolutionRef: input.boardResolutionRef } : {}),
-      ...(input.shareholderResolutionRef !== undefined ? { shareholderResolutionRef: input.shareholderResolutionRef } : {}),
+      ...(input.shareholderResolutionRef !== undefined
+        ? { shareholderResolutionRef: input.shareholderResolutionRef }
+        : {}),
       ...(input.mgt14Srn !== undefined ? { mgt14Srn: input.mgt14Srn } : {}),
       ...(input.offerLetterSerial !== undefined ? { offerLetterSerial: input.offerLetterSerial } : {}),
       ...(input.separateBankAccountRef !== undefined ? { separateBankAccountRef: input.separateBankAccountRef } : {}),
@@ -136,14 +144,23 @@ export async function updateRound(id: string, input: Partial<FundingRoundInput>)
     },
   });
 
-  await auditWrite({ action: 'update', subjectType: 'funding_round', subjectId: id, before: existing as never, after: updated as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'funding_round',
+    subjectId: id,
+    before: existing as never,
+    after: updated as never,
+  });
   return fundingRoundView(updated);
 }
 
 export async function listRounds() {
   const auth = currentAuth();
   await assertCan({ resource: 'rounds', verb: 'view' });
-  const rows = await prisma.fundingRound.findMany({ where: { tenantId: auth.tenantId, deletedAt: null }, orderBy: { createdAt: 'desc' } });
+  const rows = await prisma.fundingRound.findMany({
+    where: { tenantId: auth.tenantId, deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
   return rows.map(fundingRoundView);
 }
 
@@ -199,7 +216,9 @@ export async function openRound(id: string) {
       );
     }
     if (valuation.asOf >= new Date()) {
-      throw ApiError.unprocessable("Rule 13 needs the registered valuer's report dated before opening; this one is not.");
+      throw ApiError.unprocessable(
+        "Rule 13 needs the registered valuer's report dated before opening; this one is not.",
+      );
     }
   }
 
@@ -211,12 +230,19 @@ export async function openRound(id: string) {
       throw ApiError.unprocessable('s.42 needs a separate bank account reference before a private placement may open.');
     }
     if (row.offereeCount == null || row.offereeCount <= 0) {
-      throw ApiError.unprocessable('s.42 needs the number of persons this round will be offered to before it may open.');
+      throw ApiError.unprocessable(
+        's.42 needs the number of persons this round will be offered to before it may open.',
+      );
     }
 
     const fy = financialYearOf(new Date());
     const others = await prisma.fundingRound.findMany({
-      where: { tenantId: auth.tenantId, kind: 'private_placement', status: { in: ['open', 'closed'] }, id: { not: row.id } },
+      where: {
+        tenantId: auth.tenantId,
+        kind: 'private_placement',
+        status: { in: ['open', 'closed'] },
+        id: { not: row.id },
+      },
     });
     const othersThisFy = others.filter((r) => r.openedOn && financialYearOf(r.openedOn) === fy);
     const priorCount = othersThisFy.reduce((sum, r) => sum + (r.offereeCount ?? 0), 0);
@@ -231,7 +257,9 @@ export async function openRound(id: string) {
 
   if (row.kind === 'bonus') {
     if (!row.sourceOfBonus) {
-      throw ApiError.unprocessable('s.63 needs a named source (free reserves, securities premium, or the capital redemption reserve) before a bonus round may open.');
+      throw ApiError.unprocessable(
+        's.63 needs a named source (free reserves, securities premium, or the capital redemption reserve) before a bonus round may open.',
+      );
     }
     if (row.sourceOfBonus === 'free_reserves') {
       const reserves = await freeReservesProxy();
@@ -254,18 +282,28 @@ export async function openRound(id: string) {
   }
 
   if (row.kind === 'capital_reduction' && !row.tribunalOrderRef) {
-    throw ApiError.unprocessable('s.66 needs the tribunal order this reduction is recorded against before it may open.');
+    throw ApiError.unprocessable(
+      's.66 needs the tribunal order this reduction is recorded against before it may open.',
+    );
   }
 
   if (row.kind === 'buyback') {
     const tests = await buybackTests();
     if (!tests.freeReserves.measured) {
-      throw ApiError.unprocessable(`s.68 needs free reserves to be measurable before a buy-back round may open. ${tests.freeReserves.basis}`);
+      throw ApiError.unprocessable(
+        `s.68 needs free reserves to be measurable before a buy-back round may open. ${tests.freeReserves.basis}`,
+      );
     }
   }
 
   const updated = await prisma.fundingRound.update({ where: { id }, data: { status: 'open', openedOn: new Date() } });
-  await auditWrite({ action: 'update', subjectType: 'funding_round', subjectId: id, before: row as never, after: updated as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'funding_round',
+    subjectId: id,
+    before: row as never,
+    after: updated as never,
+  });
   await emit({
     name: EVENTS.ROUND_OPENED,
     subject: { entityType: 'funding_round', entityId: id, recordCode: row.recordCode },
@@ -288,7 +326,9 @@ export async function closeRound(id: string) {
   if (!row) throw ApiError.notFound('Round');
   if (row.status !== 'open') throw ApiError.conflict(`Only an open round can be closed; this one is ${row.status}.`);
 
-  const transactions = await prisma.shareTransaction.findMany({ where: { tenantId: auth.tenantId, roundId: id, status: 'effective' } });
+  const transactions = await prisma.shareTransaction.findMany({
+    where: { tenantId: auth.tenantId, roundId: id, status: 'effective' },
+  });
   const raised = transactions
     .filter((t) => t.type === 'allotment' && t.pricePerShare)
     .reduce((sum, t) => sum + (num(t.count) ?? 0) * (num(t.pricePerShare) ?? 0), 0);
@@ -296,10 +336,21 @@ export async function closeRound(id: string) {
 
   const updated = await prisma.fundingRound.update({
     where: { id },
-    data: { status: 'closed', closedOn: new Date(), raised: dec(round2(raised)), postMoneyValuation: postMoney == null ? null : dec(postMoney) },
+    data: {
+      status: 'closed',
+      closedOn: new Date(),
+      raised: dec(round2(raised)),
+      postMoneyValuation: postMoney == null ? null : dec(postMoney),
+    },
   });
 
-  await auditWrite({ action: 'update', subjectType: 'funding_round', subjectId: id, before: row as never, after: updated as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'funding_round',
+    subjectId: id,
+    before: row as never,
+    after: updated as never,
+  });
   await emit({
     name: EVENTS.ROUND_CLOSED,
     subject: { entityType: 'funding_round', entityId: id, recordCode: row.recordCode },
@@ -333,10 +384,17 @@ export async function cancelRound(id: string) {
 
   const row = await prisma.fundingRound.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Round');
-  if (row.status === 'closed') throw ApiError.conflict('A closed round cannot be cancelled — reverse the transactions under it instead.');
+  if (row.status === 'closed')
+    throw ApiError.conflict('A closed round cannot be cancelled — reverse the transactions under it instead.');
 
   const updated = await prisma.fundingRound.update({ where: { id }, data: { status: 'cancelled' } });
-  await auditWrite({ action: 'update', subjectType: 'funding_round', subjectId: id, before: row as never, after: updated as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'funding_round',
+    subjectId: id,
+    before: row as never,
+    after: updated as never,
+  });
   await emit({
     name: EVENTS.ROUND_CANCELLED,
     subject: { entityType: 'funding_round', entityId: id, recordCode: row.recordCode },
@@ -346,11 +404,30 @@ export async function cancelRound(id: string) {
 }
 
 export function fundingRoundView(row: {
-  id: string; recordCode: string; name: string; kind: string; status: string; openedOn: Date | null; closedOn: Date | null;
-  preMoneyValuation: unknown; postMoneyValuation: unknown; raised: unknown; pricePerShareByClass: unknown; valuationId: string | null;
-  boardResolutionRef: string | null; shareholderResolutionRef: string | null; mgt14Srn: string | null; pas3Srn: string | null;
-  pas3FiledOn: Date | null; offerLetterSerial: string | null; separateBankAccountRef: string | null; offereeCount: number | null;
-  renunciationAllowed: boolean | null; sourceOfBonus: string | null; valuationReportRef: string | null; tribunalOrderRef: string | null;
+  id: string;
+  recordCode: string;
+  name: string;
+  kind: string;
+  status: string;
+  openedOn: Date | null;
+  closedOn: Date | null;
+  preMoneyValuation: unknown;
+  postMoneyValuation: unknown;
+  raised: unknown;
+  pricePerShareByClass: unknown;
+  valuationId: string | null;
+  boardResolutionRef: string | null;
+  shareholderResolutionRef: string | null;
+  mgt14Srn: string | null;
+  pas3Srn: string | null;
+  pas3FiledOn: Date | null;
+  offerLetterSerial: string | null;
+  separateBankAccountRef: string | null;
+  offereeCount: number | null;
+  renunciationAllowed: boolean | null;
+  sourceOfBonus: string | null;
+  valuationReportRef: string | null;
+  tribunalOrderRef: string | null;
   notes: string | null;
 }) {
   return {
@@ -414,7 +491,8 @@ export async function freeReservesProxy(): Promise<FreeReservesResult> {
     return {
       measured: false,
       amount: 0,
-      basis: 'No transactions are recorded in the books, so cumulative retained profit — the proxy this platform uses for free reserves — cannot be computed.',
+      basis:
+        'No transactions are recorded in the books, so cumulative retained profit — the proxy this platform uses for free reserves — cannot be computed.',
     };
   }
 
@@ -433,7 +511,8 @@ export async function freeReservesProxy(): Promise<FreeReservesResult> {
   return {
     measured: true,
     amount: round2(net),
-    basis: 'Cumulative trading profit and loss across every recorded period (a proxy for free reserves; not adjusted for declared dividends or statutory reserve transfers).',
+    basis:
+      'Cumulative trading profit and loss across every recorded period (a proxy for free reserves; not adjusted for declared dividends or statutory reserve transfers).',
   };
 }
 
@@ -504,7 +583,12 @@ export async function buybackTests(): Promise<BuybackTests> {
   const totalDebt = round2(
     loans.reduce((sum, l) => {
       const outstanding = loanBalanceAt(
-        { principal: num(l.principal) ?? 0, annualRate: num(l.annualRate) ?? 0, tenureMonths: l.tenureMonths, startDate: l.startDate },
+        {
+          principal: num(l.principal) ?? 0,
+          annualRate: num(l.annualRate) ?? 0,
+          tenureMonths: l.tenureMonths,
+          startDate: l.startDate,
+        },
         new Date(),
       );
       return sum + outstanding;
@@ -544,7 +628,8 @@ async function requireOpenRoundOfKind(roundId: string, kinds: string[]) {
   const auth = currentAuth();
   const row = await prisma.fundingRound.findFirst({ where: { id: roundId, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Round');
-  if (row.status !== 'open') throw ApiError.unprocessable(`This round is ${row.status}, not open — nothing may be proposed under it.`);
+  if (row.status !== 'open')
+    throw ApiError.unprocessable(`This round is ${row.status}, not open — nothing may be proposed under it.`);
   if (!kinds.includes(row.kind)) {
     throw ApiError.unprocessable(`This round is a "${row.kind}" round; this action needs one of: ${kinds.join(', ')}.`);
   }
@@ -579,9 +664,13 @@ export async function proposeConversion(input: ProposeConversionInput) {
   if (!fromClass) throw ApiError.notFound('Share class');
   const terms = (fromClass.conversionTerms ?? null) as ConversionTerms | null;
   if (!terms?.convertsToClassId || !terms.ratio) {
-    throw ApiError.unprocessable(`${fromClass.name} carries no conversion terms — there is nothing to convert it into.`);
+    throw ApiError.unprocessable(
+      `${fromClass.name} carries no conversion terms — there is nothing to convert it into.`,
+    );
   }
-  const toClass = await prisma.shareClass.findFirst({ where: { id: terms.convertsToClassId, tenantId: auth.tenantId } });
+  const toClass = await prisma.shareClass.findFirst({
+    where: { id: terms.convertsToClassId, tenantId: auth.tenantId },
+  });
   if (!toClass) throw ApiError.notFound('The class this converts into');
 
   const holder = await prisma.holder.findFirst({ where: { id: input.holderId, tenantId: auth.tenantId } });
@@ -621,7 +710,12 @@ export async function proposeConversion(input: ProposeConversionInput) {
   await emit({
     name: EVENTS.CONVERSION_PROPOSED,
     subject: { entityType: 'share_transaction', entityId: row.id, recordCode: row.recordCode },
-    newState: { fromShareClassId: input.fromClassId, toShareClassId: terms.convertsToClassId, sourceCount: input.count, targetCount },
+    newState: {
+      fromShareClassId: input.fromClassId,
+      toShareClassId: terms.convertsToClassId,
+      sourceCount: input.count,
+      targetCount,
+    },
   });
 
   return shareTransactionView(row);
@@ -650,13 +744,17 @@ export async function proposeRedemption(input: ProposeRedemptionInput) {
 
   const balance = await effectiveBalance(input.holderId, input.shareClassId);
   if (balance < input.count) {
-    throw ApiError.unprocessable(`This holder's effective balance in ${shareClass.name} is ${balance} shares, below the ${input.count} redeeming.`);
+    throw ApiError.unprocessable(
+      `This holder's effective balance in ${shareClass.name} is ${balance} shares, below the ${input.count} redeeming.`,
+    );
   }
 
   if (input.fromReserves) {
     const reserves = await freeReservesProxy();
     if (!reserves.measured) {
-      throw ApiError.unprocessable(`A redemption funded from reserves needs reserves to be measurable. ${reserves.basis}`);
+      throw ApiError.unprocessable(
+        `A redemption funded from reserves needs reserves to be measurable. ${reserves.basis}`,
+      );
     }
     if (reserves.amount < input.count * (num(shareClass.faceValue) ?? 0)) {
       throw ApiError.unprocessable(
@@ -685,7 +783,12 @@ export async function proposeRedemption(input: ProposeRedemptionInput) {
   await emit({
     name: EVENTS.REDEMPTION_PROPOSED,
     subject: { entityType: 'share_transaction', entityId: row.id, recordCode: row.recordCode },
-    newState: { shareClassId: input.shareClassId, holderId: input.holderId, count: input.count, fromReserves: input.fromReserves },
+    newState: {
+      shareClassId: input.shareClassId,
+      holderId: input.holderId,
+      count: input.count,
+      fromReserves: input.fromReserves,
+    },
   });
 
   return shareTransactionView(row);
@@ -722,12 +825,16 @@ export async function proposeBuyback(input: ProposeBuybackInput) {
 
   const balance = await effectiveBalance(input.holderId, input.shareClassId);
   if (balance < input.count) {
-    throw ApiError.unprocessable(`This holder's effective balance in ${shareClass.name} is ${balance} shares, below the ${input.count} being bought back.`);
+    throw ApiError.unprocessable(
+      `This holder's effective balance in ${shareClass.name} is ${balance} shares, below the ${input.count} being bought back.`,
+    );
   }
 
   const tests = await buybackTests();
   if (!tests.freeReserves.measured) {
-    throw ApiError.unprocessable(`s.68 needs free reserves to be measurable before a buy-back may be proposed. ${tests.freeReserves.basis}`);
+    throw ApiError.unprocessable(
+      `s.68 needs free reserves to be measurable before a buy-back may be proposed. ${tests.freeReserves.basis}`,
+    );
   }
 
   const value = round2(input.count * input.pricePerShare);
@@ -808,7 +915,9 @@ export async function proposeBonus(input: ProposeBonusInput) {
 
   const roundRow = await requireOpenRoundOfKind(input.roundId, ['bonus']);
   if (!roundRow.sourceOfBonus) {
-    throw ApiError.unprocessable('s.63 needs this round to name a source of bonus before shares may be proposed under it.');
+    throw ApiError.unprocessable(
+      's.63 needs this round to name a source of bonus before shares may be proposed under it.',
+    );
   }
   if (roundRow.sourceOfBonus === 'free_reserves') {
     const reserves = await freeReservesProxy();
@@ -958,7 +1067,8 @@ export async function acceptRightsOffer(roundId: string, offerId: string, count:
   const offers = await loadRightsOffers(roundId);
   const offer = offers.find((o) => o.offerId === offerId);
   if (!offer) throw ApiError.notFound('Rights offer');
-  if (offer.status === 'renounced') throw ApiError.conflict('This entitlement has been renounced and cannot also be accepted.');
+  if (offer.status === 'renounced')
+    throw ApiError.conflict('This entitlement has been renounced and cannot also be accepted.');
   const remaining = offer.entitlement - offer.accepted;
   if (count <= 0 || count > remaining) {
     throw ApiError.unprocessable(`Only ${remaining} shares remain of this entitlement.`);
@@ -1011,7 +1121,8 @@ export async function renounceRightsOffer(roundId: string, offerId: string, toHo
   const offers = await loadRightsOffers(roundId);
   const offer = offers.find((o) => o.offerId === offerId);
   if (!offer) throw ApiError.notFound('Rights offer');
-  if (offer.accepted > 0) throw ApiError.conflict('Part of this entitlement has already been accepted and cannot also be renounced.');
+  if (offer.accepted > 0)
+    throw ApiError.conflict('Part of this entitlement has already been accepted and cannot also be renounced.');
 
   offer.status = 'renounced';
   offer.renouncedToHolderId = toHolderId;
@@ -1061,7 +1172,9 @@ async function liveScenarioCapTable(): Promise<ScenarioCapTableRow[]> {
     const [holderId, shareClassId] = key.split('::');
     const cls = classById.get(shareClassId);
     const holder = holders.find((h) => h.id === holderId);
-    const rights = (cls?.rights ?? {}) as { liquidationPreference?: { multiple: number; participating: boolean; seniority: number } };
+    const rights = (cls?.rights ?? {}) as {
+      liquidationPreference?: { multiple: number; participating: boolean; seniority: number };
+    };
     rows.push({
       holderId,
       holderName: holder ? holder.folioNumber : holderId,

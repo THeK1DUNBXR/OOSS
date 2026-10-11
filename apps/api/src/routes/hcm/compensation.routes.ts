@@ -6,20 +6,58 @@ import { z } from 'zod';
 import { handler, str } from '../../lib/http.js';
 import {
   myEmploymentId,
-  listPayGrades, createPayGrade, updatePayGrade, compaRatioFor,
-  listRevisionCycles, getRevisionCycle, createRevisionCycle, addRevisionLine, listRevisionLines,
-  proposeCycle, approveRevisionLine, rejectRevisionLine, approveCycle, applyCycle, myRevisionLines,
-  listVariablePayPlans, createVariablePayPlan, computePayout, listVariablePayouts, approvePayout, markPayoutPaid,
-  listBenefitPlans, createBenefitPlan, enrolInBenefit, cancelBenefitEnrollment, listMyBenefitEnrollments, listBenefitEnrollments,
-  scheduleFor, requestLoan, listLoans, approveLoan, rejectLoan, disburseLoan, recordLoanRepayment,
-  submitExpenseClaim, listExpenseClaims, approveExpenseClaim, rejectExpenseClaim, reimburseExpenseClaim,
+  listPayGrades,
+  createPayGrade,
+  updatePayGrade,
+  compaRatioFor,
+  listRevisionCycles,
+  getRevisionCycle,
+  createRevisionCycle,
+  addRevisionLine,
+  listRevisionLines,
+  proposeCycle,
+  approveRevisionLine,
+  rejectRevisionLine,
+  approveCycle,
+  applyCycle,
+  myRevisionLines,
+  listVariablePayPlans,
+  createVariablePayPlan,
+  computePayout,
+  listVariablePayouts,
+  approvePayout,
+  markPayoutPaid,
+  listBenefitPlans,
+  createBenefitPlan,
+  enrolInBenefit,
+  cancelBenefitEnrollment,
+  listMyBenefitEnrollments,
+  listBenefitEnrollments,
+  scheduleFor,
+  requestLoan,
+  listLoans,
+  approveLoan,
+  rejectLoan,
+  disburseLoan,
+  recordLoanRepayment,
+  submitExpenseClaim,
+  listExpenseClaims,
+  approveExpenseClaim,
+  rejectExpenseClaim,
+  reimburseExpenseClaim,
 } from '../../domains/hcm/compensation.js';
 
 const router = Router();
 
-router.get('/_status', handler(async () => ({ module: 'compensation', ready: true })));
+router.get(
+  '/_status',
+  handler(async () => ({ module: 'compensation', ready: true })),
+);
 
-router.get('/my-employment', handler(async () => ({ employmentRelationshipId: await myEmploymentId() })));
+router.get(
+  '/my-employment',
+  handler(async () => ({ employmentRelationshipId: await myEmploymentId() })),
+);
 
 // ---------------------------------------------------------------------------
 // Pay grades
@@ -35,9 +73,18 @@ const payGradeBody = z.object({
   note: z.string().nullable().optional(),
 });
 
-router.get('/pay-grades', handler(async () => listPayGrades()));
-router.post('/pay-grades', handler(async (req) => createPayGrade(payGradeBody.parse(req.body))));
-router.patch('/pay-grades/:id', handler(async (req) => updatePayGrade(req.params.id, payGradeBody.partial().parse(req.body))));
+router.get(
+  '/pay-grades',
+  handler(async () => listPayGrades()),
+);
+router.post(
+  '/pay-grades',
+  handler(async (req) => createPayGrade(payGradeBody.parse(req.body))),
+);
+router.patch(
+  '/pay-grades/:id',
+  handler(async (req) => updatePayGrade(req.params.id, payGradeBody.partial().parse(req.body))),
+);
 router.get(
   '/pay-grades/:id/compa-ratio/:employmentRelationshipId',
   handler(async (req) => compaRatioFor(req.params.employmentRelationshipId, req.params.id)),
@@ -47,20 +94,40 @@ router.get(
 // Salary revision cycles
 // ---------------------------------------------------------------------------
 
-router.get('/revision-cycles', handler(async () => listRevisionCycles()));
-router.get('/revision-cycles/:id', handler(async (req) => getRevisionCycle(req.params.id)));
+router.get(
+  '/revision-cycles',
+  handler(async () => listRevisionCycles()),
+);
+router.get(
+  '/revision-cycles/:id',
+  handler(async (req) => getRevisionCycle(req.params.id)),
+);
 router.post(
   '/revision-cycles',
   handler(async (req) => {
-    const body = z.object({ name: z.string().min(1), effectiveDate: z.coerce.date(), budgetPct: z.number() }).parse(req.body);
+    const body = z
+      .object({ name: z.string().min(1), effectiveDate: z.coerce.date(), budgetPct: z.number() })
+      .parse(req.body);
     return createRevisionCycle(body);
   }),
 );
-router.post('/revision-cycles/:id/propose', handler(async (req) => proposeCycle(req.params.id)));
-router.post('/revision-cycles/:id/approve', handler(async (req) => approveCycle(req.params.id)));
-router.post('/revision-cycles/:id/apply', handler(async (req) => applyCycle(req.params.id)));
+router.post(
+  '/revision-cycles/:id/propose',
+  handler(async (req) => proposeCycle(req.params.id)),
+);
+router.post(
+  '/revision-cycles/:id/approve',
+  handler(async (req) => approveCycle(req.params.id)),
+);
+router.post(
+  '/revision-cycles/:id/apply',
+  handler(async (req) => applyCycle(req.params.id)),
+);
 
-router.get('/revision-cycles/:id/lines', handler(async (req) => listRevisionLines(req.params.id)));
+router.get(
+  '/revision-cycles/:id/lines',
+  handler(async (req) => listRevisionLines(req.params.id)),
+);
 router.post(
   '/revision-cycles/:id/lines',
   handler(async (req) => {
@@ -90,13 +157,19 @@ router.post(
     return rejectRevisionLine(req.params.id, body.note);
   }),
 );
-router.get('/my-revision-lines/:employmentRelationshipId', handler(async (req) => myRevisionLines(req.params.employmentRelationshipId)));
+router.get(
+  '/my-revision-lines/:employmentRelationshipId',
+  handler(async (req) => myRevisionLines(req.params.employmentRelationshipId)),
+);
 
 // ---------------------------------------------------------------------------
 // Variable pay
 // ---------------------------------------------------------------------------
 
-router.get('/variable-pay-plans', handler(async () => listVariablePayPlans()));
+router.get(
+  '/variable-pay-plans',
+  handler(async () => listVariablePayPlans()),
+);
 router.post(
   '/variable-pay-plans',
   handler(async (req) => {
@@ -111,12 +184,20 @@ router.post(
     return createVariablePayPlan(body as never);
   }),
 );
-router.get('/variable-payouts', handler(async (req) => listVariablePayouts(str(req.query.employmentRelationshipId))));
+router.get(
+  '/variable-payouts',
+  handler(async (req) => listVariablePayouts(str(req.query.employmentRelationshipId))),
+);
 router.post(
   '/variable-payouts/compute',
   handler(async (req) => {
     const body = z
-      .object({ planId: z.string().min(1), employmentRelationshipId: z.string().min(1), period: z.string().min(1), base: z.number() })
+      .object({
+        planId: z.string().min(1),
+        employmentRelationshipId: z.string().min(1),
+        period: z.string().min(1),
+        base: z.number(),
+      })
       .parse(req.body);
     return computePayout(body.planId, body.employmentRelationshipId, body.period, body.base);
   }),
@@ -128,13 +209,19 @@ router.post(
     return approvePayout(req.params.id, body.note);
   }),
 );
-router.post('/variable-payouts/:id/pay', handler(async (req) => markPayoutPaid(req.params.id)));
+router.post(
+  '/variable-payouts/:id/pay',
+  handler(async (req) => markPayoutPaid(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Benefits
 // ---------------------------------------------------------------------------
 
-router.get('/benefit-plans', handler(async (req) => listBenefitPlans(req.query.activeOnly === 'true')));
+router.get(
+  '/benefit-plans',
+  handler(async (req) => listBenefitPlans(req.query.activeOnly === 'true')),
+);
 router.post(
   '/benefit-plans',
   handler(async (req) => {
@@ -155,13 +242,24 @@ router.post(
 router.post(
   '/benefit-plans/:id/enrol',
   handler(async (req) => {
-    const body = z.object({ employmentRelationshipId: z.string().min(1), dependants: z.array(z.any()).optional() }).parse(req.body);
+    const body = z
+      .object({ employmentRelationshipId: z.string().min(1), dependants: z.array(z.any()).optional() })
+      .parse(req.body);
     return enrolInBenefit(req.params.id, body.employmentRelationshipId, body.dependants ?? []);
   }),
 );
-router.get('/benefit-enrollments', handler(async (req) => listBenefitEnrollments(str(req.query.planId))));
-router.post('/benefit-enrollments/:id/cancel', handler(async (req) => cancelBenefitEnrollment(req.params.id)));
-router.get('/my-benefit-enrollments/:employmentRelationshipId', handler(async (req) => listMyBenefitEnrollments(req.params.employmentRelationshipId)));
+router.get(
+  '/benefit-enrollments',
+  handler(async (req) => listBenefitEnrollments(str(req.query.planId))),
+);
+router.post(
+  '/benefit-enrollments/:id/cancel',
+  handler(async (req) => cancelBenefitEnrollment(req.params.id)),
+);
+router.get(
+  '/my-benefit-enrollments/:employmentRelationshipId',
+  handler(async (req) => listMyBenefitEnrollments(req.params.employmentRelationshipId)),
+);
 
 // ---------------------------------------------------------------------------
 // Employee loans
@@ -170,7 +268,9 @@ router.get('/my-benefit-enrollments/:employmentRelationshipId', handler(async (r
 router.post(
   '/loans/schedule',
   handler(async (req) => {
-    const body = z.object({ principal: z.number(), interestPct: z.number(), tenureMonths: z.number().int() }).parse(req.body);
+    const body = z
+      .object({ principal: z.number(), interestPct: z.number(), tenureMonths: z.number().int() })
+      .parse(req.body);
     return scheduleFor(body.principal, body.interestPct, body.tenureMonths);
   }),
 );
@@ -188,7 +288,10 @@ router.post(
     return requestLoan(body);
   }),
 );
-router.get('/loans', handler(async (req) => listLoans(str(req.query.employmentRelationshipId))));
+router.get(
+  '/loans',
+  handler(async (req) => listLoans(str(req.query.employmentRelationshipId))),
+);
 router.post(
   '/loans/:id/approve',
   handler(async (req) => {
@@ -237,7 +340,10 @@ router.post(
     return submitExpenseClaim(body);
   }),
 );
-router.get('/expense-claims', handler(async (req) => listExpenseClaims(str(req.query.employmentRelationshipId))));
+router.get(
+  '/expense-claims',
+  handler(async (req) => listExpenseClaims(str(req.query.employmentRelationshipId))),
+);
 router.post(
   '/expense-claims/:id/approve',
   handler(async (req) => {

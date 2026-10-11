@@ -76,7 +76,13 @@ export function Budget() {
             <TextInput label="Period" value={period} onChange={setPeriod} hint="YYYY-MM or YYYY-Qn" />
           </div>
           <div className="w-44">
-            <SelectInput label="Division" value={division} onChange={setDivision} placeholder="All divisions" options={DIVISIONS.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))} />
+            <SelectInput
+              label="Division"
+              value={division}
+              onChange={setDivision}
+              placeholder="All divisions"
+              options={DIVISIONS.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))}
+            />
           </div>
         </div>
       </Card>
@@ -93,8 +99,16 @@ export function Budget() {
 }
 
 function BudgetsTab({ period, division, canApprove }: { period: string; division: string; canApprove: boolean }) {
-  const { data: budgets, isLoading: loadingBudgets, error: budgetsError } = useBudgets({ period: period || undefined, division: division || undefined });
-  const { data: variance, isLoading: loadingVariance, error: varianceError } = useBudgetVariance({ period, division: division || undefined });
+  const {
+    data: budgets,
+    isLoading: loadingBudgets,
+    error: budgetsError,
+  } = useBudgets({ period: period || undefined, division: division || undefined });
+  const {
+    data: variance,
+    isLoading: loadingVariance,
+    error: varianceError,
+  } = useBudgetVariance({ period, division: division || undefined });
   const approve = useApproveBudget();
 
   return (
@@ -105,7 +119,10 @@ function BudgetsTab({ period, division, canApprove }: { period: string; division
         ) : budgetsError ? (
           <ErrorBox error={budgetsError} />
         ) : !budgets || budgets.items.length === 0 ? (
-          <EmptyState message="No budget has been proposed for this period yet." hint="A budget is proposed against a division, and optionally a channel or a single campaign." />
+          <EmptyState
+            message="No budget has been proposed for this period yet."
+            hint="A budget is proposed against a division, and optionally a channel or a single campaign."
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="table">
@@ -125,14 +142,22 @@ function BudgetsTab({ period, division, canApprove }: { period: string; division
                   <tr key={b.id}>
                     <td className="text-xs">{b.period}</td>
                     <td className="text-xs">{titleCase(b.division)}</td>
-                    <td className="text-xs text-ink-400">{b.channelKey ? CHANNEL_KEY_LABELS[b.channelKey] : b.campaignName ?? 'All'}</td>
+                    <td className="text-xs text-ink-400">
+                      {b.channelKey ? CHANNEL_KEY_LABELS[b.channelKey] : (b.campaignName ?? 'All')}
+                    </td>
                     <td className="text-right tabular-nums text-xs">{money(b.planned)}</td>
                     <td className="text-right tabular-nums text-xs">{money(b.committed)}</td>
                     <td className="text-right tabular-nums text-xs">{money(b.spent)}</td>
                     <td>
-                      <span className="text-2xs text-ink-500">{b.remaining >= 0 ? `${money(b.remaining)} left` : `${money(-b.remaining)} over`}</span>
+                      <span className="text-2xs text-ink-500">
+                        {b.remaining >= 0 ? `${money(b.remaining)} left` : `${money(-b.remaining)} over`}
+                      </span>
                       {canApprove && (
-                        <button className="ml-2 text-2xs text-accent-soft hover:underline" onClick={() => approve.mutate(b.id)} disabled={approve.isPending}>
+                        <button
+                          className="ml-2 text-2xs text-accent-soft hover:underline"
+                          onClick={() => approve.mutate(b.id)}
+                          disabled={approve.isPending}
+                        >
                           Approve
                         </button>
                       )}
@@ -151,7 +176,10 @@ function BudgetsTab({ period, division, canApprove }: { period: string; division
         ) : varianceError ? (
           <ErrorBox error={varianceError} />
         ) : !variance || variance.length === 0 ? (
-          <EmptyState message="Nothing to measure yet." hint="Variance appears once a budget is approved for this period." />
+          <EmptyState
+            message="Nothing to measure yet."
+            hint="Variance appears once a budget is approved for this period."
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="table">
@@ -173,7 +201,9 @@ function BudgetsTab({ period, division, canApprove }: { period: string; division
                     <td className="text-right tabular-nums text-xs">{money(v.planned)}</td>
                     <td className="text-right tabular-nums text-xs">{money(v.committed)}</td>
                     <td className="text-right tabular-nums text-xs">{v.measured ? money(v.actual) : NOT_MEASURED}</td>
-                    <td className={`text-right tabular-nums text-xs ${v.variance < 0 ? 'text-band-critical' : 'text-band-strong'}`}>
+                    <td
+                      className={`text-right tabular-nums text-xs ${v.variance < 0 ? 'text-band-critical' : 'text-band-strong'}`}
+                    >
                       {v.measured ? money(v.variance) : NOT_MEASURED}
                     </td>
                   </tr>
@@ -191,7 +221,10 @@ function SpendTab({ period }: { period: string }) {
   const { data, isLoading, error } = useSpends({});
   const reconcile = useReconcileSpend();
 
-  const items = useMemo(() => (data?.items ?? []).filter((s) => s.spendDate.slice(0, 7) === period.slice(0, 7)), [data, period]);
+  const items = useMemo(
+    () => (data?.items ?? []).filter((s) => s.spendDate.slice(0, 7) === period.slice(0, 7)),
+    [data, period],
+  );
 
   if (isLoading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
@@ -224,7 +257,10 @@ function SpendTab({ period }: { period: string }) {
               <td>
                 <StatusChip status={s.status} tone={s.status === 'reconciled' ? 'good' : 'neutral'} />
                 {s.status === 'recorded' && (
-                  <button className="ml-2 text-2xs text-accent-soft hover:underline" onClick={() => reconcile.mutate({ id: s.id, body: {} })}>
+                  <button
+                    className="ml-2 text-2xs text-accent-soft hover:underline"
+                    onClick={() => reconcile.mutate({ id: s.id, body: {} })}
+                  >
                     Reconcile
                   </button>
                 )}
@@ -244,7 +280,10 @@ function VendorsTab() {
   const items = data?.items ?? [];
   return items.length === 0 ? (
     <Card>
-      <EmptyState message="No vendors on file yet." hint="A vendor is an existing organization tagged with the services it supplies." />
+      <EmptyState
+        message="No vendors on file yet."
+        hint="A vendor is an existing organization tagged with the services it supplies."
+      />
     </Card>
   ) : (
     <Card bodyClassName="p-0 overflow-x-auto">
@@ -274,7 +313,15 @@ function VendorsTab() {
   );
 }
 
-function CreateBudgetModal({ open, onClose, defaultPeriod }: { open: boolean; onClose: () => void; defaultPeriod: string }) {
+function CreateBudgetModal({
+  open,
+  onClose,
+  defaultPeriod,
+}: {
+  open: boolean;
+  onClose: () => void;
+  defaultPeriod: string;
+}) {
   const [period, setPeriod] = useState(defaultPeriod);
   const [division, setDivision] = useState('');
   const [channelKey, setChannelKey] = useState<ChannelKey | ''>('');
@@ -289,15 +336,34 @@ function CreateBudgetModal({ open, onClose, defaultPeriod }: { open: boolean; on
       submitLabel="Propose"
       onClose={onClose}
       onSubmit={() =>
-        createBudget.mutateAsync({ period, division, channelKey: channelKey || undefined, planned: Number(planned || 0), note: note || undefined })
+        createBudget.mutateAsync({
+          period,
+          division,
+          channelKey: channelKey || undefined,
+          planned: Number(planned || 0),
+          note: note || undefined,
+        })
       }
     >
       <Row>
         <TextInput label="Period" required value={period} onChange={setPeriod} hint="YYYY-MM or YYYY-Qn" />
-        <SelectInput label="Division" required value={division} onChange={setDivision} placeholder="Choose a division" options={DIVISIONS.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))} />
+        <SelectInput
+          label="Division"
+          required
+          value={division}
+          onChange={setDivision}
+          placeholder="Choose a division"
+          options={DIVISIONS.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))}
+        />
       </Row>
       <Row>
-        <SelectInput label="Channel" value={channelKey} onChange={(v) => setChannelKey(v as ChannelKey)} placeholder="All channels" options={CHANNEL_KEYS.map((k) => ({ value: k, label: CHANNEL_KEY_LABELS[k] }))} />
+        <SelectInput
+          label="Channel"
+          value={channelKey}
+          onChange={(v) => setChannelKey(v as ChannelKey)}
+          placeholder="All channels"
+          options={CHANNEL_KEYS.map((k) => ({ value: k, label: CHANNEL_KEY_LABELS[k] }))}
+        />
         <TextInput label="Planned amount" type="number" required value={planned} onChange={setPlanned} />
       </Row>
       <TextArea label="Note" value={note} onChange={setNote} hint="optional" />
@@ -320,16 +386,36 @@ function RecordSpendModal({ open, onClose }: { open: boolean; onClose: () => voi
       submitLabel="Record it"
       onClose={onClose}
       onSubmit={() =>
-        createSpend.mutateAsync({ channelKey: channelKey as ChannelKey, division, amount: Number(amount || 0), spendDate, description })
+        createSpend.mutateAsync({
+          channelKey: channelKey as ChannelKey,
+          division,
+          amount: Number(amount || 0),
+          spendDate,
+          description,
+        })
       }
     >
       <Row>
-        <SelectInput label="Channel" required value={channelKey} onChange={(v) => setChannelKey(v as ChannelKey)} placeholder="Choose a channel" options={CHANNEL_KEYS.map((k) => ({ value: k, label: CHANNEL_KEY_LABELS[k] }))} />
+        <SelectInput
+          label="Channel"
+          required
+          value={channelKey}
+          onChange={(v) => setChannelKey(v as ChannelKey)}
+          placeholder="Choose a channel"
+          options={CHANNEL_KEYS.map((k) => ({ value: k, label: CHANNEL_KEY_LABELS[k] }))}
+        />
         <TextInput label="Date" type="date" required value={spendDate} onChange={setSpendDate} />
       </Row>
       <Row>
         <TextInput label="Amount" type="number" required value={amount} onChange={setAmount} />
-        <SelectInput label="Division" required value={division} onChange={setDivision} placeholder="Choose a division" options={DIVISIONS.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))} />
+        <SelectInput
+          label="Division"
+          required
+          value={division}
+          onChange={setDivision}
+          placeholder="Choose a division"
+          options={DIVISIONS.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))}
+        />
       </Row>
       <TextArea label="Description" required value={description} onChange={setDescription} />
     </CreateModal>
@@ -351,12 +437,21 @@ function AddVendorModal({ open, onClose }: { open: boolean; onClose: () => void 
       onSubmit={() =>
         createVendor.mutateAsync({
           organizationId,
-          services: services.split(',').map((s) => s.trim()).filter(Boolean),
+          services: services
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
           contractRef: contractRef || undefined,
         })
       }
     >
-      <TextInput label="Organization ID" required value={organizationId} onChange={setOrganizationId} hint="from the Organizations screen" />
+      <TextInput
+        label="Organization ID"
+        required
+        value={organizationId}
+        onChange={setOrganizationId}
+        hint="from the Organizations screen"
+      />
       <TextInput label="Services" required value={services} onChange={setServices} hint="comma-separated" />
       <TextInput label="Contract reference" value={contractRef} onChange={setContractRef} hint="optional" />
     </CreateModal>

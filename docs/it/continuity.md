@@ -4,7 +4,7 @@ Which application must be back in how long, whether the last drill actually
 proved it, how reliable it has been this month, and when it next goes dark
 for maintenance (`docs/plan/cio.md`, workstream H). `BackupRun`
 (`main.prisma`) is the platform's own backup log; nothing before this said
-which *business* system must be back in how long.
+which _business_ system must be back in how long.
 
 ---
 
@@ -15,7 +15,7 @@ timing, every month's minutes-down reading, every maintenance window. The
 one thing this module computes is uptime % — over the minutes in the
 calendar month a reading covers, from the minutes-down figure a person typed
 in. It does not discover applications, meter uptime itself, or page anyone.
-An application with no reading for a month is *not yet measured*, never
+An application with no reading for a month is _not yet measured_, never
 shown as 100%.
 
 ## The application catalogue is another workstream's model
@@ -147,22 +147,22 @@ Summaries: `continuitySummary()`, `availabilitySummary()` (shapes below).
 
 ## Routes (mounted at `/api/it/`)
 
-| Method | Path | |
-|---|---|---|
-| GET | `/continuity/summary` | `continuitySummary()` |
-| GET | `/continuity/plans` | `?tier=`, `?status=` |
-| POST | `/continuity/plans` | create |
-| GET | `/continuity/plans/:id` | detail, with tests and `availableTransitions` |
-| PATCH | `/continuity/plans/:id` | field edits, or `{status}` to transition |
-| GET | `/continuity/plans/:id/tests` | test history |
-| POST | `/continuity/plans/:id/tests` | record a test |
-| GET | `/availability/summary` | `availabilitySummary()` |
-| GET | `/availability/readings` | `?period=`, `?applicationId=` |
-| POST | `/availability/readings` | record (upserts by app + period) |
-| GET | `/maintenance` | `?when=upcoming\|past\|all`, `?status=` |
-| POST | `/maintenance` | create |
-| GET | `/maintenance/:id` | detail |
-| POST | `/maintenance/:id/cancel` | `{reason}` |
+| Method | Path                          |                                               |
+| ------ | ----------------------------- | --------------------------------------------- |
+| GET    | `/continuity/summary`         | `continuitySummary()`                         |
+| GET    | `/continuity/plans`           | `?tier=`, `?status=`                          |
+| POST   | `/continuity/plans`           | create                                        |
+| GET    | `/continuity/plans/:id`       | detail, with tests and `availableTransitions` |
+| PATCH  | `/continuity/plans/:id`       | field edits, or `{status}` to transition      |
+| GET    | `/continuity/plans/:id/tests` | test history                                  |
+| POST   | `/continuity/plans/:id/tests` | record a test                                 |
+| GET    | `/availability/summary`       | `availabilitySummary()`                       |
+| GET    | `/availability/readings`      | `?period=`, `?applicationId=`                 |
+| POST   | `/availability/readings`      | record (upserts by app + period)              |
+| GET    | `/maintenance`                | `?when=upcoming\|past\|all`, `?status=`       |
+| POST   | `/maintenance`                | create                                        |
+| GET    | `/maintenance/:id`            | detail                                        |
+| POST   | `/maintenance/:id/cancel`     | `{reason}`                                    |
 
 (There is no bare `/continuity` or `/availability` list alias — `/continuity/plans`
 and `/availability/readings` are the one way to list each, alongside their
@@ -227,7 +227,7 @@ never reported as 100%.
    continuity plan for a tier-1/2 application sitting in `draft` or
    `retired` rather than `active`. Either way, `IT_DR_NO_PLAN` is raised
    with the **application** — `subjectType: 'it_application'`, `subjectId:
-   applicationId` — as the exception's subject, never the plan (IT-DR-001).
+applicationId` — as the exception's subject, never the plan (IT-DR-001).
    See "The application catalogue is another workstream's model" above.
 3. **`runMaintenanceWindowNoticeJob`** — every 30 minutes. A `planned`
    window starting within 24 hours with `notifiedAt` still null raises
@@ -247,12 +247,12 @@ the 24-hour notice stamp and for cancellation, since no separate
 
 ## Grants (`it_continuity`)
 
-| Role | Cell |
-|---|---|
-| Employee | *(nothing — not in the employee grant table at all)* |
-| Operations Head | `VCEDX` |
-| Finance Head | `V` |
-| Chairman | all |
+| Role            | Cell                                                 |
+| --------------- | ---------------------------------------------------- |
+| Employee        | _(nothing — not in the employee grant table at all)_ |
+| Operations Head | `VCEDX`                                              |
+| Finance Head    | `V`                                                  |
+| Chairman        | all                                                  |
 
 No `approve` verb on this resource — plan and window lifecycle moves on
 `create`/`edit` alone, no approval gate policy is declared for continuity in
@@ -260,12 +260,12 @@ No `approve` verb on this resource — plan and window lifecycle moves on
 
 ## Acceptance
 
-| ID | Test |
-|---|---|
-| IT-DR-001 | `IT-DR-001: a tier-1 catalogue application with no active continuity plan raises IT_DR_NO_PLAN naming the application` |
-| IT-DR-002 | `IT-DR-002: a test whose recovery time exceeds RTO raises IT_DR_RTO_EXCEEDED, and the test row is immutable afterwards` |
-| IT-DR-003 | `IT-DR-003: the DR-test-overdue ladder is idempotent per rung` |
-| IT-AVL-001 | `IT-AVL-001: uptime % is pure arithmetic over minutes, and a month with no reading reports not yet measured` |
+| ID         | Test                                                                                                                    |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------- |
+| IT-DR-001  | `IT-DR-001: a tier-1 catalogue application with no active continuity plan raises IT_DR_NO_PLAN naming the application`  |
+| IT-DR-002  | `IT-DR-002: a test whose recovery time exceeds RTO raises IT_DR_RTO_EXCEEDED, and the test row is immutable afterwards` |
+| IT-DR-003  | `IT-DR-003: the DR-test-overdue ladder is idempotent per rung`                                                          |
+| IT-AVL-001 | `IT-AVL-001: uptime % is pure arithmetic over minutes, and a month with no reading reports not yet measured`            |
 
 Plus, in `apps/api/src/tests/it/continuity.test.ts`: the pure-arithmetic
 suite for `uptimePercent`/`testOverdueRung`/`rtoBreached` (no DB); the

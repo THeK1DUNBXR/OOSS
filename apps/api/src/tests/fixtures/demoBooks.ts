@@ -19,9 +19,9 @@ import { nextRecordCode } from '../../platform/recordCode.js';
 
 /** The mock's division names, mapped onto the platform's codes. */
 const DIVISION_OF: Record<string, string> = {
-  'Software': 'software',
+  Software: 'software',
   'Skill Development': 'skill',
-  'Education': 'education',
+  Education: 'education',
   'Shared / Corporate': 'shared',
 };
 
@@ -44,41 +44,221 @@ interface CategorySpec {
 }
 
 const CATEGORIES: CategorySpec[] = [
-  { name: 'Income - Internship', type: 'Income', division: 'Education', costNature: '—', baseline: [0, 0, 0, 0, 17500, 0, 0] },
-  { name: 'Income - Short Term Courses', type: 'Income', division: 'Education', costNature: '—', baseline: [0, 0, 0, 0, 0, 10000, 20700] },
-  { name: 'Income - Skill Programs', type: 'Income', division: 'Skill Development', costNature: '—', baseline: [0, 0, 0, 0, 0, 0, 49728] },
-  { name: 'Income - Software Service', type: 'Income', division: 'Software', costNature: '—', baseline: [0, 0, 0, 50000, 130000, 50000, 100000] },
-  { name: 'Miscellaneous Income', type: 'Income', division: 'Shared / Corporate', costNature: '—', baseline: [0, 0, 0, 0, 2, 0, 0] },
+  {
+    name: 'Income - Internship',
+    type: 'Income',
+    division: 'Education',
+    costNature: '—',
+    baseline: [0, 0, 0, 0, 17500, 0, 0],
+  },
+  {
+    name: 'Income - Short Term Courses',
+    type: 'Income',
+    division: 'Education',
+    costNature: '—',
+    baseline: [0, 0, 0, 0, 0, 10000, 20700],
+  },
+  {
+    name: 'Income - Skill Programs',
+    type: 'Income',
+    division: 'Skill Development',
+    costNature: '—',
+    baseline: [0, 0, 0, 0, 0, 0, 49728],
+  },
+  {
+    name: 'Income - Software Service',
+    type: 'Income',
+    division: 'Software',
+    costNature: '—',
+    baseline: [0, 0, 0, 50000, 130000, 50000, 100000],
+  },
+  {
+    name: 'Miscellaneous Income',
+    type: 'Income',
+    division: 'Shared / Corporate',
+    costNature: '—',
+    baseline: [0, 0, 0, 0, 2, 0, 0],
+  },
 
-  { name: 'Advertisements - Social Media', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [0, 0, 0, 0, 0, 0, 5778] },
-  { name: 'Registration - Skill Programs', type: 'Expense', division: 'Skill Development', costNature: 'Variable / Program-linked', baseline: [0, 0, 0, 0, 0, 0, 2100] },
-  { name: 'Skill Program Expenses', type: 'Expense', division: 'Skill Development', costNature: 'Variable / Program-linked', baseline: [0, 0, 0, 0, 0, 7000, 0] },
-  { name: 'Salary & Wages', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [0, 24000, 31000, 57500, 66600, 106166, 195291] },
-  { name: 'Auditor Fees', type: 'Expense', division: 'Shared / Corporate', costNature: 'Annual / Periodic', baseline: [5000, 15000, 0, 0, 0, 0, 0] },
-  { name: 'Bank Charges', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [0, 0, 0, 118, 23.6, 405.01, 402.03] },
-  { name: 'Building Rent', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [0, 32000, 32000, 32000, 32000, 32000, 32000] },
-  { name: 'Consultation Fees', type: 'Expense', division: 'Shared / Corporate', costNature: 'Annual / Periodic', baseline: [0, 0, 0, 0, 0, 0, 20000] },
-  { name: 'Electrical Charges', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [0, 195, 0, 2629, 0, 16649, 0] },
-  { name: 'General Expenses', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [0, 2002, 14033, 17030, 12500, 5000, 0] },
-  { name: 'Incorporation Expenses', type: 'Expense', division: 'Shared / Corporate', costNature: 'One-time / Setup', baseline: [13100, 1363, 3953, 400, 0, 1000, 0] },
-  { name: 'Installation of Equipments', type: 'Expense', division: 'Shared / Corporate', costNature: 'One-time / Setup', baseline: [12400, 16146, 3115, 0, 3000, 0, 0] },
-  { name: 'Local Conveyance', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [2803, 2600, 2000, 3000, 3200, 2000, 7500] },
-  { name: 'Office Maintenance', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [0, 3010, 0, 1000, 0, 0, 800] },
-  { name: 'Opening Ceremony', type: 'Expense', division: 'Shared / Corporate', costNature: 'One-time / Setup', baseline: [0, 12712, 0, 0, 0, 0, 0] },
-  { name: 'Printing & Stationery', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [370, 11042.02, 8889, 0, 190, 0, 1565] },
-  { name: 'Software Subscription - Google Workspace', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [500, 0, 280, 6762.55, 5477, 4543, 24437.14] },
-  { name: 'Staff Welfare Expenses', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [4031, 2880, 906, 3024, 625, 0, 0] },
-  { name: 'Telephone & Internet Expenses', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [0, 173.2, 2777, 429.84, 3429.82, 1062.04, 1886.82] },
-  { name: 'Travelling Expenses - Marketing', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [0, 1512, 0, 0, 0, 0, 0] },
-  { name: 'Water Charges', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [0, 0, 0, 0, 0, 0, 2000] },
-  { name: 'Website/Domain Expenses', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [0, 0, 18000, 0, 0, 0, 1744] },
-  { name: 'Interest Expense', type: 'Expense', division: 'Shared / Corporate', costNature: 'Recurring Fixed', baseline: [0, 0, 0, 0, 0, 0, 0] },
-  { name: 'Fixed Asset Purchase', type: 'Expense', division: 'Shared / Corporate', costNature: 'One-time / Setup', baseline: [0, 0, 0, 0, 0, 0, 0] },
+  {
+    name: 'Advertisements - Social Media',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [0, 0, 0, 0, 0, 0, 5778],
+  },
+  {
+    name: 'Registration - Skill Programs',
+    type: 'Expense',
+    division: 'Skill Development',
+    costNature: 'Variable / Program-linked',
+    baseline: [0, 0, 0, 0, 0, 0, 2100],
+  },
+  {
+    name: 'Skill Program Expenses',
+    type: 'Expense',
+    division: 'Skill Development',
+    costNature: 'Variable / Program-linked',
+    baseline: [0, 0, 0, 0, 0, 7000, 0],
+  },
+  {
+    name: 'Salary & Wages',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [0, 24000, 31000, 57500, 66600, 106166, 195291],
+  },
+  {
+    name: 'Auditor Fees',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Annual / Periodic',
+    baseline: [5000, 15000, 0, 0, 0, 0, 0],
+  },
+  {
+    name: 'Bank Charges',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [0, 0, 0, 118, 23.6, 405.01, 402.03],
+  },
+  {
+    name: 'Building Rent',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [0, 32000, 32000, 32000, 32000, 32000, 32000],
+  },
+  {
+    name: 'Consultation Fees',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Annual / Periodic',
+    baseline: [0, 0, 0, 0, 0, 0, 20000],
+  },
+  {
+    name: 'Electrical Charges',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [0, 195, 0, 2629, 0, 16649, 0],
+  },
+  {
+    name: 'General Expenses',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [0, 2002, 14033, 17030, 12500, 5000, 0],
+  },
+  {
+    name: 'Incorporation Expenses',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'One-time / Setup',
+    baseline: [13100, 1363, 3953, 400, 0, 1000, 0],
+  },
+  {
+    name: 'Installation of Equipments',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'One-time / Setup',
+    baseline: [12400, 16146, 3115, 0, 3000, 0, 0],
+  },
+  {
+    name: 'Local Conveyance',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [2803, 2600, 2000, 3000, 3200, 2000, 7500],
+  },
+  {
+    name: 'Office Maintenance',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [0, 3010, 0, 1000, 0, 0, 800],
+  },
+  {
+    name: 'Opening Ceremony',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'One-time / Setup',
+    baseline: [0, 12712, 0, 0, 0, 0, 0],
+  },
+  {
+    name: 'Printing & Stationery',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [370, 11042.02, 8889, 0, 190, 0, 1565],
+  },
+  {
+    name: 'Software Subscription - Google Workspace',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [500, 0, 280, 6762.55, 5477, 4543, 24437.14],
+  },
+  {
+    name: 'Staff Welfare Expenses',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [4031, 2880, 906, 3024, 625, 0, 0],
+  },
+  {
+    name: 'Telephone & Internet Expenses',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [0, 173.2, 2777, 429.84, 3429.82, 1062.04, 1886.82],
+  },
+  {
+    name: 'Travelling Expenses - Marketing',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [0, 1512, 0, 0, 0, 0, 0],
+  },
+  {
+    name: 'Water Charges',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [0, 0, 0, 0, 0, 0, 2000],
+  },
+  {
+    name: 'Website/Domain Expenses',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [0, 0, 18000, 0, 0, 0, 1744],
+  },
+  {
+    name: 'Interest Expense',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'Recurring Fixed',
+    baseline: [0, 0, 0, 0, 0, 0, 0],
+  },
+  {
+    name: 'Fixed Asset Purchase',
+    type: 'Expense',
+    division: 'Shared / Corporate',
+    costNature: 'One-time / Setup',
+    baseline: [0, 0, 0, 0, 0, 0, 0],
+  },
 
   // The company was funded before it earned anything, and the ledger has to
   // say so: without this the bank account runs overdrawn from the second month,
   // which is not what happened and not something a bank would have allowed.
-  { name: 'Capital Introduced', type: 'Income', division: 'Shared / Corporate', costNature: 'One-time / Setup', baseline: [1_200_000, 0, 0, 0, 400_000, 0, 0] },
+  {
+    name: 'Capital Introduced',
+    type: 'Income',
+    division: 'Shared / Corporate',
+    costNature: 'One-time / Setup',
+    baseline: [1_200_000, 0, 0, 0, 400_000, 0, 0],
+  },
 ];
 
 /** Costs the company cannot defer — the ones a cash plan must clear first. */
@@ -103,9 +283,21 @@ export async function seedDemoBooks() {
   // Accounts
   // -------------------------------------------------------------------------
   const accountSpecs = [
-    { name: 'Current Account — HDFC', accountType: 'bank', displayReference: '••4821', openingBalance: 250_000, ledgerGroup: 'asset' },
+    {
+      name: 'Current Account — HDFC',
+      accountType: 'bank',
+      displayReference: '••4821',
+      openingBalance: 250_000,
+      ledgerGroup: 'asset',
+    },
     { name: 'Cash in Hand', accountType: 'cash', displayReference: null, openingBalance: 15_000, ledgerGroup: 'asset' },
-    { name: 'Corporate Card', accountType: 'card', displayReference: '••7702', openingBalance: 0, ledgerGroup: 'liability' },
+    {
+      name: 'Corporate Card',
+      accountType: 'card',
+      displayReference: '••7702',
+      openingBalance: 0,
+      ledgerGroup: 'liability',
+    },
   ];
 
   const accounts = new Map<string, string>();
@@ -201,8 +393,22 @@ export async function seedDemoBooks() {
   // The standing commitments, from the founder's own list.
   // -------------------------------------------------------------------------
   const recurringSpecs = [
-    { label: 'Building Rent', category: 'Building Rent', amount: 32_000, cadence: 'monthly', dayOfMonth: 1, monthsAgo: 6 },
-    { label: 'Google Workspace subscription', category: 'Software Subscription - Google Workspace', amount: 3_500, cadence: 'monthly', dayOfMonth: 5, monthsAgo: 1 },
+    {
+      label: 'Building Rent',
+      category: 'Building Rent',
+      amount: 32_000,
+      cadence: 'monthly',
+      dayOfMonth: 1,
+      monthsAgo: 6,
+    },
+    {
+      label: 'Google Workspace subscription',
+      category: 'Software Subscription - Google Workspace',
+      amount: 3_500,
+      cadence: 'monthly',
+      dayOfMonth: 5,
+      monthsAgo: 1,
+    },
     { label: 'Auditor Fees', category: 'Auditor Fees', amount: 20_000, cadence: 'annual', dayOfMonth: 1, monthsAgo: 0 },
   ];
 
@@ -269,9 +475,33 @@ export async function seedDemoBooks() {
   // both have something real.
   // -------------------------------------------------------------------------
   const billSpecs = [
-    { vendorName: 'Sundaram Property Services', billNumber: 'SPS/26/1180', daysAgo: 40, dueInDays: -10, subtotal: 32_000, taxAmount: 0, category: 'Building Rent' },
-    { vendorName: 'Chennai Power Distribution', billNumber: 'CPD-88213', daysAgo: 12, dueInDays: 6, subtotal: 16_649, taxAmount: 0, category: 'Electrical Charges' },
-    { vendorName: 'Vaidyanathan & Co, Chartered Accountants', billNumber: 'VC/2026/044', daysAgo: 5, dueInDays: 25, subtotal: 20_000, taxAmount: 3_600, category: 'Auditor Fees' },
+    {
+      vendorName: 'Sundaram Property Services',
+      billNumber: 'SPS/26/1180',
+      daysAgo: 40,
+      dueInDays: -10,
+      subtotal: 32_000,
+      taxAmount: 0,
+      category: 'Building Rent',
+    },
+    {
+      vendorName: 'Chennai Power Distribution',
+      billNumber: 'CPD-88213',
+      daysAgo: 12,
+      dueInDays: 6,
+      subtotal: 16_649,
+      taxAmount: 0,
+      category: 'Electrical Charges',
+    },
+    {
+      vendorName: 'Vaidyanathan & Co, Chartered Accountants',
+      billNumber: 'VC/2026/044',
+      daysAgo: 5,
+      dueInDays: 25,
+      subtotal: 20_000,
+      taxAmount: 3_600,
+      category: 'Auditor Fees',
+    },
   ];
 
   for (const spec of billSpecs) {
@@ -300,7 +530,13 @@ export async function seedDemoBooks() {
   // Capital and borrowing
   // -------------------------------------------------------------------------
   const assetSpecs = [
-    { name: 'Classroom projectors and screens', cost: 168_000, usefulLifeMonths: 60, monthsAgo: 6, division: 'education' },
+    {
+      name: 'Classroom projectors and screens',
+      cost: 168_000,
+      usefulLifeMonths: 60,
+      monthsAgo: 6,
+      division: 'education',
+    },
     { name: 'Developer workstations (4)', cost: 312_000, usefulLifeMonths: 48, monthsAgo: 5, division: 'software' },
     { name: 'Office furniture and fit-out', cost: 224_000, usefulLifeMonths: 120, monthsAgo: 7, division: 'shared' },
   ];
@@ -348,5 +584,7 @@ export async function seedDemoBooks() {
   }
 
   const txns = await prisma.transaction.count({ where: { tenantId } });
-  console.log(`books   ${categories.size} categories, ${accounts.size} accounts, ${txns} transactions, budget ${thisPeriod}`);
+  console.log(
+    `books   ${categories.size} categories, ${accounts.size} accounts, ${txns} transactions, budget ${thisPeriod}`,
+  );
 }

@@ -64,7 +64,14 @@ export async function listReceipts(filter: { invoiceId?: string; limit?: number 
     include: {
       payment: true,
       invoice: {
-        select: { id: true, recordCode: true, draftReference: true, organizationId: true, personId: true, currency: true },
+        select: {
+          id: true,
+          recordCode: true,
+          draftReference: true,
+          organizationId: true,
+          personId: true,
+          currency: true,
+        },
       },
     },
     orderBy: { allocatedAt: 'desc' },
@@ -156,9 +163,7 @@ export async function receiptDocument(receiptId: string) {
     select: { id: true, recordCode: true, allocatedAmount: true, allocatedAt: true, paymentMode: true },
   });
   const index = siblings.findIndex((r) => r.id === receipt.id);
-  const receivedToDate = round2(
-    siblings.slice(0, index + 1).reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0),
-  );
+  const receivedToDate = round2(siblings.slice(0, index + 1).reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0));
 
   const amount = num(receipt.allocatedAmount) ?? 0;
   const subjectTotal = num(receipt.subjectTotal) || totalsOf(invoice).payable;

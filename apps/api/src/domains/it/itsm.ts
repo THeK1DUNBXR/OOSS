@@ -48,6 +48,8 @@ import type { Machine, Resource, Verb } from '@kaizen/shared';
 
 registerGovernedEntities('it_itsm', ['it_incident', 'it_problem', 'it_change', 'it_change_freeze']);
 
+registerGovernedEntities('it_itsm', ['it_incident_update']);
+
 /**
  * `platform/lifecycle.transition` composes its event name as
  * `kz.hr.<object>.<verb>` unconditionally (`hrTransitionEvent`) — it is an
@@ -84,7 +86,6 @@ async function checkedTransition<S extends string, E extends string>(input: {
     before: { status: input.from },
     after: { status: to },
     meta: { transition: input.event, machine: input.machine.name },
-    force: true,
   });
 
   return { from: input.from, to };
@@ -95,13 +96,21 @@ async function checkedTransition<S extends string, E extends string>(input: {
 // days, which severities require a review. Never a constant in this file.
 // ---------------------------------------------------------------------------
 
-const POLICY_DEFAULTS = { staleMinutes: 60, reviewOverdueDays: 5, reviewRequiredSeverities: ['sev1', 'sev2'] as string[] };
+const POLICY_DEFAULTS = {
+  staleMinutes: 60,
+  reviewOverdueDays: 5,
+  reviewRequiredSeverities: ['sev1', 'sev2'] as string[],
+};
 
 export async function currentPolicy() {
   const auth = currentAuth();
   const row = await prisma.itItsmPolicy.findFirst({ where: { tenantId: auth.tenantId } });
   return row
-    ? { staleMinutes: row.staleMinutes, reviewOverdueDays: row.reviewOverdueDays, reviewRequiredSeverities: row.reviewRequiredSeverities }
+    ? {
+        staleMinutes: row.staleMinutes,
+        reviewOverdueDays: row.reviewOverdueDays,
+        reviewRequiredSeverities: row.reviewRequiredSeverities,
+      }
     : POLICY_DEFAULTS;
 }
 
@@ -149,13 +158,21 @@ export async function declareIncident(input: DeclareIncidentInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_incident', subjectId: incident.id, after: { recordCode, severity: input.severity } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_incident',
+    subjectId: incident.id,
+    after: { recordCode, severity: input.severity },
+  });
   await emit({
     name: EVENTS.IT_INCIDENT_DECLARED,
     subject: { entityType: 'it_incident', entityId: incident.id, recordCode },
     newState: { status: 'declared', severity: input.severity, customerFacing: incident.customerFacing },
     owner: { partyId: incident.commanderPartyId },
-    impact: { domains: [IT_DOMAIN], severity: input.severity === 'sev1' ? 'S4_CRITICAL' : input.severity === 'sev2' ? 'S3_HIGH_RISK' : 'S2_WARNING' },
+    impact: {
+      domains: [IT_DOMAIN],
+      severity: input.severity === 'sev1' ? 'S4_CRITICAL' : input.severity === 'sev2' ? 'S3_HIGH_RISK' : 'S2_WARNING',
+    },
   });
 
   return incident;
@@ -179,7 +196,11 @@ export async function listIncidents(filter: IncidentFilter = {}) {
   });
 }
 
-function incidentAvailableTransitions(status: ItIncidentState, reviewRequired: boolean, reviewPublishedAt: Date | null): ItIncidentEvent[] {
+function incidentAvailableTransitions(
+  status: ItIncidentState,
+  reviewRequired: boolean,
+  reviewPublishedAt: Date | null,
+): ItIncidentEvent[] {
   const events = availableTransitions(itIncidentMachine, status);
   if (status === 'resolved' && reviewRequired && !reviewPublishedAt) {
     return events.filter((e) => e !== 'CLOSE');
@@ -197,7 +218,11 @@ export async function incidentDetail(id: string) {
   if (!incident) throw ApiError.notFound('Incident');
   return {
     ...incident,
-    availableTransitions: incidentAvailableTransitions(incident.status as ItIncidentState, incident.reviewRequired, incident.reviewPublishedAt),
+    availableTransitions: incidentAvailableTransitions(
+      incident.status as ItIncidentState,
+      incident.reviewRequired,
+      incident.reviewPublishedAt,
+    ),
   };
 }
 
@@ -215,7 +240,9 @@ export async function transitionIncident(id: string, event: ItIncidentEvent, not
     CLOSE: Boolean(incident.closedAt),
   };
   if (alreadySet[event]) {
-    throw ApiError.conflict(`${incident.recordCode ?? incident.id} was already ${ITSM_INCIDENT_VERBS[event]} — the timestamp is set once and this is a repeat, not a correction.`);
+    throw ApiError.conflict(
+      `${incident.recordCode ?? incident.id} was already ${ITSM_INCIDENT_VERBS[event]} — the timestamp is set once and this is a repeat, not a correction.`,
+    );
   }
 
   if (event === 'CLOSE' && incident.reviewRequired && !incident.reviewPublishedAt) {
@@ -272,7 +299,12 @@ export async function postIncidentUpdate(id: string, body: string) {
   });
 
   await prisma.itIncident.update({ where: { id }, data: { lastActivityAt: now, staleNotifiedAt: null } });
-  await auditWrite({ action: 'create', subjectType: 'it_incident_update', subjectId: update.id, after: { incidentId: id } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_incident_update',
+    subjectId: update.id,
+    after: { incidentId: id },
+  });
 
   return update;
 }
@@ -292,7 +324,9 @@ export async function submitIncidentReview(id: string, input: IncidentReviewInpu
   const incident = await prisma.itIncident.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!incident) throw ApiError.notFound('Incident');
   if (incident.reviewPublishedAt) {
-    throw ApiError.conflict(`${incident.recordCode ?? incident.id}'s post-incident review was published on ${incident.reviewPublishedAt.toISOString().slice(0, 10)} and is final. A correction is a new incident's review, not an edit to this one.`);
+    throw ApiError.conflict(
+      `${incident.recordCode ?? incident.id}'s post-incident review was published on ${incident.reviewPublishedAt.toISOString().slice(0, 10)} and is final. A correction is a new incident's review, not an edit to this one.`,
+    );
   }
 
   const body = input.reviewBody?.trim();
@@ -398,7 +432,11 @@ export async function problemDetail(id: string) {
   const linkedIncidents = problem.incidentIds.length
     ? await prisma.itIncident.findMany({ where: { id: { in: problem.incidentIds }, tenantId: auth.tenantId } })
     : [];
-  return { ...problem, availableTransitions: availableTransitions(itProblemMachine, problem.status as ItProblemState), linkedIncidents };
+  return {
+    ...problem,
+    availableTransitions: availableTransitions(itProblemMachine, problem.status as ItProblemState),
+    linkedIncidents,
+  };
 }
 
 export interface UpdateProblemInput {
@@ -432,7 +470,12 @@ export async function updateProblem(id: string, input: UpdateProblemInput) {
     });
   }
 
-  await auditWrite({ action: 'update', subjectType: 'it_problem', subjectId: id, after: { rootCause: updated.rootCause, knownError: updated.knownError } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_problem',
+    subjectId: id,
+    after: { rootCause: updated.rootCause, knownError: updated.knownError },
+  });
   return updated;
 }
 
@@ -510,7 +553,12 @@ export async function createChange(input: CreateChangeInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_change', subjectId: change.id, after: { recordCode, kind: input.kind } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_change',
+    subjectId: change.id,
+    after: { recordCode, kind: input.kind },
+  });
   await emit({
     name: EVENTS.IT_CHANGE_CREATED,
     subject: { entityType: 'it_change', entityId: change.id, recordCode },
@@ -557,7 +605,9 @@ async function activeFreezes(tenantId: string): Promise<ItFreezeWindow[]> {
  * that matters for "until"); `blockedKinds` still reflects every freeze
  * covering the moment, not just the reported one.
  */
-function freezeInForceNow(freezes: ItFreezeWindow[]): { name: string; until: Date | string; blockedKinds: ItChangeKind[] } | null {
+function freezeInForceNow(
+  freezes: ItFreezeWindow[],
+): { name: string; until: Date | string; blockedKinds: ItChangeKind[] } | null {
   const now = new Date();
   const covering = freezes.filter((f) => {
     const start = new Date(f.startsAt).getTime();
@@ -567,7 +617,9 @@ function freezeInForceNow(freezes: ItFreezeWindow[]): { name: string; until: Dat
   if (covering.length === 0) return null;
 
   const blockedKinds = IT_CHANGE_KINDS.filter((kind) => isInFreeze(freezes, now, kind) !== null);
-  const reported = covering.reduce((latest, f) => (new Date(f.endsAt).getTime() > new Date(latest.endsAt).getTime() ? f : latest));
+  const reported = covering.reduce((latest, f) =>
+    new Date(f.endsAt).getTime() > new Date(latest.endsAt).getTime() ? f : latest,
+  );
   return { name: reported.name, until: reported.endsAt, blockedKinds: [...blockedKinds] };
 }
 
@@ -609,7 +661,9 @@ export async function transitionChange(id: string, input: TransitionChangeInput)
   // change is simply not a transition the machine has from `approved`.
   if (event === 'APPROVE') {
     if (!itChangeMachine.can(from, event)) {
-      throw ApiError.unprocessable(`${change.recordCode ?? id} is ${from}; APPROVE is not one of its transitions from there.`);
+      throw ApiError.unprocessable(
+        `${change.recordCode ?? id} is ${from}; APPROVE is not one of its transitions from there.`,
+      );
     }
     const gate = await evaluateApprovalGate(
       CHANGE_POLICY_CODE,
@@ -626,10 +680,32 @@ export async function transitionChange(id: string, input: TransitionChangeInput)
       'it_change.approve',
     );
     if (!gate.permitted) {
-      return { applied: false, change, approvalStepId: gate.approvalStepId, resolvedApproverRole: gate.resolvedApproverRole, resolutionTier: gate.resolutionTier, selfDealingBarTripped: gate.selfDealingBarTripped, reason: gate.reason };
+      return {
+        applied: false,
+        change,
+        approvalStepId: gate.approvalStepId,
+        resolvedApproverRole: gate.resolvedApproverRole,
+        resolutionTier: gate.resolutionTier,
+        selfDealingBarTripped: gate.selfDealingBarTripped,
+        reason: gate.reason,
+      };
     }
-    const updated = await applyChangeTransition(change, event, input.note, { approvedById: auth.partyId, approvedAt: new Date() }, 'approve');
-    return { applied: true, change: updated, approvalStepId: null, resolvedApproverRole: null, resolutionTier: 0, selfDealingBarTripped: false, reason: 'Approved.' };
+    const updated = await applyChangeTransition(
+      change,
+      event,
+      input.note,
+      { approvedById: auth.partyId, approvedAt: new Date() },
+      'approve',
+    );
+    return {
+      applied: true,
+      change: updated,
+      approvalStepId: null,
+      resolvedApproverRole: null,
+      resolutionTier: 0,
+      selfDealingBarTripped: false,
+      reason: 'Approved.',
+    };
   }
 
   if (event === 'SCHEDULE') {
@@ -644,35 +720,114 @@ export async function transitionChange(id: string, input: TransitionChangeInput)
       );
     }
     const updated = await applyChangeTransition(change, event, input.note, { scheduledAt: new Date() }, 'edit');
-    return { applied: true, change: updated, approvalStepId: null, resolvedApproverRole: null, resolutionTier: 0, selfDealingBarTripped: false, reason: 'Scheduled.' };
+    return {
+      applied: true,
+      change: updated,
+      approvalStepId: null,
+      resolvedApproverRole: null,
+      resolutionTier: 0,
+      selfDealingBarTripped: false,
+      reason: 'Scheduled.',
+    };
   }
 
   if (event === 'IMPLEMENT') {
     if (!input.note?.trim()) throw ApiError.badRequest('Implementing a change needs an implementation note.');
-    const updated = await applyChangeTransition(change, event, input.note, { implementedAt: new Date(), implementationNote: input.note.trim() }, 'edit');
-    return { applied: true, change: updated, approvalStepId: null, resolvedApproverRole: null, resolutionTier: 0, selfDealingBarTripped: false, reason: 'Implemented.' };
+    const updated = await applyChangeTransition(
+      change,
+      event,
+      input.note,
+      { implementedAt: new Date(), implementationNote: input.note.trim() },
+      'edit',
+    );
+    return {
+      applied: true,
+      change: updated,
+      approvalStepId: null,
+      resolvedApproverRole: null,
+      resolutionTier: 0,
+      selfDealingBarTripped: false,
+      reason: 'Implemented.',
+    };
   }
 
   if (event === 'REVIEW') {
     if (!input.note?.trim()) throw ApiError.badRequest('Reviewing a change needs a review note.');
-    if (change.reviewNote) throw ApiError.conflict(`${change.recordCode ?? id} already carries a review note — it is set once.`);
-    const updated = await applyChangeTransition(change, event, input.note, { reviewedAt: new Date(), reviewNote: input.note.trim() }, 'edit');
-    return { applied: true, change: updated, approvalStepId: null, resolvedApproverRole: null, resolutionTier: 0, selfDealingBarTripped: false, reason: 'Reviewed.' };
+    if (change.reviewNote)
+      throw ApiError.conflict(`${change.recordCode ?? id} already carries a review note — it is set once.`);
+    const updated = await applyChangeTransition(
+      change,
+      event,
+      input.note,
+      { reviewedAt: new Date(), reviewNote: input.note.trim() },
+      'edit',
+    );
+    return {
+      applied: true,
+      change: updated,
+      approvalStepId: null,
+      resolvedApproverRole: null,
+      resolutionTier: 0,
+      selfDealingBarTripped: false,
+      reason: 'Reviewed.',
+    };
   }
 
   if (event === 'ROLLBACK') {
-    const updated = await applyChangeTransition(change, event, input.note, { reviewNote: input.note?.trim() ?? change.reviewNote }, 'edit');
-    return { applied: true, change: updated, approvalStepId: null, resolvedApproverRole: null, resolutionTier: 0, selfDealingBarTripped: false, reason: 'Rolled back.' };
+    const updated = await applyChangeTransition(
+      change,
+      event,
+      input.note,
+      { reviewNote: input.note?.trim() ?? change.reviewNote },
+      'edit',
+    );
+    return {
+      applied: true,
+      change: updated,
+      approvalStepId: null,
+      resolvedApproverRole: null,
+      resolutionTier: 0,
+      selfDealingBarTripped: false,
+      reason: 'Rolled back.',
+    };
   }
 
   if (event === 'FAIL') {
-    const updated = await applyChangeTransition(change, event, input.note, { failureReason: input.note?.trim() ?? null }, 'edit');
-    return { applied: true, change: updated, approvalStepId: null, resolvedApproverRole: null, resolutionTier: 0, selfDealingBarTripped: false, reason: 'Failed.' };
+    const updated = await applyChangeTransition(
+      change,
+      event,
+      input.note,
+      { failureReason: input.note?.trim() ?? null },
+      'edit',
+    );
+    return {
+      applied: true,
+      change: updated,
+      approvalStepId: null,
+      resolvedApproverRole: null,
+      resolutionTier: 0,
+      selfDealingBarTripped: false,
+      reason: 'Failed.',
+    };
   }
 
   if (event === 'REJECT') {
-    const updated = await applyChangeTransition(change, event, input.note, { rejectionReason: input.note?.trim() ?? null }, 'approve');
-    return { applied: true, change: updated, approvalStepId: null, resolvedApproverRole: null, resolutionTier: 0, selfDealingBarTripped: false, reason: 'Rejected.' };
+    const updated = await applyChangeTransition(
+      change,
+      event,
+      input.note,
+      { rejectionReason: input.note?.trim() ?? null },
+      'approve',
+    );
+    return {
+      applied: true,
+      change: updated,
+      approvalStepId: null,
+      resolvedApproverRole: null,
+      resolutionTier: 0,
+      selfDealingBarTripped: false,
+      reason: 'Rejected.',
+    };
   }
 
   // SUBMIT — the last step of "raising" a change, which is what the
@@ -685,9 +840,25 @@ export async function transitionChange(id: string, input: TransitionChangeInput)
     // entirely — this is the system applying policy, not a person deciding,
     // so it never asks the raiser to hold an approval grant they do not have.
     const autoApproved = await autoApproveStandardChange({ ...submitted, status: 'submitted' });
-    return { applied: true, change: autoApproved, approvalStepId: null, resolvedApproverRole: null, resolutionTier: 0, selfDealingBarTripped: false, reason: 'Standard change — auto-approved on submit.' };
+    return {
+      applied: true,
+      change: autoApproved,
+      approvalStepId: null,
+      resolvedApproverRole: null,
+      resolutionTier: 0,
+      selfDealingBarTripped: false,
+      reason: 'Standard change — auto-approved on submit.',
+    };
   }
-  return { applied: true, change: submitted, approvalStepId: null, resolvedApproverRole: null, resolutionTier: 0, selfDealingBarTripped: false, reason: 'Submitted.' };
+  return {
+    applied: true,
+    change: submitted,
+    approvalStepId: null,
+    resolvedApproverRole: null,
+    resolutionTier: 0,
+    selfDealingBarTripped: false,
+    reason: 'Submitted.',
+  };
 }
 
 /**
@@ -698,14 +869,24 @@ export async function transitionChange(id: string, input: TransitionChangeInput)
  * machine draws), but as policy applying itself, not as a graded permission
  * check.
  */
-async function autoApproveStandardChange(change: { id: string; status: string; recordCode: string | null; requesterPartyId: string }) {
+async function autoApproveStandardChange(change: {
+  id: string;
+  status: string;
+  recordCode: string | null;
+  requesterPartyId: string;
+}) {
   const from = change.status as ItChangeState;
   if (!itChangeMachine.can(from, 'APPROVE')) {
-    throw ApiError.unprocessable(`${change.recordCode ?? change.id} is ${from}; APPROVE is not one of its transitions from there.`);
+    throw ApiError.unprocessable(
+      `${change.recordCode ?? change.id} is ${from}; APPROVE is not one of its transitions from there.`,
+    );
   }
   const to = itChangeMachine.apply(from, 'APPROVE');
 
-  const updated = await prisma.itChange.update({ where: { id: change.id }, data: { status: to, approvedById: null, approvedAt: new Date() } });
+  const updated = await prisma.itChange.update({
+    where: { id: change.id },
+    data: { status: to, approvedById: null, approvedAt: new Date() },
+  });
 
   await auditWrite({
     action: 'update',
@@ -714,7 +895,6 @@ async function autoApproveStandardChange(change: { id: string; status: string; r
     before: { status: from },
     after: { status: to },
     meta: { transition: 'APPROVE', machine: itChangeMachine.name, autoApproved: true },
-    force: true,
   });
   await emit({
     name: EVENTS.IT_CHANGE_TRANSITIONED,
@@ -792,7 +972,12 @@ export async function declareFreeze(input: DeclareFreezeInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_change_freeze', subjectId: freeze.id, after: { name: freeze.name } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_change_freeze',
+    subjectId: freeze.id,
+    after: { name: freeze.name },
+  });
   await emit({
     name: EVENTS.IT_CHANGE_FREEZE_DECLARED,
     subject: { entityType: 'it_change_freeze', entityId: freeze.id },
@@ -832,7 +1017,8 @@ export async function incidentSummary() {
   const openBySeverity = { sev1: 0, sev2: 0, sev3: 0, sev4: 0 };
   let customerFacingOpen = 0;
   for (const inc of open) {
-    openBySeverity[inc.severity as keyof typeof openBySeverity] = (openBySeverity[inc.severity as keyof typeof openBySeverity] ?? 0) + 1;
+    openBySeverity[inc.severity as keyof typeof openBySeverity] =
+      (openBySeverity[inc.severity as keyof typeof openBySeverity] ?? 0) + 1;
     if (inc.customerFacing) customerFacingOpen += 1;
   }
 
@@ -878,12 +1064,21 @@ export async function changeSummary() {
 
   const weekEnd = new Date(Date.now() + 7 * 86_400_000);
   const scheduledThisWeek = await prisma.itChange.count({
-    where: { tenantId: auth.tenantId, status: 'scheduled', windowStart: { lte: weekEnd }, windowEnd: { gte: new Date() } },
+    where: {
+      tenantId: auth.tenantId,
+      status: 'scheduled',
+      windowStart: { lte: weekEnd },
+      windowEnd: { gte: new Date() },
+    },
   });
 
   const since = new Date(Date.now() - 90 * 86_400_000);
   const recent = await prisma.itChange.findMany({
-    where: { tenantId: auth.tenantId, updatedAt: { gte: since }, status: { in: ['reviewed', 'failed', 'rolled_back'] } },
+    where: {
+      tenantId: auth.tenantId,
+      updatedAt: { gte: since },
+      status: { in: ['reviewed', 'failed', 'rolled_back'] },
+    },
     select: { status: true },
   });
   const successRate90d = changeSuccessRate(recent);

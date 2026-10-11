@@ -44,7 +44,11 @@ export function ItVendors() {
   const [tab, setTab] = useState<'all' | 'tier1' | 'tier2' | 'suspended' | 'offboarded'>('all');
   const [creating, setCreating] = useState(false);
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['it-vendors'],
     queryFn: () => api.get<any[]>('/it/vendors'),
   });
@@ -74,15 +78,34 @@ export function ItVendors() {
 
       {summary && !summary.notYetMeasured && (
         <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Metric label="High/critical risk" value={summary.highRiskCount} sub={`${summary.highRiskWithDpa} with a DPA on file`} drillTo="/it/vendors" tone={summary.highRiskCount - summary.highRiskWithDpa > 0 ? 'warn' : 'neutral'} />
-          <Metric label="Assessments overdue" value={summary.assessmentsOverdue} tone={summary.assessmentsOverdue > 0 ? 'bad' : 'good'} sub="Past next-due date" drillTo="/exceptions" />
-          <Metric label="Tier 1 vendors" value={summary.byTier?.[1] ?? 0} sub="Business-stopping if they fail" drillTo="/it/vendors" />
+          <Metric
+            label="High/critical risk"
+            value={summary.highRiskCount}
+            sub={`${summary.highRiskWithDpa} with a DPA on file`}
+            drillTo="/it/vendors"
+            tone={summary.highRiskCount - summary.highRiskWithDpa > 0 ? 'warn' : 'neutral'}
+          />
+          <Metric
+            label="Assessments overdue"
+            value={summary.assessmentsOverdue}
+            tone={summary.assessmentsOverdue > 0 ? 'bad' : 'good'}
+            sub="Past next-due date"
+            drillTo="/exceptions"
+          />
+          <Metric
+            label="Tier 1 vendors"
+            value={summary.byTier?.[1] ?? 0}
+            sub="Business-stopping if they fail"
+            drillTo="/it/vendors"
+          />
           <Metric label="Total vendors" value={data.length} sub="Across every tier and status" drillTo="/it/vendors" />
         </div>
       )}
       {summary?.notYetMeasured && (
         <div className="mb-5">
-          <Card><EmptyState message="Not yet measured — no vendors registered." /></Card>
+          <Card>
+            <EmptyState message="Not yet measured — no vendors registered." />
+          </Card>
         </div>
       )}
 
@@ -101,7 +124,9 @@ export function ItVendors() {
       {isLoading ? (
         <Loading />
       ) : filtered.length === 0 ? (
-        <Card><EmptyState message="No vendors in this view." /></Card>
+        <Card>
+          <EmptyState message="No vendors in this view." />
+        </Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map((v) => (
@@ -109,14 +134,31 @@ export function ItVendors() {
               <Card
                 title={v.name}
                 subtitle={<RecordCode code={v.recordCode} />}
-                actions={<StatusChip status={v.status} tone={v.status === 'active' ? 'good' : v.status === 'suspended' ? 'warn' : 'neutral'} />}
+                actions={
+                  <StatusChip
+                    status={v.status}
+                    tone={v.status === 'active' ? 'good' : v.status === 'suspended' ? 'warn' : 'neutral'}
+                  />
+                }
               >
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="chip border-ink-800 text-ink-400">Tier {v.tier}</span>
                   <StatusChip status={v.riskRating} tone={riskTone(v.riskRating)} />
-                  <StatusChip status={v.assessmentStatus.replace('_', ' ')} tone={v.assessmentStatus === 'passed' ? 'good' : v.assessmentStatus === 'failed' || v.assessmentStatus === 'expired' ? 'bad' : 'neutral'} />
+                  <StatusChip
+                    status={v.assessmentStatus.replace('_', ' ')}
+                    tone={
+                      v.assessmentStatus === 'passed'
+                        ? 'good'
+                        : v.assessmentStatus === 'failed' || v.assessmentStatus === 'expired'
+                          ? 'bad'
+                          : 'neutral'
+                    }
+                  />
                   {!v.dpaSigned && (v.riskRating === 'high' || v.riskRating === 'critical') && (
-                    <span className="chip border-band-critical/40 text-band-critical" title="A high or critical risk vendor with no DPA is a routing defect, not a normal state.">
+                    <span
+                      className="chip border-band-critical/40 text-band-critical"
+                      title="A high or critical risk vendor with no DPA is a routing defect, not a normal state."
+                    >
                       no DPA
                     </span>
                   )}
@@ -170,8 +212,14 @@ function NewVendorModal({ open, onClose }: { open: boolean; onClose: () => void 
       onClose={onClose}
       footer={
         <>
-          <button className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={() => create.mutate()} disabled={!name || !category || create.isPending}>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => create.mutate()}
+            disabled={!name || !category || create.isPending}
+          >
             Add vendor
           </button>
         </>
@@ -179,10 +227,25 @@ function NewVendorModal({ open, onClose }: { open: boolean; onClose: () => void 
     >
       <div className="space-y-3">
         <TextInput label="Name" value={name} onChange={setName} />
-        <TextInput label="Category" value={category} onChange={setCategory} placeholder="cloud, saas, staffing, hardware…" />
+        <TextInput
+          label="Category"
+          value={category}
+          onChange={setCategory}
+          placeholder="cloud, saas, staffing, hardware…"
+        />
         <Row>
-          <SelectInput label="Tier" value={tier} onChange={setTier} options={TIERS.map((t) => ({ value: String(t), label: `Tier ${t}` }))} />
-          <SelectInput label="Risk rating" value={riskRating} onChange={setRiskRating} options={RISKS.map((r) => ({ value: r, label: titleCase(r) }))} />
+          <SelectInput
+            label="Tier"
+            value={tier}
+            onChange={setTier}
+            options={TIERS.map((t) => ({ value: String(t), label: `Tier ${t}` }))}
+          />
+          <SelectInput
+            label="Risk rating"
+            value={riskRating}
+            onChange={setRiskRating}
+            options={RISKS.map((r) => ({ value: r, label: titleCase(r) }))}
+          />
         </Row>
         <Row>
           <TextInput label="Contact name" value={contactName} onChange={setContactName} />
@@ -205,7 +268,11 @@ export function ItVendorDetail() {
   const [assessing, setAssessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: vendor, isLoading, error: loadError } = useQuery({
+  const {
+    data: vendor,
+    isLoading,
+    error: loadError,
+  } = useQuery({
     queryKey: ['it-vendor', id],
     queryFn: () => api.get<any>(`/it/vendors/${id}`),
     enabled: Boolean(id),
@@ -239,7 +306,12 @@ export function ItVendorDetail() {
           <div className="flex gap-1.5">
             {can('it_vendors:E') &&
               vendor.availableTransitions.map((t: string) => (
-                <button key={t} className="btn-ghost" onClick={() => transition.mutate(t)} disabled={transition.isPending}>
+                <button
+                  key={t}
+                  className="btn-ghost"
+                  onClick={() => transition.mutate(t)}
+                  disabled={transition.isPending}
+                >
                   {t === 'SUSPEND' ? 'Suspend' : t === 'REINSTATE' ? 'Reinstate' : 'Offboard'}
                 </button>
               ))}
@@ -258,28 +330,58 @@ export function ItVendorDetail() {
         <div className="lg:col-span-1 space-y-3">
           <Card title="Vendor">
             <dl className="space-y-2">
-              <Field label="Status"><StatusChip status={vendor.status} tone={vendor.status === 'active' ? 'good' : 'neutral'} /></Field>
+              <Field label="Status">
+                <StatusChip status={vendor.status} tone={vendor.status === 'active' ? 'good' : 'neutral'} />
+              </Field>
               <Field label="Category">{vendor.category}</Field>
               <Field label="Tier">Tier {vendor.tier}</Field>
               <Field label="Risk rating">
                 <StatusChip status={vendor.riskRating} tone={riskTone(vendor.riskRating)} />
-                {vendor.riskRatedAt && <span className="ml-2 text-2xs text-ink-500">rated {date(vendor.riskRatedAt)}</span>}
+                {vendor.riskRatedAt && (
+                  <span className="ml-2 text-2xs text-ink-500">rated {date(vendor.riskRatedAt)}</span>
+                )}
               </Field>
               <Field label="Security assessment">
-                <StatusChip status={vendor.assessmentStatus.replace('_', ' ')} tone={vendor.assessmentStatus === 'passed' ? 'good' : vendor.assessmentStatus === 'failed' || vendor.assessmentStatus === 'expired' ? 'bad' : 'neutral'} />
-                {vendor.assessmentDueAt && <span className="ml-2 text-2xs text-ink-500">next due {date(vendor.assessmentDueAt)}</span>}
+                <StatusChip
+                  status={vendor.assessmentStatus.replace('_', ' ')}
+                  tone={
+                    vendor.assessmentStatus === 'passed'
+                      ? 'good'
+                      : vendor.assessmentStatus === 'failed' || vendor.assessmentStatus === 'expired'
+                        ? 'bad'
+                        : 'neutral'
+                  }
+                />
+                {vendor.assessmentDueAt && (
+                  <span className="ml-2 text-2xs text-ink-500">next due {date(vendor.assessmentDueAt)}</span>
+                )}
               </Field>
               <Field label="DPA">
                 {vendor.dpaSigned ? (
-                  <span className="text-band-good">Signed{vendor.dpaSignedAt ? ` ${date(vendor.dpaSignedAt)}` : ''}</span>
+                  <span className="text-band-good">
+                    Signed{vendor.dpaSignedAt ? ` ${date(vendor.dpaSignedAt)}` : ''}
+                  </span>
                 ) : (
-                  <span className={vendor.riskRating === 'high' || vendor.riskRating === 'critical' ? 'text-band-critical' : 'text-ink-500'}>Not signed</span>
+                  <span
+                    className={
+                      vendor.riskRating === 'high' || vendor.riskRating === 'critical'
+                        ? 'text-band-critical'
+                        : 'text-ink-500'
+                    }
+                  >
+                    Not signed
+                  </span>
                 )}
               </Field>
-              <Field label="Contact">{vendor.contactName ?? '—'}{vendor.contactEmail ? ` · ${vendor.contactEmail}` : ''}</Field>
+              <Field label="Contact">
+                {vendor.contactName ?? '—'}
+                {vendor.contactEmail ? ` · ${vendor.contactEmail}` : ''}
+              </Field>
               {vendor.organizationId && (
                 <Field label="Also a party we deal with">
-                  <Link to={`/organizations/${vendor.organizationId}`} className="text-accent-soft">View organization</Link>
+                  <Link to={`/organizations/${vendor.organizationId}`} className="text-accent-soft">
+                    View organization
+                  </Link>
                 </Field>
               )}
             </dl>
@@ -293,7 +395,10 @@ export function ItVendorDetail() {
                 {vendor.riskAssessments.map((a: any) => (
                   <li key={a.id} className="px-4 py-3">
                     <div className="flex items-center justify-between gap-2">
-                      <StatusChip status={a.outcome} tone={a.outcome === 'passed' ? 'good' : a.outcome === 'failed' ? 'bad' : 'neutral'} />
+                      <StatusChip
+                        status={a.outcome}
+                        tone={a.outcome === 'passed' ? 'good' : a.outcome === 'failed' ? 'bad' : 'neutral'}
+                      />
                       <span className="text-2xs text-ink-500">{date(a.assessedAt)}</span>
                     </div>
                     {a.score !== null && <p className="mt-1 text-2xs text-ink-400">Score {a.score}</p>}
@@ -317,11 +422,24 @@ export function ItVendorDetail() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <RecordCode code={c.recordCode} />
-                          <StatusChip status={c.status} tone={['active', 'approved'].includes(c.status) ? 'good' : ['expiring'].includes(c.status) ? 'warn' : c.status === 'terminated' || c.status === 'expired' ? 'bad' : 'neutral'} />
+                          <StatusChip
+                            status={c.status}
+                            tone={
+                              ['active', 'approved'].includes(c.status)
+                                ? 'good'
+                                : ['expiring'].includes(c.status)
+                                  ? 'warn'
+                                  : c.status === 'terminated' || c.status === 'expired'
+                                    ? 'bad'
+                                    : 'neutral'
+                            }
+                          />
                         </div>
                         <p className="mt-1 text-xs text-ink-100">{c.title}</p>
                       </div>
-                      {can('it_vendor_contracts:F') && <span className="tabular-nums text-xs text-ink-200">{money(c.value, c.currency)}</span>}
+                      {can('it_vendor_contracts:F') && (
+                        <span className="tabular-nums text-xs text-ink-200">{money(c.value, c.currency)}</span>
+                      )}
                     </Link>
                   </li>
                 ))}
@@ -371,7 +489,9 @@ function RecordAssessmentModal({ vendorId, open, onClose }: { vendorId: string; 
       onClose={onClose}
       footer={
         <>
-          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
           <button className="btn-primary" onClick={() => record.mutate()} disabled={!assessor || record.isPending}>
             Record
           </button>
@@ -379,13 +499,25 @@ function RecordAssessmentModal({ vendorId, open, onClose }: { vendorId: string; 
       }
     >
       <div className="space-y-3">
-        <p className="text-2xs text-ink-500">Sets the next assessment's due date from the tiered cadence and resets the overdue ladder.</p>
+        <p className="text-2xs text-ink-500">
+          Sets the next assessment's due date from the tiered cadence and resets the overdue ladder.
+        </p>
         <TextInput label="Assessor" value={assessor} onChange={setAssessor} placeholder="Who ran this assessment" />
         <Row>
-          <SelectInput label="Outcome" value={outcome} onChange={setOutcome} options={['in_progress', 'passed', 'failed'].map((o) => ({ value: o, label: titleCase(o) }))} />
+          <SelectInput
+            label="Outcome"
+            value={outcome}
+            onChange={setOutcome}
+            options={['in_progress', 'passed', 'failed'].map((o) => ({ value: o, label: titleCase(o) }))}
+          />
           <TextInput label="Score (optional)" value={score} onChange={setScore} />
         </Row>
-        <SelectInput label="Update risk rating (optional)" value={riskRating} onChange={setRiskRating} options={[{ value: '', label: 'Leave unchanged' }, ...RISKS.map((r) => ({ value: r, label: titleCase(r) }))]} />
+        <SelectInput
+          label="Update risk rating (optional)"
+          value={riskRating}
+          onChange={setRiskRating}
+          options={[{ value: '', label: 'Leave unchanged' }, ...RISKS.map((r) => ({ value: r, label: titleCase(r) }))]}
+        />
         <TextArea label="Notes" value={notes} onChange={setNotes} />
         {error && <p className="text-2xs text-band-critical">{error}</p>}
       </div>
@@ -402,7 +534,11 @@ export function ItVendorContracts() {
   const [tab, setTab] = useState<'expiring' | 'awaiting_approval' | 'active' | 'all'>('all');
   const [creating, setCreating] = useState(false);
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['it-vendor-contracts-all'],
     queryFn: () => api.get<any[]>('/it/contracts'),
   });
@@ -439,15 +575,34 @@ export function ItVendorContracts() {
 
       {summary && !summary.notYetMeasured && (
         <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {showValue && <Metric label="Value under management" value={money(summary.valueUnderManagement)} sub="Approved, active and expiring contracts" drillTo="/it/contracts" />}
-          <Metric label="Expiring in 90 days" value={summary.expiringIn90Days} tone={summary.expiringIn90Days > 0 ? 'warn' : 'neutral'} drillTo="/it/contracts" />
-          <Metric label="Awaiting approval" value={summary.awaitingApproval} tone={summary.awaitingApproval > 0 ? 'warn' : 'neutral'} drillTo="/it/contracts" />
+          {showValue && (
+            <Metric
+              label="Value under management"
+              value={money(summary.valueUnderManagement)}
+              sub="Approved, active and expiring contracts"
+              drillTo="/it/contracts"
+            />
+          )}
+          <Metric
+            label="Expiring in 90 days"
+            value={summary.expiringIn90Days}
+            tone={summary.expiringIn90Days > 0 ? 'warn' : 'neutral'}
+            drillTo="/it/contracts"
+          />
+          <Metric
+            label="Awaiting approval"
+            value={summary.awaitingApproval}
+            tone={summary.awaitingApproval > 0 ? 'warn' : 'neutral'}
+            drillTo="/it/contracts"
+          />
           <Metric label="Active" value={summary.byStatus?.active ?? 0} sub="In force today" drillTo="/it/contracts" />
         </div>
       )}
       {summary?.notYetMeasured && (
         <div className="mb-5">
-          <Card><EmptyState message="Not yet measured — no vendor contracts yet." /></Card>
+          <Card>
+            <EmptyState message="Not yet measured — no vendor contracts yet." />
+          </Card>
         </div>
       )}
 
@@ -465,7 +620,9 @@ export function ItVendorContracts() {
       {isLoading ? (
         <Loading />
       ) : filtered.length === 0 ? (
-        <Card><EmptyState message="No contracts in this view." /></Card>
+        <Card>
+          <EmptyState message="No contracts in this view." />
+        </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
           <table className="table">
@@ -482,12 +639,27 @@ export function ItVendorContracts() {
             <tbody>
               {filtered.map((c) => (
                 <tr key={c.id}>
-                  <td><RecordCode code={c.recordCode} to={`/it/contracts/${c.id}`} /></td>
+                  <td>
+                    <RecordCode code={c.recordCode} to={`/it/contracts/${c.id}`} />
+                  </td>
                   <td className="text-xs text-ink-100">{c.title}</td>
                   <td className="text-2xs text-ink-400">{c.vendorName ?? '—'}</td>
                   {showValue && <td className="text-right tabular-nums text-xs">{money(c.value, c.currency)}</td>}
                   <td className="text-2xs text-ink-400">{c.endDate ? date(c.endDate) : '—'}</td>
-                  <td><StatusChip status={c.status} tone={['active', 'approved'].includes(c.status) ? 'good' : c.status === 'expiring' ? 'warn' : c.status === 'terminated' || c.status === 'expired' ? 'bad' : 'neutral'} /></td>
+                  <td>
+                    <StatusChip
+                      status={c.status}
+                      tone={
+                        ['active', 'approved'].includes(c.status)
+                          ? 'good'
+                          : c.status === 'expiring'
+                            ? 'warn'
+                            : c.status === 'terminated' || c.status === 'expired'
+                              ? 'bad'
+                              : 'neutral'
+                      }
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -537,15 +709,26 @@ function NewContractModal({ vendors, open, onClose }: { vendors: any[]; open: bo
       onClose={onClose}
       footer={
         <>
-          <button className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={() => create.mutate()} disabled={!vendorId || !title || !value || create.isPending}>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => create.mutate()}
+            disabled={!vendorId || !title || !value || create.isPending}
+          >
             Create draft
           </button>
         </>
       }
     >
       <div className="space-y-3">
-        <SelectInput label="Vendor" value={vendorId} onChange={setVendorId} options={[{ value: '', label: 'Choose a vendor…' }, ...vendors.map((v) => ({ value: v.id, label: v.name }))]} />
+        <SelectInput
+          label="Vendor"
+          value={vendorId}
+          onChange={setVendorId}
+          options={[{ value: '', label: 'Choose a vendor…' }, ...vendors.map((v) => ({ value: v.id, label: v.name }))]}
+        />
         <TextInput label="Title" value={title} onChange={setTitle} />
         <Row>
           <MoneyInput label="Value" value={value} onChange={setValue} />
@@ -575,7 +758,11 @@ export function ItVendorContractDetail() {
   const [terminating, setTerminating] = useState(false);
   const [renewing, setRenewing] = useState(false);
 
-  const { data: contract, isLoading, error: loadError } = useQuery({
+  const {
+    data: contract,
+    isLoading,
+    error: loadError,
+  } = useQuery({
     queryKey: ['it-vendor-contract', id],
     queryFn: () => api.get<any>(`/it/contracts/${id}`),
     enabled: Boolean(id),
@@ -617,16 +804,22 @@ export function ItVendorContractDetail() {
                     disabled={transition.isPending}
                     title={gated ? 'A privileged transition — runs the approval gate.' : undefined}
                   >
-                    → {titleCase(t)}{gated && ' ⛨'}
+                    → {titleCase(t)}
+                    {gated && ' ⛨'}
                   </button>
                 );
               })}
             {contract.availableTransitions.includes('terminated') && can('it_vendor_contracts:E') && (
-              <button className="btn-danger" onClick={() => setTerminating(true)}>Terminate</button>
+              <button className="btn-danger" onClick={() => setTerminating(true)}>
+                Terminate
+              </button>
             )}
-            {(contract.status === 'active' || contract.status === 'expiring' || contract.status === 'expired') && can('it_vendor_contracts:C') && (
-              <button className="btn-ghost" onClick={() => setRenewing(true)}>Renew</button>
-            )}
+            {(contract.status === 'active' || contract.status === 'expiring' || contract.status === 'expired') &&
+              can('it_vendor_contracts:C') && (
+                <button className="btn-ghost" onClick={() => setRenewing(true)}>
+                  Renew
+                </button>
+              )}
           </div>
         }
       />
@@ -640,21 +833,47 @@ export function ItVendorContractDetail() {
       <div className="grid gap-5 lg:grid-cols-3">
         <Card title="Contract" bodyClassName="lg:col-span-2">
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
-            <Field label="Status"><StatusChip status={contract.status} tone={['active', 'approved'].includes(contract.status) ? 'good' : contract.status === 'expiring' ? 'warn' : contract.status === 'terminated' || contract.status === 'expired' ? 'bad' : 'neutral'} /></Field>
+            <Field label="Status">
+              <StatusChip
+                status={contract.status}
+                tone={
+                  ['active', 'approved'].includes(contract.status)
+                    ? 'good'
+                    : contract.status === 'expiring'
+                      ? 'warn'
+                      : contract.status === 'terminated' || contract.status === 'expired'
+                        ? 'bad'
+                        : 'neutral'
+                }
+              />
+            </Field>
             <Field label="Vendor">
-              <Link to={`/it/vendors/${contract.vendorId}`} className="text-accent-soft">{contract.vendorName}</Link>
+              <Link to={`/it/vendors/${contract.vendorId}`} className="text-accent-soft">
+                {contract.vendorName}
+              </Link>
             </Field>
             {showValue && <Field label="Value">{money(contract.value, contract.currency)}</Field>}
             <Field label="Term">{contract.termMonths ? `${contract.termMonths} months` : '—'}</Field>
-            <Field label="Start / End">{contract.startDate ? date(contract.startDate) : '—'} → {contract.endDate ? date(contract.endDate) : '—'}</Field>
-            <Field label="Notice period">{contract.noticeDays} days{contract.daysToNotice !== null && ` · ${contract.daysToNotice}d to notice date`}</Field>
+            <Field label="Start / End">
+              {contract.startDate ? date(contract.startDate) : '—'} → {contract.endDate ? date(contract.endDate) : '—'}
+            </Field>
+            <Field label="Notice period">
+              {contract.noticeDays} days
+              {contract.daysToNotice !== null && ` · ${contract.daysToNotice}d to notice date`}
+            </Field>
             <Field label="Auto-renew">{contract.autoRenew ? 'Yes — will renew unless notice is given' : 'No'}</Field>
             {contract.approvedAt && <Field label="Approved">{date(contract.approvedAt)}</Field>}
             {contract.renewedFromId && (
-              <Field label="Renewed from"><Link to={`/it/contracts/${contract.renewedFromId}`} className="text-accent-soft">Predecessor contract</Link></Field>
+              <Field label="Renewed from">
+                <Link to={`/it/contracts/${contract.renewedFromId}`} className="text-accent-soft">
+                  Predecessor contract
+                </Link>
+              </Field>
             )}
             {contract.terminatedAt && (
-              <Field label="Terminated">{date(contract.terminatedAt)} — {contract.terminationReason}</Field>
+              <Field label="Terminated">
+                {date(contract.terminatedAt)} — {contract.terminationReason}
+              </Field>
             )}
           </dl>
           {contract.slaText && (
@@ -716,15 +935,23 @@ function TerminateModal({ contractId, open, onClose }: { contractId: string; ope
       onClose={onClose}
       footer={
         <>
-          <button className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn-danger" onClick={() => terminate.mutate()} disabled={!reason.trim() || terminate.isPending}>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn-danger"
+            onClick={() => terminate.mutate()}
+            disabled={!reason.trim() || terminate.isPending}
+          >
             Terminate
           </button>
         </>
       }
     >
       <div className="space-y-3">
-        <p className="text-2xs text-ink-500">A reason is required. The approval history stays on the record either way.</p>
+        <p className="text-2xs text-ink-500">
+          A reason is required. The approval history stays on the record either way.
+        </p>
         <TextArea label="Reason" value={reason} onChange={setReason} />
         {error && <p className="text-2xs text-band-critical">{error}</p>}
       </div>
@@ -732,7 +959,17 @@ function TerminateModal({ contractId, open, onClose }: { contractId: string; ope
   );
 }
 
-function RenewModal({ contractId, contract, open, onClose }: { contractId: string; contract: any; open: boolean; onClose: () => void }) {
+function RenewModal({
+  contractId,
+  contract,
+  open,
+  onClose,
+}: {
+  contractId: string;
+  contract: any;
+  open: boolean;
+  onClose: () => void;
+}) {
   const qc = useQueryClient();
   const [endDate, setEndDate] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -755,7 +992,9 @@ function RenewModal({ contractId, contract, open, onClose }: { contractId: strin
       onClose={onClose}
       footer={
         <>
-          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
           <button className="btn-primary" onClick={() => renew.mutate()} disabled={!endDate || renew.isPending}>
             Create renewal
           </button>

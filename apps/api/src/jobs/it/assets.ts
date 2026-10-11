@@ -29,7 +29,12 @@ export async function runAssetInRepairTooLongJob(): Promise<JobResult> {
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));
   }
-  return { processed: result.checked, notified: result.flagged, skippedIdempotent: result.checked - result.flagged, errors };
+  return {
+    processed: result.checked,
+    notified: result.flagged,
+    skippedIdempotent: result.checked - result.flagged,
+    errors,
+  };
 }
 
 export async function runAssetOrphanedDetectorJob(): Promise<JobResult> {
@@ -40,7 +45,12 @@ export async function runAssetOrphanedDetectorJob(): Promise<JobResult> {
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));
   }
-  return { processed: result.checked, notified: result.flagged, skippedIdempotent: result.checked - result.flagged, errors };
+  return {
+    processed: result.checked,
+    notified: result.flagged,
+    skippedIdempotent: result.checked - result.flagged,
+    errors,
+  };
 }
 
 export const JOBS: JobDefinition[] = [

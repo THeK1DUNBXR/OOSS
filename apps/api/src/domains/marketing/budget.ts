@@ -15,7 +15,17 @@
  */
 
 import type { Prisma } from '@prisma/client';
-import { EVENTS, SPEND_STATUSES, istMidnight, istMonthKey, type ChannelKey, type BudgetView, type BudgetVarianceRow, type SpendView, type VendorView } from '@kaizen/shared';
+import {
+  EVENTS,
+  SPEND_STATUSES,
+  istMidnight,
+  istMonthKey,
+  type ChannelKey,
+  type BudgetView,
+  type BudgetVarianceRow,
+  type SpendView,
+  type VendorView,
+} from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -48,7 +58,10 @@ async function namesFor(ids: Array<string | null | undefined>): Promise<Map<stri
 async function campaignNamesFor(ids: Array<string | null | undefined>): Promise<Map<string, string>> {
   const unique = [...new Set(ids.filter((id): id is string => Boolean(id)))];
   if (!unique.length) return new Map();
-  const rows = await prisma.marketingCampaign.findMany({ where: { id: { in: unique } }, select: { id: true, name: true } });
+  const rows = await prisma.marketingCampaign.findMany({
+    where: { id: { in: unique } },
+    select: { id: true, name: true },
+  });
   return new Map(rows.map((r) => [r.id, r.name]));
 }
 
@@ -57,9 +70,17 @@ async function campaignNamesFor(ids: Array<string | null | undefined>): Promise<
  * not been superseded by a later `kz.mkt.budget.set` (an edit invalidates a
  * standing approval, the same way editing a signed MoU would).
  */
-async function isBudgetApproved(tenantId: string, budgetId: string): Promise<{ approved: boolean; approvedById: string | null }> {
+async function isBudgetApproved(
+  tenantId: string,
+  budgetId: string,
+): Promise<{ approved: boolean; approvedById: string | null }> {
   const approvedEvent = await prisma.eventRecord.findFirst({
-    where: { tenantId, subjectEntityType: 'marketing_budget', subjectEntityId: budgetId, eventName: EVENTS.MKT_BUDGET_APPROVED },
+    where: {
+      tenantId,
+      subjectEntityType: 'marketing_budget',
+      subjectEntityId: budgetId,
+      eventName: EVENTS.MKT_BUDGET_APPROVED,
+    },
     orderBy: { recordedAt: 'desc' },
   });
   if (!approvedEvent) return { approved: false, approvedById: null };
@@ -76,7 +97,10 @@ async function isBudgetApproved(tenantId: string, budgetId: string): Promise<{ a
   return { approved: !laterEdit, approvedById: laterEdit ? null : approvedEvent.actorPartyId };
 }
 
-async function budgetSpendTotal(tenantId: string, budget: { division: string; period: string; channelKey: string | null; campaignId: string | null }): Promise<number> {
+async function budgetSpendTotal(
+  tenantId: string,
+  budget: { division: string; period: string; channelKey: string | null; campaignId: string | null },
+): Promise<number> {
   const [yearStr, rest] = budget.period.split('-');
   const year = Number(yearStr);
   let spendDateFilter: Record<string, unknown> = {};
@@ -117,7 +141,12 @@ async function toBudgetView(row: {
   const auth = currentAuth();
   const [{ approved, approvedById }, spent, campaignNames] = await Promise.all([
     isBudgetApproved(auth.tenantId, row.id),
-    budgetSpendTotal(auth.tenantId, { division: row.division, period: row.period, channelKey: row.channelKey, campaignId: row.campaignId }),
+    budgetSpendTotal(auth.tenantId, {
+      division: row.division,
+      period: row.period,
+      channelKey: row.channelKey,
+      campaignId: row.campaignId,
+    }),
     campaignNamesFor([row.campaignId]),
   ]);
   const planned = num(row.planned) ?? 0;
@@ -225,7 +254,9 @@ export async function approveBudget(id: string): Promise<BudgetView> {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_budgets', verb: 'approve' });
   if (auth.principalType === 'agent') {
-    throw ApiError.forbidden('An AI principal may never approve a marketing budget (AI-MKT-008 is PROHIBITED at every tier).');
+    throw ApiError.forbidden(
+      'An AI principal may never approve a marketing budget (AI-MKT-008 is PROHIBITED at every tier).',
+    );
   }
 
   const row = await prisma.marketingBudget.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
@@ -312,11 +343,16 @@ export async function recordSpend(input: SpendInput): Promise<SpendView> {
   if (input.amount <= 0) throw ApiError.badRequest('amount must be positive.');
 
   if (input.vendorOrganizationId) {
-    const vendorOrg = await prisma.organization.findFirst({ where: { id: input.vendorOrganizationId, tenantId: auth.tenantId } });
-    if (!vendorOrg) throw ApiError.badRequest('vendorOrganizationId does not resolve to an organization in this tenant.');
+    const vendorOrg = await prisma.organization.findFirst({
+      where: { id: input.vendorOrganizationId, tenantId: auth.tenantId },
+    });
+    if (!vendorOrg)
+      throw ApiError.badRequest('vendorOrganizationId does not resolve to an organization in this tenant.');
   }
   if (input.campaignId) {
-    const campaign = await prisma.marketingCampaign.findFirst({ where: { id: input.campaignId, tenantId: auth.tenantId, deletedAt: null } });
+    const campaign = await prisma.marketingCampaign.findFirst({
+      where: { id: input.campaignId, tenantId: auth.tenantId, deletedAt: null },
+    });
     if (!campaign) throw ApiError.badRequest('campaignId does not resolve to a campaign in this tenant.');
   }
 
@@ -344,7 +380,12 @@ export async function recordSpend(input: SpendInput): Promise<SpendView> {
   await emit({
     name: EVENTS.MKT_SPEND_RECORDED,
     subject: { entityType: 'marketing_spend', entityId: row.id, recordCode },
-    newState: { amount: input.amount, division: input.division, channelKey: input.channelKey, campaignId: input.campaignId ?? null },
+    newState: {
+      amount: input.amount,
+      division: input.division,
+      channelKey: input.channelKey,
+      campaignId: input.campaignId ?? null,
+    },
     impact: { domains: ['mkt'] },
   });
 
@@ -374,10 +415,14 @@ export async function listSpend(filters: { campaignId?: string; from?: Date; to?
  * already exist in this tenant, verified here, and nothing about it is
  * touched.
  */
-export async function reconcileSpend(id: string, ref: { transactionId?: string; vendorBillId?: string }): Promise<SpendView> {
+export async function reconcileSpend(
+  id: string,
+  ref: { transactionId?: string; vendorBillId?: string },
+): Promise<SpendView> {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_budgets', verb: 'edit' });
-  if (!ref.transactionId && !ref.vendorBillId) throw ApiError.badRequest('One of transactionId or vendorBillId is required.');
+  if (!ref.transactionId && !ref.vendorBillId)
+    throw ApiError.badRequest('One of transactionId or vendorBillId is required.');
 
   const row = await prisma.marketingSpend.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
   if (!row) throw ApiError.notFound('Spend');
@@ -417,7 +462,9 @@ export async function reconcileSpend(id: string, ref: { transactionId?: string; 
 // Variance (MKT-BUD-001)
 // ---------------------------------------------------------------------------
 
-export async function budgetVariance(filters: { period?: string; division?: string } = {}): Promise<BudgetVarianceRow[]> {
+export async function budgetVariance(
+  filters: { period?: string; division?: string } = {},
+): Promise<BudgetVarianceRow[]> {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_budgets', verb: 'view' });
 
@@ -434,7 +481,12 @@ export async function budgetVariance(filters: { period?: string; division?: stri
   for (const b of budgets) {
     const [{ approved }, actual] = await Promise.all([
       isBudgetApproved(auth.tenantId, b.id),
-      budgetSpendTotal(auth.tenantId, { division: b.division, period: b.period, channelKey: b.channelKey, campaignId: b.campaignId }),
+      budgetSpendTotal(auth.tenantId, {
+        division: b.division,
+        period: b.period,
+        channelKey: b.channelKey,
+        campaignId: b.campaignId,
+      }),
     ]);
     const planned = num(b.planned) ?? 0;
     rows.push({
@@ -543,7 +595,14 @@ export interface VendorInput {
   contractRef?: string | null;
 }
 
-async function toVendorView(row: { id: string; organizationId: string; services: string[]; contractRef: string | null; active: boolean; rating: Prisma.Decimal | number | null }): Promise<VendorView> {
+async function toVendorView(row: {
+  id: string;
+  organizationId: string;
+  services: string[];
+  contractRef: string | null;
+  active: boolean;
+  rating: Prisma.Decimal | number | null;
+}): Promise<VendorView> {
   const org = await prisma.organization.findFirst({ where: { id: row.organizationId }, select: { name: true } });
   return {
     id: row.id,
@@ -577,7 +636,10 @@ export async function createVendor(input: VendorInput): Promise<VendorView> {
   return toVendorView(row);
 }
 
-export async function updateVendor(id: string, patch: Partial<VendorInput> & { active?: boolean }): Promise<VendorView> {
+export async function updateVendor(
+  id: string,
+  patch: Partial<VendorInput> & { active?: boolean },
+): Promise<VendorView> {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_budgets', verb: 'edit' });
   const existing = await prisma.marketingVendor.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
@@ -598,7 +660,10 @@ export async function updateVendor(id: string, patch: Partial<VendorInput> & { a
 export async function listVendors(): Promise<VendorView[]> {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_budgets', verb: 'view' });
-  const rows = await prisma.marketingVendor.findMany({ where: { tenantId: auth.tenantId, deletedAt: null }, orderBy: { createdAt: 'desc' } });
+  const rows = await prisma.marketingVendor.findMany({
+    where: { tenantId: auth.tenantId, deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
   return Promise.all(rows.map(toVendorView));
 }
 

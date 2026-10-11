@@ -53,7 +53,10 @@ router.get(
   }),
 );
 
-router.get('/assets/:id', handler(async (req) => loadAsset(req.params.id)));
+router.get(
+  '/assets/:id',
+  handler(async (req) => loadAsset(req.params.id)),
+);
 
 router.post(
   '/assets',
@@ -73,8 +76,14 @@ router.patch(
   }),
 );
 
-router.post('/assets/:id/submit', handler(async (req) => submitForApproval(req.params.id)));
-router.post('/assets/:id/approve', handler(async (req) => approveAsset(req.params.id)));
+router.post(
+  '/assets/:id/submit',
+  handler(async (req) => submitForApproval(req.params.id)),
+);
+router.post(
+  '/assets/:id/approve',
+  handler(async (req) => approveAsset(req.params.id)),
+);
 
 router.post(
   '/assets/:id/reject',
@@ -85,7 +94,10 @@ router.post(
   }),
 );
 
-router.post('/assets/:id/retire', handler(async (req) => retireAsset(req.params.id)));
+router.post(
+  '/assets/:id/retire',
+  handler(async (req) => retireAsset(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Social posts
@@ -111,7 +123,10 @@ router.get(
   ),
 );
 
-router.get('/social-posts/:id', handler(async (req) => loadSocialPost(req.params.id)));
+router.get(
+  '/social-posts/:id',
+  handler(async (req) => loadSocialPost(req.params.id)),
+);
 
 router.post(
   '/social-posts',
@@ -131,7 +146,10 @@ router.patch(
   }),
 );
 
-router.post('/social-posts/:id/schedule', handler(async (req) => scheduleSocialPost(req.params.id)));
+router.post(
+  '/social-posts/:id/schedule',
+  handler(async (req) => scheduleSocialPost(req.params.id)),
+);
 
 router.post(
   '/social-posts/:id/publish',
@@ -142,7 +160,10 @@ router.post(
   }),
 );
 
-router.post('/social-posts/:id/cancel', handler(async (req) => cancelSocialPost(req.params.id)));
+router.post(
+  '/social-posts/:id/cancel',
+  handler(async (req) => cancelSocialPost(req.params.id)),
+);
 
 router.post(
   '/social-posts/:id/metrics',

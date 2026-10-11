@@ -17,7 +17,17 @@ import {
   maxSensitivity,
   isUnrouted,
 } from '@kaizen/shared';
-import { asPrincipal, asUser, authFor, expectReject, principalFor, withFixtureRole, prisma, tenantId, unscopedPrisma } from './helpers.js';
+import {
+  asPrincipal,
+  asUser,
+  authFor,
+  expectReject,
+  principalFor,
+  withFixtureRole,
+  prisma,
+  tenantId,
+  unscopedPrisma,
+} from './helpers.js';
 import { computeHash, verifyChain } from '../platform/eventBus.js';
 import { nextRecordCode, nextRecordCodes, rejectRecordCodeEdit } from '../platform/recordCode.js';
 import { evaluate, applyFieldVisibility, can, holdsScopeResolver } from '../platform/permissions.js';
@@ -74,9 +84,7 @@ describe('CRM-FOUND-001 — tenant isolation is the gate before the five axes', 
       },
     });
 
-    const found = await asUser('chairman@kaizen.co.in', () =>
-      prisma.person.findFirst({ where: { id: foreign.id } }),
-    );
+    const found = await asUser('chairman@kaizen.co.in', () => prisma.person.findFirst({ where: { id: foreign.id } }));
 
     // Not a 403. The record does not exist from this requester's vantage point.
     expect(found).toBeNull();
@@ -87,10 +95,22 @@ describe('CRM-FOUND-001 — tenant isolation is the gate before the five axes', 
     const email = `shared-${Date.now()}@example.com`;
 
     const a = await unscopedPrisma.person.create({
-      data: { tenantId: TENANT, recordCode: `PER-2026-9${Date.now() % 10000}`, fullName: 'A', primaryEmail: email, primaryEmailNormalised: email },
+      data: {
+        tenantId: TENANT,
+        recordCode: `PER-2026-9${Date.now() % 10000}`,
+        fullName: 'A',
+        primaryEmail: email,
+        primaryEmailNormalised: email,
+      },
     });
     const b = await unscopedPrisma.person.create({
-      data: { tenantId: other.id, recordCode: `PER-2026-8${Date.now() % 10000}`, fullName: 'B', primaryEmail: email, primaryEmailNormalised: email },
+      data: {
+        tenantId: other.id,
+        recordCode: `PER-2026-8${Date.now() % 10000}`,
+        fullName: 'B',
+        primaryEmail: email,
+        primaryEmailNormalised: email,
+      },
     });
 
     expect(a.id).not.toBe(b.id);
@@ -100,7 +120,10 @@ describe('CRM-FOUND-001 — tenant isolation is the gate before the five axes', 
     const other = await unscopedPrisma.tenant.findFirstOrThrow({ where: { slug: 'other-tenant' } });
 
     await asUser('chairman@kaizen.co.in', async () => {
-      const person = await prisma.person.findFirstOrThrow({ where: { tenantId: TENANT }, orderBy: { createdAt: 'asc' } });
+      const person = await prisma.person.findFirstOrThrow({
+        where: { tenantId: TENANT },
+        orderBy: { createdAt: 'asc' },
+      });
       await prisma.person.update({
         where: { id: person.id },
         data: { notes: 'touched', tenantId: other.id } as never,
@@ -224,7 +247,9 @@ describe('CRM-FOUND-003 — five-axis evaluation at query time', () => {
         const foreign = { ownerPartyId: 'someone-else' };
         expect((await evaluate({ resource: 'leads', verb: 'view', record: foreign })).allowed).toBe(true);
         expect((await evaluate({ resource: 'leads', verb: 'edit', record: foreign })).allowed).toBe(false);
-        expect((await evaluate({ resource: 'leads', verb: 'edit', record: { ownerPartyId: p.partyId } })).allowed).toBe(true);
+        expect((await evaluate({ resource: 'leads', verb: 'edit', record: { ownerPartyId: p.partyId } })).allowed).toBe(
+          true,
+        );
       },
     );
   });
@@ -235,31 +260,35 @@ describe('CRM-FOUND-003 — five-axis evaluation at query time', () => {
     // is still in the evaluator and still reachable by a tenant writing its own
     // grant row, so it is still tested, against a role built for the purpose.
     await withFixtureRole(
-      { slug: 'claimer', branch: 'Madurai', grants: [{ resource: 'institutions', verbs: ['view', 'edit'], scope: 'own_or_unowned' }] },
+      {
+        slug: 'claimer',
+        branch: 'Madurai',
+        grants: [{ resource: 'institutions', verbs: ['view', 'edit'], scope: 'own_or_unowned' }],
+      },
       async (p) => {
-      // Unowned and same branch: permitted.
-      const unowned = await evaluate({
-        resource: 'institutions',
-        verb: 'edit',
-        record: { ownerPartyId: null, branch: p.branch },
-      });
-      expect(unowned.allowed).toBe(true);
+        // Unowned and same branch: permitted.
+        const unowned = await evaluate({
+          resource: 'institutions',
+          verb: 'edit',
+          record: { ownerPartyId: null, branch: p.branch },
+        });
+        expect(unowned.allowed).toBe(true);
 
-      // Unowned but a different branch: the branch check applies here and only here.
-      const otherBranch = await evaluate({
-        resource: 'institutions',
-        verb: 'edit',
-        record: { ownerPartyId: null, branch: 'Some Other Branch' },
-      });
-      expect(otherBranch.allowed).toBe(false);
+        // Unowned but a different branch: the branch check applies here and only here.
+        const otherBranch = await evaluate({
+          resource: 'institutions',
+          verb: 'edit',
+          record: { ownerPartyId: null, branch: 'Some Other Branch' },
+        });
+        expect(otherBranch.allowed).toBe(false);
 
-      // Owned by someone else: the branch check does NOT rescue it.
-      const otherOwner = await evaluate({
-        resource: 'institutions',
-        verb: 'edit',
-        record: { ownerPartyId: 'someone-else', branch: p.branch },
-      });
-      expect(otherOwner.allowed).toBe(false);
+        // Owned by someone else: the branch check does NOT rescue it.
+        const otherOwner = await evaluate({
+          resource: 'institutions',
+          verb: 'edit',
+          record: { ownerPartyId: 'someone-else', branch: p.branch },
+        });
+        expect(otherOwner.allowed).toBe(false);
       },
     );
   });
@@ -281,11 +310,11 @@ describe('CRM-FOUND-003 — five-axis evaluation at query time', () => {
     await withFixtureRole(
       { slug: 'internal_only', classificationCeiling: 'internal', grants: [{ resource: 'leads', verbs: ['view'] }] },
       async () => {
-      const internal = await evaluate({ resource: 'leads', verb: 'view', classification: 'internal' });
-      const confidential = await evaluate({ resource: 'leads', verb: 'view', classification: 'confidential' });
-      expect(internal.allowed).toBe(true);
-      expect(confidential.allowed).toBe(false);
-      expect(confidential.deniedBy).toBe('WHAT');
+        const internal = await evaluate({ resource: 'leads', verb: 'view', classification: 'internal' });
+        const confidential = await evaluate({ resource: 'leads', verb: 'view', classification: 'confidential' });
+        expect(internal.allowed).toBe(true);
+        expect(confidential.allowed).toBe(false);
+        expect(confidential.deniedBy).toBe('WHAT');
       },
     );
   });
@@ -294,13 +323,13 @@ describe('CRM-FOUND-003 — five-axis evaluation at query time', () => {
     await withFixtureRole(
       { slug: 'no_ceiling', grants: [{ resource: 'leads', verbs: ['view', 'edit'] }] },
       async () => {
-      const decision = await evaluate({
-        resource: 'leads',
-        verb: 'edit',
-        magnitude: { authorityClass: 'mou_approval', value: 1 },
-      });
-      expect(decision.allowed).toBe(false);
-      expect(decision.deniedBy).toBe('HOW_MUCH');
+        const decision = await evaluate({
+          resource: 'leads',
+          verb: 'edit',
+          magnitude: { authorityClass: 'mou_approval', value: 1 },
+        });
+        expect(decision.allowed).toBe(false);
+        expect(decision.deniedBy).toBe('HOW_MUCH');
       },
     );
   });
@@ -321,12 +350,7 @@ describe('CRM-FOUND-003 — five-axis evaluation at query time', () => {
     // it; the Finance Head's row carries an explicit absence, which is a
     // decision recorded rather than an omission.
     const holders: string[] = [];
-    for (const email of [
-      'chairman@kaizen.co.in',
-      'hr@kaizen.co.in',
-      'arun@kaizen.co.in',
-      'ravi@kaizen.co.in',
-    ]) {
+    for (const email of ['chairman@kaizen.co.in', 'hr@kaizen.co.in', 'arun@kaizen.co.in', 'ravi@kaizen.co.in']) {
       const held = await asUser(email, () => can({ resource: 'restricted_interactions', verb: 'view' }));
       if (held) holders.push(email);
     }
@@ -366,10 +390,10 @@ describe('CRM-FOUND-003 — five-axis evaluation at query time', () => {
     // A comparison against a *literal* slug is what bakes a role into logic.
     // `a.roleSlug === role`, where both sides are variables, is a grouping —
     // it makes no authorisation decision and hard-codes nothing.
-    const out = execSync(
-      "grep -rnE \"roleSlug\\s*[=!]==\\s*['\\\"]\" src/domains src/agents src/jobs || true",
-      { cwd: process.cwd(), encoding: 'utf8' },
-    );
+    const out = execSync('grep -rnE "roleSlug\\s*[=!]==\\s*[\'\\"]" src/domains src/agents src/jobs || true', {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
     expect(out.trim()).toBe('');
   });
 });
@@ -526,7 +550,10 @@ describe('CRM-IDN-001 — identity resolution', () => {
     await asUser('chairman@kaizen.co.in', async () => {
       const phone = `8${Date.now().toString().slice(-9)}`;
       const source = await findOrCreatePerson({ fullName: 'Merge Source', primaryPhone: phone });
-      const target = await findOrCreatePerson({ fullName: 'Merge Target', primaryPhone: `7${Date.now().toString().slice(-9)}` });
+      const target = await findOrCreatePerson({
+        fullName: 'Merge Target',
+        primaryPhone: `7${Date.now().toString().slice(-9)}`,
+      });
 
       const { mergePersons } = await import('../domains/identity.js');
       await mergePersons(source.person.id, target.person.id, 'Confirmed the same human.');
@@ -548,8 +575,14 @@ describe('CRM-IDN-001 — identity resolution', () => {
     // test signs in as — so a passing assertion here quietly destroyed the
     // rest of the suite.
     const [a, b] = await asUser('chairman@kaizen.co.in', async () => {
-      const one = await findOrCreatePerson({ fullName: 'Merge Grant Subject A', primaryPhone: `6${Date.now().toString().slice(-9)}` });
-      const two = await findOrCreatePerson({ fullName: 'Merge Grant Subject B', primaryPhone: `5${Date.now().toString().slice(-9)}` });
+      const one = await findOrCreatePerson({
+        fullName: 'Merge Grant Subject A',
+        primaryPhone: `6${Date.now().toString().slice(-9)}`,
+      });
+      const two = await findOrCreatePerson({
+        fullName: 'Merge Grant Subject B',
+        primaryPhone: `5${Date.now().toString().slice(-9)}`,
+      });
       return [one.person.id, two.person.id];
     });
 
@@ -794,9 +827,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
       const { createOrganization } = await import('../domains/organizations.js');
       const firm = await createOrganization({ kind: 'organization', name: `Not A School ${Date.now()}` });
 
-      const err = await expectReject(async () =>
-        attachInstitutionProfile(firm.id, { institutionType: 'polytechnic' }),
-      );
+      const err = await expectReject(async () => attachInstitutionProfile(firm.id, { institutionType: 'polytechnic' }));
       expect(err.status).toBe(400);
       expect(err.message).toMatch(/not a school or a college/i);
 
@@ -820,7 +851,10 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
       const firm = await createOrganization({ kind: 'organization', name: `Split Traders ${tag}` });
 
       const institutions = await prisma.organization.findMany({ where: { kind: 'institution' }, select: { id: true } });
-      const organizations = await prisma.organization.findMany({ where: { kind: 'organization' }, select: { id: true } });
+      const organizations = await prisma.organization.findMany({
+        where: { kind: 'organization' },
+        select: { id: true },
+      });
 
       expect(institutions.map((o) => o.id)).toContain(college.id);
       expect(institutions.map((o) => o.id)).not.toContain(firm.id);
@@ -838,7 +872,11 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
       expect(noReason.status).toBe(400);
 
       // With a reason, and nothing hanging off it, the correction goes through.
-      const fixed = await reclassifyOrganization(college.id, 'organization', 'Entered as a college by mistake; it is a trust.');
+      const fixed = await reclassifyOrganization(
+        college.id,
+        'organization',
+        'Entered as a college by mistake; it is a trust.',
+      );
       expect(fixed.kind).toBe('organization');
 
       // But a college that has actually sent us learners is not turned into a
@@ -874,6 +912,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
       const { createStudent, listStudents } = await import('../domains/students.js');
       const tag = Date.now();
       const student = await createStudent({
+        adultAttested: true,
         fullName: `Ilakkiya ${tag}`,
         primaryPhone: `98${String(tag).slice(-8)}`,
         registrationNumber: `KI-TEST/${tag}`,
@@ -898,6 +937,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
 
       const err = await expectReject(async () =>
         createStudent({
+          adultAttested: true,
           fullName: `Wrong Origin ${tag}`,
           primaryPhone: `97${String(tag).slice(-8)}`,
           institutionId: firm.id,
@@ -914,6 +954,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
       const tag = Date.now();
       const number = `KI-DUP/${tag}`;
       const first = await createStudent({
+        adultAttested: true,
         fullName: `First Holder ${tag}`,
         primaryPhone: `96${String(tag).slice(-8)}`,
         registrationNumber: number,
@@ -921,6 +962,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
 
       const err = await expectReject(async () =>
         createStudent({
+          adultAttested: true,
           fullName: `Second Holder ${tag}`,
           primaryPhone: `95${String(tag).slice(-8)}`,
           registrationNumber: number,
@@ -947,7 +989,11 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
         },
       });
 
-      const student = await createStudent({ fullName: `Already Known ${tag}`, primaryPhone: phone });
+      const student = await createStudent({
+        adultAttested: true,
+        fullName: `Already Known ${tag}`,
+        primaryPhone: phone,
+      });
       expect(student.personId).toBe(contact.id);
 
       const people = await prisma.person.count({ where: { primaryPhoneNormalised: phone, deletedAt: null } });
@@ -959,7 +1005,11 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
     const tag = Date.now();
     const created = await asUser('employee@kaizen.co.in', async () => {
       const { createStudent } = await import('../domains/students.js');
-      return createStudent({ fullName: `Walk In ${tag}`, primaryPhone: `93${String(tag).slice(-8)}` });
+      return createStudent({
+        adultAttested: true,
+        fullName: `Walk In ${tag}`,
+        primaryPhone: `93${String(tag).slice(-8)}`,
+      });
     });
     expect(created.fullName).toBe(`Walk In ${tag}`);
 
@@ -979,7 +1029,12 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
       // "Sponsored" with nobody named is the row that later gets billed to the
       // learner by mistake, so it does not get written.
       const err = await expectReject(async () =>
-        createStudent({ fullName: `Unpaid ${tag}`, primaryPhone: `89${String(tag).slice(-8)}`, funding: 'sponsor' }),
+        createStudent({
+          adultAttested: true,
+          fullName: `Unpaid ${tag}`,
+          primaryPhone: `89${String(tag).slice(-8)}`,
+          funding: 'sponsor',
+        }),
       );
       expect(err.status).toBe(400);
       expect(err.message).toMatch(/needs the organisation that is paying/i);
@@ -989,6 +1044,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
       const college = await createOrganization({ kind: 'institution', name: `Paying College ${tag}` });
       const wrong = await expectReject(async () =>
         createStudent({
+          adultAttested: true,
           fullName: `Miscoded ${tag}`,
           primaryPhone: `88${String(tag).slice(-8)}`,
           funding: 'sponsor',
@@ -999,7 +1055,12 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
 
       // A scheme without its framework reports as nothing, so it is refused too.
       const noFramework = await expectReject(async () =>
-        createStudent({ fullName: `Schemeless ${tag}`, primaryPhone: `87${String(tag).slice(-8)}`, funding: 'scheme' }),
+        createStudent({
+          adultAttested: true,
+          fullName: `Schemeless ${tag}`,
+          primaryPhone: `87${String(tag).slice(-8)}`,
+          funding: 'scheme',
+        }),
       );
       expect(noFramework.status).toBe(400);
       expect(noFramework.message).toMatch(/Naan Mudhalvan/);
@@ -1019,6 +1080,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
         roles: ['sponsor'],
       });
       const learner = await createStudent({
+        adultAttested: true,
         fullName: `Funded Beneficiary ${tag}`,
         primaryPhone: `86${String(tag).slice(-8)}`,
         funding: 'sponsor',
@@ -1140,7 +1202,12 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
     // this test's outcome depend on whichever institution-kind fixture
     // another test happened to leave lying around first.
     const legacyShaped = await unscopedPrisma.organization.create({
-      data: { tenantId: TENANT, recordCode: `ORG-TEST-${Date.now()}`, kind: 'organization', name: `Pre-backfill college ${Date.now()}` },
+      data: {
+        tenantId: TENANT,
+        recordCode: `ORG-TEST-${Date.now()}`,
+        kind: 'organization',
+        name: `Pre-backfill college ${Date.now()}`,
+      },
     });
     await unscopedPrisma.institutionProfile.create({
       data: { tenantId: TENANT, organizationId: legacyShaped.id, institutionType: 'school' },
@@ -1179,7 +1246,10 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
     });
 
     await asUser('chairman@kaizen.co.in', async () => {
-      const updated = await updateOrganization(org.id, { name: `Corrected ${tag}`, website: 'https://corrected.example' });
+      const updated = await updateOrganization(org.id, {
+        name: `Corrected ${tag}`,
+        website: 'https://corrected.example',
+      });
       expect(updated.name).toBe(`Corrected ${tag}`);
       expect(updated.website).toBe('https://corrected.example');
       // Not this function's to change: kind is `reclassifyOrganization`'s and
@@ -1474,7 +1544,11 @@ describe('CRM-LEAD-003/005 — routing-assigned ownership', () => {
     await asUser('chairman@kaizen.co.in', async () => {
       const audits = await prisma.routingAudit.findMany({ take: 20, orderBy: { evaluatedAt: 'desc' } });
       for (const a of audits) {
-        const candidates = a.candidates as unknown as Array<{ passedHardFilters: boolean; factors: unknown[]; total: number }>;
+        const candidates = a.candidates as unknown as Array<{
+          passedHardFilters: boolean;
+          factors: unknown[];
+          total: number;
+        }>;
         for (const c of candidates) {
           if (!c.passedHardFilters) {
             expect(c.factors).toHaveLength(0);
@@ -1764,9 +1838,7 @@ describe('CRM-COML-002/005 — price versioning and the discount-authority gate'
 describe('CRM-MOU-002 — the approval gate', () => {
   it('a contract cannot be created with a non-positive commercial value', async () => {
     await asUser('chairman@kaizen.co.in', async () => {
-      const err = await expectReject(() =>
-        createContract({ title: 'Unpriced', commercialValue: 0 }),
-      );
+      const err = await expectReject(() => createContract({ title: 'Unpriced', commercialValue: 0 }));
       expect(err.status).toBe(422);
       expect(err.message).toMatch(/greater than zero/);
     });
@@ -1833,9 +1905,7 @@ describe('CRM-MOU-002 — the approval gate', () => {
     // which had to be kept in agreement with the matrix by hand. Under three
     // roles the exclusion is structural: `employee` holds no `approve` verb on
     // anything, so there is nothing left to keep in agreement.
-    const mou = await asUser('chairman@kaizen.co.in', () =>
-      prisma.mou.findFirst({ where: { status: 'proposed' } }),
-    );
+    const mou = await asUser('chairman@kaizen.co.in', () => prisma.mou.findFirst({ where: { status: 'proposed' } }));
     if (!mou) return;
     await asUser('ravi@kaizen.co.in', async () => {
       const err = await expectReject(() => transitionAgreement('mou', mou.id, 'approved'));
@@ -1970,7 +2040,7 @@ describe('CRM-ACT-002 — computed sensitivity classification', () => {
     });
   });
 
-  it('a confidential interaction is absent from a low-ceiling viewer\'s timeline entirely', async () => {
+  it("a confidential interaction is absent from a low-ceiling viewer's timeline entirely", async () => {
     const lead = await asUser('chairman@kaizen.co.in', async () => {
       const l = await prisma.lead.findFirstOrThrow({});
       await logInteraction({
@@ -1992,7 +2062,10 @@ describe('CRM-ACT-002 — computed sensitivity classification', () => {
       {
         slug: 'timeline_internal',
         classificationCeiling: 'internal',
-        grants: [{ resource: 'interactions', verbs: ['view'] }, { resource: 'leads', verbs: ['view'] }],
+        grants: [
+          { resource: 'interactions', verbs: ['view'] },
+          { resource: 'leads', verbs: ['view'] },
+        ],
       },
       async () => {
         const { timelineFor } = await import('../domains/interactions.js');
@@ -2115,15 +2188,12 @@ describe('AI governance — agents as bounded principals', () => {
       where: { tenantId: p.tenantId, agentKey: 'agent.dedup' },
     });
 
-    await asPrincipal(
-      { ...authFor(p), principalType: 'agent', agentId: agent.id },
-      async () => {
-        const { mergePersons } = await import('../domains/identity.js');
-        const two = await prisma.person.findMany({ take: 2 });
-        const err = await expectReject(() => mergePersons(two[0].id, two[1].id, 'agent attempt'));
-        expect(err.status).toBe(403);
-      },
-    );
+    await asPrincipal({ ...authFor(p), principalType: 'agent', agentId: agent.id }, async () => {
+      const { mergePersons } = await import('../domains/identity.js');
+      const two = await prisma.person.findMany({ take: 2 });
+      const err = await expectReject(() => mergePersons(two[0].id, two[1].id, 'agent attempt'));
+      expect(err.status).toBe(403);
+    });
   });
 });
 
@@ -2425,6 +2495,7 @@ describe('A college, a client and a student are three different facts', () => {
         fullName: 'Affiliation Subject',
         primaryPhone: aPhone(),
         institutionId: college.id,
+        adultAttested: true,
       });
 
       const affiliation = await prisma.affiliation.findFirstOrThrow({
@@ -2461,7 +2532,8 @@ describe('A college, a client and a student are three different facts', () => {
       // A minor with no guardian contact is refused. The person must not have
       // been created on the way to the refusal: an error message is not a
       // reason for a stranger to appear in the directory.
-      await expectReject(() => enrolStudent({ cohortId: cohort.id, fullName: name, isMinor: true }));
+      const fifteenYearsAgo = new Date(Date.now() - 15 * 365.25 * 86_400_000).toISOString().slice(0, 10);
+      await expectReject(() => enrolStudent({ cohortId: cohort.id, fullName: name, dateOfBirth: fifteenYearsAgo }));
       expect(await prisma.person.findFirst({ where: { fullName: name } })).toBeNull();
     });
   });
@@ -2475,17 +2547,25 @@ describe('A college, a client and a student are three different facts', () => {
       const phone = aPhone();
 
       const before = await prisma.mergeCandidate.count();
-      const one = await enrolStudent({ cohortId: first.id, fullName: 'Returning Student', primaryPhone: phone });
-      const two = await enrolStudent({ cohortId: second.id, fullName: 'Returning Student', primaryPhone: phone });
+      const one = await enrolStudent({
+        cohortId: first.id,
+        fullName: 'Returning Student',
+        primaryPhone: phone,
+        adultAttested: true,
+      });
+      const two = await enrolStudent({
+        cohortId: second.id,
+        fullName: 'Returning Student',
+        primaryPhone: phone,
+        adultAttested: true,
+      });
 
       expect(two.personId).toBe(one.personId);
       // Enrolling somebody a second time is not a merge of two records, so it
       // must not fill a queue a human has to drain.
       expect(await prisma.mergeCandidate.count()).toBe(before);
       // Nor a second badge saying the same thing.
-      expect(
-        await prisma.affiliation.count({ where: { partyId: one.personId, affiliationType: 'student' } }),
-      ).toBe(1);
+      expect(await prisma.affiliation.count({ where: { partyId: one.personId, affiliationType: 'student' } })).toBe(1);
     });
   });
 
@@ -2495,9 +2575,14 @@ describe('A college, a client and a student are three different facts', () => {
       const { cohort } = await aCollegeAndABatch(`DUP${Date.now()}`);
       const phone = aPhone();
 
-      const first = await enrolStudent({ cohortId: cohort.id, fullName: 'Twice Over', primaryPhone: phone });
+      const first = await enrolStudent({
+        cohortId: cohort.id,
+        fullName: 'Twice Over',
+        primaryPhone: phone,
+        adultAttested: true,
+      });
       const err = await expectReject(() =>
-        enrolStudent({ cohortId: cohort.id, fullName: 'Twice Over', primaryPhone: phone }),
+        enrolStudent({ cohortId: cohort.id, fullName: 'Twice Over', primaryPhone: phone, adultAttested: true }),
       );
       expect(err.status).toBe(409);
       expect(err.message).toContain(first.recordCode);
@@ -2514,6 +2599,7 @@ describe('A college, a client and a student are three different facts', () => {
         fullName: 'Sent From Here',
         primaryPhone: aPhone(),
         institutionId: college.id,
+        adultAttested: true,
       });
 
       const view = await assembleOrganization360(college.id);
@@ -2535,7 +2621,11 @@ describe('The import templates', () => {
     const { listTemplates } = await import('../imports/templates.js');
     const seen = new Map<string, string>();
     for (const t of listTemplates()) {
-      const key = t.columns.filter((c) => c.required).map((c) => c.name.toLowerCase()).sort().join('|');
+      const key = t.columns
+        .filter((c) => c.required)
+        .map((c) => c.name.toLowerCase())
+        .sort()
+        .join('|');
       expect(key, `${t.slug} has no required column`).not.toBe('');
       expect(seen.get(key), `${t.slug} and ${seen.get(key)} would be told apart by a tie-break`).toBeUndefined();
       seen.set(key, t.slug);
@@ -2556,10 +2646,10 @@ describe('The import templates', () => {
     const book = XLSX.read(blank, { type: 'buffer' });
     XLSX.utils.sheet_add_aoa(
       book.Sheets.Data,
-      [['Fill Test', '9876500001', '', 'Some Batch', 'Some College', 'No', '', '']],
+      [['Fill Test', '9876500001', '', 'Some Batch', 'Some College', '02/06/2008', 'No', '', '']],
       { origin: 'A2' },
     );
-    book.Sheets.Data['!ref'] = 'A1:H2';
+    book.Sheets.Data['!ref'] = 'A1:I2';
     const filled = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 
     const sheets = readWorkbook(filled);
@@ -2576,7 +2666,7 @@ describe('The import templates', () => {
       primaryPhone: '9876500001',
       cohortName: 'Some Batch',
       institutionName: 'Some College',
-      isMinor: false,
+      adultAttested: false,
     });
   });
 
@@ -2607,10 +2697,10 @@ describe('The import templates', () => {
       const book = XLSX.read(buildTemplateWorkbook(spec), { type: 'buffer' });
       XLSX.utils.sheet_add_aoa(
         book.Sheets.Data,
-        [['Nowhere Student', `98765${Date.now() % 100000}`, '', 'No Such Batch At All', '', 'No', '', '']],
+        [['Nowhere Student', `98765${Date.now() % 100000}`, '', 'No Such Batch At All', '', '', 'No', '', '']],
         { origin: 'A2' },
       );
-      book.Sheets.Data['!ref'] = 'A1:H2';
+      book.Sheets.Data['!ref'] = 'A1:I2';
 
       const staged = await stageImport({
         fileName: 'students.xlsx',
@@ -2707,7 +2797,18 @@ describe('The finance import templates', () => {
       const vendorName = `Test Vendor Ltd ${tag}`;
       const billNumber = `TV/${tag}/01`;
       const billsStaged = await fillAndStage('vendor-bills', [
-        [vendorName, '33AABCT1234H1Z9', billNumber, '12/08/2026', '11/09/2026', childName, 'Shared', '42000', '7560', 'Office rent'],
+        [
+          vendorName,
+          '33AABCT1234H1Z9',
+          billNumber,
+          '12/08/2026',
+          '11/09/2026',
+          childName,
+          'Shared',
+          '42000',
+          '7560',
+          'Office rent',
+        ],
       ]);
       expect(billsStaged.kind).toBe('template_vendor_bills');
       const billsResult = await commitImport(billsStaged.batchId);
@@ -2725,7 +2826,18 @@ describe('The finance import templates', () => {
 
       // Re-uploading the same file is safe: caught as a duplicate at staging.
       const billsAgain = await fillAndStage('vendor-bills', [
-        [vendorName, '33AABCT1234H1Z9', billNumber, '12/08/2026', '11/09/2026', childName, 'Shared', '42000', '7560', 'Office rent'],
+        [
+          vendorName,
+          '33AABCT1234H1Z9',
+          billNumber,
+          '12/08/2026',
+          '11/09/2026',
+          childName,
+          'Shared',
+          '42000',
+          '7560',
+          'Office rent',
+        ],
       ]);
       expect(billsAgain.stats.duplicate).toBe(1);
       expect(billsAgain.stats.ready ?? 0).toBe(0);

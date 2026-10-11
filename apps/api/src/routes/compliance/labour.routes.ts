@@ -43,7 +43,10 @@ const router = Router();
 // Holidays
 // ---------------------------------------------------------------------------
 
-router.get('/holidays', handler(async (req) => listHolidays(numeric(req.query.year))));
+router.get(
+  '/holidays',
+  handler(async (req) => listHolidays(numeric(req.query.year))),
+);
 
 router.post(
   '/holidays',
@@ -61,13 +64,19 @@ router.post(
   }),
 );
 
-router.delete('/holidays/:id', handler(async (req) => deleteHoliday(req.params.id)));
+router.delete(
+  '/holidays/:id',
+  handler(async (req) => deleteHoliday(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Leave year-end
 // ---------------------------------------------------------------------------
 
-router.post('/leave/year-close/run', handler(async () => runLeaveYearClose()));
+router.post(
+  '/leave/year-close/run',
+  handler(async () => runLeaveYearClose()),
+);
 
 router.post(
   '/leave/:employmentId/encash',
@@ -81,7 +90,10 @@ router.post(
 // Working hours
 // ---------------------------------------------------------------------------
 
-router.get('/hours/rules', handler(async () => listWorkingHoursRules()));
+router.get(
+  '/hours/rules',
+  handler(async () => listWorkingHoursRules()),
+);
 
 router.post(
   '/hours/rules',
@@ -102,7 +114,10 @@ router.post(
   }),
 );
 
-router.post('/hours/check/run', handler(async () => runWeeklyHoursCheck()));
+router.post(
+  '/hours/check/run',
+  handler(async () => runWeeklyHoursCheck()),
+);
 
 router.get(
   '/hours/:employmentId/overtime',
@@ -116,7 +131,11 @@ router.get(
 // Statutory registers
 // ---------------------------------------------------------------------------
 
-function downloadCsv(res: { setHeader: (k: string, v: string) => void; send: (body: string) => void }, filename: string, csv: string) {
+function downloadCsv(
+  res: { setHeader: (k: string, v: string) => void; send: (body: string) => void },
+  filename: string,
+  csv: string,
+) {
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', `attachment; filename="${filename.replace(/"/g, '')}"`);
   res.send(csv);
@@ -163,7 +182,10 @@ router.get(
 // POSH
 // ---------------------------------------------------------------------------
 
-router.get('/posh/committee', handler(async () => listIccMembers()));
+router.get(
+  '/posh/committee',
+  handler(async () => listIccMembers()),
+);
 
 router.post(
   '/posh/committee',
@@ -190,9 +212,15 @@ router.post(
   }),
 );
 
-router.post('/posh/committee/validate', handler(async () => validateCommittee()));
+router.post(
+  '/posh/committee/validate',
+  handler(async () => validateCommittee()),
+);
 
-router.get('/posh/complaints', handler(async () => listPoshComplaints()));
+router.get(
+  '/posh/complaints',
+  handler(async () => listPoshComplaints()),
+);
 
 router.post(
   '/posh/complaints',
@@ -224,12 +252,22 @@ router.post(
   }),
 );
 
-router.get('/posh/workshops', handler(async () => listPoshWorkshops()));
+router.get(
+  '/posh/workshops',
+  handler(async () => listPoshWorkshops()),
+);
 
 router.post(
   '/posh/workshops',
   handler(async (req) => {
-    const body = z.object({ heldOn: z.coerce.date(), topic: z.string().min(1), attendeeCount: z.number().int(), note: z.string().nullish() }).parse(req.body);
+    const body = z
+      .object({
+        heldOn: z.coerce.date(),
+        topic: z.string().min(1),
+        attendeeCount: z.number().int(),
+        note: z.string().nullish(),
+      })
+      .parse(req.body);
     return createPoshWorkshop(body);
   }),
 );
@@ -248,13 +286,20 @@ router.post(
 // Disciplinary
 // ---------------------------------------------------------------------------
 
-router.get('/disciplinary', handler(async (req) => listDisciplinaryCases(str(req.query.employmentId))));
+router.get(
+  '/disciplinary',
+  handler(async (req) => listDisciplinaryCases(str(req.query.employmentId))),
+);
 
 router.post(
   '/disciplinary',
   handler(async (req) => {
     const body = z
-      .object({ employmentRelationshipId: z.string(), showCauseIssuedAt: z.coerce.date().optional(), note: z.string().min(1) })
+      .object({
+        employmentRelationshipId: z.string(),
+        showCauseIssuedAt: z.coerce.date().optional(),
+        note: z.string().min(1),
+      })
       .parse(req.body);
     return openDisciplinaryCase(body);
   }),
@@ -282,7 +327,9 @@ router.post(
 
 router.get(
   '/letters',
-  handler(async (req) => listLetters({ employmentRelationshipId: str(req.query.employmentId), applicationId: str(req.query.applicationId) })),
+  handler(async (req) =>
+    listLetters({ employmentRelationshipId: str(req.query.employmentId), applicationId: str(req.query.applicationId) }),
+  ),
 );
 
 router.get(
@@ -294,7 +341,13 @@ router.get(
 // Consents
 // ---------------------------------------------------------------------------
 
-router.post('/employees/:id/bgv-consent', handler(async (req) => recordBgvConsent(req.params.id)));
-router.post('/employees/:id/code-of-conduct-ack', handler(async (req) => recordCodeOfConductAck(req.params.id)));
+router.post(
+  '/employees/:id/bgv-consent',
+  handler(async (req) => recordBgvConsent(req.params.id)),
+);
+router.post(
+  '/employees/:id/code-of-conduct-ack',
+  handler(async (req) => recordCodeOfConductAck(req.params.id)),
+);
 
 export default router;

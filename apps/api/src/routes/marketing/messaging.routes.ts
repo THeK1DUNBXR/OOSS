@@ -43,15 +43,30 @@ router.get(
   }),
 );
 
-router.get('/templates/merge-fields', handler(async () => mergeFieldsCatalogue()));
+router.get(
+  '/templates/merge-fields',
+  handler(async () => mergeFieldsCatalogue()),
+);
 
-router.get('/templates/:id', handler(async (req) => loadTemplate(req.params.id)));
+router.get(
+  '/templates/:id',
+  handler(async (req) => loadTemplate(req.params.id)),
+);
 
-router.post('/templates', handler(async (req) => createTemplate(req.body)));
+router.post(
+  '/templates',
+  handler(async (req) => createTemplate(req.body)),
+);
 
-router.patch('/templates/:id', handler(async (req) => updateTemplate(req.params.id, req.body)));
+router.patch(
+  '/templates/:id',
+  handler(async (req) => updateTemplate(req.params.id, req.body)),
+);
 
-router.post('/templates/:id/submit', handler(async (req) => submitForReview(req.params.id)));
+router.post(
+  '/templates/:id/submit',
+  handler(async (req) => submitForReview(req.params.id)),
+);
 
 router.post(
   '/templates/:id/approve',
@@ -66,7 +81,10 @@ router.post(
   }),
 );
 
-router.post('/templates/:id/retire', handler(async (req) => retireTemplate(req.params.id)));
+router.post(
+  '/templates/:id/retire',
+  handler(async (req) => retireTemplate(req.params.id)),
+);
 
 router.post(
   '/templates/:id/preview',
@@ -95,19 +113,40 @@ router.post(
   }),
 );
 
-router.get('/sends/:id', handler(async (req) => loadSend(req.params.id)));
+router.get(
+  '/sends/:id',
+  handler(async (req) => loadSend(req.params.id)),
+);
 
-router.post('/sends', handler(async (req) => createSend(req.body)));
+router.post(
+  '/sends',
+  handler(async (req) => createSend(req.body)),
+);
 
-router.post('/sends/:id/request', handler(async (req) => requestSend(req.params.id)));
+router.post(
+  '/sends/:id/request',
+  handler(async (req) => requestSend(req.params.id)),
+);
 
-router.post('/sends/:id/approve', handler(async (req) => approveSend(req.params.id)));
+router.post(
+  '/sends/:id/approve',
+  handler(async (req) => approveSend(req.params.id)),
+);
 
-router.post('/sends/:id/cancel', handler(async (req) => cancelSend(req.params.id)));
+router.post(
+  '/sends/:id/cancel',
+  handler(async (req) => cancelSend(req.params.id)),
+);
 
-router.post('/sends/:id/dispatch', handler(async (req) => dispatchSend(req.params.id)));
+router.post(
+  '/sends/:id/dispatch',
+  handler(async (req) => dispatchSend(req.params.id)),
+);
 
-router.get('/sends/:id/dry-run', handler(async (req) => dryRunSend(req.params.id)));
+router.get(
+  '/sends/:id/dry-run',
+  handler(async (req) => dryRunSend(req.params.id)),
+);
 
 router.get(
   '/sends/:id/recipients',

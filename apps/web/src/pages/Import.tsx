@@ -14,9 +14,7 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, date, money, relative } from '../lib/api.js';
-import {
-  Card, EmptyState, ErrorBox, Loading, PageHeader, RecordCode, StatusChip,
-} from '../components/ui.js';
+import { Card, EmptyState, ErrorBox, Loading, PageHeader, RecordCode, StatusChip } from '../components/ui.js';
 import { messageOf, SelectInput } from '../components/forms.js';
 
 interface Detection {
@@ -108,7 +106,8 @@ const KIND_EFFECT: Record<string, string> = {
   template_contacts: 'Creates people and attaches them to the company or college they are at.',
   template_staff: 'Creates people, their seats and their employment records. Never their pay.',
   template_ledger_accounts: 'Creates bank, cash, card and loan accounts. A name already on file is left alone.',
-  template_ledger_categories: 'Creates the categories money is earned or spent under. A name already on file is left alone.',
+  template_ledger_categories:
+    'Creates the categories money is earned or spent under. A name already on file is left alone.',
   template_vendor_bills: 'Creates unpaid vendor bills against categories already on file.',
   unknown: 'Nothing, until you say what it is.',
 };
@@ -181,9 +180,7 @@ export default function ImportPage() {
             accept=".xlsx,.xls,.csv,.xml,.txt"
             onChange={(e) => take(e.target.files?.[0])}
           />
-          <p className="mt-2 max-w-lg text-2xs text-ink-500">
-            Excel, CSV or a Tally XML export, up to 25MB.
-          </p>
+          <p className="mt-2 max-w-lg text-2xs text-ink-500">Excel, CSV or a Tally XML export, up to 25MB.</p>
         </div>
 
         {uploadError && (
@@ -337,7 +334,10 @@ function Preview({
 }) {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ created: Record<string, number>; errors: Array<{ rowNumber: number; message: string }> } | null>(null);
+  const [result, setResult] = useState<{
+    created: Record<string, number>;
+    errors: Array<{ rowNumber: number; message: string }>;
+  } | null>(null);
   const [accountId, setAccountId] = useState('');
   const [division, setDivision] = useState('');
   const [showing, setShowing] = useState<'ready' | 'skipped' | 'duplicate' | 'error'>('ready');
@@ -385,8 +385,7 @@ function Preview({
           <ul className="flex flex-wrap gap-4">
             {Object.entries(result.created).map(([what, n]) => (
               <li key={what} className="text-sm text-ink-200">
-                <span className="font-display text-lg tabular-nums text-ink-50">{n}</span>{' '}
-                {friendlyEntity(what, n)}
+                <span className="font-display text-lg tabular-nums text-ink-50">{n}</span> {friendlyEntity(what, n)}
               </li>
             ))}
             {Object.keys(result.created).length === 0 && <li className="text-sm text-ink-400">Nothing was created.</li>}
@@ -417,10 +416,7 @@ function Preview({
   }
 
   return (
-    <Card
-      title={KIND_LABEL[staged.kind] ?? staged.kind}
-      subtitle={staged.detection.reason}
-    >
+    <Card title={KIND_LABEL[staged.kind] ?? staged.kind} subtitle={staged.detection.reason}>
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-2">
           <RecordCode code={staged.recordCode} />
@@ -432,7 +428,9 @@ function Preview({
         {staged.duplicateOfBatch && (
           <p className="rounded border-l-2 border-band-watch bg-band-watch/10 px-3 py-2 text-sm text-band-watch">
             This is the same file as {staged.duplicateOfBatch.recordCode} ({staged.duplicateOfBatch.fileName}),
-            {staged.duplicateOfBatch.committedAt ? ' which was already brought in.' : ' which was uploaded and not committed.'}{' '}
+            {staged.duplicateOfBatch.committedAt
+              ? ' which was already brought in.'
+              : ' which was uploaded and not committed.'}{' '}
             Rows it already created are marked as duplicates below and will be left alone.
           </p>
         )}
@@ -552,7 +550,15 @@ const ROW_STATUS_LABEL: Record<string, string> = {
   error: 'could not be read',
 };
 
-function RowTable({ rows, showing, kind }: { rows: ReturnType<typeof useQuery<Row[]>>; showing: string; kind: string }) {
+function RowTable({
+  rows,
+  showing,
+  kind,
+}: {
+  rows: ReturnType<typeof useQuery<Row[]>>;
+  showing: string;
+  kind: string;
+}) {
   if (rows.isLoading) return <Loading label="Reading the file" />;
   if (rows.error) return <ErrorBox error={rows.error} />;
   const data = rows.data ?? [];
@@ -625,7 +631,11 @@ function columnsFor(kind: string): Column[] {
         { key: 'date', label: 'Date', render: (s) => shortDate(s.txnDate ?? s.date) },
         { key: 'desc', label: 'Description', render: (s) => truncate(text(s.narration ?? s.description), 60) },
         { key: 'party', label: 'Counterparty', render: (s) => text(s.counterparty) },
-        { key: 'dir', label: 'In / out', render: (s) => (s.direction === 'in' ? 'In' : s.direction === 'out' ? 'Out' : '—') },
+        {
+          key: 'dir',
+          label: 'In / out',
+          render: (s) => (s.direction === 'in' ? 'In' : s.direction === 'out' ? 'Out' : '—'),
+        },
         { key: 'amount', label: 'Amount', align: 'right', render: (s) => amountText(s.amount) },
       ];
     case 'employees':
@@ -774,7 +784,9 @@ function History({ batches }: { batches: ReturnType<typeof useQuery<Batch[]>> })
           <tbody>
             {data.map((b) => (
               <tr key={b.id} className="border-t border-ink-850">
-                <td className="py-1.5"><RecordCode code={b.recordCode} /></td>
+                <td className="py-1.5">
+                  <RecordCode code={b.recordCode} />
+                </td>
                 <td className="py-1.5 text-ink-200">
                   {b.fileName}
                   {b.sourceLabel && <span className="text-ink-500"> · {b.sourceLabel}</span>}

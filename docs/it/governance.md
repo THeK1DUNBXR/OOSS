@@ -22,7 +22,7 @@ bands)` (`packages/shared/src/it/governance.ts`) are pure — no database — an
 **`ItRisk`** — title, category, owner, inherent likelihood/impact (1–5) with
 their score and band, optional residual likelihood/impact/score/band once
 treatment is in place, `scoredUnderBandSetId` naming which band set produced
-the *most recent* score, treatment (`accept` | `mitigate` | `transfer` |
+the _most recent_ score, treatment (`accept` | `mitigate` | `transfer` |
 `avoid`) with a plan, a review due date, `controlIds` (bare ids of
 `ItControl` rows), and status `open → treating → accepted → closed` (with a
 `REOPEN` back to `open`), run through `riskMachine`.
@@ -39,7 +39,7 @@ named by `supersedesId` `superseded`.
 **`ItPolicyAcknowledgement`** — append-only: `policyId`, `version`,
 `partyId`, `acknowledgedAt`, unique per `(policyId, partyId, version)`.
 `it_policy_acknowledgements:C@own` — `acknowledgePolicy` always writes under
-the *caller's own* `partyId`, regardless of how wide a grant's scope is; there
+the _caller's own_ `partyId`, regardless of how wide a grant's scope is; there
 is no argument that lets one party acknowledge on another's behalf.
 
 **`ItControl`** — `code`, `title`, `frameworkRefs` (`Json`, e.g.
@@ -74,7 +74,7 @@ workstream's files.
 
 **`ItRemediationRule`** — a dated table: `severity` → `days`, `effectiveFrom`.
 `remediationDueAt(createdAt, severity, rules)` is pure and picks the rule in
-force *at `createdAt`*, never the latest one — a later tightening never
+force _at `createdAt`_, never the latest one — a later tightening never
 rewrites an already-open finding's due date.
 
 **`ItSecurityFinding`** — `title`, `source` (`pentest` | `scan` | `audit` |
@@ -106,7 +106,7 @@ Re-exported from `apps/api/src/domains/it/governance.ts`.
 
 **Risks** — `createRisk`, `updateRisk` (edits descriptive fields; passing
 `likelihoodResidual`/`impactResidual` rescores the residual band against the
-band set in force *now*), `listRisks`/`riskDetail`, `transitionRisk`,
+band set in force _now_), `listRisks`/`riskDetail`, `transitionRisk`,
 `scoreAgainstBands` (throws if no band set has ever taken effect — a risk
 with no band is a seed defect, never a silent constant), `risksSummary`.
 
@@ -119,7 +119,7 @@ sees a `draft` row: `listPolicies` drops drafts from the result and from any
 `404` for one, the same as a record outside scope), `publishPolicy` (runs
 `evaluateApprovalGate('POL-IT-POLICY-PUBLISH', { type: 'it_policy', resource:
 'it_policies', ownerPartyId: drafterPartyId, ... })` — the drafter never
-publishes their own draft; see *Publication and the approval gate*, below,
+publishes their own draft; see _Publication and the approval gate_, below,
 for how a later call finishes the write once the gate's step is approved),
 `newVersionOf`, `retirePolicy`, `acknowledgePolicy`, `policiesAwaitingCaller`
 (published policies the caller has not yet acknowledged at the current
@@ -183,13 +183,13 @@ Idempotent, run from `seed/it/index.ts` → `seedBootstrap`:
 
 All daily, staggered five minutes apart so they never race the same tenant:
 
-| Job | What |
-|---|---|
-| `runRiskReviewJob` | Risk review overdue ladder (`GOVERNANCE_LADDER_RUNGS`: 30/7/1/0/-1/-7 days), rung recorded on `reviewNotifiedRungs`. |
-| `runFindingOverdueJob` | Finding remediation overdue, severity-scaled rungs (`FINDING_LADDER_RUNGS`), rung recorded on `overdueNotifiedRungs`. |
-| `runControlTestOverdueJob` | A control past `frequencyDays` since its last test (or since creation, if never tested) raises once per overdue window — `testOverdueNotifiedAt` gates re-firing, and `recordTest` clears it. |
-| `runPolicyReacknowledgementJob` | Per published policy whose `reacknowledgeMonths` window has elapsed since `publishedAt`, **one** exception naming how many of the target audience still owe a re-acknowledgement — never one per person. |
-| `runAccessReviewOverdueJob` | A campaign still `open`/`in_progress` past its `dueAt` raises `IT_ACR_CAMPAIGN_OVERDUE` once, gated on `overdueNotifiedAt` (a plain flag, not a ladder — this detector has one crossing to notice, not several rungs). |
+| Job                             | What                                                                                                                                                                                                                   |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `runRiskReviewJob`              | Risk review overdue ladder (`GOVERNANCE_LADDER_RUNGS`: 30/7/1/0/-1/-7 days), rung recorded on `reviewNotifiedRungs`.                                                                                                   |
+| `runFindingOverdueJob`          | Finding remediation overdue, severity-scaled rungs (`FINDING_LADDER_RUNGS`), rung recorded on `overdueNotifiedRungs`.                                                                                                  |
+| `runControlTestOverdueJob`      | A control past `frequencyDays` since its last test (or since creation, if never tested) raises once per overdue window — `testOverdueNotifiedAt` gates re-firing, and `recordTest` clears it.                          |
+| `runPolicyReacknowledgementJob` | Per published policy whose `reacknowledgeMonths` window has elapsed since `publishedAt`, **one** exception naming how many of the target audience still owe a re-acknowledgement — never one per person.               |
+| `runAccessReviewOverdueJob`     | A campaign still `open`/`in_progress` past its `dueAt` raises `IT_ACR_CAMPAIGN_OVERDUE` once, gated on `overdueNotifiedAt` (a plain flag, not a ladder — this detector has one crossing to notice, not several rungs). |
 
 Every ladder is idempotent per rung/window, the same shape the compliance
 calendar's daily job uses.
@@ -289,8 +289,8 @@ Pure arithmetic first (`riskScore`, `riskBandFor`, `remediationDueAt`,
   self-publishes → a step opens to the Finance Head with
   `selfDealingBarTripped: true` → the Finance Head decides it via
   `decideApprovalStep` → chairman calls `publishPolicy` again and it applies,
-  without the gate being re-evaluated (see *Publication and the approval
-  gate*, below).
+  without the gate being re-evaluated (see _Publication and the approval
+  gate_, below).
 - **IT-POL-002** — an employee acknowledges a published policy once per
   version (a second call is a no-op, not a second row), cannot acknowledge a
   draft, and the summary's `acknowledgementRate` reads `null`/a number
@@ -322,7 +322,7 @@ its own `partyId`.
 `POL-IT-POLICY-PUBLISH` is seeded (`apps/api/src/seed/bootstrap.ts`) with
 `approverResolution: ['chairman', 'finance_head']`. For an ordinary
 (non-self-dealing) publish at no declared authority ceiling, tier resolves
-to 0 — `chairman` — and the chairman *is* that tier's approver, so it applies
+to 0 — `chairman` — and the chairman _is_ that tier's approver, so it applies
 directly. The Self-Dealing Bar still applies when the drafter and the
 publisher are the same principal: `evaluateApprovalGate` bumps the tier to 1
 (`finance_head`) and, since the chairman is never `finance_head`, opens an
@@ -333,7 +333,7 @@ Deciding that step (`decideApprovalStep`, `platform/approvals.ts`) does not
 itself publish anything — it only records the decision on the step. A later
 call to `publishPolicy` for the same draft looks for an `ApprovalStep` with
 `subjectType: 'it_policy'`, `subjectId: <the draft's id>` and `state:
-'approved'` *before* re-running the gate; when one exists it finalises the
+'approved'` _before_ re-running the gate; when one exists it finalises the
 write directly (still checking the caller holds ordinary `it_policies:edit`
 standing) rather than re-evaluating `evaluateApprovalGate`, which would only
 ever reproduce the same self-dealing reroute for the same drafter. This

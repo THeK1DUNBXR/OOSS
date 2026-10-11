@@ -11,7 +11,17 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, date, dateTime } from '../../lib/api.js';
-import { Card, EmptyState, ErrorBox, Loading, Metric, PageHeader, StatusChip, Tabs, Withheld } from '../../components/ui.js';
+import {
+  Card,
+  EmptyState,
+  ErrorBox,
+  Loading,
+  Metric,
+  PageHeader,
+  StatusChip,
+  Tabs,
+  Withheld,
+} from '../../components/ui.js';
 import { CreateModal, messageOf, NewButton, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
 
 type Tab = 'pipeline' | 'postings' | 'candidates' | 'interviews' | 'offers' | 'referrals' | 'bgv' | 'onboarding';
@@ -90,7 +100,10 @@ const FUNNEL_COLUMNS: Array<{ key: string; label: string; tone: 'neutral' | 'acc
 
 function PipelineTab() {
   const applications = useApplications();
-  const funnel = useQuery({ queryKey: ['recruiting-funnel'], queryFn: () => api.get<RecruitingFunnel>('/hcm/recruiting/funnel') });
+  const funnel = useQuery({
+    queryKey: ['recruiting-funnel'],
+    queryFn: () => api.get<RecruitingFunnel>('/hcm/recruiting/funnel'),
+  });
 
   return (
     <div className="flex flex-col gap-4">
@@ -102,11 +115,21 @@ function PipelineTab() {
         />
         <Metric
           label="Offer acceptance"
-          value={funnel.data?.offerAcceptanceRatePct != null ? `${funnel.data.offerAcceptanceRatePct}%` : 'Not measured'}
+          value={
+            funnel.data?.offerAcceptanceRatePct != null ? `${funnel.data.offerAcceptanceRatePct}%` : 'Not measured'
+          }
           noActionReason={funnel.data?.offerAcceptanceRatePct == null ? 'No offer has been decided yet.' : undefined}
         />
-        <Metric label="Open applications" value={applications.data?.filter((a) => a.funnelBucket === 'open').length ?? '—'} drillTo="/people/recruiting" />
-        <Metric label="In offer stage" value={applications.data?.filter((a) => a.funnelBucket === 'offer').length ?? '—'} drillTo="/people/recruiting" />
+        <Metric
+          label="Open applications"
+          value={applications.data?.filter((a) => a.funnelBucket === 'open').length ?? '—'}
+          drillTo="/people/recruiting"
+        />
+        <Metric
+          label="In offer stage"
+          value={applications.data?.filter((a) => a.funnelBucket === 'offer').length ?? '—'}
+          drillTo="/people/recruiting"
+        />
       </div>
 
       {applications.isLoading && <Loading />}
@@ -116,13 +139,23 @@ function PipelineTab() {
           {FUNNEL_COLUMNS.map((col) => {
             const rows = applications.data!.filter((a) => a.funnelBucket === col.key);
             return (
-              <Card key={col.key} title={col.label} subtitle={`${rows.length} application${rows.length === 1 ? '' : 's'}`} bodyClassName="flex flex-col gap-2 p-3">
+              <Card
+                key={col.key}
+                title={col.label}
+                subtitle={`${rows.length} application${rows.length === 1 ? '' : 's'}`}
+                bodyClassName="flex flex-col gap-2 p-3"
+              >
                 {rows.length === 0 && <p className="px-1 py-4 text-center text-2xs text-ink-500">None right now.</p>}
                 {rows.map((a) => (
                   <div key={a.id} className="rounded border border-ink-800 bg-ink-900 p-2">
                     <p className="text-xs font-medium text-ink-100">{a.candidate.fullName}</p>
                     <p className="text-2xs text-ink-500">{a.requisition.position.job.title}</p>
-                    <div className="mt-1"><StatusChip status={a.status} tone={col.tone === 'bad' ? 'bad' : col.tone === 'good' ? 'good' : 'neutral'} /></div>
+                    <div className="mt-1">
+                      <StatusChip
+                        status={a.status}
+                        tone={col.tone === 'bad' ? 'bad' : col.tone === 'good' ? 'good' : 'neutral'}
+                      />
+                    </div>
                   </div>
                 ))}
               </Card>
@@ -187,11 +220,20 @@ function PostingsTab() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const requisitions = useRequisitions();
-  const postings = useQuery({ queryKey: ['recruiting-postings'], queryFn: () => api.get<JobPosting[]>('/hcm/recruiting/job-postings') });
-  const [form, setForm] = useState({ requisitionId: '', title: '', description: '', channel: 'internal' as 'internal' | 'external' | 'referral' });
+  const postings = useQuery({
+    queryKey: ['recruiting-postings'],
+    queryFn: () => api.get<JobPosting[]>('/hcm/recruiting/job-postings'),
+  });
+  const [form, setForm] = useState({
+    requisitionId: '',
+    title: '',
+    description: '',
+    channel: 'internal' as 'internal' | 'external' | 'referral',
+  });
 
   const transitionMut = useMutation({
-    mutationFn: ({ id, event }: { id: string; event: string }) => api.post(`/hcm/recruiting/job-postings/${id}/transition`, { event }),
+    mutationFn: ({ id, event }: { id: string; event: string }) =>
+      api.post(`/hcm/recruiting/job-postings/${id}/transition`, { event }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['recruiting-postings'] }),
   });
 
@@ -206,7 +248,10 @@ function PostingsTab() {
       {postings.isLoading && <Loading />}
       {postings.error && <ErrorBox error={postings.error} />}
       {postings.data && postings.data.length === 0 && (
-        <EmptyState message="No job postings yet." hint="A posting is drafted against an open requisition, then published." />
+        <EmptyState
+          message="No job postings yet."
+          hint="A posting is drafted against an open requisition, then published."
+        />
       )}
       {postings.data && postings.data.length > 0 && (
         <table className="table">
@@ -225,13 +270,25 @@ function PostingsTab() {
               <tr key={p.id}>
                 <td className="mono">{p.recordCode}</td>
                 <td>{p.title}</td>
-                <td><StatusChip status={p.channel} /></td>
-                <td><StatusChip status={p.status} tone={p.status === 'Published' ? 'good' : p.status === 'Cancelled' ? 'bad' : 'neutral'} /></td>
+                <td>
+                  <StatusChip status={p.channel} />
+                </td>
+                <td>
+                  <StatusChip
+                    status={p.status}
+                    tone={p.status === 'Published' ? 'good' : p.status === 'Cancelled' ? 'bad' : 'neutral'}
+                  />
+                </td>
                 <td>{p.publishedAt ? date(p.publishedAt) : '—'}</td>
                 <td className="text-right">
                   <div className="flex justify-end gap-1">
                     {p.availableTransitions.map((event) => (
-                      <button key={event} className="btn text-2xs" disabled={transitionMut.isPending} onClick={() => transitionMut.mutate({ id: p.id, event })}>
+                      <button
+                        key={event}
+                        className="btn text-2xs"
+                        disabled={transitionMut.isPending}
+                        onClick={() => transitionMut.mutate({ id: p.id, event })}
+                      >
                         {event.toLowerCase()}
                       </button>
                     ))}
@@ -255,11 +312,19 @@ function PostingsTab() {
           value={form.requisitionId}
           onChange={(v) => setForm({ ...form, requisitionId: v })}
           placeholder={openRequisitions.length === 0 ? 'No open requisitions' : 'Choose a requisition'}
-          options={openRequisitions.map((r) => ({ value: r.id, label: `${r.recordCode} — ${r.position.job.title} (${r.status})` }))}
+          options={openRequisitions.map((r) => ({
+            value: r.id,
+            label: `${r.recordCode} — ${r.position.job.title} (${r.status})`,
+          }))}
           required
         />
         <TextInput label="Title" value={form.title} onChange={(v) => setForm({ ...form, title: v })} required />
-        <TextArea label="Description" value={form.description} onChange={(v) => setForm({ ...form, description: v })} required />
+        <TextArea
+          label="Description"
+          value={form.description}
+          onChange={(v) => setForm({ ...form, description: v })}
+          required
+        />
         <SelectInput
           label="Channel"
           value={form.channel}
@@ -285,14 +350,32 @@ interface CandidateRow {
   currentCtc: number | null;
   expectedCtc: number | null;
   noticeDays: number | null;
-  person: { id: string; fullName: string; primaryEmail: string | null; primaryPhone: string | null; recordCode: string } | null;
+  person: {
+    id: string;
+    fullName: string;
+    primaryEmail: string | null;
+    primaryPhone: string | null;
+    recordCode: string;
+  } | null;
 }
 
 function CandidatesTab() {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
-  const candidates = useQuery({ queryKey: ['recruiting-candidates', q], queryFn: () => api.get<CandidateRow[]>(`/hcm/recruiting/candidates${q ? `?q=${encodeURIComponent(q)}` : ''}`) });
-  const [form, setForm] = useState({ fullName: '', primaryPhone: '', primaryEmail: '', source: 'direct', resumeText: '', currentCtc: '', expectedCtc: '', noticeDays: '' });
+  const candidates = useQuery({
+    queryKey: ['recruiting-candidates', q],
+    queryFn: () => api.get<CandidateRow[]>(`/hcm/recruiting/candidates${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  });
+  const [form, setForm] = useState({
+    fullName: '',
+    primaryPhone: '',
+    primaryEmail: '',
+    source: 'direct',
+    resumeText: '',
+    currentCtc: '',
+    expectedCtc: '',
+    noticeDays: '',
+  });
 
   return (
     <Card
@@ -323,9 +406,23 @@ function CandidatesTab() {
               <tr key={c.id}>
                 <td>{c.person?.fullName ?? '—'}</td>
                 <td className="text-2xs text-ink-400">{c.person?.primaryEmail ?? c.person?.primaryPhone ?? '—'}</td>
-                <td><StatusChip status={c.source} /></td>
-                <td>{c.currentCtc != null ? `₹${c.currentCtc.toLocaleString('en-IN')}` : <Withheld reason="no_permission" />}</td>
-                <td>{c.expectedCtc != null ? `₹${c.expectedCtc.toLocaleString('en-IN')}` : <Withheld reason="no_permission" />}</td>
+                <td>
+                  <StatusChip status={c.source} />
+                </td>
+                <td>
+                  {c.currentCtc != null ? (
+                    `₹${c.currentCtc.toLocaleString('en-IN')}`
+                  ) : (
+                    <Withheld reason="no_permission" />
+                  )}
+                </td>
+                <td>
+                  {c.expectedCtc != null ? (
+                    `₹${c.expectedCtc.toLocaleString('en-IN')}`
+                  ) : (
+                    <Withheld reason="no_permission" />
+                  )}
+                </td>
                 <td>{c.noticeDays ?? '—'}</td>
               </tr>
             ))}
@@ -351,10 +448,20 @@ function CandidatesTab() {
           })
         }
       >
-        <TextInput label="Full name" value={form.fullName} onChange={(v) => setForm({ ...form, fullName: v })} required />
+        <TextInput
+          label="Full name"
+          value={form.fullName}
+          onChange={(v) => setForm({ ...form, fullName: v })}
+          required
+        />
         <Row>
           <TextInput label="Phone" value={form.primaryPhone} onChange={(v) => setForm({ ...form, primaryPhone: v })} />
-          <TextInput label="Email" type="email" value={form.primaryEmail} onChange={(v) => setForm({ ...form, primaryEmail: v })} />
+          <TextInput
+            label="Email"
+            type="email"
+            value={form.primaryEmail}
+            onChange={(v) => setForm({ ...form, primaryEmail: v })}
+          />
         </Row>
         <SelectInput
           label="Source"
@@ -369,10 +476,27 @@ function CandidatesTab() {
           ]}
         />
         <Row>
-          <TextInput label="Current CTC" type="number" value={form.currentCtc} onChange={(v) => setForm({ ...form, currentCtc: v })} hint="Annual, ₹" />
-          <TextInput label="Expected CTC" type="number" value={form.expectedCtc} onChange={(v) => setForm({ ...form, expectedCtc: v })} hint="Annual, ₹" />
+          <TextInput
+            label="Current CTC"
+            type="number"
+            value={form.currentCtc}
+            onChange={(v) => setForm({ ...form, currentCtc: v })}
+            hint="Annual, ₹"
+          />
+          <TextInput
+            label="Expected CTC"
+            type="number"
+            value={form.expectedCtc}
+            onChange={(v) => setForm({ ...form, expectedCtc: v })}
+            hint="Annual, ₹"
+          />
         </Row>
-        <TextInput label="Notice period (days)" type="number" value={form.noticeDays} onChange={(v) => setForm({ ...form, noticeDays: v })} />
+        <TextInput
+          label="Notice period (days)"
+          type="number"
+          value={form.noticeDays}
+          onChange={(v) => setForm({ ...form, noticeDays: v })}
+        />
         <TextArea label="Resume notes" value={form.resumeText} onChange={(v) => setForm({ ...form, resumeText: v })} />
       </CreateModal>
     </Card>
@@ -407,8 +531,18 @@ function InterviewsTab() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [scoreFor, setScoreFor] = useState<InterviewRound | null>(null);
-  const [form, setForm] = useState({ roundNo: '1', kind: 'phone' as 'phone' | 'technical' | 'hr' | 'panel', scheduledAt: '', interviewerPartyIds: '', mode: 'video' as 'video' | 'onsite' | 'phone' });
-  const [scoreForm, setScoreForm] = useState({ recommendation: 'hire' as 'strong_hire' | 'hire' | 'no_hire' | 'strong_no_hire', notes: '', score: '3' });
+  const [form, setForm] = useState({
+    roundNo: '1',
+    kind: 'phone' as 'phone' | 'technical' | 'hr' | 'panel',
+    scheduledAt: '',
+    interviewerPartyIds: '',
+    mode: 'video' as 'video' | 'onsite' | 'phone',
+  });
+  const [scoreForm, setScoreForm] = useState({
+    recommendation: 'hire' as 'strong_hire' | 'hire' | 'no_hire' | 'strong_no_hire',
+    notes: '',
+    score: '3',
+  });
 
   const schedulable = (applications.data ?? []).filter((a) => a.status === 'Screening' || a.status === 'Interviewing');
 
@@ -432,20 +566,28 @@ function InterviewsTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Card title="Choose an application" subtitle="Only applications currently in Screening or Interviewing can take a new round.">
+      <Card
+        title="Choose an application"
+        subtitle="Only applications currently in Screening or Interviewing can take a new round."
+      >
         <SelectInput
           label="Application"
           value={applicationId}
           onChange={setApplicationId}
           placeholder={schedulable.length === 0 ? 'No schedulable applications' : 'Choose an application'}
-          options={schedulable.map((a) => ({ value: a.id, label: `${a.recordCode} — ${a.candidate.fullName} (${a.status})` }))}
+          options={schedulable.map((a) => ({
+            value: a.id,
+            label: `${a.recordCode} — ${a.candidate.fullName} (${a.status})`,
+          }))}
         />
       </Card>
 
       {applicationId && (
         <Card title="Interview rounds" actions={<NewButton label="Schedule round" onClick={() => setOpen(true)} />}>
           {rounds.isLoading && <Loading />}
-          {rounds.data && rounds.data.length === 0 && <EmptyState message="No rounds scheduled for this application yet." />}
+          {rounds.data && rounds.data.length === 0 && (
+            <EmptyState message="No rounds scheduled for this application yet." />
+          )}
           {rounds.data && rounds.data.length > 0 && (
             <table className="table">
               <thead>
@@ -462,10 +604,32 @@ function InterviewsTab() {
                 {rounds.data.map((r) => (
                   <tr key={r.id}>
                     <td>{r.roundNo}</td>
-                    <td><StatusChip status={r.kind} /></td>
+                    <td>
+                      <StatusChip status={r.kind} />
+                    </td>
                     <td>{dateTime(r.scheduledAt)}</td>
-                    <td><StatusChip status={r.status} tone={r.status === 'Completed' ? 'good' : r.status === 'Cancelled' || r.status === 'NoShow' ? 'bad' : 'neutral'} /></td>
-                    <td>{r.outcome ? <StatusChip status={r.outcome} tone={r.outcome === 'advance' ? 'good' : r.outcome === 'reject' ? 'bad' : 'warn'} /> : '—'}</td>
+                    <td>
+                      <StatusChip
+                        status={r.status}
+                        tone={
+                          r.status === 'Completed'
+                            ? 'good'
+                            : r.status === 'Cancelled' || r.status === 'NoShow'
+                              ? 'bad'
+                              : 'neutral'
+                        }
+                      />
+                    </td>
+                    <td>
+                      {r.outcome ? (
+                        <StatusChip
+                          status={r.outcome}
+                          tone={r.outcome === 'advance' ? 'good' : r.outcome === 'reject' ? 'bad' : 'warn'}
+                        />
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                     <td className="text-right">
                       <div className="flex justify-end gap-1">
                         <button className="btn text-2xs" onClick={() => setScoreFor(r)}>
@@ -473,8 +637,18 @@ function InterviewsTab() {
                         </button>
                         {r.status === 'Scheduled' && (
                           <>
-                            <button className="btn text-2xs" onClick={() => complete.mutate({ id: r.id, outcome: 'advance' })}>Advance</button>
-                            <button className="btn text-2xs" onClick={() => complete.mutate({ id: r.id, outcome: 'reject' })}>Reject</button>
+                            <button
+                              className="btn text-2xs"
+                              onClick={() => complete.mutate({ id: r.id, outcome: 'advance' })}
+                            >
+                              Advance
+                            </button>
+                            <button
+                              className="btn text-2xs"
+                              onClick={() => complete.mutate({ id: r.id, outcome: 'reject' })}
+                            >
+                              Reject
+                            </button>
                           </>
                         )}
                       </div>
@@ -497,12 +671,21 @@ function InterviewsTab() {
                 kind: form.kind,
                 scheduledAt: form.scheduledAt,
                 mode: form.mode,
-                interviewerPartyIds: form.interviewerPartyIds.split(',').map((s) => s.trim()).filter(Boolean),
+                interviewerPartyIds: form.interviewerPartyIds
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean),
               })
             }
           >
             <Row>
-              <TextInput label="Round no." type="number" value={form.roundNo} onChange={(v) => setForm({ ...form, roundNo: v })} required />
+              <TextInput
+                label="Round no."
+                type="number"
+                value={form.roundNo}
+                onChange={(v) => setForm({ ...form, roundNo: v })}
+                required
+              />
               <SelectInput
                 label="Kind"
                 value={form.kind}
@@ -515,7 +698,13 @@ function InterviewsTab() {
                 ]}
               />
             </Row>
-            <TextInput label="Scheduled at" type="date" value={form.scheduledAt} onChange={(v) => setForm({ ...form, scheduledAt: v })} required />
+            <TextInput
+              label="Scheduled at"
+              type="date"
+              value={form.scheduledAt}
+              onChange={(v) => setForm({ ...form, scheduledAt: v })}
+              required
+            />
             <SelectInput
               label="Mode"
               value={form.mode}
@@ -539,9 +728,15 @@ function InterviewsTab() {
       {scoreFor && (
         <Card
           title={`Scorecards — round ${scoreFor.roundNo}`}
-          actions={<button className="btn text-2xs" onClick={() => setScoreFor(null)}>Close</button>}
+          actions={
+            <button className="btn text-2xs" onClick={() => setScoreFor(null)}>
+              Close
+            </button>
+          }
         >
-          {scorecards.data && scorecards.data.length === 0 && <EmptyState message="No scorecards submitted for this round yet." />}
+          {scorecards.data && scorecards.data.length === 0 && (
+            <EmptyState message="No scorecards submitted for this round yet." />
+          )}
           {scorecards.data && scorecards.data.length > 0 && (
             <ul className="flex flex-col gap-2">
               {scorecards.data.map((s) => (
@@ -566,7 +761,11 @@ function ScoreForm({
 }: {
   roundId: string;
   form: { recommendation: 'strong_hire' | 'hire' | 'no_hire' | 'strong_no_hire'; notes: string; score: string };
-  setForm: (f: { recommendation: 'strong_hire' | 'hire' | 'no_hire' | 'strong_no_hire'; notes: string; score: string }) => void;
+  setForm: (f: {
+    recommendation: 'strong_hire' | 'hire' | 'no_hire' | 'strong_no_hire';
+    notes: string;
+    score: string;
+  }) => void;
 }) {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -599,7 +798,12 @@ function ScoreForm({
             { value: 'strong_no_hire', label: 'Strong no hire' },
           ]}
         />
-        <TextInput label="Overall score (1–5)" type="number" value={form.score} onChange={(v) => setForm({ ...form, score: v })} />
+        <TextInput
+          label="Overall score (1–5)"
+          type="number"
+          value={form.score}
+          onChange={(v) => setForm({ ...form, score: v })}
+        />
       </Row>
       <TextArea label="Notes" value={form.notes} onChange={(v) => setForm({ ...form, notes: v })} />
       <button className="btn-primary mt-2" disabled={submit.isPending} onClick={() => submit.mutate()}>
@@ -632,7 +836,10 @@ function OffersTab() {
   const [joinDate, setJoinDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [form, setForm] = useState({ applicationId: '', ctc: '', joiningDate: '', validUntil: '' });
 
-  const offers = useQuery({ queryKey: ['recruiting-offers'], queryFn: () => api.get<OfferRow[]>('/hcm/recruiting/offers') });
+  const offers = useQuery({
+    queryKey: ['recruiting-offers'],
+    queryFn: () => api.get<OfferRow[]>('/hcm/recruiting/offers'),
+  });
   const selectable = (applications.data ?? []).filter((a) => a.status === 'Selected');
   const byId = new Map((applications.data ?? []).map((a) => [a.id, a]));
 
@@ -646,7 +853,10 @@ function OffersTab() {
   });
 
   const joinMut = useMutation({
-    mutationFn: () => api.post(`/hcm/recruiting/applications/${joining!.applicationId}/join-and-onboard`, { hireEffectiveDate: joinDate }),
+    mutationFn: () =>
+      api.post(`/hcm/recruiting/applications/${joining!.applicationId}/join-and-onboard`, {
+        hireEffectiveDate: joinDate,
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['hr-applications'] });
       qc.invalidateQueries({ queryKey: ['hr-requisitions'] });
@@ -662,7 +872,9 @@ function OffersTab() {
     >
       {offers.isLoading && <Loading />}
       {offers.error && <ErrorBox error={offers.error} />}
-      {offers.data && offers.data.length === 0 && <EmptyState message="No offers drafted yet." hint="An offer is drafted once a candidate reaches Selected." />}
+      {offers.data && offers.data.length === 0 && (
+        <EmptyState message="No offers drafted yet." hint="An offer is drafted once a candidate reaches Selected." />
+      )}
       {offers.data && offers.data.length > 0 && (
         <table className="table">
           <thead>
@@ -682,11 +894,27 @@ function OffersTab() {
                 <td>{byId.get(o.applicationId)?.candidate.fullName ?? '—'}</td>
                 <td>{o.ctc != null ? `₹${o.ctc.toLocaleString('en-IN')}` : <Withheld reason="no_permission" />}</td>
                 <td>{date(o.joiningDate)}</td>
-                <td><StatusChip status={o.status} tone={o.status === 'Accepted' ? 'good' : o.status === 'Declined' || o.status === 'Rescinded' ? 'bad' : 'neutral'} /></td>
+                <td>
+                  <StatusChip
+                    status={o.status}
+                    tone={
+                      o.status === 'Accepted'
+                        ? 'good'
+                        : o.status === 'Declined' || o.status === 'Rescinded'
+                          ? 'bad'
+                          : 'neutral'
+                    }
+                  />
+                </td>
                 <td className="text-right">
                   <div className="flex justify-end gap-1">
                     {o.availableTransitions.map((event) => (
-                      <button key={event} className="btn text-2xs" disabled={transitionMut.isPending} onClick={() => transitionMut.mutate({ id: o.id, event })}>
+                      <button
+                        key={event}
+                        className="btn text-2xs"
+                        disabled={transitionMut.isPending}
+                        onClick={() => transitionMut.mutate({ id: o.id, event })}
+                      >
                         {event.toLowerCase()}
                       </button>
                     ))}
@@ -718,10 +946,28 @@ function OffersTab() {
           options={selectable.map((a) => ({ value: a.id, label: `${a.recordCode} — ${a.candidate.fullName}` }))}
           required
         />
-        <TextInput label="CTC (annual, ₹)" type="number" value={form.ctc} onChange={(v) => setForm({ ...form, ctc: v })} required />
+        <TextInput
+          label="CTC (annual, ₹)"
+          type="number"
+          value={form.ctc}
+          onChange={(v) => setForm({ ...form, ctc: v })}
+          required
+        />
         <Row>
-          <TextInput label="Joining date" type="date" value={form.joiningDate} onChange={(v) => setForm({ ...form, joiningDate: v })} required />
-          <TextInput label="Valid until" type="date" value={form.validUntil} onChange={(v) => setForm({ ...form, validUntil: v })} required />
+          <TextInput
+            label="Joining date"
+            type="date"
+            value={form.joiningDate}
+            onChange={(v) => setForm({ ...form, joiningDate: v })}
+            required
+          />
+          <TextInput
+            label="Valid until"
+            type="date"
+            value={form.validUntil}
+            onChange={(v) => setForm({ ...form, validUntil: v })}
+            required
+          />
         </Row>
       </CreateModal>
 
@@ -761,11 +1007,21 @@ const REFERRAL_NEXT: Record<string, string[]> = {
 function ReferralsTab() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const referrals = useQuery({ queryKey: ['recruiting-referrals'], queryFn: () => api.get<ReferralRow[]>('/hcm/recruiting/referrals') });
-  const [form, setForm] = useState({ referrerEmploymentId: '', fullName: '', primaryPhone: '', primaryEmail: '', bonusAmount: '' });
+  const referrals = useQuery({
+    queryKey: ['recruiting-referrals'],
+    queryFn: () => api.get<ReferralRow[]>('/hcm/recruiting/referrals'),
+  });
+  const [form, setForm] = useState({
+    referrerEmploymentId: '',
+    fullName: '',
+    primaryPhone: '',
+    primaryEmail: '',
+    bonusAmount: '',
+  });
 
   const statusMut = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => api.post(`/hcm/recruiting/referrals/${id}/status`, { status }),
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api.post(`/hcm/recruiting/referrals/${id}/status`, { status }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['recruiting-referrals'] }),
   });
 
@@ -792,12 +1048,27 @@ function ReferralsTab() {
             {referrals.data.map((r) => (
               <tr key={r.id}>
                 <td className="mono text-2xs">{r.referrerEmploymentId}</td>
-                <td>{r.bonusAmount != null ? `₹${r.bonusAmount.toLocaleString('en-IN')}` : <Withheld reason="no_permission" />}</td>
-                <td><StatusChip status={r.status} tone={r.status === 'BonusPaid' ? 'good' : r.status === 'Rejected' ? 'bad' : 'neutral'} /></td>
+                <td>
+                  {r.bonusAmount != null ? (
+                    `₹${r.bonusAmount.toLocaleString('en-IN')}`
+                  ) : (
+                    <Withheld reason="no_permission" />
+                  )}
+                </td>
+                <td>
+                  <StatusChip
+                    status={r.status}
+                    tone={r.status === 'BonusPaid' ? 'good' : r.status === 'Rejected' ? 'bad' : 'neutral'}
+                  />
+                </td>
                 <td className="text-right">
                   <div className="flex justify-end gap-1">
                     {(REFERRAL_NEXT[r.status] ?? []).map((next) => (
-                      <button key={next} className="btn text-2xs" onClick={() => statusMut.mutate({ id: r.id, status: next })}>
+                      <button
+                        key={next}
+                        className="btn text-2xs"
+                        onClick={() => statusMut.mutate({ id: r.id, status: next })}
+                      >
                         {next.toLowerCase()}
                       </button>
                     ))}
@@ -817,18 +1088,43 @@ function ReferralsTab() {
         onSubmit={() =>
           api.post('/hcm/recruiting/referrals', {
             referrerEmploymentId: form.referrerEmploymentId,
-            candidate: { fullName: form.fullName, primaryPhone: form.primaryPhone || undefined, primaryEmail: form.primaryEmail || undefined },
+            candidate: {
+              fullName: form.fullName,
+              primaryPhone: form.primaryPhone || undefined,
+              primaryEmail: form.primaryEmail || undefined,
+            },
             bonusAmount: form.bonusAmount ? Number(form.bonusAmount) : undefined,
           })
         }
       >
-        <TextInput label="Referring employment ID" value={form.referrerEmploymentId} onChange={(v) => setForm({ ...form, referrerEmploymentId: v })} required hint="From People → Employees" />
-        <TextInput label="Candidate name" value={form.fullName} onChange={(v) => setForm({ ...form, fullName: v })} required />
+        <TextInput
+          label="Referring employment ID"
+          value={form.referrerEmploymentId}
+          onChange={(v) => setForm({ ...form, referrerEmploymentId: v })}
+          required
+          hint="From People → Employees"
+        />
+        <TextInput
+          label="Candidate name"
+          value={form.fullName}
+          onChange={(v) => setForm({ ...form, fullName: v })}
+          required
+        />
         <Row>
           <TextInput label="Phone" value={form.primaryPhone} onChange={(v) => setForm({ ...form, primaryPhone: v })} />
-          <TextInput label="Email" type="email" value={form.primaryEmail} onChange={(v) => setForm({ ...form, primaryEmail: v })} />
+          <TextInput
+            label="Email"
+            type="email"
+            value={form.primaryEmail}
+            onChange={(v) => setForm({ ...form, primaryEmail: v })}
+          />
         </Row>
-        <TextInput label="Bonus amount (₹)" type="number" value={form.bonusAmount} onChange={(v) => setForm({ ...form, bonusAmount: v })} />
+        <TextInput
+          label="Bonus amount (₹)"
+          type="number"
+          value={form.bonusAmount}
+          onChange={(v) => setForm({ ...form, bonusAmount: v })}
+        />
       </CreateModal>
     </Card>
   );
@@ -852,7 +1148,10 @@ function BgvTab() {
   const qc = useQueryClient();
   const applications = useApplications();
   const [open, setOpen] = useState(false);
-  const bgvs = useQuery({ queryKey: ['recruiting-bgv'], queryFn: () => api.get<BgvRow[]>('/hcm/recruiting/background-verifications') });
+  const bgvs = useQuery({
+    queryKey: ['recruiting-bgv'],
+    queryFn: () => api.get<BgvRow[]>('/hcm/recruiting/background-verifications'),
+  });
   const [form, setForm] = useState({ applicationId: '', vendor: '', checks: 'identity, address' });
 
   const updateMut = useMutation({
@@ -886,13 +1185,34 @@ function BgvTab() {
               <tr key={b.id}>
                 <td>{b.vendor}</td>
                 <td className="text-2xs text-ink-400">{b.checks.join(', ')}</td>
-                <td><StatusChip status={b.status} /></td>
-                <td>{b.outcome ? <StatusChip status={b.outcome} tone={b.outcome === 'clear' ? 'good' : b.outcome === 'adverse' ? 'bad' : 'neutral'} /> : '—'}</td>
+                <td>
+                  <StatusChip status={b.status} />
+                </td>
+                <td>
+                  {b.outcome ? (
+                    <StatusChip
+                      status={b.outcome}
+                      tone={b.outcome === 'clear' ? 'good' : b.outcome === 'adverse' ? 'bad' : 'neutral'}
+                    />
+                  ) : (
+                    '—'
+                  )}
+                </td>
                 <td className="text-right">
                   {b.status !== 'Completed' && (
                     <div className="flex justify-end gap-1">
-                      <button className="btn text-2xs" onClick={() => updateMut.mutate({ id: b.id, status: 'Completed', outcome: 'clear' })}>Clear</button>
-                      <button className="btn text-2xs" onClick={() => updateMut.mutate({ id: b.id, status: 'Completed', outcome: 'adverse' })}>Adverse</button>
+                      <button
+                        className="btn text-2xs"
+                        onClick={() => updateMut.mutate({ id: b.id, status: 'Completed', outcome: 'clear' })}
+                      >
+                        Clear
+                      </button>
+                      <button
+                        className="btn text-2xs"
+                        onClick={() => updateMut.mutate({ id: b.id, status: 'Completed', outcome: 'adverse' })}
+                      >
+                        Adverse
+                      </button>
                     </div>
                   )}
                 </td>
@@ -911,7 +1231,10 @@ function BgvTab() {
           api.post('/hcm/recruiting/background-verifications', {
             applicationId: form.applicationId || undefined,
             vendor: form.vendor,
-            checks: form.checks.split(',').map((s) => s.trim()).filter(Boolean),
+            checks: form.checks
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
           })
         }
       >
@@ -920,11 +1243,19 @@ function BgvTab() {
           value={form.applicationId}
           onChange={(v) => setForm({ ...form, applicationId: v })}
           placeholder="Choose an application"
-          options={(applications.data ?? []).map((a) => ({ value: a.id, label: `${a.recordCode} — ${a.candidate.fullName}` }))}
+          options={(applications.data ?? []).map((a) => ({
+            value: a.id,
+            label: `${a.recordCode} — ${a.candidate.fullName}`,
+          }))}
           required
         />
         <TextInput label="Vendor" value={form.vendor} onChange={(v) => setForm({ ...form, vendor: v })} required />
-        <TextInput label="Checks" value={form.checks} onChange={(v) => setForm({ ...form, checks: v })} hint="Comma-separated" />
+        <TextInput
+          label="Checks"
+          value={form.checks}
+          onChange={(v) => setForm({ ...form, checks: v })}
+          hint="Comma-separated"
+        />
       </CreateModal>
     </Card>
   );
@@ -955,8 +1286,16 @@ function OnboardingTab() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [employmentId, setEmploymentId] = useState('');
-  const templates = useQuery({ queryKey: ['recruiting-onboarding-templates'], queryFn: () => api.get<OnboardingTemplate[]>('/hcm/recruiting/onboarding-templates') });
-  const [form, setForm] = useState({ title: '', category: 'general', assignee: 'hr' as 'hr' | 'it' | 'manager' | 'employee', dueOffsetDays: '0' });
+  const templates = useQuery({
+    queryKey: ['recruiting-onboarding-templates'],
+    queryFn: () => api.get<OnboardingTemplate[]>('/hcm/recruiting/onboarding-templates'),
+  });
+  const [form, setForm] = useState({
+    title: '',
+    category: 'general',
+    assignee: 'hr' as 'hr' | 'it' | 'manager' | 'employee',
+    dueOffsetDays: '0',
+  });
 
   const tasks = useQuery({
     queryKey: ['recruiting-onboarding-tasks', employmentId],
@@ -965,7 +1304,8 @@ function OnboardingTab() {
   });
 
   const complete = useMutation({
-    mutationFn: ({ id, skip }: { id: string; skip: boolean }) => api.post(`/hcm/recruiting/onboarding-tasks/${id}/complete`, { skip }),
+    mutationFn: ({ id, skip }: { id: string; skip: boolean }) =>
+      api.post(`/hcm/recruiting/onboarding-tasks/${id}/complete`, { skip }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['recruiting-onboarding-tasks', employmentId] }),
   });
 
@@ -993,7 +1333,9 @@ function OnboardingTab() {
                 <tr key={t.id}>
                   <td>{t.title}</td>
                   <td>{t.category}</td>
-                  <td><StatusChip status={t.assignee} /></td>
+                  <td>
+                    <StatusChip status={t.assignee} />
+                  </td>
                   <td>{t.dueOffsetDays}d</td>
                 </tr>
               ))}
@@ -1006,7 +1348,9 @@ function OnboardingTab() {
           title="Add an onboarding task template"
           onClose={() => setOpen(false)}
           invalidate={[['recruiting-onboarding-templates']]}
-          onSubmit={() => api.post('/hcm/recruiting/onboarding-templates', { ...form, dueOffsetDays: Number(form.dueOffsetDays) })}
+          onSubmit={() =>
+            api.post('/hcm/recruiting/onboarding-templates', { ...form, dueOffsetDays: Number(form.dueOffsetDays) })
+          }
         >
           <TextInput label="Title" value={form.title} onChange={(v) => setForm({ ...form, title: v })} required />
           <Row>
@@ -1023,14 +1367,26 @@ function OnboardingTab() {
               ]}
             />
           </Row>
-          <TextInput label="Due offset (days from joining)" type="number" value={form.dueOffsetDays} onChange={(v) => setForm({ ...form, dueOffsetDays: v })} />
+          <TextInput
+            label="Due offset (days from joining)"
+            type="number"
+            value={form.dueOffsetDays}
+            onChange={(v) => setForm({ ...form, dueOffsetDays: v })}
+          />
         </CreateModal>
       </Card>
 
       <Card title="A joiner's checklist" subtitle="Look up the instantiated tasks for one employment.">
-        <TextInput label="Employment ID" value={employmentId} onChange={setEmploymentId} placeholder="From People → Employees, or the offer you just joined" />
+        <TextInput
+          label="Employment ID"
+          value={employmentId}
+          onChange={setEmploymentId}
+          placeholder="From People → Employees, or the offer you just joined"
+        />
         {employmentId && tasks.isLoading && <Loading />}
-        {employmentId && tasks.data && tasks.data.length === 0 && <EmptyState message="No onboarding tasks instantiated for this employment yet." />}
+        {employmentId && tasks.data && tasks.data.length === 0 && (
+          <EmptyState message="No onboarding tasks instantiated for this employment yet." />
+        )}
         {employmentId && tasks.data && tasks.data.length > 0 && (
           <table className="table mt-3">
             <thead>
@@ -1046,14 +1402,25 @@ function OnboardingTab() {
               {tasks.data.map((t) => (
                 <tr key={t.id}>
                   <td>{t.title}</td>
-                  <td><StatusChip status={t.assignee} /></td>
+                  <td>
+                    <StatusChip status={t.assignee} />
+                  </td>
                   <td>{t.dueDate ? date(t.dueDate) : '—'}</td>
-                  <td><StatusChip status={t.status} tone={t.status === 'Done' ? 'good' : t.status === 'Skipped' ? 'bad' : 'neutral'} /></td>
+                  <td>
+                    <StatusChip
+                      status={t.status}
+                      tone={t.status === 'Done' ? 'good' : t.status === 'Skipped' ? 'bad' : 'neutral'}
+                    />
+                  </td>
                   <td className="text-right">
                     {t.status === 'Pending' && (
                       <div className="flex justify-end gap-1">
-                        <button className="btn text-2xs" onClick={() => complete.mutate({ id: t.id, skip: false })}>Done</button>
-                        <button className="btn text-2xs" onClick={() => complete.mutate({ id: t.id, skip: true })}>Skip</button>
+                        <button className="btn text-2xs" onClick={() => complete.mutate({ id: t.id, skip: false })}>
+                          Done
+                        </button>
+                        <button className="btn text-2xs" onClick={() => complete.mutate({ id: t.id, skip: true })}>
+                          Skip
+                        </button>
                       </div>
                     )}
                   </td>

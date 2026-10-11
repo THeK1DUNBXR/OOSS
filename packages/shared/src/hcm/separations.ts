@@ -13,7 +13,13 @@ export const HCM_SEPARATIONS_MODULE = 'separations' as const;
 // ---------------------------------------------------------------------------
 
 export const RESIGNATION_REASON_CATEGORIES = [
-  'personal', 'career_growth', 'compensation', 'relocation', 'health', 'conduct', 'other',
+  'personal',
+  'career_growth',
+  'compensation',
+  'relocation',
+  'health',
+  'conduct',
+  'other',
 ] as const;
 export type ResignationReasonCategory = (typeof RESIGNATION_REASON_CATEGORIES)[number];
 
@@ -71,8 +77,7 @@ export function resolveNoticePolicy(
 
   const candidates = active.filter(
     (p) =>
-      (p.grade === null || p.grade === grade) &&
-      (p.engagementType === null || p.engagementType === engagementType),
+      (p.grade === null || p.grade === grade) && (p.engagementType === null || p.engagementType === engagementType),
   );
   if (candidates.length === 0) return null;
   return candidates.reduce((best, p) => (specificity(p) > specificity(best) ? p : best));

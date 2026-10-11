@@ -29,8 +29,13 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
-import { auditWrite } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
+import { assertCanAssignRole } from '../platform/roleAssignment.js';
+
+// board_meeting is also registered by compliance/corporate.ts; this module writes
+// it too, and board.test.ts loads this module without the compliance tree.
+registerGovernedEntities('board', ['board_member', 'board_meeting', 'resolution']);
 
 const DAY_MS = 86_400_000;
 
@@ -63,6 +68,19 @@ export async function addBoardMember(input: AddBoardMemberInput) {
   const person = await prisma.person.findFirst({ where: { id: input.personId } });
   if (!person) throw ApiError.notFound('Person');
 
+  // A director-family seat also writes a 'director' affiliation, which carries
+  // the role. Checked before the board member row below, so a refusal writes
+  // nothing; board_meetings:create alone does not cover the director role.
+  const directorFamily = DIRECTOR_FAMILY_ROLES.includes(input.role);
+  const existingDirector = directorFamily
+    ? await prisma.affiliation.findFirst({
+        where: { partyId: input.personId, affiliationType: 'director', roleSlug: 'director' },
+      })
+    : null;
+  if (directorFamily && (!existingDirector || existingDirector.status !== 'active')) {
+    await assertCanAssignRole({ roleSlug: 'director', targetPartyId: input.personId });
+  }
+
   const recordCode = await nextRecordCode('BDM');
   const member = await prisma.boardMember.create({
     data: {
@@ -81,10 +99,8 @@ export async function addBoardMember(input: AddBoardMemberInput) {
   // relationship to this entity — the same affiliation-on-creation pattern
   // `signIns.ts` uses for a sign-in. This never creates a User or a
   // Principal; that stays the sign-in action's job.
-  if (DIRECTOR_FAMILY_ROLES.includes(input.role)) {
-    const existing = await prisma.affiliation.findFirst({
-      where: { partyId: input.personId, affiliationType: 'director', roleSlug: 'director' },
-    });
+  if (directorFamily) {
+    const existing = existingDirector;
     if (!existing) {
       await prisma.affiliation.create({
         data: {
@@ -150,14 +166,19 @@ export async function declareInterests(id: string, input: DeclareInterestsInput)
   });
 
   // MBP-1: close whatever annual-declaration item is open for this member.
-  await closeOpenComplianceItems({ kind: 'mbp1_annual', relatedType: 'board_member', relatedId: id, resolvedOn: declaredOn, filedRef: null });
+  await closeOpenComplianceItems({
+    kind: 'mbp1_annual',
+    relatedType: 'board_member',
+    relatedId: id,
+    resolvedOn: declaredOn,
+    filedRef: null,
+  });
 
   await auditWrite({
     action: 'update',
     subjectType: 'board_member',
     subjectId: id,
     after: { interestsDeclaredOn: declaredOn },
-    force: true,
   });
 
   return updated;
@@ -183,7 +204,9 @@ export async function listBoardMembers() {
   return members.map((m) => ({
     ...m,
     personName: nameById.get(m.personId) ?? 'Unknown',
-    interestsDeclaredThisYear: Boolean(m.interestsDeclaredOn && m.interestsDeclaredOn >= start && m.interestsDeclaredOn <= end),
+    interestsDeclaredThisYear: Boolean(
+      m.interestsDeclaredOn && m.interestsDeclaredOn >= start && m.interestsDeclaredOn <= end,
+    ),
   }));
 }
 
@@ -393,7 +416,6 @@ export async function enterMinutes(meetingId: string, input: EnterMinutesInput =
       subjectType: 'board_meeting',
       subjectId: meetingId,
       after: { minutesEnteredOn: now, late: true, daysSinceHeld: Math.floor(daysSinceHeld), reason: input.reason },
-      force: true,
     });
   }
 
@@ -404,7 +426,13 @@ export async function enterMinutes(meetingId: string, input: EnterMinutesInput =
   });
 
   // Minutes entered on time clears the corresponding compliance item.
-  await closeOpenComplianceItems({ kind: 'minutes_entry_30d', relatedType: 'board_meeting', relatedId: meetingId, resolvedOn: now, filedRef: late ? `Late: ${input.reason}` : null });
+  await closeOpenComplianceItems({
+    kind: 'minutes_entry_30d',
+    relatedType: 'board_meeting',
+    relatedId: meetingId,
+    resolvedOn: now,
+    filedRef: late ? `Late: ${input.reason}` : null,
+  });
 
   return updated;
 }
@@ -450,7 +478,10 @@ function withPresentCount<T extends { attendees: unknown }>(m: T): T & { present
 export async function listMeetings() {
   await assertCan({ resource: 'board_meetings', verb: 'view' });
   const auth = currentAuth();
-  const meetings = await prisma.boardMeeting.findMany({ where: { tenantId: auth.tenantId }, orderBy: { scheduledFor: 'desc' } });
+  const meetings = await prisma.boardMeeting.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { scheduledFor: 'desc' },
+  });
   return meetings.map(withPresentCount);
 }
 
@@ -654,7 +685,10 @@ export async function closeCirculation(resolutionId: string) {
   const demandThreshold = meetingDemandThreshold(memberCount);
 
   if (demandCount >= demandThreshold && demandCount > 0) {
-    const updated = await prisma.resolution.update({ where: { id: resolutionId }, data: { outcome: 'meeting_demanded' } });
+    const updated = await prisma.resolution.update({
+      where: { id: resolutionId },
+      data: { outcome: 'meeting_demanded' },
+    });
     await emit({
       name: EVENTS.RESOLUTION_FAILED,
       subject: { entityType: 'resolution', entityId: resolutionId, recordCode: resolution.recordCode },
@@ -771,14 +805,19 @@ export async function recordMgt14(resolutionId: string, srn: string, filedOn: Da
     data: { mgt14Srn: srn, mgt14FiledOn: filedOn },
   });
 
-  await closeOpenComplianceItems({ kind: 'mgt14_30d', relatedType: 'resolution', relatedId: resolutionId, resolvedOn: filedOn, filedRef: srn });
+  await closeOpenComplianceItems({
+    kind: 'mgt14_30d',
+    relatedType: 'resolution',
+    relatedId: resolutionId,
+    resolvedOn: filedOn,
+    filedRef: srn,
+  });
 
   await auditWrite({
     action: 'update',
     subjectType: 'resolution',
     subjectId: resolutionId,
     after: { mgt14Srn: srn, mgt14FiledOn: filedOn },
-    force: true,
   });
 
   return updated;
@@ -788,7 +827,11 @@ export async function listResolutions(filter: { outcome?: string; meetingId?: st
   await assertCan({ resource: 'resolutions', verb: 'view' });
   const auth = currentAuth();
   const resolutions = await prisma.resolution.findMany({
-    where: { tenantId: auth.tenantId, ...(filter.outcome ? { outcome: filter.outcome } : {}), ...(filter.meetingId ? { meetingId: filter.meetingId } : {}) },
+    where: {
+      tenantId: auth.tenantId,
+      ...(filter.outcome ? { outcome: filter.outcome } : {}),
+      ...(filter.meetingId ? { meetingId: filter.meetingId } : {}),
+    },
     orderBy: { createdAt: 'desc' },
   });
   const votes = await prisma.vote.findMany({ where: { resolutionId: { in: resolutions.map((r) => r.id) } } });
@@ -859,10 +902,22 @@ export async function resolveComplianceItem(id: string, input: ResolveCompliance
   return updated;
 }
 
-async function closeOpenComplianceItems(input: { kind: string; relatedType: string; relatedId: string; resolvedOn: Date; filedRef: string | null }) {
+async function closeOpenComplianceItems(input: {
+  kind: string;
+  relatedType: string;
+  relatedId: string;
+  resolvedOn: Date;
+  filedRef: string | null;
+}) {
   const auth = currentAuth();
   const open = await prisma.complianceItem.findMany({
-    where: { tenantId: auth.tenantId, kind: input.kind, relatedType: input.relatedType, relatedId: input.relatedId, status: 'open' },
+    where: {
+      tenantId: auth.tenantId,
+      kind: input.kind,
+      relatedType: input.relatedType,
+      relatedId: input.relatedId,
+      status: 'open',
+    },
   });
   for (const item of open) {
     await prisma.complianceItem.update({
@@ -890,7 +945,13 @@ interface RaiseComplianceItemInput {
 async function raiseComplianceItem(input: RaiseComplianceItemInput): Promise<void> {
   const auth = currentAuth();
   const existing = await prisma.complianceItem.findFirst({
-    where: { tenantId: auth.tenantId, kind: input.kind, relatedType: input.relatedType, relatedId: input.relatedId, dueOn: input.dueOn },
+    where: {
+      tenantId: auth.tenantId,
+      kind: input.kind,
+      relatedType: input.relatedType,
+      relatedId: input.relatedId,
+      dueOn: input.dueOn,
+    },
   });
   if (existing) return;
 
@@ -935,7 +996,9 @@ export async function runBoardComplianceJob(): Promise<number> {
   return raised;
 }
 
-async function sweepMeetingGap(profile: { isSmallCompany: boolean | null; incorporatedOn: Date | null } | null): Promise<number> {
+async function sweepMeetingGap(
+  profile: { isSmallCompany: boolean | null; incorporatedOn: Date | null } | null,
+): Promise<number> {
   const auth = currentAuth();
   const lastHeld = await prisma.boardMeeting.findFirst({
     where: { tenantId: auth.tenantId, kind: 'board', heldOn: { not: null } },
@@ -963,7 +1026,8 @@ async function sweepMeetingGap(profile: { isSmallCompany: boolean | null; incorp
     await raiseComplianceItem({
       kind: 'board_meeting_gap',
       title: 'Hold the next half-yearly board meeting',
-      basis: 'SS-1 (small company): at least one board meeting every half-year, with at least 90 days between meetings.',
+      basis:
+        'SS-1 (small company): at least one board meeting every half-year, with at least 90 days between meetings.',
       dueOn: addDays(lastHeld.heldOn!, 180),
       relatedType: 'tenant',
       relatedId: auth.tenantId,
@@ -1061,7 +1125,9 @@ async function sweepMbp1(profile: { financialYearEndMonth: number | null } | nul
   return raised;
 }
 
-async function sweepAgmDue(profile: { financialYearEndMonth: number | null; incorporatedOn: Date | null } | null): Promise<number> {
+async function sweepAgmDue(
+  profile: { financialYearEndMonth: number | null; incorporatedOn: Date | null } | null,
+): Promise<number> {
   if (!profile) return 0;
   const auth = currentAuth();
   const now = new Date();
@@ -1091,7 +1157,13 @@ async function sweepAgmDue(profile: { financialYearEndMonth: number | null; inco
 async function sweepMgt14(): Promise<number> {
   const auth = currentAuth();
   const resolutions = await prisma.resolution.findMany({
-    where: { tenantId: auth.tenantId, kind: 'shareholder_special', outcome: 'passed', mgt14FiledOn: null, passedOn: { not: null } },
+    where: {
+      tenantId: auth.tenantId,
+      kind: 'shareholder_special',
+      outcome: 'passed',
+      mgt14FiledOn: null,
+      passedOn: { not: null },
+    },
   });
   let raised = 0;
   for (const r of resolutions) {

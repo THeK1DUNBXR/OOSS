@@ -92,9 +92,16 @@ async function buildHolderKeyIndex(): Promise<Map<string, HolderKeyMeta>> {
 
   const out = new Map<string, HolderKeyMeta>();
   for (const h of holders) {
-    const email = h.kind === 'person' && h.personId ? emailByPersonId.get(h.personId) ?? null : null;
+    const email = h.kind === 'person' && h.personId ? (emailByPersonId.get(h.personId) ?? null) : null;
     const { key, matchedBy } = holderKeyFor({ email, panHash: h.panNumber ? panHash(h.panNumber) : null });
-    out.set(h.id, { holderId: h.id, kind: h.kind, heldByTenantId: h.heldByTenantId, folioNumber: h.folioNumber, holderKey: key, matchedBy });
+    out.set(h.id, {
+      holderId: h.id,
+      kind: h.kind,
+      heldByTenantId: h.heldByTenantId,
+      folioNumber: h.folioNumber,
+      holderKey: key,
+      matchedBy,
+    });
   }
   return out;
 }
@@ -124,7 +131,11 @@ function fiscalYearToDatePeriods(cutoffPeriod: string): string[] {
   return periods;
 }
 
-function sumPnl(rows: Array<{ income: number; expense: number; net: number }>): { income: number; expense: number; net: number } {
+function sumPnl(rows: Array<{ income: number; expense: number; net: number }>): {
+  income: number;
+  expense: number;
+  net: number;
+} {
   const income = round2(rows.reduce((s, r) => s + r.income, 0));
   const expense = round2(rows.reduce((s, r) => s + r.expense, 0));
   return { income, expense, net: round2(income - expense) };
@@ -149,14 +160,24 @@ async function certificateOverdueCount(): Promise<number> {
   const auth = currentAuth();
   const cutoff = new Date(Date.now() - CERTIFICATE_WINDOW_DAYS * 86_400_000);
   const overdue = await prisma.shareTransaction.findMany({
-    where: { tenantId: auth.tenantId, status: 'effective', type: { in: ['allotment', 'transfer'] }, effectiveOn: { lt: cutoff } },
+    where: {
+      tenantId: auth.tenantId,
+      status: 'effective',
+      type: { in: ['allotment', 'transfer'] },
+      effectiveOn: { lt: cutoff },
+    },
     select: { id: true, toHolderId: true, shareClassId: true },
   });
   let count = 0;
   for (const t of overdue) {
     if (!t.toHolderId) continue;
     const covering = await prisma.shareCertificate.findFirst({
-      where: { tenantId: auth.tenantId, holderId: t.toHolderId, shareClassId: t.shareClassId, issuedForTransactionId: t.id },
+      where: {
+        tenantId: auth.tenantId,
+        holderId: t.toHolderId,
+        shareClassId: t.shareClassId,
+        issuedForTransactionId: t.id,
+      },
     });
     if (!covering) count += 1;
   }
@@ -205,18 +226,23 @@ export async function buildEntitySnapshot(sourceTenantId: string): Promise<Built
   return asSystem(sourceTenantId, async () => {
     const tenant = await unscopedPrisma.tenant.findFirstOrThrow({ where: { id: sourceTenantId } });
 
-    const [cap, classes, holderIndex, profile, headcount, valuations, latestEvent, intercompany, overdue, cash] = await Promise.all([
-      capTable(),
-      listShareClasses(),
-      buildHolderKeyIndex(),
-      companyProfile(),
-      headcountByDivision(),
-      listValuations(),
-      prisma.eventRecord.findFirst({ where: { tenantId: sourceTenantId }, orderBy: { recordedAt: 'desc' }, select: { hash: true } }),
-      intercompanyTotals(),
-      certificateOverdueCount(),
-      cashPosition(),
-    ]);
+    const [cap, classes, holderIndex, profile, headcount, valuations, latestEvent, intercompany, overdue, cash] =
+      await Promise.all([
+        capTable(),
+        listShareClasses(),
+        buildHolderKeyIndex(),
+        companyProfile(),
+        headcountByDivision(),
+        listValuations(),
+        prisma.eventRecord.findFirst({
+          where: { tenantId: sourceTenantId },
+          orderBy: { recordedAt: 'desc' },
+          select: { hash: true },
+        }),
+        intercompanyTotals(),
+        certificateOverdueCount(),
+        cashPosition(),
+      ]);
 
     const holders = [...holderIndex.values()];
 
@@ -241,7 +267,12 @@ export async function buildEntitySnapshot(sourceTenantId: string): Promise<Built
       financial: {
         period: cutoffMonth,
         cash: cash.cash,
-        pnlMonth: { income: pnlMonth.income, expense: pnlMonth.expense, net: pnlMonth.net, byDivision: pnlMonth.byDivision },
+        pnlMonth: {
+          income: pnlMonth.income,
+          expense: pnlMonth.expense,
+          net: pnlMonth.net,
+          byDivision: pnlMonth.byDivision,
+        },
         pnlFyToDate,
         headcount,
         intercompany,
@@ -277,7 +308,9 @@ export async function buildEntitySnapshot(sourceTenantId: string): Promise<Built
  * accumulating duplicates; the full history survives regardless, in
  * `EntitySnapshotHistory`.
  */
-export async function publishEntitySnapshot(sourceTenantId: string): Promise<{ published: boolean; parentTenantId: string | null }> {
+export async function publishEntitySnapshot(
+  sourceTenantId: string,
+): Promise<{ published: boolean; parentTenantId: string | null }> {
   const source = await unscopedPrisma.tenant.findFirst({ where: { id: sourceTenantId } });
   if (!source) throw ApiError.notFound('Tenant');
   if (!source.parentTenantId) return { published: false, parentTenantId: null };
@@ -305,7 +338,9 @@ export async function publishEntitySnapshot(sourceTenantId: string): Promise<{ p
 
     const row = existing
       ? await prisma.entitySnapshot.update({ where: { id: existing.id }, data: shared })
-      : await prisma.entitySnapshot.create({ data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared } });
+      : await prisma.entitySnapshot.create({
+          data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared },
+        });
 
     await prisma.entitySnapshotHistory.create({
       data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared },
@@ -328,7 +363,10 @@ export async function publishEntitySnapshot(sourceTenantId: string): Promise<{ p
     const t = await prisma.tenant.findFirstOrThrow({ where: { id: sourceTenantId } });
     const config = (t.config as Record<string, unknown>) ?? {};
     if (config.snapshotDirty) {
-      await prisma.tenant.update({ where: { id: sourceTenantId }, data: { config: { ...config, snapshotDirty: false } as never } });
+      await prisma.tenant.update({
+        where: { id: sourceTenantId },
+        data: { config: { ...config, snapshotDirty: false } as never },
+      });
     }
   });
 
@@ -375,7 +413,10 @@ export async function groupStructure() {
   await assertScopeAll('group');
 
   const tenant = await prisma.tenant.findFirstOrThrow({ where: { id: auth.tenantId } });
-  const snapshots = await prisma.entitySnapshot.findMany({ where: { tenantId: auth.tenantId }, orderBy: { sourceName: 'asc' } });
+  const snapshots = await prisma.entitySnapshot.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { sourceName: 'asc' },
+  });
 
   const nodes: GroupStructureNodeView[] = [
     {
@@ -476,7 +517,13 @@ export async function groupHolders() {
   for (const total of ownCap.holderTotals) {
     const meta = ownIndex.get(total.holderId);
     if (!meta?.holderKey) continue;
-    direct.push({ entityId: tenant.id, holderKey: meta.holderKey, issuedPct: total.issuedPct, fullyDilutedPct: total.fullyDilutedPct, matchedBy: meta.matchedBy });
+    direct.push({
+      entityId: tenant.id,
+      holderKey: meta.holderKey,
+      issuedPct: total.issuedPct,
+      fullyDilutedPct: total.fullyDilutedPct,
+      matchedBy: meta.matchedBy,
+    });
     displayNames.set(meta.holderKey, total.holderName);
     holderKinds.set(meta.holderKey, meta.kind as 'person' | 'organization' | 'entity');
   }
@@ -484,7 +531,13 @@ export async function groupHolders() {
   for (const snap of snapshots) {
     const cap = snap.capTable as unknown as {
       holderTotals: Array<{ holderId: string; holderName: string; issuedPct: number; fullyDilutedPct: number }>;
-      holders: Array<{ holderId: string; kind: string; heldByTenantId: string | null; holderKey: string | null; matchedBy: LookThroughMatch }>;
+      holders: Array<{
+        holderId: string;
+        kind: string;
+        heldByTenantId: string | null;
+        holderKey: string | null;
+        matchedBy: LookThroughMatch;
+      }>;
     };
     const metaById = new Map((cap.holders ?? []).map((h) => [h.holderId, h]));
     let parentIssuedPct = 0;
@@ -498,17 +551,35 @@ export async function groupHolders() {
         continue; // becomes the structure edge, not a holder row
       }
       if (!meta?.holderKey) continue;
-      direct.push({ entityId: snap.sourceTenantId, holderKey: meta.holderKey, issuedPct: total.issuedPct, fullyDilutedPct: total.fullyDilutedPct, matchedBy: meta.matchedBy });
+      direct.push({
+        entityId: snap.sourceTenantId,
+        holderKey: meta.holderKey,
+        issuedPct: total.issuedPct,
+        fullyDilutedPct: total.fullyDilutedPct,
+        matchedBy: meta.matchedBy,
+      });
       if (!displayNames.has(meta.holderKey)) displayNames.set(meta.holderKey, total.holderName);
-      if (meta.kind === 'person' || !holderKinds.has(meta.holderKey)) holderKinds.set(meta.holderKey, meta.kind as 'person' | 'organization' | 'entity');
+      if (meta.kind === 'person' || !holderKinds.has(meta.holderKey))
+        holderKinds.set(meta.holderKey, meta.kind as 'person' | 'organization' | 'entity');
     }
 
-    edges.push({ parentEntityId: tenant.id, childEntityId: snap.sourceTenantId, issuedPct: parentIssuedPct, fullyDilutedPct: parentFullyDilutedPct });
+    edges.push({
+      parentEntityId: tenant.id,
+      childEntityId: snap.sourceTenantId,
+      issuedPct: parentIssuedPct,
+      fullyDilutedPct: parentFullyDilutedPct,
+    });
   }
 
   const lookThrough = computeLookThrough(direct, edges);
 
-  type Stake = { directIssuedPct: number; directFullyDilutedPct: number; lookThroughIssuedPct: number; lookThroughFullyDilutedPct: number; matchedBy: LookThroughMatch };
+  type Stake = {
+    directIssuedPct: number;
+    directFullyDilutedPct: number;
+    lookThroughIssuedPct: number;
+    lookThroughFullyDilutedPct: number;
+    matchedBy: LookThroughMatch;
+  };
   const perEntity = new Map<string, Stake>();
   const stakeKey = (e: string, h: string) => `${e}::${h}`;
 
@@ -551,7 +622,10 @@ export async function groupHolders() {
   }
 
   return {
-    entities: [{ tenantId: tenant.id, name: tenant.name }, ...snapshots.map((s) => ({ tenantId: s.sourceTenantId, name: s.sourceName }))],
+    entities: [
+      { tenantId: tenant.id, name: tenant.name },
+      ...snapshots.map((s) => ({ tenantId: s.sourceTenantId, name: s.sourceName })),
+    ],
     holders: [...byHolder.values()],
   };
 }
@@ -610,7 +684,9 @@ export async function groupFinancials() {
     });
   }
 
-  const totalCash = entities.every((e) => e.cash != null) ? round2(entities.reduce((s, e) => s + (e.cash ?? 0), 0)) : null;
+  const totalCash = entities.every((e) => e.cash != null)
+    ? round2(entities.reduce((s, e) => s + (e.cash ?? 0), 0))
+    : null;
   const totalPnlMonth = entities.every((e) => e.pnlMonth) ? sumPnl(entities.map((e) => e.pnlMonth!)) : null;
   const intercompanyTotal = {
     in: round2(entities.reduce((s, e) => s + (e.intercompanyIn ?? 0), 0)),
@@ -653,7 +729,12 @@ export async function groupCompliance() {
   ];
 
   for (const snap of snapshots) {
-    const comp = snap.compliance as unknown as { dematStatus: GroupComplianceRowView['dematStatus']; isSmallCompany: boolean | null; certificateOverdueCount: number; kind: string };
+    const comp = snap.compliance as unknown as {
+      dematStatus: GroupComplianceRowView['dematStatus'];
+      isSmallCompany: boolean | null;
+      certificateOverdueCount: number;
+      kind: string;
+    };
     const { staleSeconds, stale } = stalenessOf(snap.publishedAt);
     rows.push({
       tenantId: snap.sourceTenantId,
@@ -709,11 +790,25 @@ export async function entitySnapshotView(sourceTenantId: string) {
 type SnapshotCapTable = {
   rows: Array<{ shareClassId: string; count: number }>;
   holderTotals: Array<{ holderId: string; holderName: string; issuedPct: number; fullyDilutedPct: number }>;
-  holders: Array<{ holderId: string; kind: string; heldByTenantId: string | null; holderKey: string | null; matchedBy: LookThroughMatch }>;
+  holders: Array<{
+    holderId: string;
+    kind: string;
+    heldByTenantId: string | null;
+    holderKey: string | null;
+    matchedBy: LookThroughMatch;
+  }>;
 };
 type SnapshotShareClass = { id: string; kind: string; faceValue: number | null };
 type SnapshotFinancial = { period: string; pnlFyToDate: { income: number; expense: number; net: number } | null };
-type SnapshotCompliance = { company?: { legalName: string; cin: string | null; financialYearEndMonth: number | null; incorporatedOn: string | null; reportingCurrency: string } };
+type SnapshotCompliance = {
+  company?: {
+    legalName: string;
+    cin: string | null;
+    financialYearEndMonth: number | null;
+    incorporatedOn: string | null;
+    reportingCurrency: string;
+  };
+};
 
 /** `GET /equity/filings/aoc-1.xlsx` and its data (`compliance:view`, effectively holding-tenant-only — a tenant with no snapshots simply has nothing to list). */
 export async function aoc1(): Promise<Aoc1View> {
@@ -721,7 +816,10 @@ export async function aoc1(): Promise<Aoc1View> {
   await assertCan({ resource: 'compliance', verb: 'view' });
 
   const tenant = await prisma.tenant.findFirstOrThrow({ where: { id: auth.tenantId } });
-  const snapshots = await prisma.entitySnapshot.findMany({ where: { tenantId: auth.tenantId }, orderBy: { sourceName: 'asc' } });
+  const snapshots = await prisma.entitySnapshot.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { sourceName: 'asc' },
+  });
 
   const partA: Aoc1SubsidiaryRow[] = [];
   const partB: Aoc1AssociateRow[] = [];
@@ -795,12 +893,26 @@ export async function aoc1(): Promise<Aoc1View> {
 }
 
 const AOC1_PART_A_HEADER = [
-  'Name', 'CIN', 'Reporting period', 'Currency', 'Share capital', 'Reserves', 'Turnover',
-  'Profit before tax', 'Profit after tax', 'Parent holding % (issued)', 'Parent holding % (fully diluted)',
+  'Name',
+  'CIN',
+  'Reporting period',
+  'Currency',
+  'Share capital',
+  'Reserves',
+  'Turnover',
+  'Profit before tax',
+  'Profit after tax',
+  'Parent holding % (issued)',
+  'Parent holding % (fully diluted)',
 ];
 const AOC1_PART_B_HEADER = [
-  'Name', 'CIN', 'Latest audited balance sheet date', 'Net worth attributable', 'Profit / loss for the year',
-  'Holding % (issued)', 'Holding % (fully diluted)',
+  'Name',
+  'CIN',
+  'Latest audited balance sheet date',
+  'Net worth attributable',
+  'Profit / loss for the year',
+  'Holding % (issued)',
+  'Holding % (fully diluted)',
 ];
 
 export async function aoc1Export(): Promise<Buffer> {
@@ -808,8 +920,17 @@ export async function aoc1Export(): Promise<Buffer> {
   const book = XLSX.utils.book_new();
 
   const partARows = view.partA.map((r) => [
-    r.name, r.cin, r.reportingPeriod, r.reportingCurrency, r.shareCapital, r.reserves, r.turnover,
-    r.profitBeforeTax, r.profitAfterTax, r.parentHoldingIssuedPct, r.parentHoldingFullyDilutedPct,
+    r.name,
+    r.cin,
+    r.reportingPeriod,
+    r.reportingCurrency,
+    r.shareCapital,
+    r.reserves,
+    r.turnover,
+    r.profitBeforeTax,
+    r.profitAfterTax,
+    r.parentHoldingIssuedPct,
+    r.parentHoldingFullyDilutedPct,
   ]);
   const partASheet = XLSX.utils.aoa_to_sheet([
     ['AOC-1 Part A — statement of subsidiaries'],
@@ -822,8 +943,13 @@ export async function aoc1Export(): Promise<Buffer> {
   XLSX.utils.book_append_sheet(book, partASheet, 'Part A - Subsidiaries');
 
   const partBRows = view.partB.map((r) => [
-    r.name, r.cin, r.latestAuditedBalanceSheetDate, r.netWorthAttributable, r.profitOrLossForYear,
-    r.holdingIssuedPct, r.holdingFullyDilutedPct,
+    r.name,
+    r.cin,
+    r.latestAuditedBalanceSheetDate,
+    r.netWorthAttributable,
+    r.profitOrLossForYear,
+    r.holdingIssuedPct,
+    r.holdingFullyDilutedPct,
   ]);
   const partBSheet = XLSX.utils.aoa_to_sheet([
     ['AOC-1 Part B — associates and joint ventures'],
@@ -883,9 +1009,16 @@ async function directSeriesForHolder(holderId: string | null): Promise<PctPoint[
 }
 
 /** A subsidiary's own published history — the direct holder's % there, and the calling (holding) tenant's own edge % of it, at each point it was published. */
-async function subsidiaryHistorySeries(sourceTenantId: string, holderKey: string, edgeTenantId: string): Promise<{ direct: PctPoint[]; edge: PctPoint[] }> {
+async function subsidiaryHistorySeries(
+  sourceTenantId: string,
+  holderKey: string,
+  edgeTenantId: string,
+): Promise<{ direct: PctPoint[]; edge: PctPoint[] }> {
   const auth = currentAuth();
-  const rows = await prisma.entitySnapshotHistory.findMany({ where: { tenantId: auth.tenantId, sourceTenantId }, orderBy: { asOf: 'asc' } });
+  const rows = await prisma.entitySnapshotHistory.findMany({
+    where: { tenantId: auth.tenantId, sourceTenantId },
+    orderBy: { asOf: 'asc' },
+  });
   const direct: PctPoint[] = [];
   const edge: PctPoint[] = [];
   for (const row of rows) {
@@ -919,7 +1052,14 @@ async function subsidiaryHistorySeries(sourceTenantId: string, holderKey: string
  * threshold, the honest answer is the latest snapshot's own date, not a
  * fabricated crossing date.
  */
-async function deriveThresholdCrossedOn(holderKey: string, entityId: string, holdingTenantId: string, ownHolderId: string | null, hasIndirectPath: boolean, latestAsOf: Date): Promise<string> {
+async function deriveThresholdCrossedOn(
+  holderKey: string,
+  entityId: string,
+  holdingTenantId: string,
+  ownHolderId: string | null,
+  hasIndirectPath: boolean,
+  latestAsOf: Date,
+): Promise<string> {
   const fallback = `as of snapshot ${latestAsOf.toISOString().slice(0, 10)}`;
 
   if (entityId === holdingTenantId) {
@@ -952,7 +1092,10 @@ async function deriveThresholdCrossedOn(holderKey: string, entityId: string, hol
  * `computeLookThrough` arithmetic rather than recomputing it, so this can
  * never disagree with what the group screen itself shows.
  */
-async function computeBenIndividualCandidates(tenantSelf: { id: string; name: string }): Promise<GroupBenIndividualCandidate[]> {
+async function computeBenIndividualCandidates(tenantSelf: {
+  id: string;
+  name: string;
+}): Promise<GroupBenIndividualCandidate[]> {
   const auth = currentAuth();
   const group = await groupHolders();
   const snapshots = await prisma.entitySnapshot.findMany({ where: { tenantId: auth.tenantId } });
@@ -989,19 +1132,31 @@ async function computeBenIndividualCandidates(tenantSelf: { id: string; name: st
         const holdingDirectPct = row.perEntity[tenantSelf.id]?.directIssuedPct ?? 0;
         const edgePct = edgeByEntity.get(entityId) ?? 0;
         if (holdingDirectPct > 0 && edgePct > 0) {
-          chain = [{
-            tenantId: tenantSelf.id,
-            name: tenantSelf.name,
-            directPctInEntity: holdingDirectPct,
-            parentStakeInEntity: edgePct,
-            contributionPct: round2((holdingDirectPct * edgePct) / 100),
-          }];
+          chain = [
+            {
+              tenantId: tenantSelf.id,
+              name: tenantSelf.name,
+              directPctInEntity: holdingDirectPct,
+              parentStakeInEntity: edgePct,
+              contributionPct: round2((holdingDirectPct * edgePct) / 100),
+            },
+          ];
         }
       }
 
-      const entityName = entityId === tenantSelf.id ? tenantSelf.name : (group.entities.find((e) => e.tenantId === entityId)?.name ?? entityId);
+      const entityName =
+        entityId === tenantSelf.id
+          ? tenantSelf.name
+          : (group.entities.find((e) => e.tenantId === entityId)?.name ?? entityId);
       const latestAsOf = snapshots.find((s) => s.sourceTenantId === entityId)?.asOf ?? new Date();
-      const thresholdCrossedOn = await deriveThresholdCrossedOn(row.holderKey, entityId, tenantSelf.id, ownHolderId, chain.length > 0, latestAsOf);
+      const thresholdCrossedOn = await deriveThresholdCrossedOn(
+        row.holderKey,
+        entityId,
+        tenantSelf.id,
+        ownHolderId,
+        chain.length > 0,
+        latestAsOf,
+      );
 
       out.push({
         holderKey: row.holderKey,
@@ -1090,12 +1245,25 @@ export async function groupBenCandidates(): Promise<GroupBenCandidatesView> {
   return { asOf, mode: 'individuals', individuals, holdingReportingCompany: null };
 }
 
-const BEN_INDIVIDUALS_HEADER = ['Name', 'Entity', 'Holder key', 'Matched by', 'Direct %', 'Indirect %', 'Look-through %', 'Chain', 'Threshold crossed'];
+const BEN_INDIVIDUALS_HEADER = [
+  'Name',
+  'Entity',
+  'Holder key',
+  'Matched by',
+  'Direct %',
+  'Indirect %',
+  'Look-through %',
+  'Chain',
+  'Threshold crossed',
+];
 
 function benChainText(chain: GroupBenIndividualCandidate['chain']): string {
   if (chain.length === 0) return '—';
   return chain
-    .map((c) => `${c.name} (${c.directPctInEntity}% direct × ${c.parentStakeInEntity}% held by this company = ${c.contributionPct}%)`)
+    .map(
+      (c) =>
+        `${c.name} (${c.directPctInEntity}% direct × ${c.parentStakeInEntity}% held by this company = ${c.contributionPct}%)`,
+    )
     .join('; ');
 }
 
@@ -1106,21 +1274,40 @@ export async function benCandidatesExport(): Promise<Buffer> {
   if (view.mode === 'holding_reporting_company' && view.holdingReportingCompany) {
     const sheet = XLSX.utils.aoa_to_sheet([
       ['BEN-2 — significant beneficial owners'],
-      ['This company is a subsidiary of a reporting company; that company is named below rather than the individuals behind it.'],
+      [
+        'This company is a subsidiary of a reporting company; that company is named below rather than the individuals behind it.',
+      ],
       [],
       ['Holding reporting company', 'Direct % (issued)', 'Direct % (fully diluted)'],
-      [view.holdingReportingCompany.name, view.holdingReportingCompany.directIssuedPct, view.holdingReportingCompany.directFullyDilutedPct],
+      [
+        view.holdingReportingCompany.name,
+        view.holdingReportingCompany.directIssuedPct,
+        view.holdingReportingCompany.directFullyDilutedPct,
+      ],
     ]);
     XLSX.utils.book_append_sheet(book, sheet, 'BEN-2');
     return XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
   }
 
   const rows = view.individuals.map((c) => [
-    c.displayName, c.entityName, c.holderKey, c.matchedBy, c.directIssuedPct, c.indirectIssuedPct, c.lookThroughIssuedPct, benChainText(c.chain), c.thresholdCrossedOn,
+    c.displayName,
+    c.entityName,
+    c.holderKey,
+    c.matchedBy,
+    c.directIssuedPct,
+    c.indirectIssuedPct,
+    c.lookThroughIssuedPct,
+    benChainText(c.chain),
+    c.thresholdCrossedOn,
   ]);
   const headerBlock: unknown[][] =
     view.individuals.length === 0
-      ? [['BEN-2 — significant beneficial owners'], ['No one holds ten percent or more on a look-through basis.'], [], BEN_INDIVIDUALS_HEADER]
+      ? [
+          ['BEN-2 — significant beneficial owners'],
+          ['No one holds ten percent or more on a look-through basis.'],
+          [],
+          BEN_INDIVIDUALS_HEADER,
+        ]
       : [['BEN-2 — significant beneficial owners'], [], BEN_INDIVIDUALS_HEADER];
   const sheet = XLSX.utils.aoa_to_sheet([...headerBlock, ...rows]);
   sheet['!cols'] = BEN_INDIVIDUALS_HEADER.map((h) => ({ wch: Math.max(12, Math.min(40, h.length + 4)) }));
@@ -1155,5 +1342,8 @@ export async function markSnapshotDirty(tenantId: string): Promise<void> {
   if (!tenant) return;
   const config = (tenant.config as Record<string, unknown>) ?? {};
   if (config.snapshotDirty === true) return;
-  await prisma.tenant.update({ where: { id: tenantId }, data: { config: { ...config, snapshotDirty: true } as never } });
+  await prisma.tenant.update({
+    where: { id: tenantId },
+    data: { config: { ...config, snapshotDirty: true } as never },
+  });
 }

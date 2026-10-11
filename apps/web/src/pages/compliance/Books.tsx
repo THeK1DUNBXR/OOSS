@@ -134,12 +134,21 @@ function PeriodsTab() {
         </button>
       </div>
       <div className="mb-4 flex flex-wrap items-end gap-2">
-        <TextInput label="Reopen reason" value={reopenReason} onChange={setReopenReason} placeholder="Why this closed period needs to reopen" />
+        <TextInput
+          label="Reopen reason"
+          value={reopenReason}
+          onChange={setReopenReason}
+          placeholder="Why this closed period needs to reopen"
+        />
         <button className="btn" disabled={reopen.isPending} onClick={() => reopen.mutate()}>
           Reopen {period}
         </button>
       </div>
-      {error && <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
 
       {periods.isLoading && <Loading />}
       {periods.error && <ErrorBox error={periods.error} />}
@@ -166,7 +175,15 @@ function PeriodsTab() {
                 <td>
                   <StatusChip
                     status={p.status}
-                    tone={p.status === 'closed' ? 'good' : p.status === 'closing' ? 'warn' : p.status === 'reopened' ? 'bad' : 'neutral'}
+                    tone={
+                      p.status === 'closed'
+                        ? 'good'
+                        : p.status === 'closing'
+                          ? 'warn'
+                          : p.status === 'reopened'
+                            ? 'bad'
+                            : 'neutral'
+                    }
                   />
                 </td>
                 <td>{date(p.requestedAt)}</td>
@@ -197,7 +214,10 @@ function AuditTab() {
   });
 
   return (
-    <Card title="Audit hash chain" subtitle="Every AuditRecord hashes its content and the previous record's hash, the way the event log already does.">
+    <Card
+      title="Audit hash chain"
+      subtitle="Every AuditRecord hashes its content and the previous record's hash, the way the event log already does."
+    >
       <button className="btn-primary mb-4" disabled={verify.isPending} onClick={() => verify.mutate()}>
         {verify.isPending ? 'Verifying…' : 'Verify chain'}
       </button>
@@ -235,8 +255,18 @@ function AuditTab() {
 
 interface ScheduleIIIStatement {
   fy: string;
-  profitAndLoss: { heads: Array<{ head: string; amount: number }>; unmapped: Array<{ name: string; amount: number }>; income: number; expense: number; net: number };
-  balanceSheet: { heads: Array<{ head: string; amount: number }>; unmapped: Array<{ name: string; amount: number }>; total: number };
+  profitAndLoss: {
+    heads: Array<{ head: string; amount: number }>;
+    unmapped: Array<{ name: string; amount: number }>;
+    income: number;
+    expense: number;
+    net: number;
+  };
+  balanceSheet: {
+    heads: Array<{ head: string; amount: number }>;
+    unmapped: Array<{ name: string; amount: number }>;
+    total: number;
+  };
 }
 
 function StatementsTab() {
@@ -248,7 +278,10 @@ function StatementsTab() {
   });
 
   return (
-    <Card title="Schedule III statements" subtitle="The P&L and balance sheet in Schedule III's format. Unmapped items are listed, never dropped.">
+    <Card
+      title="Schedule III statements"
+      subtitle="The P&L and balance sheet in Schedule III's format. Unmapped items are listed, never dropped."
+    >
       <div className="mb-4">
         <TextInput label="FY start year" value={fy} onChange={setFy} placeholder="2025 for FY2025-26" />
       </div>
@@ -311,7 +344,13 @@ interface DepreciationRow {
   name: string;
   assetClass: string;
   cost: number;
-  companiesAct: { usefulLifeYears?: number; charge?: number; mismatch?: boolean; assetUsefulLifeYears?: number; note?: string };
+  companiesAct: {
+    usefulLifeYears?: number;
+    charge?: number;
+    mismatch?: boolean;
+    assetUsefulLifeYears?: number;
+    note?: string;
+  };
   incomeTax: { blockName?: string; ratePercent?: number; charge?: number | null; note?: string };
 }
 
@@ -324,7 +363,10 @@ function DepreciationTab() {
   });
 
   return (
-    <Card title="Depreciation" subtitle="Schedule II (Companies Act) against the Income-tax Act's block WDV — two different questions, so two different answers.">
+    <Card
+      title="Depreciation"
+      subtitle="Schedule II (Companies Act) against the Income-tax Act's block WDV — two different questions, so two different answers."
+    >
       <div className="mb-4">
         <TextInput label="FY start year" value={fy} onChange={setFy} placeholder="2025 for FY2025-26" />
       </div>
@@ -349,14 +391,19 @@ function DepreciationTab() {
                 <td>{r.assetClass.replace('_', ' ')}</td>
                 <td className="text-right">{rupees(r.cost)}</td>
                 <td className="text-right">
-                  {r.companiesAct.charge !== undefined ? rupees(r.companiesAct.charge) : r.companiesAct.note ?? '—'}
+                  {r.companiesAct.charge !== undefined ? rupees(r.companiesAct.charge) : (r.companiesAct.note ?? '—')}
                   {r.companiesAct.mismatch && (
-                    <span className="ml-1 text-band-watch" title={`Asset's own useful life differs from Schedule II (${r.companiesAct.usefulLifeYears} yrs)`}>
+                    <span
+                      className="ml-1 text-band-watch"
+                      title={`Asset's own useful life differs from Schedule II (${r.companiesAct.usefulLifeYears} yrs)`}
+                    >
                       ⚠
                     </span>
                   )}
                 </td>
-                <td className="text-right">{r.incomeTax.charge != null ? rupees(r.incomeTax.charge) : r.incomeTax.note ?? '—'}</td>
+                <td className="text-right">
+                  {r.incomeTax.charge != null ? rupees(r.incomeTax.charge) : (r.incomeTax.note ?? '—')}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -394,21 +441,43 @@ function ExportsTab() {
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end gap-2">
           <TextInput label="Trial balance as of" value={asOf} onChange={setAsOf} />
-          <button className="btn" disabled={busy === 'tb'} onClick={() => download('tb', `/compliance/books/trial-balance/${asOf}?format=csv`, `trial-balance-${asOf}.csv`)}>
+          <button
+            className="btn"
+            disabled={busy === 'tb'}
+            onClick={() =>
+              download('tb', `/compliance/books/trial-balance/${asOf}?format=csv`, `trial-balance-${asOf}.csv`)
+            }
+          >
             Download trial balance (CSV)
           </button>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <TextInput label="From" value={from} onChange={setFrom} />
           <TextInput label="To" value={to} onChange={setTo} />
-          <button className="btn" disabled={busy === 'gl'} onClick={() => download('gl', `/compliance/books/general-ledger?from=${from}&to=${to}`, 'general-ledger.csv')}>
+          <button
+            className="btn"
+            disabled={busy === 'gl'}
+            onClick={() =>
+              download('gl', `/compliance/books/general-ledger?from=${from}&to=${to}`, 'general-ledger.csv')
+            }
+          >
             Download general ledger (CSV)
           </button>
-          <button className="btn" disabled={busy === 'tally'} onClick={() => download('tally', `/compliance/books/tally-export?from=${from}&to=${to}`, 'tally-export.xml')}>
+          <button
+            className="btn"
+            disabled={busy === 'tally'}
+            onClick={() =>
+              download('tally', `/compliance/books/tally-export?from=${from}&to=${to}`, 'tally-export.xml')
+            }
+          >
             Download Tally export (XML)
           </button>
         </div>
-        {error && <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+        {error && (
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
+        )}
       </div>
     </Card>
   );
@@ -427,13 +496,22 @@ interface ReconciliationReport {
   matchedCount: number;
   unmatchedBankCount: number;
   unmatchedLedgerCount: number;
-  unmatchedBank: Array<{ id: string; date: string; amount: number | null; direction: string; reference: string | null }>;
+  unmatchedBank: Array<{
+    id: string;
+    date: string;
+    amount: number | null;
+    direction: string;
+    reference: string | null;
+  }>;
   unmatchedLedger: Array<{ id: string; recordCode: string; date: string; amount: number | null; direction: string }>;
 }
 
 function BankTab() {
   const qc = useQueryClient();
-  const accounts = useQuery({ queryKey: ['cmp-books-accounts'], queryFn: () => api.get<AccountRow[]>('/books/accounts') });
+  const accounts = useQuery({
+    queryKey: ['cmp-books-accounts'],
+    queryFn: () => api.get<AccountRow[]>('/books/accounts'),
+  });
   const [accountId, setAccountId] = useState<string>('');
   const effectiveAccountId = accountId || accounts.data?.[0]?.id || '';
 
@@ -449,7 +527,10 @@ function BankTab() {
   });
 
   return (
-    <Card title="Bank reconciliation" subtitle="Imported statement lines are matched against the ledger by amount, direction and a ±3-day window.">
+    <Card
+      title="Bank reconciliation"
+      subtitle="Imported statement lines are matched against the ledger by amount, direction and a ±3-day window."
+    >
       <div className="mb-4 flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-0.5">
           <span className="text-2xs uppercase tracking-wide text-ink-500">Account</span>
@@ -461,7 +542,11 @@ function BankTab() {
             ))}
           </select>
         </label>
-        <button className="btn-primary" disabled={!effectiveAccountId || match.isPending} onClick={() => match.mutate()}>
+        <button
+          className="btn-primary"
+          disabled={!effectiveAccountId || match.isPending}
+          onClick={() => match.mutate()}
+        >
           Match
         </button>
       </div>
@@ -471,8 +556,16 @@ function BankTab() {
         <>
           <div className="mb-4 flex flex-wrap gap-6">
             <Metric label="Matched" value={String(report.data.matchedCount)} />
-            <Metric label="Unmatched bank lines" value={String(report.data.unmatchedBankCount)} tone={report.data.unmatchedBankCount ? 'warn' : 'good'} />
-            <Metric label="Unmatched ledger entries" value={String(report.data.unmatchedLedgerCount)} tone={report.data.unmatchedLedgerCount ? 'warn' : 'good'} />
+            <Metric
+              label="Unmatched bank lines"
+              value={String(report.data.unmatchedBankCount)}
+              tone={report.data.unmatchedBankCount ? 'warn' : 'good'}
+            />
+            <Metric
+              label="Unmatched ledger entries"
+              value={String(report.data.unmatchedLedgerCount)}
+              tone={report.data.unmatchedLedgerCount ? 'warn' : 'good'}
+            />
           </div>
           <div className="grid gap-6 md:grid-cols-2">
             <div>
@@ -533,14 +626,20 @@ interface RetentionReport {
 
 function RetentionTab() {
   const qc = useQueryClient();
-  const report = useQuery({ queryKey: ['cmp-books-retention'], queryFn: () => api.get<RetentionReport>('/compliance/books/retention') });
+  const report = useQuery({
+    queryKey: ['cmp-books-retention'],
+    queryFn: () => api.get<RetentionReport>('/compliance/books/retention'),
+  });
   const sweep = useMutation({
     mutationFn: () => api.post<{ flagged: number }>('/compliance/books/retention/sweep'),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cmp-books-retention'] }),
   });
 
   return (
-    <Card title="Retention" subtitle="A record past its floor is flagged for review, never deleted. Companies Act s128(5): eight financial years.">
+    <Card
+      title="Retention"
+      subtitle="A record past its floor is flagged for review, never deleted. Companies Act s128(5): eight financial years."
+    >
       <button className="btn mb-4" disabled={sweep.isPending} onClick={() => sweep.mutate()}>
         {sweep.isPending ? 'Sweeping…' : 'Run sweep now'}
       </button>

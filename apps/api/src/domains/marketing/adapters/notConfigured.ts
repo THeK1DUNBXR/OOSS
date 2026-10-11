@@ -6,7 +6,15 @@
  * send requested") instead of a stack trace reaching an operator.
  */
 
-import type { ChannelAdapter, ChannelKey, ChannelKind, InboundDeliveryEvent, OutboundMessage, RenderedMessage, SendResult } from './types.js';
+import type {
+  ChannelAdapter,
+  ChannelKey,
+  ChannelKind,
+  InboundDeliveryEvent,
+  OutboundMessage,
+  RenderedMessage,
+  SendResult,
+} from './types.js';
 import { renderMergeFields } from './merge.js';
 
 export class NotConfiguredAdapter implements ChannelAdapter {

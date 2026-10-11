@@ -95,11 +95,25 @@ export function Calendar() {
         subtitle="Campaigns, events, sends and social posts, laid out by date."
         actions={
           <div className="flex items-center gap-2">
-            <button className="btn-ghost" onClick={() => setCursor((c) => (c.month === 0 ? { year: c.year - 1, month: 11 } : { year: c.year, month: c.month - 1 }))}>
+            <button
+              className="btn-ghost"
+              onClick={() =>
+                setCursor((c) =>
+                  c.month === 0 ? { year: c.year - 1, month: 11 } : { year: c.year, month: c.month - 1 },
+                )
+              }
+            >
               ←
             </button>
             <span className="min-w-[10ch] text-center text-sm font-medium text-ink-100">{monthLabel}</span>
-            <button className="btn-ghost" onClick={() => setCursor((c) => (c.month === 11 ? { year: c.year + 1, month: 0 } : { year: c.year, month: c.month + 1 }))}>
+            <button
+              className="btn-ghost"
+              onClick={() =>
+                setCursor((c) =>
+                  c.month === 11 ? { year: c.year + 1, month: 0 } : { year: c.year, month: c.month + 1 },
+                )
+              }
+            >
               →
             </button>
           </div>
@@ -112,7 +126,10 @@ export function Calendar() {
         <ErrorBox error={error} />
       ) : (data ?? []).length === 0 ? (
         <Card>
-          <EmptyState message="Nothing is scheduled this month." hint="Campaigns, events, sends and social posts appear here once dated." />
+          <EmptyState
+            message="Nothing is scheduled this month."
+            hint="Campaigns, events, sends and social posts appear here once dated."
+          />
         </Card>
       ) : (
         <Card bodyClassName="p-2">

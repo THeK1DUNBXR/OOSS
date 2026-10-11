@@ -10,5 +10,12 @@ import { JOBS as portfolio } from './portfolio.js';
 import { JOBS as continuity } from './continuity.js';
 
 export const IT_JOBS: JobDefinition[] = [
-  ...assets, ...software, ...vendors, ...servicedesk, ...itsm, ...governance, ...portfolio, ...continuity,
+  ...assets,
+  ...software,
+  ...vendors,
+  ...servicedesk,
+  ...itsm,
+  ...governance,
+  ...portfolio,
+  ...continuity,
 ];

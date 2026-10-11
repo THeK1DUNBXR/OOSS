@@ -110,9 +110,7 @@ export const SCOPE_RESOLVER_WORDS: Record<string, string> = {
 export function grantSentence(verbs: string[], scope: string, resolver?: string | null): string {
   const said = verbs.map((v) => VERB_WORDS[v] ?? v);
   const list =
-    said.length <= 1
-      ? (said[0] ?? 'do nothing')
-      : `${said.slice(0, -1).join(', ')} and ${said[said.length - 1]}`;
+    said.length <= 1 ? (said[0] ?? 'do nothing') : `${said.slice(0, -1).join(', ')} and ${said[said.length - 1]}`;
   const where = SCOPE_WORDS[scope] ?? scope;
   const extra = resolver ? `, ${SCOPE_RESOLVER_WORDS[resolver] ?? resolver}` : '';
   return `Can ${list} — ${where}${extra}.`;
@@ -166,10 +164,8 @@ export const FORECAST_CATEGORY_WORDS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 export const UNROUTED_WORDS: Record<string, string> = {
-  no_matching_rule:
-    'No routing rule covers this combination yet — someone needs to add one, or assign this by hand.',
-  no_eligible_candidate:
-    'A rule matched, but nobody suitable is free. Assign it by hand.',
+  no_matching_rule: 'No routing rule covers this combination yet — someone needs to add one, or assign this by hand.',
+  no_eligible_candidate: 'A rule matched, but nobody suitable is free. Assign it by hand.',
 };
 
 export function unroutedWord(code: string | null | undefined): string {
@@ -200,7 +196,10 @@ export function words(value: string | null | undefined): string {
   const s = value.replace(/_/g, ' ').trim();
   const sentence = s.charAt(0).toUpperCase() + s.slice(1);
   // Terms the business writes a particular way, which sentence-casing breaks.
-  return sentence.replace(/\bMou\b/g, 'MoU').replace(/\bSla\b/g, 'SLA').replace(/\bAi\b/g, 'AI');
+  return sentence
+    .replace(/\bMou\b/g, 'MoU')
+    .replace(/\bSla\b/g, 'SLA')
+    .replace(/\bAi\b/g, 'AI');
 }
 
 /**
@@ -229,5 +228,8 @@ export function humanize(value: string | null | undefined): string {
       return i === 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : lower;
     })
     .join(' ');
-  return sentence.replace(/\bMou\b/g, 'MoU').replace(/\bSla\b/g, 'SLA').replace(/\bAi\b/g, 'AI');
+  return sentence
+    .replace(/\bMou\b/g, 'MoU')
+    .replace(/\bSla\b/g, 'SLA')
+    .replace(/\bAi\b/g, 'AI');
 }

@@ -554,9 +554,7 @@ describe('Capability trust tiers (§14.6)', () => {
     // Nobody second at all.
     expect(() => assertVerificationAllowed(base)).toThrow(HrRuleViolationError);
     // The same person twice is not two people.
-    expect(() => assertVerificationAllowed({ ...base, secondVerifierPartyId: 'hrops1' })).toThrow(
-      HrRuleViolationError,
-    );
+    expect(() => assertVerificationAllowed({ ...base, secondVerifierPartyId: 'hrops1' })).toThrow(HrRuleViolationError);
     expect(() => assertVerificationAllowed({ ...base, secondVerifierPartyId: 'hrbp1' })).not.toThrow();
   });
 

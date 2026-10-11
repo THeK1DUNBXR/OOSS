@@ -11,16 +11,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, money, date, dateTime } from '../../lib/api.js';
-import {
-  Card,
-  EmptyState,
-  ErrorBox,
-  Field,
-  Loading,
-  PageHeader,
-  StatusChip,
-  Tabs,
-} from '../../components/ui.js';
+import { Card, EmptyState, ErrorBox, Field, Loading, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
 import { CreateModal, MoneyInput, Row, TextInput, messageOf } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
 
@@ -124,7 +115,7 @@ function RunsTab() {
               <Field label="Headcount">{run.headcount}</Field>
               <Field label="Gross">{money(run.grossTotal)}</Field>
               <Field label="Net">{money(run.netTotal)}</Field>
-              <Field label="Prepared by">{preparedByViewer ? 'You' : run.preparedById ?? '—'}</Field>
+              <Field label="Prepared by">{preparedByViewer ? 'You' : (run.preparedById ?? '—')}</Field>
             </dl>
             {run.status === 'Draft' && (
               <button className="btn-primary w-fit" disabled={compute.isPending} onClick={() => compute.mutate(run.id)}>
@@ -134,8 +125,8 @@ function RunsTab() {
             {compute.error && <ErrorBox error={compute.error} />}
             {preparedByViewer && ['Computed', 'UnderReview'].includes(run.status) && (
               <p className="text-xs text-ink-400">
-                You prepared this run, so you cannot approve it — the Self-Dealing Bar applies to payroll the same way it applies
-                to a pay rise. Someone else with the payroll approval grant needs to sign it off.
+                You prepared this run, so you cannot approve it — the Self-Dealing Bar applies to payroll the same way
+                it applies to a pay rise. Someone else with the payroll approval grant needs to sign it off.
               </p>
             )}
             <table className="w-full text-sm">
@@ -178,7 +169,10 @@ function RunsTab() {
 function StructuresTab() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const structures = useQuery({ queryKey: ['salary-structures'], queryFn: () => api.get<any[]>('/compliance/payroll/salary-structures') });
+  const structures = useQuery({
+    queryKey: ['salary-structures'],
+    queryFn: () => api.get<any[]>('/compliance/payroll/salary-structures'),
+  });
 
   const [employmentRelationshipId, setEmploymentRelationshipId] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState('');
@@ -257,7 +251,12 @@ function StructuresTab() {
           })
         }
       >
-        <TextInput label="Employment relationship id" value={employmentRelationshipId} onChange={setEmploymentRelationshipId} required />
+        <TextInput
+          label="Employment relationship id"
+          value={employmentRelationshipId}
+          onChange={setEmploymentRelationshipId}
+          required
+        />
         <TextInput label="Effective from" type="date" value={effectiveFrom} onChange={setEffectiveFrom} required />
         <Row>
           <MoneyInput label="CTC (annual)" value={ctcAnnual} onChange={setCtcAnnual} required />
@@ -278,7 +277,10 @@ function RatesTab() {
   const esi = useQuery({ queryKey: ['rt-esi'], queryFn: () => api.get<any[]>('/compliance/payroll/rate-tables/esi') });
   const pt = useQuery({ queryKey: ['rt-pt'], queryFn: () => api.get<any[]>('/compliance/payroll/rate-tables/pt') });
   const lwf = useQuery({ queryKey: ['rt-lwf'], queryFn: () => api.get<any[]>('/compliance/payroll/rate-tables/lwf') });
-  const mw = useQuery({ queryKey: ['rt-mw'], queryFn: () => api.get<any[]>('/compliance/payroll/rate-tables/minimum-wage') });
+  const mw = useQuery({
+    queryKey: ['rt-mw'],
+    queryFn: () => api.get<any[]>('/compliance/payroll/rate-tables/minimum-wage'),
+  });
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -329,7 +331,9 @@ function RatesTab() {
       <Card title="Labour Welfare Fund (Tamil Nadu)">
         {(lwf.data ?? []).map((r: any) => (
           <div key={r.id} className="text-sm">
-            <p className="text-2xs text-ink-500">Effective {date(r.effectiveFrom)}, due month {r.dueMonth}</p>
+            <p className="text-2xs text-ink-500">
+              Effective {date(r.effectiveFrom)}, due month {r.dueMonth}
+            </p>
             {r.confirmNote && <p className="mt-1 text-2xs text-band-warn">{r.confirmNote}</p>}
             <dl className="mt-1 grid grid-cols-2 gap-x-4">
               <Field label="Employee">{money(r.employeeAmount)}</Field>
@@ -366,7 +370,8 @@ function PayslipsTab() {
 
   if (payslips.isLoading) return <Loading />;
   if (payslips.error) return <ErrorBox error={payslips.error} />;
-  if (!payslips.data || payslips.data.length === 0) return <EmptyState message="No payslips issued yet. A payslip is issued when its run is approved." />;
+  if (!payslips.data || payslips.data.length === 0)
+    return <EmptyState message="No payslips issued yet. A payslip is issued when its run is approved." />;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
@@ -400,7 +405,9 @@ function PayslipsTab() {
           <div className="flex flex-col gap-2 text-sm">
             <p className="font-medium">{doc.data.snapshot.employer.name}</p>
             <p className="text-2xs text-ink-500">{doc.data.snapshot.employer.address}</p>
-            <p className="mt-2">{doc.data.snapshot.employee.name} — {doc.data.snapshot.employee.designation ?? 'no title on file'}</p>
+            <p className="mt-2">
+              {doc.data.snapshot.employee.name} — {doc.data.snapshot.employee.designation ?? 'no title on file'}
+            </p>
             <dl className="mt-2 grid grid-cols-2 gap-x-4">
               <Field label="Basic">{money(doc.data.snapshot.earnings.basic)}</Field>
               <Field label="HRA">{money(doc.data.snapshot.earnings.hra)}</Field>
@@ -409,7 +416,9 @@ function PayslipsTab() {
               <Field label="ESI">{money(doc.data.snapshot.deductions.esi)}</Field>
               <Field label="PT">{money(doc.data.snapshot.deductions.professionalTax)}</Field>
               <Field label="Net pay">{money(doc.data.snapshot.net)}</Field>
-              <Field label="Bank">{doc.data.snapshot.bankLast4 ? `••••${doc.data.snapshot.bankLast4}` : 'not on file'}</Field>
+              <Field label="Bank">
+                {doc.data.snapshot.bankLast4 ? `••••${doc.data.snapshot.bankLast4}` : 'not on file'}
+              </Field>
             </dl>
           </div>
         )}
@@ -440,7 +449,10 @@ function ExportsTab() {
   };
 
   return (
-    <Card title="Exports" subtitle="Prepares the text an authorised signatory uploads on the EPFO/ESIC portal directly. Nothing here transmits anything.">
+    <Card
+      title="Exports"
+      subtitle="Prepares the text an authorised signatory uploads on the EPFO/ESIC portal directly. Nothing here transmits anything."
+    >
       <div className="flex flex-col gap-3">
         <TextInput label="Payroll run id" value={runId} onChange={setRunId} placeholder="cl..." />
         <div className="flex gap-2">
@@ -487,7 +499,10 @@ function SettlementsTab() {
   };
 
   return (
-    <Card title="Full-and-final settlement" subtitle="Gratuity, leave encashment, pro-rata bonus and notice recovery, computed from years of service and the approved salary structure.">
+    <Card
+      title="Full-and-final settlement"
+      subtitle="Gratuity, leave encashment, pro-rata bonus and notice recovery, computed from years of service and the approved salary structure."
+    >
       <div className="flex flex-col gap-3">
         <TextInput label="Offboarding id" value={offboardingId} onChange={setOffboardingId} />
         <button className="btn-primary w-fit" disabled={!offboardingId || pending} onClick={settle}>

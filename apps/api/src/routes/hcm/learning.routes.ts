@@ -5,25 +5,53 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { handler, str, bool } from '../../lib/http.js';
 import {
-  listPrograms, getProgram, createProgram, setProgramActive,
-  listSessions, createSession, setSessionStatus,
-  listEnrollments, nominate, approveEnrollment, rejectEnrollment, markAttendance, completeEnrollment,
-  listCertifications, addCertification, verifyCertification, runCertificationExpiryLadder,
-  listMandatoryRules, createMandatoryRule, mandatoryComplianceStatus, runMandatoryTrainingOverdueCheck,
-  listIdps, createIdp, updateIdp,
-  listBudgets, createBudget,
+  listPrograms,
+  getProgram,
+  createProgram,
+  setProgramActive,
+  listSessions,
+  createSession,
+  setSessionStatus,
+  listEnrollments,
+  nominate,
+  approveEnrollment,
+  rejectEnrollment,
+  markAttendance,
+  completeEnrollment,
+  listCertifications,
+  addCertification,
+  verifyCertification,
+  runCertificationExpiryLadder,
+  listMandatoryRules,
+  createMandatoryRule,
+  mandatoryComplianceStatus,
+  runMandatoryTrainingOverdueCheck,
+  listIdps,
+  createIdp,
+  updateIdp,
+  listBudgets,
+  createBudget,
 } from '../../domains/hcm/learning.js';
 
 const router = Router();
 
-router.get('/_status', handler(async () => ({ module: 'learning', ready: true })));
+router.get(
+  '/_status',
+  handler(async () => ({ module: 'learning', ready: true })),
+);
 
 // ---------------------------------------------------------------------------
 // Programs
 // ---------------------------------------------------------------------------
 
-router.get('/programs', handler(async (req) => listPrograms(bool(req.query.activeOnly))));
-router.get('/programs/:id', handler(async (req) => getProgram(req.params.id)));
+router.get(
+  '/programs',
+  handler(async (req) => listPrograms(bool(req.query.activeOnly))),
+);
+router.get(
+  '/programs/:id',
+  handler(async (req) => getProgram(req.params.id)),
+);
 
 router.post(
   '/programs',
@@ -55,7 +83,10 @@ router.patch(
 // Sessions
 // ---------------------------------------------------------------------------
 
-router.get('/sessions', handler(async (req) => listSessions(str(req.query.programId))));
+router.get(
+  '/sessions',
+  handler(async (req) => listSessions(str(req.query.programId))),
+);
 
 router.post(
   '/sessions',
@@ -89,18 +120,28 @@ router.post(
 
 router.get(
   '/enrollments',
-  handler(async (req) => listEnrollments({ sessionId: str(req.query.sessionId), employmentRelationshipId: str(req.query.employmentRelationshipId) })),
+  handler(async (req) =>
+    listEnrollments({
+      sessionId: str(req.query.sessionId),
+      employmentRelationshipId: str(req.query.employmentRelationshipId),
+    }),
+  ),
 );
 
 router.post(
   '/enrollments',
   handler(async (req) => {
-    const body = z.object({ sessionId: z.string().min(1), employmentRelationshipId: z.string().min(1) }).parse(req.body);
+    const body = z
+      .object({ sessionId: z.string().min(1), employmentRelationshipId: z.string().min(1) })
+      .parse(req.body);
     return nominate(body);
   }),
 );
 
-router.post('/enrollments/:id/approve', handler(async (req) => approveEnrollment(req.params.id)));
+router.post(
+  '/enrollments/:id/approve',
+  handler(async (req) => approveEnrollment(req.params.id)),
+);
 
 router.post(
   '/enrollments/:id/reject',
@@ -130,7 +171,10 @@ router.post(
 // Certifications
 // ---------------------------------------------------------------------------
 
-router.get('/certifications', handler(async (req) => listCertifications(str(req.query.employmentRelationshipId))));
+router.get(
+  '/certifications',
+  handler(async (req) => listCertifications(str(req.query.employmentRelationshipId))),
+);
 
 router.post(
   '/certifications',
@@ -149,14 +193,23 @@ router.post(
   }),
 );
 
-router.post('/certifications/:id/verify', handler(async (req) => verifyCertification(req.params.id)));
-router.post('/certifications/expiry-check', handler(async () => runCertificationExpiryLadder()));
+router.post(
+  '/certifications/:id/verify',
+  handler(async (req) => verifyCertification(req.params.id)),
+);
+router.post(
+  '/certifications/expiry-check',
+  handler(async () => runCertificationExpiryLadder()),
+);
 
 // ---------------------------------------------------------------------------
 // Mandatory training
 // ---------------------------------------------------------------------------
 
-router.get('/mandatory-rules', handler(async () => listMandatoryRules()));
+router.get(
+  '/mandatory-rules',
+  handler(async () => listMandatoryRules()),
+);
 
 router.post(
   '/mandatory-rules',
@@ -172,14 +225,23 @@ router.post(
   }),
 );
 
-router.get('/mandatory-status', handler(async () => mandatoryComplianceStatus()));
-router.post('/mandatory-rules/overdue-check', handler(async () => runMandatoryTrainingOverdueCheck()));
+router.get(
+  '/mandatory-status',
+  handler(async () => mandatoryComplianceStatus()),
+);
+router.post(
+  '/mandatory-rules/overdue-check',
+  handler(async () => runMandatoryTrainingOverdueCheck()),
+);
 
 // ---------------------------------------------------------------------------
 // IDPs
 // ---------------------------------------------------------------------------
 
-router.get('/idps', handler(async (req) => listIdps(str(req.query.employmentRelationshipId))));
+router.get(
+  '/idps',
+  handler(async (req) => listIdps(str(req.query.employmentRelationshipId))),
+);
 
 router.post(
   '/idps',
@@ -215,12 +277,17 @@ router.patch(
 // Budgets
 // ---------------------------------------------------------------------------
 
-router.get('/budgets', handler(async (req) => listBudgets(str(req.query.fy))));
+router.get(
+  '/budgets',
+  handler(async (req) => listBudgets(str(req.query.fy))),
+);
 
 router.post(
   '/budgets',
   handler(async (req) => {
-    const body = z.object({ fy: z.string().min(1), division: z.string().nullish(), amount: z.number().nonnegative() }).parse(req.body);
+    const body = z
+      .object({ fy: z.string().min(1), division: z.string().nullish(), amount: z.number().nonnegative() })
+      .parse(req.body);
     return createBudget(body);
   }),
 );

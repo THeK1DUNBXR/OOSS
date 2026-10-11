@@ -24,8 +24,25 @@ import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
-import { resolveAuthorityCeiling } from '../platform/permissions.js';
+import { assertCan, resolveAuthorityCeiling } from '../platform/permissions.js';
 import { notify } from '../platform/exceptions.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+
+// Without this registration auditWrite silently skips agent_action, which is
+// how a human accepting an AI proposal left no trace.
+registerGovernedEntities('agt', ['agent_action', 'agent_principal']);
+
+// Ordered by how much the tier lets an agent do unattended, least first. The
+// array order in packages/shared/src/ai.ts is not this order: PROHIBITED sits
+// last there but is the most restrictive, so the clamp cannot rely on index.
+const TIER_RANK: Record<AiTierCode, number> = {
+  PROHIBITED: 0,
+  READ: 1,
+  RECOMMEND: 2,
+  DRAFT: 3,
+  EXECUTE_WITH_APPROVAL: 4,
+  AUTONOMOUS_WITHIN_POLICY: 5,
+};
 
 export interface ProposeInput {
   agentKey: string;
@@ -82,8 +99,9 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
   // Four hard prohibitions apply regardless of any AUTHORITY_GRANT a policy
   // might attempt to issue.
   if (isProhibitedForAgent(input.action)) {
-    const prohibition = HARD_PROHIBITIONS.find((p) => input.action.includes('pay') || input.action.includes('approve'))
-      ?? HARD_PROHIBITIONS[1];
+    const prohibition =
+      HARD_PROHIBITIONS.find((p) => input.action.includes('pay') || input.action.includes('approve')) ??
+      HARD_PROHIBITIONS[1];
     return blocked(
       agent.id,
       input,
@@ -94,8 +112,12 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
 
   const touchpoint = touchpointFor(input.tool);
   // An individual action may classify lower than the agent's ceiling tier, but
-  // never higher.
-  const tier: AiTierCode = touchpoint?.tier ?? (agent.tier as AiTierCode);
+  // never higher. The clamp is to the more restrictive of the two: taking the
+  // touchpoint's tier whatever the ceiling let a READ agent run an AUTONOMOUS
+  // tool unattended (FX-05).
+  const ceilingTier = agent.tier as AiTierCode;
+  const touchpointTier = touchpoint?.tier ?? ceilingTier;
+  const tier: AiTierCode = TIER_RANK[touchpointTier] <= TIER_RANK[ceilingTier] ? touchpointTier : ceilingTier;
   const tierSpec = AI_TIER_BY_CODE[tier];
 
   if (tier === 'PROHIBITED') {
@@ -137,13 +159,23 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
   if (countGrant?.countCeiling) {
     const windowStart = windowStartFor(countGrant.countWindow ?? 'day');
     const used = await prisma.agentAction.count({
-      where: { tenantId: auth.tenantId, agentId: agent.id, proposedAt: { gte: windowStart }, state: { in: ['proposed', 'executed'] } },
+      where: {
+        tenantId: auth.tenantId,
+        agentId: agent.id,
+        proposedAt: { gte: windowStart },
+        state: { in: ['proposed', 'executed'] },
+      },
     });
     if (used >= countGrant.countCeiling) {
       await emit({
         name: EVENTS.AGENT_AUTHORITY_SHORTFALL,
         subject: { entityType: 'agent_action', entityId: agent.id },
-        newState: { agentKey: input.agentKey, countCeiling: countGrant.countCeiling, used, window: countGrant.countWindow },
+        newState: {
+          agentKey: input.agentKey,
+          countCeiling: countGrant.countCeiling,
+          used,
+          window: countGrant.countWindow,
+        },
         impact: { domains: ['agt'], severity: 'S1_ATTENTION' },
       });
       return blocked(
@@ -212,12 +244,7 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
   return { actionId: action.id, tier, state: 'proposed', blockedReason: null, autoExecuted: false };
 }
 
-async function blocked(
-  agentId: string,
-  input: ProposeInput,
-  tier: AiTierCode,
-  reason: string,
-): Promise<ProposeResult> {
+async function blocked(agentId: string, input: ProposeInput, tier: AiTierCode, reason: string): Promise<ProposeResult> {
   const auth = currentAuth();
   const action = await prisma.agentAction.create({
     data: {
@@ -256,16 +283,36 @@ export async function decideAgentAction(actionId: string, accept: boolean, note?
 
   const action = await prisma.agentAction.findFirst({ where: { id: actionId } });
   if (!action) throw ApiError.notFound('Agent action');
+
+  // Accepting a proposal is what makes it 'executed', so it needs the same
+  // distinct grant as any other commitment on the agents resource. `decide` is
+  // not a verb in the grant matrix; `approve` is the one that is held apart
+  // from edit (packages/shared/src/permissions.ts DISTINCT_GRANT_VERBS).
+  await assertCan({ resource: 'agents', verb: 'approve' });
+
   if (action.state !== 'proposed') throw ApiError.conflict(`Action is already ${action.state}.`);
 
-  const updated = await prisma.agentAction.update({
-    where: { id: actionId },
+  // Same guard as decideApprovalStep: the state read above is not enough on its
+  // own, or two reviewers both execute the same proposal and the humanActorId
+  // of record is whoever wrote last.
+  const { count } = await prisma.agentAction.updateMany({
+    where: { id: actionId, state: 'proposed' },
     data: {
       state: accept ? 'executed' : 'rejected',
       humanActorId: auth.partyId,
       decidedAt: new Date(),
       blockedReason: accept ? null : (note ?? 'Rejected by a human reviewer.'),
     },
+  });
+  if (count !== 1) throw ApiError.conflict('Action was decided by someone else while you were deciding it.');
+  const updated = await prisma.agentAction.findFirstOrThrow({ where: { id: actionId } });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'agent_action',
+    subjectId: actionId,
+    before: { state: 'proposed' },
+    after: { state: updated.state, humanActorId: auth.partyId },
   });
 
   await emit({
@@ -337,6 +384,10 @@ export async function agentRoster() {
  */
 export async function revokeAuthority(grantId: string, reason: string) {
   const auth = currentAuth();
+  // The grants edit verb is the one the route already requires (admin.routes.ts
+  // revoke handler). The check lives here too so a second caller cannot skip it.
+  // The grant matrix has no separate revoke verb to use instead.
+  await assertCan({ resource: 'grants', verb: 'edit' });
   const grant = await prisma.authorityGrant.findFirst({ where: { id: grantId } });
   if (!grant) throw ApiError.notFound('Authority grant');
 
@@ -348,6 +399,14 @@ export async function revokeAuthority(grantId: string, reason: string) {
   const revoked = await prisma.authorityGrant.update({
     where: { id: grantId },
     data: { status: 'revoked', revokedAt: new Date(), revokedReason: reason },
+  });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'authority_grant',
+    subjectId: grantId,
+    before: { status: grant.status },
+    after: { status: 'revoked', revokedReason: reason, actorPartyId: auth.partyId },
   });
 
   await emit({
@@ -363,11 +422,39 @@ export async function revokeAuthority(grantId: string, reason: string) {
   return { revoked, wentDark: dependents.map((d) => d.name) };
 }
 
+/**
+ * Pausing an agent stops every action it would take, so it is a governed write
+ * like any other: the agents grant is checked here, not only at the route, and
+ * the audit row names the human who paused or resumed it (FX-22).
+ */
 export async function pauseAgent(agentId: string, paused: boolean) {
-  return prisma.agentPrincipal.update({
+  const auth = currentAuth();
+  await assertCan({ resource: 'agents', verb: 'edit' });
+  const existing = await prisma.agentPrincipal.findFirst({ where: { id: agentId } });
+  if (!existing) throw ApiError.notFound('Agent');
+
+  const updated = await prisma.agentPrincipal.update({
     where: { id: agentId },
     data: { status: paused ? 'paused' : 'active' },
   });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'agent_principal',
+    subjectId: agentId,
+    before: { status: existing.status },
+    after: { status: updated.status, actorPartyId: auth.partyId },
+  });
+
+  await emit({
+    name: EVENTS.AGENT_PRINCIPAL_STATUS_CHANGED,
+    subject: { entityType: 'agent_principal', entityId: agentId },
+    previousState: { status: existing.status },
+    newState: { status: updated.status },
+    reason: { reasonCode: paused ? 'agent_paused' : 'agent_resumed' },
+  });
+
+  return updated;
 }
 
 export { AI_TOUCHPOINTS, HARD_PROHIBITIONS };

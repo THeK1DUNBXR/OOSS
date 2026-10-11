@@ -16,10 +16,14 @@ import {
   recentWebhooks,
   aiTouchpoints,
 } from '../../domains/marketing/settings.js';
+import { createWebhookEndpoint } from '../../domains/marketing/capture.js';
 
 const router = Router();
 
-router.get('/channels', handler(async () => listChannels()));
+router.get(
+  '/channels',
+  handler(async () => listChannels()),
+);
 
 router.post(
   '/channels',
@@ -51,9 +55,15 @@ router.patch(
   }),
 );
 
-router.get('/adapters', handler(async () => listAdapterStatus()));
+router.get(
+  '/adapters',
+  handler(async () => listAdapterStatus()),
+);
 
-router.get('/policy', handler(async () => getPolicy()));
+router.get(
+  '/policy',
+  handler(async () => getPolicy()),
+);
 
 router.patch(
   '/policy',
@@ -70,9 +80,25 @@ router.patch(
   }),
 );
 
-router.get('/webhooks', handler(async () => recentWebhooks()));
+router.get(
+  '/webhooks',
+  handler(async () => recentWebhooks()),
+);
 
-router.get('/ai-touchpoints', handler(async () => aiTouchpoints()));
+// The secret comes back once, in this response. It is not retrievable afterwards.
+router.post(
+  '/webhook-endpoints',
+  handler(async (req, res) => {
+    const provider = z.object({ provider: z.string().min(1) }).parse(req.body).provider;
+    res.status(201);
+    return createWebhookEndpoint(provider);
+  }),
+);
+
+router.get(
+  '/ai-touchpoints',
+  handler(async () => aiTouchpoints()),
+);
 
 router.get(
   '/claims',
@@ -85,12 +111,19 @@ router.get(
 router.post(
   '/claims',
   handler(async (req) => {
-    const schema = z.object({ text: z.string(), evidenceRef: z.string().nullish(), assetIds: z.array(z.string()).optional() });
+    const schema = z.object({
+      text: z.string(),
+      evidenceRef: z.string().nullish(),
+      assetIds: z.array(z.string()).optional(),
+    });
     return createClaim(schema.parse(req.body));
   }),
 );
 
-router.post('/claims/:id/approve', handler(async (req) => approveClaim(req.params.id)));
+router.post(
+  '/claims/:id/approve',
+  handler(async (req) => approveClaim(req.params.id)),
+);
 
 router.post(
   '/claims/:id/reject',
@@ -101,6 +134,9 @@ router.post(
   }),
 );
 
-router.post('/claims/:id/retire', handler(async (req) => retireClaim(req.params.id)));
+router.post(
+  '/claims/:id/retire',
+  handler(async (req) => retireClaim(req.params.id)),
+);
 
 export default router;

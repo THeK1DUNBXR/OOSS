@@ -27,12 +27,20 @@ const conditionSchema = z.enum(IT_ASSET_CONDITIONS);
 
 router.get(
   '/',
-  handler(async (req) => listAssets({ status: str(req.query.status), kind: str(req.query.kind), search: str(req.query.search) })),
+  handler(async (req) =>
+    listAssets({ status: str(req.query.status), kind: str(req.query.kind), search: str(req.query.search) }),
+  ),
 );
 
-router.get('/summary', handler(async () => summary()));
+router.get(
+  '/summary',
+  handler(async () => summary()),
+);
 
-router.get('/mine', handler(async () => myAssets()));
+router.get(
+  '/mine',
+  handler(async () => myAssets()),
+);
 
 router.post(
   '/',
@@ -64,7 +72,10 @@ router.post(
   }),
 );
 
-router.get('/:id', handler(async (req) => assetDetail(req.params.id)));
+router.get(
+  '/:id',
+  handler(async (req) => assetDetail(req.params.id)),
+);
 
 router.patch(
   '/:id',
@@ -118,7 +129,11 @@ router.post(
   '/:id/return',
   handler(async (req) => {
     const body = z
-      .object({ conditionIn: conditionSchema.nullish(), note: z.string().nullish(), acknowledged: z.boolean().optional() })
+      .object({
+        conditionIn: conditionSchema.nullish(),
+        note: z.string().nullish(),
+        acknowledged: z.boolean().optional(),
+      })
       .parse(req.body);
     return returnAsset(req.params.id, body);
   }),
@@ -137,7 +152,10 @@ router.post(
   }),
 );
 
-router.get('/:id/events', handler(async (req) => listAssetEvents(req.params.id)));
+router.get(
+  '/:id/events',
+  handler(async (req) => listAssetEvents(req.params.id)),
+);
 
 router.post(
   '/:id/events',

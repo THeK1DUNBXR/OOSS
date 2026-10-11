@@ -84,7 +84,7 @@ export async function createPfRateTable(input: PfRateTableInput) {
   const auth = currentAuth();
   await assertRateTableEdit();
   const row = await prisma.pfRateTable.create({ data: { tenantId: auth.tenantId, ...input } });
-  await auditWrite({ action: 'create', subjectType: 'pf_rate_table', subjectId: row.id, after: row, force: true });
+  await auditWrite({ action: 'create', subjectType: 'pf_rate_table', subjectId: row.id, after: row });
   return row;
 }
 
@@ -95,7 +95,10 @@ export async function currentPfRateTable(at: Date): Promise<PfRates> {
     where: { tenantId: auth.tenantId, effectiveFrom: { lte: at } },
     orderBy: { effectiveFrom: 'desc' },
   });
-  if (!row) throw ApiError.unprocessable('No PF rate table is effective yet. Seed one under Rate tables before computing a run.');
+  if (!row)
+    throw ApiError.unprocessable(
+      'No PF rate table is effective yet. Seed one under Rate tables before computing a run.',
+    );
   return {
     employeeRate: num(row.employeeRate)!,
     employerRate: num(row.employerRate)!,
@@ -108,7 +111,10 @@ export async function currentPfRateTable(at: Date): Promise<PfRates> {
 }
 async function currentPfRateTableRow(at: Date) {
   const auth = currentAuth();
-  return prisma.pfRateTable.findFirst({ where: { tenantId: auth.tenantId, effectiveFrom: { lte: at } }, orderBy: { effectiveFrom: 'desc' } });
+  return prisma.pfRateTable.findFirst({
+    where: { tenantId: auth.tenantId, effectiveFrom: { lte: at } },
+    orderBy: { effectiveFrom: 'desc' },
+  });
 }
 
 export async function listEsiRateTables() {
@@ -128,25 +134,38 @@ export async function createEsiRateTable(input: EsiRateTableInput) {
   const auth = currentAuth();
   await assertRateTableEdit();
   const row = await prisma.esiRateTable.create({ data: { tenantId: auth.tenantId, ...input } });
-  await auditWrite({ action: 'create', subjectType: 'esi_rate_table', subjectId: row.id, after: row, force: true });
+  await auditWrite({ action: 'create', subjectType: 'esi_rate_table', subjectId: row.id, after: row });
   return row;
 }
 
 async function currentEsiRateTableRow(at: Date) {
   const auth = currentAuth();
-  return prisma.esiRateTable.findFirst({ where: { tenantId: auth.tenantId, effectiveFrom: { lte: at } }, orderBy: { effectiveFrom: 'desc' } });
+  return prisma.esiRateTable.findFirst({
+    where: { tenantId: auth.tenantId, effectiveFrom: { lte: at } },
+    orderBy: { effectiveFrom: 'desc' },
+  });
 }
 
 export async function currentEsiRateTable(at: Date): Promise<EsiRates> {
   const row = await currentEsiRateTableRow(at);
-  if (!row) throw ApiError.unprocessable('No ESI rate table is effective yet. Seed one under Rate tables before computing a run.');
-  return { employeeRate: num(row.employeeRate)!, employerRate: num(row.employerRate)!, wageCeiling: num(row.wageCeiling)! };
+  if (!row)
+    throw ApiError.unprocessable(
+      'No ESI rate table is effective yet. Seed one under Rate tables before computing a run.',
+    );
+  return {
+    employeeRate: num(row.employeeRate)!,
+    employerRate: num(row.employerRate)!,
+    wageCeiling: num(row.wageCeiling)!,
+  };
 }
 
 export async function listPtSlabTables() {
   const auth = currentAuth();
   await assertCan({ resource: 'rate_tables', verb: 'view' });
-  return prisma.professionalTaxSlabTable.findMany({ where: { tenantId: auth.tenantId }, orderBy: { effectiveFrom: 'desc' } });
+  return prisma.professionalTaxSlabTable.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { effectiveFrom: 'desc' },
+  });
 }
 
 export interface PtSlabTableInput {
@@ -160,20 +179,32 @@ export async function createPtSlabTable(input: PtSlabTableInput) {
   const auth = currentAuth();
   await assertRateTableEdit();
   const row = await prisma.professionalTaxSlabTable.create({
-    data: { tenantId: auth.tenantId, state: input.state ?? 'TN', effectiveFrom: input.effectiveFrom, slabs: input.slabs as never, confirmNote: input.confirmNote },
+    data: {
+      tenantId: auth.tenantId,
+      state: input.state ?? 'TN',
+      effectiveFrom: input.effectiveFrom,
+      slabs: input.slabs as never,
+      confirmNote: input.confirmNote,
+    },
   });
-  await auditWrite({ action: 'create', subjectType: 'pt_slab_table', subjectId: row.id, after: row, force: true });
+  await auditWrite({ action: 'create', subjectType: 'pt_slab_table', subjectId: row.id, after: row });
   return row;
 }
 
 async function currentPtSlabRow(at: Date, state = 'TN') {
   const auth = currentAuth();
-  return prisma.professionalTaxSlabTable.findFirst({ where: { tenantId: auth.tenantId, state, effectiveFrom: { lte: at } }, orderBy: { effectiveFrom: 'desc' } });
+  return prisma.professionalTaxSlabTable.findFirst({
+    where: { tenantId: auth.tenantId, state, effectiveFrom: { lte: at } },
+    orderBy: { effectiveFrom: 'desc' },
+  });
 }
 
 export async function currentPtSlabs(at: Date, state = 'TN'): Promise<PtSlab[]> {
   const row = await currentPtSlabRow(at, state);
-  if (!row) throw ApiError.unprocessable(`No Professional Tax slab table is effective for ${state} yet. Seed one under Rate tables.`);
+  if (!row)
+    throw ApiError.unprocessable(
+      `No Professional Tax slab table is effective for ${state} yet. Seed one under Rate tables.`,
+    );
   return row.slabs as unknown as PtSlab[];
 }
 
@@ -206,25 +237,32 @@ export async function createLwfRateTable(input: LwfRateTableInput) {
       confirmNote: input.confirmNote,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'lwf_rate_table', subjectId: row.id, after: row, force: true });
+  await auditWrite({ action: 'create', subjectType: 'lwf_rate_table', subjectId: row.id, after: row });
   return row;
 }
 
 async function currentLwfRateTableRow(at: Date, state = 'TN') {
   const auth = currentAuth();
-  return prisma.lwfRateTable.findFirst({ where: { tenantId: auth.tenantId, state, effectiveFrom: { lte: at } }, orderBy: { effectiveFrom: 'desc' } });
+  return prisma.lwfRateTable.findFirst({
+    where: { tenantId: auth.tenantId, state, effectiveFrom: { lte: at } },
+    orderBy: { effectiveFrom: 'desc' },
+  });
 }
 
 export async function currentLwfRateTable(at: Date, state = 'TN'): Promise<LwfRates> {
   const row = await currentLwfRateTableRow(at, state);
-  if (!row) throw ApiError.unprocessable(`No LWF rate table is effective for ${state} yet. Seed one under Rate tables.`);
+  if (!row)
+    throw ApiError.unprocessable(`No LWF rate table is effective for ${state} yet. Seed one under Rate tables.`);
   return { employeeAmount: num(row.employeeAmount)!, employerAmount: num(row.employerAmount)!, dueMonth: row.dueMonth };
 }
 
 export async function listMinimumWageTables() {
   const auth = currentAuth();
   await assertCan({ resource: 'rate_tables', verb: 'view' });
-  return prisma.minimumWageTable.findMany({ where: { tenantId: auth.tenantId }, orderBy: [{ state: 'asc' }, { category: 'asc' }] });
+  return prisma.minimumWageTable.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: [{ state: 'asc' }, { category: 'asc' }],
+  });
 }
 
 export interface MinimumWageTableInput {
@@ -238,7 +276,7 @@ export async function createMinimumWageTable(input: MinimumWageTableInput) {
   const auth = currentAuth();
   await assertRateTableEdit();
   const row = await prisma.minimumWageTable.create({ data: { tenantId: auth.tenantId, ...input } });
-  await auditWrite({ action: 'create', subjectType: 'minimum_wage_table', subjectId: row.id, after: row, force: true });
+  await auditWrite({ action: 'create', subjectType: 'minimum_wage_table', subjectId: row.id, after: row });
   return row;
 }
 
@@ -296,7 +334,11 @@ export async function proposeSalaryStructure(input: SalaryStructureInput) {
   const pf = await currentPfRateTable(input.effectiveFrom).catch(() => null);
   const esi = await currentEsiRateTable(input.effectiveFrom).catch(() => null);
   const employerPfMonthly = pf ? computePf(input.basic, pf).pfEmployer + computePf(input.basic, pf).epsEmployer : 0;
-  const gross = input.basic + input.hra + (input.specialAllowance ?? 0) + (input.conveyance ?? 0) +
+  const gross =
+    input.basic +
+    input.hra +
+    (input.specialAllowance ?? 0) +
+    (input.conveyance ?? 0) +
     Object.values(input.otherAllowances ?? {}).reduce((a, b) => a + b, 0);
   const employerEsiMonthly = esi && esiEligible(gross, esi) ? computeEsi(gross, esi, true).esiEmployer : 0;
 
@@ -317,7 +359,7 @@ export async function proposeSalaryStructure(input: SalaryStructureInput) {
       proposedById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'salary_structure', subjectId: row.id, after: row, force: true });
+  await auditWrite({ action: 'create', subjectType: 'salary_structure', subjectId: row.id, after: row });
   return row;
 }
 
@@ -330,10 +372,9 @@ export async function approveSalaryStructure(id: string) {
   if (!structure) throw ApiError.notFound('Salary structure');
   if (structure.status === 'Approved') throw ApiError.conflict('This salary structure is already approved.');
   if (structure.proposedById && structure.proposedById === auth.partyId) {
-    throw ApiError.forbidden(
-      'The proposer of a salary structure cannot also approve it (Self-Dealing Bar).',
-      [{ axis: 'WHO', passed: false, reason: 'proposer_is_approver' }],
-    );
+    throw ApiError.forbidden('The proposer of a salary structure cannot also approve it (Self-Dealing Bar).', [
+      { axis: 'WHO', passed: false, reason: 'proposer_is_approver' },
+    ]);
   }
 
   const before = structure;
@@ -341,7 +382,7 @@ export async function approveSalaryStructure(id: string) {
     where: { id },
     data: { status: 'Approved', approvedById: auth.partyId, approvedAt: new Date() },
   });
-  await auditWrite({ action: 'update', subjectType: 'salary_structure', subjectId: row.id, before, after: row, force: true });
+  await auditWrite({ action: 'update', subjectType: 'salary_structure', subjectId: row.id, before, after: row });
   return row;
 }
 
@@ -422,20 +463,39 @@ export async function computeInstruction(payrollRunId: string) {
     if (!structure || !pfRow || !esiRow || !ptRow || !lwfRow) continue; // stays uncomputed on purpose
 
     const otherAllowancesTotal =
-      num(structure.specialAllowance)! + num(structure.conveyance)! +
+      num(structure.specialAllowance)! +
+      num(structure.conveyance)! +
       Object.values((structure.otherAllowances as Record<string, number>) ?? {}).reduce((a, b) => a + Number(b), 0);
     const basic = num(structure.basic)!;
     const hra = num(structure.hra)!;
     const gross = basic + hra + otherAllowancesTotal;
 
     const tables = {
-      pf: { employeeRate: num(pfRow.employeeRate)!, employerRate: num(pfRow.employerRate)!, epsRate: num(pfRow.epsRate)!, edliRate: num(pfRow.edliRate)!, adminRate: num(pfRow.adminRate)!, wageCeiling: num(pfRow.wageCeiling)!, voluntary: pfRow.voluntary },
-      esi: { employeeRate: num(esiRow.employeeRate)!, employerRate: num(esiRow.employerRate)!, wageCeiling: num(esiRow.wageCeiling)! },
+      pf: {
+        employeeRate: num(pfRow.employeeRate)!,
+        employerRate: num(pfRow.employerRate)!,
+        epsRate: num(pfRow.epsRate)!,
+        edliRate: num(pfRow.edliRate)!,
+        adminRate: num(pfRow.adminRate)!,
+        wageCeiling: num(pfRow.wageCeiling)!,
+        voluntary: pfRow.voluntary,
+      },
+      esi: {
+        employeeRate: num(esiRow.employeeRate)!,
+        employerRate: num(esiRow.employerRate)!,
+        wageCeiling: num(esiRow.wageCeiling)!,
+      },
       pt: ptRow.slabs as unknown as PtSlab[],
-      lwf: { employeeAmount: num(lwfRow.employeeAmount)!, employerAmount: num(lwfRow.employerAmount)!, dueMonth: lwfRow.dueMonth },
+      lwf: {
+        employeeAmount: num(lwfRow.employeeAmount)!,
+        employerAmount: num(lwfRow.employerAmount)!,
+        dueMonth: lwfRow.dueMonth,
+      },
     };
 
-    const lines = statutoryLines(gross, { basicPay: basic, hra, otherAllowances: otherAllowancesTotal }, tables, { payPeriod: run.payPeriod });
+    const lines = statutoryLines(gross, { basicPay: basic, hra, otherAllowances: otherAllowancesTotal }, tables, {
+      payPeriod: run.payPeriod,
+    });
 
     await prisma.payrollInstruction.update({
       where: { id: instruction.id },
@@ -454,7 +514,13 @@ export async function computeInstruction(payrollRunId: string) {
         lwfEmployer: lines.lwfEmployer,
         deductions: lines.totalDeductions,
         netAmount: lines.netAmount,
-        computedFrom: { pfTableId: pfRow.id, esiTableId: esiRow.id, ptTableId: ptRow.id, lwfTableId: lwfRow.id, structureId: structure.id } as never,
+        computedFrom: {
+          pfTableId: pfRow.id,
+          esiTableId: esiRow.id,
+          ptTableId: ptRow.id,
+          lwfTableId: lwfRow.id,
+          structureId: structure.id,
+        } as never,
       },
     });
     computed += 1;
@@ -495,7 +561,10 @@ registerHook('payroll_run.before_approve', 'cmp_pay', async (payload) => {
   const onboarded = new Set(
     (
       await prisma.salaryStructure.findMany({
-        where: { tenantId: auth.tenantId, employmentRelationshipId: { in: instructions.map((i) => i.employmentRelationshipId) } },
+        where: {
+          tenantId: auth.tenantId,
+          employmentRelationshipId: { in: instructions.map((i) => i.employmentRelationshipId) },
+        },
         select: { employmentRelationshipId: true },
         distinct: ['employmentRelationshipId'],
       })
@@ -549,7 +618,11 @@ registerHook('payroll_run.before_approve', 'cmp_pay', async (payload) => {
 registerHook('payroll_run.approved', 'cmp_pay', async (payload) => {
   const run = payload.run as { id: string; payPeriod: string; tenantId?: string };
   const instructions = payload.instructions as Array<{ id: string; computedFrom: unknown }>;
-  await issuePayslipsForRun(run.id, run.payPeriod, instructions.map((i) => i.id));
+  await issuePayslipsForRun(
+    run.id,
+    run.payPeriod,
+    instructions.map((i) => i.id),
+  );
 });
 
 async function issuePayslipsForRun(payrollRunId: string, payPeriod: string, instructionIds: string[]) {
@@ -564,7 +637,12 @@ async function issuePayslipsForRun(payrollRunId: string, payPeriod: string, inst
         employmentRelationship: {
           include: {
             person: true,
-            assignments: { where: { rowStatus: 'Effective' }, include: { position: { include: { job: true } } }, take: 1, orderBy: { effectiveFrom: 'desc' } },
+            assignments: {
+              where: { rowStatus: 'Effective' },
+              include: { position: { include: { job: true } } },
+              take: 1,
+              orderBy: { effectiveFrom: 'desc' },
+            },
           },
         },
       },
@@ -572,7 +650,12 @@ async function issuePayslipsForRun(payrollRunId: string, payPeriod: string, inst
     if (!instruction || instruction.computedFrom == null || instruction.payslipNumber) continue;
 
     const employment = instruction.employmentRelationship;
-    const number = await nextDocumentNumber(DOCUMENT_SERIES.payslip, numbering.prefix, new Date(), numbering.yearFormat);
+    const number = await nextDocumentNumber(
+      DOCUMENT_SERIES.payslip,
+      numbering.prefix,
+      new Date(),
+      numbering.yearFormat,
+    );
 
     const snapshot = {
       employer: {
@@ -616,8 +699,11 @@ async function issuePayslipsForRun(payrollRunId: string, payPeriod: string, inst
         snapshot: snapshot as never,
       },
     });
-    await prisma.payrollInstruction.update({ where: { id: instruction.id }, data: { payslipNumber: number, payslipIssuedAt: payslip.issuedAt } });
-    await auditWrite({ action: 'create', subjectType: 'payslip', subjectId: payslip.id, after: payslip, force: true });
+    await prisma.payrollInstruction.update({
+      where: { id: instruction.id },
+      data: { payslipNumber: number, payslipIssuedAt: payslip.issuedAt },
+    });
+    await auditWrite({ action: 'create', subjectType: 'payslip', subjectId: payslip.id, after: payslip });
   }
 }
 
@@ -629,7 +715,10 @@ export async function listPayslips(input: { employmentRelationshipId?: string; p
   if (input.payPeriod) where.payPeriod = input.payPeriod;
 
   if (scope !== 'all') {
-    const own = await prisma.employmentRelationship.findMany({ where: { tenantId: auth.tenantId, personId: auth.partyId ?? '' }, select: { id: true } });
+    const own = await prisma.employmentRelationship.findMany({
+      where: { tenantId: auth.tenantId, personId: auth.partyId ?? '' },
+      select: { id: true },
+    });
     where.employmentRelationshipId = { in: own.map((e) => e.id) };
   } else if (input.employmentRelationshipId) {
     where.employmentRelationshipId = input.employmentRelationshipId;
@@ -667,7 +756,10 @@ export async function getPayslip(id: string) {
 
   const scope = await scopeFor('payslips', 'view');
   if (scope !== 'all') {
-    const employment = await prisma.employmentRelationship.findFirst({ where: { id: payslip.employmentRelationshipId, tenantId: auth.tenantId }, select: { personId: true } });
+    const employment = await prisma.employmentRelationship.findFirst({
+      where: { id: payslip.employmentRelationshipId, tenantId: auth.tenantId },
+      select: { personId: true },
+    });
     if (!employment || employment.personId !== auth.partyId) throw ApiError.notFound('Payslip');
   }
   return payslip;
@@ -758,14 +850,28 @@ export async function settleOffboarding(offboardingId: string) {
   const offboarding = await prisma.offboarding.findFirst({ where: { id: offboardingId, tenantId: auth.tenantId } });
   if (!offboarding) throw ApiError.notFound('Offboarding');
 
-  const employment = await prisma.employmentRelationship.findFirst({ where: { id: offboarding.employmentRelationshipId, tenantId: auth.tenantId } });
+  const employment = await prisma.employmentRelationship.findFirst({
+    where: { id: offboarding.employmentRelationshipId, tenantId: auth.tenantId },
+  });
   if (!employment) throw ApiError.notFound('Employment relationship');
 
   const asOf = employment.separationDate ?? new Date();
   const structure = await currentSalaryStructure(employment.id, asOf);
-  const basicMonthly = structure ? num(structure.basic)! : num((await prisma.compensationRecord.findFirst({ where: { employmentRelationshipId: employment.id, status: 'Effective' }, orderBy: { effectiveFrom: 'desc' } }))?.basicPay) ?? 0;
+  const basicMonthly = structure
+    ? num(structure.basic)!
+    : (num(
+        (
+          await prisma.compensationRecord.findFirst({
+            where: { employmentRelationshipId: employment.id, status: 'Effective' },
+            orderBy: { effectiveFrom: 'desc' },
+          })
+        )?.basicPay,
+      ) ?? 0);
   const grossMonthly = structure
-    ? num(structure.basic)! + num(structure.hra)! + num(structure.specialAllowance)! + num(structure.conveyance)! +
+    ? num(structure.basic)! +
+      num(structure.hra)! +
+      num(structure.specialAllowance)! +
+      num(structure.conveyance)! +
       Object.values((structure.otherAllowances as Record<string, number>) ?? {}).reduce((a, b) => a + Number(b), 0)
     : basicMonthly;
 
@@ -774,7 +880,11 @@ export async function settleOffboarding(offboardingId: string) {
 
   const encashableTypes = await prisma.leaveType.findMany({ where: { tenantId: auth.tenantId, encashable: true } });
   const balances = await prisma.leaveBalance.findMany({
-    where: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, leaveTypeId: { in: encashableTypes.map((t) => t.id) } },
+    where: {
+      tenantId: auth.tenantId,
+      employmentRelationshipId: employment.id,
+      leaveTypeId: { in: encashableTypes.map((t) => t.id) },
+    },
   });
   let encashDays = 0;
   for (const b of balances) {
@@ -807,7 +917,7 @@ export async function settleOffboarding(offboardingId: string) {
       settlementComputedAt: new Date(),
     },
   });
-  await auditWrite({ action: 'update', subjectType: 'offboarding', subjectId: row.id, before, after: row, force: true });
+  await auditWrite({ action: 'update', subjectType: 'offboarding', subjectId: row.id, before, after: row });
   return { ...row, gratuityYears: grat.years, gratuityEligible: grat.eligible, encashDays };
 }
 
@@ -823,11 +933,22 @@ export async function setEngagementType(employmentRelationshipId: string, engage
   if (!ENGAGEMENT_TYPES.includes(engagementType)) {
     throw ApiError.badRequest(`Engagement type must be one of: ${ENGAGEMENT_TYPES.join(', ')}.`);
   }
-  const before = await prisma.employmentRelationship.findFirst({ where: { id: employmentRelationshipId, tenantId: auth.tenantId } });
+  const before = await prisma.employmentRelationship.findFirst({
+    where: { id: employmentRelationshipId, tenantId: auth.tenantId },
+  });
   if (!before) throw ApiError.notFound('Employment relationship');
 
-  const row = await prisma.employmentRelationship.update({ where: { id: employmentRelationshipId }, data: { engagementType } });
-  await auditWrite({ action: 'update', subjectType: 'employment_relationship', subjectId: row.id, before: { engagementType: before.engagementType }, after: { engagementType: row.engagementType }, force: true });
+  const row = await prisma.employmentRelationship.update({
+    where: { id: employmentRelationshipId },
+    data: { engagementType },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'employment_relationship',
+    subjectId: row.id,
+    before: { engagementType: before.engagementType },
+    after: { engagementType: row.engagementType },
+  });
   return { id: row.id, engagementType: row.engagementType };
 }
 
@@ -843,7 +964,9 @@ export interface BankDetailsInput {
 export async function setBankDetails(employmentRelationshipId: string, input: BankDetailsInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'employees', verb: 'edit' });
-  const before = await prisma.employmentRelationship.findFirst({ where: { id: employmentRelationshipId, tenantId: auth.tenantId } });
+  const before = await prisma.employmentRelationship.findFirst({
+    where: { id: employmentRelationshipId, tenantId: auth.tenantId },
+  });
   if (!before) throw ApiError.notFound('Employment relationship');
 
   // The account number and the name on it are regulated values: encrypted on
@@ -861,7 +984,6 @@ export async function setBankDetails(employmentRelationshipId: string, input: Ba
     subjectType: 'employment_relationship',
     subjectId: row.id,
     meta: { fieldsChanged: Object.keys(input) },
-    force: true,
   });
   return { id: row.id, ok: true };
 }

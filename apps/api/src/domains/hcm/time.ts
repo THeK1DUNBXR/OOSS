@@ -31,8 +31,14 @@ import { transitionAttendance } from '../leave.js';
 import type { JobResult } from '../../jobs/scheduler.js';
 
 registerGovernedEntities('hcm_time', [
-  'shift', 'roster_assignment', 'clock_event', 'timesheet', 'timesheet_entry',
-  'overtime_request', 'comp_off', 'attendance_regularisation',
+  'shift',
+  'roster_assignment',
+  'clock_event',
+  'timesheet',
+  'timesheet_entry',
+  'overtime_request',
+  'comp_off',
+  'attendance_regularisation',
 ]);
 
 function ymd(d: Date): string {
@@ -48,7 +54,12 @@ export async function myEmploymentId(): Promise<string> {
   const auth = currentAuth();
   if (!auth.partyId) throw ApiError.unprocessable('No person is attached to this account.');
   const employment = await prisma.employmentRelationship.findFirst({
-    where: { tenantId: auth.tenantId, personId: auth.partyId, deletedAt: null, status: { notIn: ['OfferRescinded', 'NoShow'] } },
+    where: {
+      tenantId: auth.tenantId,
+      personId: auth.partyId,
+      deletedAt: null,
+      status: { notIn: ['OfferRescinded', 'NoShow'] },
+    },
     orderBy: { hireEffectiveDate: 'desc' },
     select: { id: true },
   });
@@ -86,7 +97,11 @@ async function ownScopeWhere(resource: string, verb: Verb = 'view'): Promise<Rec
  * bug here (alert-scope.md): the WHO axis alone (`assertCan`) does not
  * evaluate the WHERE axis — only a scope check or a resolved record does.
  */
-async function listWhere(resource: string, verb: Verb, employmentRelationshipId?: string): Promise<Record<string, unknown>> {
+async function listWhere(
+  resource: string,
+  verb: Verb,
+  employmentRelationshipId?: string,
+): Promise<Record<string, unknown>> {
   if (employmentRelationshipId) {
     await assertEmploymentVisible(resource, employmentRelationshipId, verb);
     return { employmentRelationshipId };
@@ -116,7 +131,13 @@ export async function listShifts(activeOnly = false) {
   });
 }
 
-function shiftDef(shift: { startTime: string; endTime: string; graceMinutes: number; breakMinutes: number; nightShift: boolean }): ShiftDef {
+function shiftDef(shift: {
+  startTime: string;
+  endTime: string;
+  graceMinutes: number;
+  breakMinutes: number;
+  nightShift: boolean;
+}): ShiftDef {
   return {
     startMinutes: parseHHMM(shift.startTime),
     endMinutes: parseHHMM(shift.endTime),
@@ -165,13 +186,22 @@ export async function createShift(input: {
   return row;
 }
 
-export async function updateShift(id: string, patch: { name?: string; graceMinutes?: number; breakMinutes?: number; active?: boolean }) {
+export async function updateShift(
+  id: string,
+  patch: { name?: string; graceMinutes?: number; breakMinutes?: number; active?: boolean },
+) {
   const auth = currentAuth();
   await assertCan({ resource: 'shifts', verb: 'edit' });
   const existing = await prisma.shift.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!existing) throw ApiError.notFound('Shift');
   const row = await prisma.shift.update({ where: { id }, data: patch });
-  await auditWrite({ action: 'update', subjectType: 'shift', subjectId: id, before: existing as never, after: row as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'shift',
+    subjectId: id,
+    before: existing as never,
+    after: row as never,
+  });
   return row;
 }
 
@@ -183,7 +213,10 @@ export async function listRosterAssignments(employmentRelationshipId?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'rosters', verb: 'view' });
   const where = await listWhere('rosters', 'view', employmentRelationshipId);
-  return prisma.rosterAssignment.findMany({ where: { tenantId: auth.tenantId, ...where }, orderBy: { effectiveFrom: 'desc' } });
+  return prisma.rosterAssignment.findMany({
+    where: { tenantId: auth.tenantId, ...where },
+    orderBy: { effectiveFrom: 'desc' },
+  });
 }
 
 export async function assignRoster(input: {
@@ -323,7 +356,9 @@ export async function recordClockEvent(input: {
  * (nothing to classify against) rather than guessed at. Idempotent: it
  * upserts, so a second run on the same day recomputes rather than duplicates.
  */
-export async function deriveAttendanceFromClockEvents(forDate: Date = new Date(Date.now() - 86_400_000)): Promise<JobResult> {
+export async function deriveAttendanceFromClockEvents(
+  forDate: Date = new Date(Date.now() - 86_400_000),
+): Promise<JobResult> {
   const auth = currentAuth();
   // A tenant-wide recompute, reachable directly via `/jobs/derive-attendance`
   // as well as the nightly scheduler (which runs it as the system principal,
@@ -402,7 +437,13 @@ async function getOrCreateTimesheet(employmentRelationshipId: string, weekStart:
   const auth = currentAuth();
   const monday = weekStartMonday(weekStart);
   const existing = await prisma.timesheet.findUnique({
-    where: { tenantId_employmentRelationshipId_weekStart: { tenantId: auth.tenantId, employmentRelationshipId, weekStart: monday } },
+    where: {
+      tenantId_employmentRelationshipId_weekStart: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId,
+        weekStart: monday,
+      },
+    },
   });
   if (existing) return existing;
 
@@ -426,10 +467,16 @@ export async function getTimesheet(id: string) {
   if (!row) throw ApiError.notFound('Timesheet');
   const scope = await scopeFor('timesheets', 'view');
   if (scope !== 'all') {
-    const employment = await prisma.employmentRelationship.findFirst({ where: { id: row.employmentRelationshipId }, select: { personId: true } });
+    const employment = await prisma.employmentRelationship.findFirst({
+      where: { id: row.employmentRelationshipId },
+      select: { personId: true },
+    });
     if (employment?.personId !== auth.partyId) throw ApiError.notFound('Timesheet');
   }
-  const entries = await prisma.timesheetEntry.findMany({ where: { tenantId: auth.tenantId, timesheetId: id }, orderBy: { date: 'asc' } });
+  const entries = await prisma.timesheetEntry.findMany({
+    where: { tenantId: auth.tenantId, timesheetId: id },
+    orderBy: { date: 'asc' },
+  });
   return { ...row, entries };
 }
 
@@ -452,7 +499,8 @@ export async function addTimesheetEntry(input: {
   const auth = currentAuth();
   await assertCan({ resource: 'timesheets', verb: 'create' });
   await assertEmploymentVisible('timesheets', input.employmentRelationshipId, 'create');
-  if (input.hours <= 0 || input.hours > 24) throw ApiError.badRequest('Hours for a single entry must be more than 0 and no more than 24.');
+  if (input.hours <= 0 || input.hours > 24)
+    throw ApiError.badRequest('Hours for a single entry must be more than 0 and no more than 24.');
 
   const timesheet = await getOrCreateTimesheet(input.employmentRelationshipId, input.date);
   if (timesheet.status !== 'draft' && timesheet.status !== 'rejected') {
@@ -506,7 +554,10 @@ export async function submitTimesheet(id: string) {
   const entryCount = await prisma.timesheetEntry.count({ where: { timesheetId: id } });
   if (entryCount === 0) throw ApiError.unprocessable('Add at least one entry before submitting.');
 
-  const updated = await prisma.timesheet.update({ where: { id }, data: { status: 'submitted', submittedAt: new Date(), decisionNote: null } });
+  const updated = await prisma.timesheet.update({
+    where: { id },
+    data: { status: 'submitted', submittedAt: new Date(), decisionNote: null },
+  });
   await emit({
     name: EVENTS.TIMESHEET_SUBMITTED,
     subject: { entityType: 'timesheet', entityId: id, recordCode: row.recordCode },
@@ -523,14 +574,23 @@ async function decideTimesheet(id: string, approve: boolean, note: string | null
   if (!row) throw ApiError.notFound('Timesheet');
   await assertCan({ resource: 'timesheets', verb: 'approve' });
 
-  const employment = await prisma.employmentRelationship.findFirst({ where: { id: row.employmentRelationshipId }, select: { personId: true } });
+  const employment = await prisma.employmentRelationship.findFirst({
+    where: { id: row.employmentRelationshipId },
+    select: { personId: true },
+  });
   selfDealingCheck(employment?.personId ?? null, auth.partyId);
 
-  if (row.status !== 'submitted') throw ApiError.unprocessable(`Timesheet is ${row.status}; only a submitted timesheet can be decided.`);
+  if (row.status !== 'submitted')
+    throw ApiError.unprocessable(`Timesheet is ${row.status}; only a submitted timesheet can be decided.`);
 
   const updated = await prisma.timesheet.update({
     where: { id },
-    data: { status: approve ? 'approved' : 'rejected', decidedById: auth.partyId, decidedAt: new Date(), decisionNote: note },
+    data: {
+      status: approve ? 'approved' : 'rejected',
+      decidedById: auth.partyId,
+      decidedAt: new Date(),
+      decisionNote: note,
+    },
   });
   await emit({
     name: approve ? EVENTS.TIMESHEET_APPROVED : EVENTS.TIMESHEET_REJECTED,
@@ -558,11 +618,17 @@ export async function listOvertimeRequests(employmentRelationshipId?: string) {
   return prisma.overtimeRequest.findMany({ where: { tenantId: auth.tenantId, ...where }, orderBy: { date: 'desc' } });
 }
 
-export async function requestOvertime(input: { employmentRelationshipId: string; date: Date; hours: number; reason?: string | null }) {
+export async function requestOvertime(input: {
+  employmentRelationshipId: string;
+  date: Date;
+  hours: number;
+  reason?: string | null;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'overtime_requests', verb: 'create' });
   await assertEmploymentVisible('overtime_requests', input.employmentRelationshipId, 'create');
-  if (input.hours <= 0 || input.hours > 12) throw ApiError.badRequest('Overtime hours must be more than 0 and no more than 12 for a single request.');
+  if (input.hours <= 0 || input.hours > 12)
+    throw ApiError.badRequest('Overtime hours must be more than 0 and no more than 12 for a single request.');
 
   const row = await prisma.overtimeRequest.create({
     data: {
@@ -576,7 +642,9 @@ export async function requestOvertime(input: { employmentRelationshipId: string;
   await emit({
     name: EVENTS.OVERTIME_REQUEST_SUBMITTED,
     subject: { entityType: 'overtime_request', entityId: row.id },
-    related: [{ relation: 'requests_for', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
+    related: [
+      { relation: 'requests_for', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
+    ],
     newState: { date: ymd(row.date), hours: input.hours },
     impact: { domains: ['hr'] },
   });
@@ -589,20 +657,31 @@ async function decideOvertime(id: string, approve: boolean, note: string | null)
   if (!row) throw ApiError.notFound('Overtime request');
   await assertCan({ resource: 'overtime_requests', verb: 'approve' });
 
-  const employment = await prisma.employmentRelationship.findFirst({ where: { id: row.employmentRelationshipId }, select: { personId: true } });
+  const employment = await prisma.employmentRelationship.findFirst({
+    where: { id: row.employmentRelationshipId },
+    select: { personId: true },
+  });
   selfDealingCheck(employment?.personId ?? null, auth.partyId);
 
-  if (row.status !== 'requested') throw ApiError.unprocessable(`Overtime request is ${row.status}; only a requested one can be decided.`);
+  if (row.status !== 'requested')
+    throw ApiError.unprocessable(`Overtime request is ${row.status}; only a requested one can be decided.`);
 
   const updated = await prisma.overtimeRequest.update({
     where: { id },
-    data: { status: approve ? 'approved' : 'rejected', decidedById: auth.partyId, decidedAt: new Date(), decisionNote: note },
+    data: {
+      status: approve ? 'approved' : 'rejected',
+      decidedById: auth.partyId,
+      decidedAt: new Date(),
+      decisionNote: note,
+    },
   });
 
   await emit({
     name: approve ? EVENTS.OVERTIME_REQUEST_APPROVED : EVENTS.OVERTIME_REQUEST_REJECTED,
     subject: { entityType: 'overtime_request', entityId: id },
-    related: [{ relation: 'requests_for', entityType: 'employment_relationship', entityId: row.employmentRelationshipId }],
+    related: [
+      { relation: 'requests_for', entityType: 'employment_relationship', entityId: row.employmentRelationshipId },
+    ],
     previousState: { status: row.status },
     newState: { status: updated.status, note },
     reason: { reasonCode: approve ? 'approved' : 'rejected' },
@@ -646,11 +725,17 @@ export const approveOvertimeRequest = (id: string, note?: string) => decideOvert
 export const rejectOvertimeRequest = (id: string, note: string) => decideOvertime(id, false, note);
 
 /** Records comp-off earned directly from holiday work — no pre-approval flow, since the day worked is already an accomplished fact by the time this is filed. */
-export async function earnCompOffForHolidayWork(input: { employmentRelationshipId: string; earnedOn: Date; days: number; note?: string | null }) {
+export async function earnCompOffForHolidayWork(input: {
+  employmentRelationshipId: string;
+  earnedOn: Date;
+  days: number;
+  note?: string | null;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'comp_offs', verb: 'create' });
   await assertEmploymentVisible('comp_offs', input.employmentRelationshipId, 'create');
-  if (input.days <= 0 || input.days > 2) throw ApiError.badRequest('Comp-off for one day worked must be more than 0 and no more than 2 days.');
+  if (input.days <= 0 || input.days > 2)
+    throw ApiError.badRequest('Comp-off for one day worked must be more than 0 and no more than 2 days.');
 
   const earnedOn = dayStart(input.earnedOn);
   const row = await prisma.compOff.create({
@@ -667,7 +752,9 @@ export async function earnCompOffForHolidayWork(input: { employmentRelationshipI
   await emit({
     name: EVENTS.COMP_OFF_EARNED,
     subject: { entityType: 'comp_off', entityId: row.id },
-    related: [{ relation: 'credited_to', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
+    related: [
+      { relation: 'credited_to', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
+    ],
     newState: { days: input.days, expiresOn: ymd(row.expiresOn) },
     impact: { domains: ['hr'] },
   });
@@ -691,17 +778,23 @@ export async function consumeCompOff(id: string, consumedOn: Date = new Date()) 
   if (!row) throw ApiError.notFound('Comp-off');
   await assertEmploymentVisible('comp_offs', row.employmentRelationshipId, 'edit');
 
-  if (row.status !== 'available') throw ApiError.unprocessable(`This comp-off is ${row.status}, not available to consume.`);
+  if (row.status !== 'available')
+    throw ApiError.unprocessable(`This comp-off is ${row.status}, not available to consume.`);
   if (new Date() >= row.expiresOn) {
     await prisma.compOff.update({ where: { id }, data: { status: 'expired' } });
     throw ApiError.unprocessable(`This comp-off expired on ${ymd(row.expiresOn)} and can no longer be consumed.`);
   }
 
-  const updated = await prisma.compOff.update({ where: { id }, data: { status: 'consumed', consumedOn: dayStart(consumedOn) } });
+  const updated = await prisma.compOff.update({
+    where: { id },
+    data: { status: 'consumed', consumedOn: dayStart(consumedOn) },
+  });
   await emit({
     name: EVENTS.COMP_OFF_CONSUMED,
     subject: { entityType: 'comp_off', entityId: id },
-    related: [{ relation: 'credited_to', entityType: 'employment_relationship', entityId: row.employmentRelationshipId }],
+    related: [
+      { relation: 'credited_to', entityType: 'employment_relationship', entityId: row.employmentRelationshipId },
+    ],
     newState: { consumedOn: ymd(updated.consumedOn!) },
     impact: { domains: ['hr'] },
   });
@@ -726,7 +819,9 @@ export async function runCompOffExpiry(): Promise<JobResult> {
     await emit({
       name: EVENTS.COMP_OFF_EXPIRED,
       subject: { entityType: 'comp_off', entityId: row.id },
-      related: [{ relation: 'credited_to', entityType: 'employment_relationship', entityId: row.employmentRelationshipId }],
+      related: [
+        { relation: 'credited_to', entityType: 'employment_relationship', entityId: row.employmentRelationshipId },
+      ],
       newState: { expiresOn: ymd(row.expiresOn), days: num(row.days) },
       impact: { domains: ['hr'] },
     });
@@ -743,7 +838,10 @@ export async function listRegularisations(employmentRelationshipId?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'attendance_regularisations', verb: 'view' });
   const where = await listWhere('attendance_regularisations', 'view', employmentRelationshipId);
-  return prisma.attendanceRegularisation.findMany({ where: { tenantId: auth.tenantId, ...where }, orderBy: { date: 'desc' } });
+  return prisma.attendanceRegularisation.findMany({
+    where: { tenantId: auth.tenantId, ...where },
+    orderBy: { date: 'desc' },
+  });
 }
 
 /**
@@ -760,15 +858,25 @@ export async function submitRegularisation(input: { employmentRelationshipId: st
 
   const day = dayStart(input.date);
   let attendance = await prisma.workAttendance.findUnique({
-    where: { employmentRelationshipId_workDate: { employmentRelationshipId: input.employmentRelationshipId, workDate: day } },
+    where: {
+      employmentRelationshipId_workDate: { employmentRelationshipId: input.employmentRelationshipId, workDate: day },
+    },
   });
   if (!attendance) {
     attendance = await prisma.workAttendance.create({
-      data: { tenantId: auth.tenantId, employmentRelationshipId: input.employmentRelationshipId, workDate: day, workedMinutes: 0, missingPunch: true },
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        workDate: day,
+        workedMinutes: 0,
+        missingPunch: true,
+      },
     });
   }
   if (attendance.status === 'Locked') {
-    throw ApiError.unprocessable(`Attendance for ${ymd(day)} is Locked — the pay period is closed. This cannot be regularised.`);
+    throw ApiError.unprocessable(
+      `Attendance for ${ymd(day)} is Locked — the pay period is closed. This cannot be regularised.`,
+    );
   }
   if (attendance.status !== 'Disputed') {
     // Driving the existing `WorkAttendance` machine is a side effect of an
@@ -800,27 +908,44 @@ export async function submitRegularisation(input: { employmentRelationshipId: st
   return row;
 }
 
-async function decideRegularisation(id: string, approve: boolean, note: string | null, correctedWorkedMinutes?: number) {
+async function decideRegularisation(
+  id: string,
+  approve: boolean,
+  note: string | null,
+  correctedWorkedMinutes?: number,
+) {
   const auth = currentAuth();
   const row = await prisma.attendanceRegularisation.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Attendance regularisation request');
   await assertCan({ resource: 'attendance_regularisations', verb: 'approve' });
 
-  const employment = await prisma.employmentRelationship.findFirst({ where: { id: row.employmentRelationshipId }, select: { personId: true } });
+  const employment = await prisma.employmentRelationship.findFirst({
+    where: { id: row.employmentRelationshipId },
+    select: { personId: true },
+  });
   selfDealingCheck(employment?.personId ?? null, auth.partyId);
 
-  if (row.status !== 'submitted') throw ApiError.unprocessable(`This request is ${row.status}; only a submitted one can be decided.`);
+  if (row.status !== 'submitted')
+    throw ApiError.unprocessable(`This request is ${row.status}; only a submitted one can be decided.`);
 
   if (approve) {
     if (correctedWorkedMinutes !== undefined) {
-      await prisma.workAttendance.update({ where: { id: row.workAttendanceId }, data: { workedMinutes: correctedWorkedMinutes } });
+      await prisma.workAttendance.update({
+        where: { id: row.workAttendanceId },
+        data: { workedMinutes: correctedWorkedMinutes },
+      });
     }
     await asSystem(auth.tenantId, () => transitionAttendance(row.workAttendanceId, 'REGULARISE', note ?? undefined));
   }
 
   const updated = await prisma.attendanceRegularisation.update({
     where: { id },
-    data: { status: approve ? 'approved' : 'rejected', decidedById: auth.partyId, decidedAt: new Date(), decisionNote: note },
+    data: {
+      status: approve ? 'approved' : 'rejected',
+      decidedById: auth.partyId,
+      decidedAt: new Date(),
+      decisionNote: note,
+    },
   });
 
   await emit({

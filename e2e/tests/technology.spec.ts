@@ -10,8 +10,8 @@
  * link inside it.
  */
 
-import { expect, test, type Page } from '@playwright/test';
-import { sessionToken, useSessionToken } from './helpers.js';
+import { expect, type Page } from '@playwright/test';
+import { settleSession, signInAs, test } from './helpers.js';
 
 /**
  * Web fonts are decoration with a fallback stack behind them, and a stack
@@ -22,7 +22,6 @@ import { sessionToken, useSessionToken } from './helpers.js';
 async function withoutWebFonts(page: Page): Promise<void> {
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
 }
-
 
 /** Every Technology nav entry (`apps/api/src/seed/bootstrap.ts`, `group:
  *  'technology'`), label as seeded. Kept in sync by hand rather than read
@@ -53,14 +52,6 @@ const TECHNOLOGY_NAV_LABELS = [
   'Technical Debt',
   'Continuity',
 ];
-
-async function signInAs(page: Page, email: string, password: string): Promise<void> {
-  // A shared session token rather than the form: see `sessionToken` in helpers.ts
-  // for why every test signing in through the form exhausts the API's budget.
-  await useSessionToken(page, await sessionToken(page.request, email, password));
-  await page.goto('/');
-  await expect(page.getByRole('link', { name: 'Getting Started' })).toBeVisible();
-}
 
 function chairmanCredentials(): { email: string; password: string } {
   const email = process.env.E2E_EMAIL ?? process.env.OWNER_EMAIL;
@@ -106,12 +97,23 @@ test.describe('the Technology group, signed in as the chairman', () => {
 
   test('every Technology nav entry is present', async ({ page }) => {
     for (const label of TECHNOLOGY_NAV_LABELS) {
-      await expect(page.getByRole('link', { name: label, exact: true }), `no "${label}" link in the sidebar`).toBeVisible();
+      await expect(
+        page.getByRole('link', { name: label, exact: true }),
+        `no "${label}" link in the sidebar`,
+      ).toBeVisible();
     }
   });
 
   test('the core Technology screens render a header with no error box', async ({ page }) => {
-    const screens = ['/it', '/it/assets', '/it/tickets', '/it/incidents', '/it/risks', '/it/portfolio', '/it/continuity'];
+    const screens = [
+      '/it',
+      '/it/assets',
+      '/it/tickets',
+      '/it/incidents',
+      '/it/risks',
+      '/it/portfolio',
+      '/it/continuity',
+    ];
 
     for (const path of screens) {
       // DOM-ready rather than `load`: the page's web-font stylesheet is external,
@@ -121,6 +123,11 @@ test.describe('the Technology group, signed in as the chairman', () => {
       // `ErrorBox` (apps/web/src/components/ui.tsx) always wears this class,
       // whatever the error message says, so this is sturdier than matching text.
       await expect(page.locator('[class*="border-band-critical"]'), `${path} rendered an error box`).toHaveCount(0);
+      // Each load renews the refresh cookie. Navigating away while a renewal is
+      // still in flight can lose the new cookie (see `settleSession`), so the
+      // next load waits for the renewals to land.
+      await expect(page.getByRole('link', { name: 'Getting Started' })).toBeVisible();
+      await settleSession(page);
     }
   });
 });
@@ -129,7 +136,10 @@ test.describe('the Technology group, signed in as an employee', () => {
   test.beforeEach(async ({ page }) => {
     await withoutWebFonts(page);
     const creds = employeeCredentials();
-    test.skip(!creds, 'set E2E_EMPLOYEE_EMAIL and E2E_EMPLOYEE_PASSWORD (or EMPLOYEE_EMAIL/EMPLOYEE_PASSWORD) to run this');
+    test.skip(
+      !creds,
+      'set E2E_EMPLOYEE_EMAIL and E2E_EMPLOYEE_PASSWORD (or EMPLOYEE_EMAIL/EMPLOYEE_PASSWORD) to run this',
+    );
     await signInAs(page, creds!.email, creds!.password);
   });
 

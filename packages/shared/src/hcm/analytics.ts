@@ -144,7 +144,9 @@ export function hiringOfferAcceptanceRate(accepted: number, extended: number): n
 }
 
 /** Average calendar days from a requisition's creation to the resulting hire's effective date. Null with no matched pairs. */
-export function averageTimeToHireDays(pairs: Array<{ requisitionCreatedAt: Date; hireEffectiveDate: Date }>): number | null {
+export function averageTimeToHireDays(
+  pairs: Array<{ requisitionCreatedAt: Date; hireEffectiveDate: Date }>,
+): number | null {
   if (pairs.length === 0) return null;
   const total = pairs.reduce(
     (sum, p) => sum + Math.max(0, (p.hireEffectiveDate.getTime() - p.requisitionCreatedAt.getTime()) / 86_400_000),
@@ -181,14 +183,22 @@ export function spanOfControlStats(counts: number[]): SpanOfControlStats | null 
 // ---------------------------------------------------------------------------
 
 /** Buckets `values` by `bucketOf`, in the given bucket order — a histogram with every named bucket present, even at zero. */
-export function distribution<T, B extends string>(values: T[], buckets: readonly B[], bucketOf: (v: T) => B): Record<B, number> {
+export function distribution<T, B extends string>(
+  values: T[],
+  buckets: readonly B[],
+  bucketOf: (v: T) => B,
+): Record<B, number> {
   const out = Object.fromEntries(buckets.map((b) => [b, 0])) as Record<B, number>;
   for (const v of values) out[bucketOf(v)] += 1;
   return out;
 }
 
 /** As a list of `{ bucket, count }` in bucket order, rather than a keyed record — the shape a bar chart wants. */
-export function distributionList<T, B extends string>(values: T[], buckets: readonly B[], bucketOf: (v: T) => B): Array<{ bucket: B; count: number }> {
+export function distributionList<T, B extends string>(
+  values: T[],
+  buckets: readonly B[],
+  bucketOf: (v: T) => B,
+): Array<{ bucket: B; count: number }> {
   const byBucket = distribution(values, buckets, bucketOf);
   return buckets.map((bucket) => ({ bucket, count: byBucket[bucket] }));
 }

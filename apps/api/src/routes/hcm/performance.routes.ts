@@ -41,16 +41,28 @@ import {
 
 const router = Router();
 
-router.get('/_status', handler(async () => ({ module: 'performance', ready: true })));
+router.get(
+  '/_status',
+  handler(async () => ({ module: 'performance', ready: true })),
+);
 
-router.get('/my/context', handler(async () => myEmploymentContext()));
+router.get(
+  '/my/context',
+  handler(async () => myEmploymentContext()),
+);
 
 // ---------------------------------------------------------------------------
 // Review cycles
 // ---------------------------------------------------------------------------
 
-router.get('/review-cycles', handler(async () => listReviewCycles()));
-router.get('/review-cycles/:id', handler(async (req) => getReviewCycle(req.params.id)));
+router.get(
+  '/review-cycles',
+  handler(async () => listReviewCycles()),
+);
+router.get(
+  '/review-cycles/:id',
+  handler(async (req) => getReviewCycle(req.params.id)),
+);
 
 const createCycleBody = z.object({
   name: z.string().min(1),
@@ -93,9 +105,16 @@ router.post(
 // Review templates
 // ---------------------------------------------------------------------------
 
-router.get('/review-templates', handler(async () => listReviewTemplates()));
+router.get(
+  '/review-templates',
+  handler(async () => listReviewTemplates()),
+);
 
-const templateBody = z.object({ name: z.string().min(1), sections: z.array(z.unknown()).min(1), ratingScale: z.array(z.unknown()).min(1) });
+const templateBody = z.object({
+  name: z.string().min(1),
+  sections: z.array(z.unknown()).min(1),
+  ratingScale: z.array(z.unknown()).min(1),
+});
 
 router.post(
   '/review-templates',
@@ -121,7 +140,10 @@ router.get(
   ),
 );
 
-router.get('/review-assignments/:id', handler(async (req) => getReviewAssignment(req.params.id)));
+router.get(
+  '/review-assignments/:id',
+  handler(async (req) => getReviewAssignment(req.params.id)),
+);
 
 const createAssignmentBody = z.object({
   cycleId: z.string().min(1),
@@ -163,7 +185,10 @@ router.post(
 // Calibration
 // ---------------------------------------------------------------------------
 
-router.get('/calibrations', handler(async (req) => listCalibrationSessions(str(req.query.cycleId))));
+router.get(
+  '/calibrations',
+  handler(async (req) => listCalibrationSessions(str(req.query.cycleId))),
+);
 
 const openCalibrationBody = z.object({
   cycleId: z.string().min(1),
@@ -204,7 +229,10 @@ router.patch(
   }),
 );
 
-router.post('/calibrations/:id/close', handler(async (req) => closeCalibrationSession(req.params.id)));
+router.post(
+  '/calibrations/:id/close',
+  handler(async (req) => closeCalibrationSession(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Final ratings + 9-box
@@ -212,16 +240,27 @@ router.post('/calibrations/:id/close', handler(async (req) => closeCalibrationSe
 
 router.get(
   '/final-ratings',
-  handler(async (req) => listFinalRatings({ cycleId: str(req.query.cycleId), employmentRelationshipId: str(req.query.employmentRelationshipId) })),
+  handler(async (req) =>
+    listFinalRatings({
+      cycleId: str(req.query.cycleId),
+      employmentRelationshipId: str(req.query.employmentRelationshipId),
+    }),
+  ),
 );
 
-router.post('/final-ratings/:id/release', handler(async (req) => releaseFinalRating(req.params.id)));
+router.post(
+  '/final-ratings/:id/release',
+  handler(async (req) => releaseFinalRating(req.params.id)),
+);
 
-router.get('/nine-box', handler(async (req) => {
-  const cycleId = str(req.query.cycleId);
-  if (!cycleId) throw ApiError.badRequest('The 9-box needs a `cycleId`.');
-  return nineBoxForCycle(cycleId);
-}));
+router.get(
+  '/nine-box',
+  handler(async (req) => {
+    const cycleId = str(req.query.cycleId);
+    if (!cycleId) throw ApiError.badRequest('The 9-box needs a `cycleId`.');
+    return nineBoxForCycle(cycleId);
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Feedback
@@ -232,7 +271,8 @@ router.get(
   handler(async (req) =>
     listFeedback({
       employmentRelationshipId: str(req.query.employmentRelationshipId),
-      direction: req.query.direction === 'given' ? 'given' : req.query.direction === 'received' ? 'received' : undefined,
+      direction:
+        req.query.direction === 'given' ? 'given' : req.query.direction === 'received' ? 'received' : undefined,
     }),
   ),
 );
@@ -258,7 +298,10 @@ router.post(
 // 1:1s
 // ---------------------------------------------------------------------------
 
-router.get('/one-on-ones', handler(async (req) => listOneOnOnes({ employmentRelationshipId: str(req.query.employmentRelationshipId) })));
+router.get(
+  '/one-on-ones',
+  handler(async (req) => listOneOnOnes({ employmentRelationshipId: str(req.query.employmentRelationshipId) })),
+);
 
 const oneOnOneBody = z.object({
   managerEmploymentRelationshipId: z.string().min(1),
@@ -295,7 +338,10 @@ router.patch(
 // PIPs
 // ---------------------------------------------------------------------------
 
-router.get('/pips', handler(async (req) => listPips({ employmentRelationshipId: str(req.query.employmentRelationshipId) })));
+router.get(
+  '/pips',
+  handler(async (req) => listPips({ employmentRelationshipId: str(req.query.employmentRelationshipId) })),
+);
 
 const pipBody = z.object({
   employmentRelationshipId: z.string().min(1),
@@ -340,10 +386,21 @@ router.post(
 // Succession
 // ---------------------------------------------------------------------------
 
-router.get('/succession-plans', handler(async () => listSuccessionPlans()));
+router.get(
+  '/succession-plans',
+  handler(async () => listSuccessionPlans()),
+);
 
-const successorSchema = z.object({ employmentRelationshipId: z.string().min(1), readiness: z.string(), note: z.string().optional().nullable() });
-const successionBody = z.object({ positionTitle: z.string().min(1), positionId: z.string().optional().nullable(), successors: z.array(successorSchema) });
+const successorSchema = z.object({
+  employmentRelationshipId: z.string().min(1),
+  readiness: z.string(),
+  note: z.string().optional().nullable(),
+});
+const successionBody = z.object({
+  positionTitle: z.string().min(1),
+  positionId: z.string().optional().nullable(),
+  successors: z.array(successorSchema),
+});
 
 router.post(
   '/succession-plans',

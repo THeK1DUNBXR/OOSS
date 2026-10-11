@@ -8,8 +8,9 @@ import { unscopedPrisma } from '../platform/db.js';
 import { getContext, newRequestContext, runWithContext, type RequestContext } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { TenantScopeError } from '../platform/db.js';
-import { toAuthContext, verifyToken } from './auth.js';
+import { liveSessionFor, toAuthContext, verifyToken } from './auth.js';
 import { grantedConsentCodes, resolvePurpose } from '../domains/compliance/privacy.js';
+import { logger } from '../platform/logger.js';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -18,6 +19,21 @@ declare global {
       ctx?: RequestContext;
     }
   }
+}
+
+/**
+ * The classification ceiling a roleSlug confers. A slug that names no defined
+ * role (neither a tenant role nor a built-in one) is treated as no role: the
+ * lowest ceiling. Falling back to `internal` gave an undefined role more than
+ * a roleless holder gets (rolelessAccess.test.ts).
+ */
+export async function ceilingForRole(tenantId: string, roleSlug: string | null): Promise<SensitivityClass> {
+  if (!roleSlug) return 'public';
+  const role = await unscopedPrisma.accessRole.findFirst({
+    where: { tenantId, slug: roleSlug },
+    select: { classificationCeiling: true },
+  });
+  return (role?.classificationCeiling ?? ROLE_CLASSIFICATION_CEILING[roleSlug] ?? 'public') as SensitivityClass;
 }
 
 /**
@@ -33,27 +49,31 @@ export async function contextMiddleware(req: Request, res: Response, next: NextF
   if (header?.startsWith('Bearer ')) {
     try {
       const payload = verifyToken(header.slice(7));
-      const user = await unscopedPrisma.user.findFirst({
-        where: { id: payload.userId, status: 'active' },
-        select: { id: true, personId: true, tenantId: true, branch: true },
-      });
-      if (user) {
+      // A token whose Session is revoked, expired or absent is no credential,
+      // whatever its signature and expiry say. Logout takes effect here.
+      const session = await liveSessionFor(payload);
+      const user = session
+        ? await unscopedPrisma.user.findFirst({
+            where: { id: payload.userId, status: 'active' },
+            select: { id: true, personId: true, tenantId: true, branch: true },
+          })
+        : null;
+      if (session && user) {
         const affiliation = await unscopedPrisma.affiliation.findFirst({
           where: { id: payload.affiliationId, tenantId: user.tenantId, status: 'active' },
         });
         // A revoked affiliation goes dark on the very next query — no
         // deprovisioning job, no session-invalidation step.
         if (affiliation) {
-          const roleSlug = affiliation.roleSlug ?? 'sales';
-          const role = await unscopedPrisma.accessRole.findFirst({
-            where: { tenantId: user.tenantId, slug: roleSlug },
-            select: { classificationCeiling: true },
-          });
-          const ceiling = (role?.classificationCeiling ?? ROLE_CLASSIFICATION_CEILING[roleSlug] ?? 'internal') as SensitivityClass;
+          // A missing role is no role, never a default one. Defaulting it to
+          // 'sales' gave the sales seat to every affiliation whose role was
+          // never set, so the holder could read what sales can read. With no
+          // role there are no grants, and the ceiling is the lowest class.
+          const ceiling = await ceilingForRole(user.tenantId, affiliation.roleSlug);
           ctx.auth = toAuthContext(
             { ...payload, tenantId: user.tenantId },
             user.personId,
-            roleSlug,
+            affiliation.roleSlug,
             user.branch,
             affiliation.orgUnitId,
             ceiling,
@@ -64,6 +84,7 @@ export async function contextMiddleware(req: Request, res: Response, next: NextF
           // names it, never invented by the header.
           ctx.auth.consentCodes = user.personId ? await grantedConsentCodes(user.tenantId, user.personId) : [];
           ctx.auth.purpose = await resolvePurpose(user.tenantId, req.headers['x-purpose'] as string | undefined);
+          ctx.auth.sessionId = session.id;
         }
       }
     } catch {
@@ -97,7 +118,7 @@ export function handler(fn: (req: Request, res: Response) => Promise<unknown>): 
   };
 }
 
-export function errorMiddleware(err: unknown, _req: Request, res: Response, _next: NextFunction) {
+export function errorMiddleware(err: unknown, req: Request, res: Response, _next: NextFunction) {
   if (err instanceof ApiError) {
     const details = err.details as { candidates?: unknown[]; axes?: unknown[] } | undefined;
     res.status(err.status).json({
@@ -112,17 +133,41 @@ export function errorMiddleware(err: unknown, _req: Request, res: Response, _nex
     return;
   }
 
+  // The full error goes to the log, where the on-call person needs it. The
+  // response carries a code and a request id only: a Prisma or driver message
+  // names hosts, users and sometimes the values that failed a constraint, and
+  // none of that belongs in a body an unauthenticated caller can read.
+  const requestId = getContext()?.requestId ?? req.ctx?.requestId;
+  const tenantId = req.ctx?.auth?.tenantId ?? null;
+
+  // express.json and express.urlencoded reject a bad body before any route runs,
+  // with an error that carries a `type` but is not an ApiError. The caller caused
+  // these, so they are 4xx with fixed text. Left to the 500 branch they would
+  // page on-call for every client that sends malformed JSON. They are returned
+  // here without logging: on Node 22 the parser's message can carry a fragment
+  // of the body, which is personal data, and the request line already records
+  // the status.
+  const errType = typeof err === 'object' && err !== null ? (err as { type?: unknown }).type : undefined;
+  if (errType === 'entity.parse.failed') {
+    res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'The request body is not valid JSON.', requestId } });
+    return;
+  }
+  if (errType === 'entity.too.large') {
+    res
+      .status(413)
+      .json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'The request body is too large.', requestId } });
+    return;
+  }
+
   if (err instanceof TenantScopeError) {
     // A query that escaped the tenant gate is a 500 in staging, caught before
     // production cutover — never a silently unscoped result.
-    const requestId = getContext()?.requestId;
-    console.error('[tenant-scope]', { requestId, err });
+    logger.error({ requestId, tenantId, err }, 'query ran outside the tenant gate');
     res.status(500).json({ error: { code: err.code, requestId } });
     return;
   }
 
-  const requestId = getContext()?.requestId;
-  console.error('[error]', { requestId, err });
+  logger.error({ requestId, tenantId, err }, 'unhandled error');
   res.status(500).json({ error: { code: 'INTERNAL', requestId } });
 }
 

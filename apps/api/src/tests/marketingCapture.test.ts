@@ -8,6 +8,7 @@
  * chain are all genuinely exercised.
  */
 
+import { createHmac } from 'node:crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from './helpers.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -20,11 +21,11 @@ import {
   formEmbedInfo,
   loadForm,
   submitPublicForm,
-  resetRateLimitForTests,
   detectUnconvertedSubmissions,
   createShortLink,
   resolveAndClick,
   receiveWebhook,
+  createWebhookEndpoint,
 } from '../domains/marketing/capture.js';
 import {
   recordTouchpoint,
@@ -43,7 +44,6 @@ const CHAIRMAN = 'chairman@kaizen.co.in'; // superadmin
 const FINANCE = 'finance@kaizen.co.in'; // finance_head: holds leads VCEDAXF — createLead runs as this account below
 
 beforeEach(() => {
-  resetRateLimitForTests();
   resetAdapterCacheForTests();
 });
 
@@ -140,7 +140,9 @@ describe('MKT-CAP-002 — a converted submission creates or finds a Person via f
     const person = await unscopedPrisma.person.findFirstOrThrow({ where: { id: submission.personId! } });
     expect(person.primaryEmail).toBe(email);
 
-    const touchpoint = await unscopedPrisma.marketingTouchpoint.findFirstOrThrow({ where: { tenantId: tid, touchKind: 'form', campaignId: campaign.id } });
+    const touchpoint = await unscopedPrisma.marketingTouchpoint.findFirstOrThrow({
+      where: { tenantId: tid, touchKind: 'form', campaignId: campaign.id },
+    });
     expect(touchpoint.channelKey).toBe('website');
 
     const refreshedForm = await unscopedPrisma.marketingForm.findFirstOrThrow({ where: { id: form.id } });
@@ -184,35 +186,13 @@ describe('duplicate detection — an identical payload within 10 minutes is not 
     await submitPublicForm(form.publicToken, payload);
     await submitPublicForm(form.publicToken, payload);
 
-    const submissions = await unscopedPrisma.marketingFormSubmission.findMany({ where: { formId: form.id }, orderBy: { receivedAt: 'asc' } });
+    const submissions = await unscopedPrisma.marketingFormSubmission.findMany({
+      where: { formId: form.id },
+      orderBy: { receivedAt: 'asc' },
+    });
     expect(submissions).toHaveLength(2);
     expect(submissions[0].status).toBe('converted');
     expect(submissions[1].status).toBe('duplicate');
-  });
-});
-
-describe('rate limiting — 30 submissions per minute per IP', () => {
-  it('the 31st submission from the same IP in a minute is rejected with 429', async () => {
-    const form = await publishedForm();
-    const ip = '203.0.113.7';
-
-    for (let i = 0; i < 30; i += 1) {
-      await submitPublicForm(form.publicToken, { fullName: `Person ${i}`, email: `rl-${i}-${Date.now()}@example.com` }, { ip });
-    }
-
-    const err = await expectReject(() =>
-      submitPublicForm(form.publicToken, { fullName: 'One too many', email: `rl-31-${Date.now()}@example.com` }, { ip }),
-    );
-    expect(err.status).toBe(429);
-  });
-
-  it('a different IP is unaffected by another IP exhausting its limit', async () => {
-    const form = await publishedForm();
-    for (let i = 0; i < 30; i += 1) {
-      await submitPublicForm(form.publicToken, { fullName: `Person ${i}`, email: `x-${i}-${Date.now()}@example.com` }, { ip: '198.51.100.1' });
-    }
-    const result = await submitPublicForm(form.publicToken, { fullName: 'Fresh IP', email: `fresh-${Date.now()}@example.com` }, { ip: '198.51.100.2' });
-    expect(result.ok).toBe(true);
   });
 });
 
@@ -263,7 +243,11 @@ describe('MKT-CAP-004 — every touchpoint is immutable once recorded', () => {
 describe('short links — a click records a touchpoint and appends utm to the target', () => {
   it('resolveAndClick redirects to the target URL with utm params, and increments clickCount', async () => {
     const link = await asUser(OPS, () =>
-      createShortLink({ targetUrl: 'https://example.com/landing', channelKey: 'social_meta', utm: { source: 'meta', medium: 'social', campaign: 'launch' } }),
+      createShortLink({
+        targetUrl: 'https://example.com/landing',
+        channelKey: 'social_meta',
+        utm: { source: 'meta', medium: 'social', campaign: 'launch' },
+      }),
     );
 
     const { targetUrl } = await resolveAndClick(link.slug);
@@ -274,7 +258,9 @@ describe('short links — a click records a touchpoint and appends utm to the ta
     const refreshed = await unscopedPrisma.marketingShortLink.findFirstOrThrow({ where: { id: link.id } });
     expect(refreshed.clickCount).toBe(1);
 
-    const touchpoint = await unscopedPrisma.marketingTouchpoint.findFirstOrThrow({ where: { sourceRef: link.slug, touchKind: 'click' } });
+    const touchpoint = await unscopedPrisma.marketingTouchpoint.findFirstOrThrow({
+      where: { sourceRef: link.slug, touchKind: 'click' },
+    });
     expect(touchpoint.channelKey).toBe('social_meta');
   });
 
@@ -290,14 +276,22 @@ describe('MKT-CAP-007 — lead score is the sum of active rule matches, CRM reas
     const lead = await asUser(FINANCE, () =>
       createLead({
         title: 'Referral enquiry',
-        person: { fullName: 'Referral Person', primaryEmail: `ref-${Date.now()}@example.com`, primaryPhone: `9${String(Date.now()).slice(-9)}` },
+        person: {
+          fullName: 'Referral Person',
+          primaryEmail: `ref-${Date.now()}@example.com`,
+          primaryPhone: `9${String(Date.now()).slice(-9)}`,
+        },
         vertical: 'education',
         source: 'referral',
       }),
     );
 
     await asUser(OPS, () =>
-      createScoreRule({ name: `Referral bonus ${Date.now()}`, condition: { field: 'source', op: 'eq', value: 'referral' }, points: 20 }),
+      createScoreRule({
+        name: `Referral bonus ${Date.now()}`,
+        condition: { field: 'source', op: 'eq', value: 'referral' },
+        points: 20,
+      }),
     );
 
     const preview = await asUser(OPS, () => previewScore(lead.id));
@@ -335,12 +329,16 @@ describe('MKT-CAP-006 / EX-MKT-001 — a lead with no attributable source raises
     const count = await asUser(OPS, () => detectUnattributedLeads());
     expect(count).toBeGreaterThanOrEqual(1);
 
-    const exception = await unscopedPrisma.exceptionRecord.findFirst({ where: { code: 'EX-MKT-001', subjectId: lead.id } });
+    const exception = await unscopedPrisma.exceptionRecord.findFirst({
+      where: { code: 'EX-MKT-001', subjectId: lead.id },
+    });
     expect(exception).toBeTruthy();
 
     // Idempotent — a second run raises nothing new for the same lead.
     await asUser(OPS, () => detectUnattributedLeads());
-    const exceptions = await unscopedPrisma.exceptionRecord.findMany({ where: { code: 'EX-MKT-001', subjectId: lead.id } });
+    const exceptions = await unscopedPrisma.exceptionRecord.findMany({
+      where: { code: 'EX-MKT-001', subjectId: lead.id },
+    });
     expect(exceptions).toHaveLength(1);
   });
 
@@ -356,7 +354,9 @@ describe('MKT-CAP-006 / EX-MKT-001 — a lead with no attributable source raises
     await asUser(OPS, () => prisma.lead.update({ where: { id: lead.id }, data: { channelKey: 'website' } }));
 
     await asUser(OPS, () => detectUnattributedLeads());
-    const exception = await unscopedPrisma.exceptionRecord.findFirst({ where: { code: 'EX-MKT-001', subjectId: lead.id } });
+    const exception = await unscopedPrisma.exceptionRecord.findFirst({
+      where: { code: 'EX-MKT-001', subjectId: lead.id },
+    });
     expect(exception).toBeNull();
   });
 });
@@ -371,14 +371,29 @@ describe('MKT-CAP-005 — attribution is computed and stored per model, never de
     const earlier = new Date(now.getTime() - 3600_000);
 
     await asUser(OPS, () =>
-      recordTouchpoint({ personId: person.person.id, channelKey: 'social_meta', touchKind: 'impression', occurredAt: earlier }),
+      recordTouchpoint({
+        personId: person.person.id,
+        channelKey: 'social_meta',
+        touchKind: 'impression',
+        occurredAt: earlier,
+      }),
     );
     await asUser(OPS, () =>
-      recordTouchpoint({ personId: person.person.id, channelKey: 'email', touchKind: 'click', occurredAt: new Date(now.getTime() - 1800_000) }),
+      recordTouchpoint({
+        personId: person.person.id,
+        channelKey: 'email',
+        touchKind: 'click',
+        occurredAt: new Date(now.getTime() - 1800_000),
+      }),
     );
 
     const lead = await asUser(FINANCE, () =>
-      createLead({ title: 'Two touches', personId: person.person.id, vertical: 'education', source: 'inbound_website' }),
+      createLead({
+        title: 'Two touches',
+        personId: person.person.id,
+        vertical: 'education',
+        source: 'inbound_website',
+      }),
     );
 
     await asUser(OPS, () => computeAttribution(new Date(now.getTime() - 86_400_000), new Date(now.getTime() + 1000)));
@@ -423,25 +438,35 @@ describe('MKT-CAP-005 — attribution is computed and stored per model, never de
 });
 
 describe('inbound webhooks', () => {
-  it('stores an unrouted row for an unrecognised provider, tenant resolved via X-Kai-Tenant', async () => {
+  const signedInbound = (endpointToken: string | undefined, secret: string, body: string, provider = 'email') => {
+    const rawBody = Buffer.from(body);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = `sha256=${createHmac('sha256', secret).update(`${timestamp}.`).update(rawBody).digest('hex')}`;
+    return { provider, endpointToken, rawBody, timestamp, signature };
+  };
+
+  it('refuses an unrecognised provider with 401 and stores nothing', async () => {
     const tid = await tenantId();
-    const tenant = await unscopedPrisma.tenant.findFirstOrThrow({ where: { id: tid } });
-
-    const result = await receiveWebhook('mystery-provider', { hello: 'world' }, { tenantSlug: tenant.slug });
-    expect(result.status).toBe('unrouted');
-
-    const row = await unscopedPrisma.marketingWebhookInbound.findFirstOrThrow({ where: { tenantId: tid, provider: 'mystery-provider' } });
-    expect(row.status).toBe('unrouted');
+    const err = await expectReject(() =>
+      receiveWebhook(signedInbound('any-token', 'secret', '{"eventId":"e1"}', 'mystery-provider')),
+    );
+    expect(err.status).toBe(401);
+    const rows = await unscopedPrisma.marketingWebhookInbound.count({
+      where: { tenantId: tid, provider: 'mystery-provider' },
+    });
+    expect(rows).toBe(0);
   });
 
-  it('rejects a webhook with no resolvable tenant', async () => {
-    const err = await expectReject(() => receiveWebhook('email', {}, {}));
-    expect(err.status).toBe(400);
+  it('refuses a webhook with no endpoint token with 401', async () => {
+    const err = await expectReject(() => receiveWebhook(signedInbound(undefined, 'secret', '{"eventId":"e2"}')));
+    expect(err.status).toBe(401);
   });
 
   it('an email delivery webhook is parsed by the console adapter and applied via messaging.applyDeliveryEvents', async () => {
     const tid = await tenantId();
-    const tenant = await unscopedPrisma.tenant.findFirstOrThrow({ where: { id: tid } });
+    // The test DB persists between runs; an endpoint left by an earlier run would make provisioning conflict.
+    await unscopedPrisma.marketingWebhookEndpoint.deleteMany({ where: { tenantId: tid, provider: 'email' } });
+    const endpoint = await asUser(CHAIRMAN, () => createWebhookEndpoint('email'));
 
     const original = process.env.MARKETING_EMAIL_ADAPTER;
     process.env.MARKETING_EMAIL_ADAPTER = 'console';
@@ -451,10 +476,15 @@ describe('inbound webhooks', () => {
       // any payload shape (it has no real provider format) — the contract
       // under test is that the row is stored and marked processed, and that
       // the messaging pipeline is invoked without throwing.
-      const result = await receiveWebhook('email', { events: [] }, { tenantSlug: tenant.slug });
+      const eventId = `capture-console-${Date.now()}`;
+      const result = await receiveWebhook(
+        signedInbound(endpoint.token, endpoint.signingSecret, JSON.stringify({ eventId, events: [] })),
+      );
       expect(result.status).toBe('processed');
 
-      const row = await unscopedPrisma.marketingWebhookInbound.findFirstOrThrow({ where: { tenantId: tid, provider: 'email' } });
+      const row = await unscopedPrisma.marketingWebhookInbound.findFirstOrThrow({
+        where: { tenantId: tid, provider: 'email', eventId },
+      });
       expect(row.processedAt).toBeTruthy();
     } finally {
       if (original === undefined) delete process.env.MARKETING_EMAIL_ADAPTER;
@@ -485,5 +515,36 @@ describe('cross-tenant isolation', () => {
 
     const err = await expectReject(() => asUser(OPS, () => loadForm(foreignForm.id)));
     expect(err.status).toBe(404);
+  });
+});
+
+describe('inbound webhook replay of a failed delivery (concurrent)', () => {
+  it('two replays of one failed delivery apply it once; the loser is a duplicate', async () => {
+    const tid = await tenantId();
+    await unscopedPrisma.marketingWebhookEndpoint.deleteMany({ where: { tenantId: tid, provider: 'forms' } });
+    const endpoint = await asUser(CHAIRMAN, () => createWebhookEndpoint('forms'));
+    const form = await makeForm();
+    const eventId = `replay-race-${Date.now()}`;
+    const email = `replay-${Date.now()}@example.com`;
+    const rawBody = Buffer.from(JSON.stringify({ eventId, formToken: form.publicToken, fullName: 'Replay', email }));
+    const inbound = () => {
+      const timestamp = String(Math.floor(Date.now() / 1000));
+      const signature = `sha256=${createHmac('sha256', endpoint.signingSecret).update(`${timestamp}.`).update(rawBody).digest('hex')}`;
+      return { provider: 'forms', endpointToken: endpoint.token, rawBody, timestamp, signature };
+    };
+
+    // The form is still a draft, so the first delivery fails and is recorded as failed.
+    await expectReject(() => receiveWebhook(inbound()));
+    await asUser(OPS, () => publishForm(form.id));
+
+    // Two replays of the failed delivery, started together: both read it as failed.
+    const outcomes = await Promise.allSettled([receiveWebhook(inbound()), receiveWebhook(inbound())]);
+    const statuses = outcomes.map((o) => (o.status === 'fulfilled' ? o.value.status : 'rejected'));
+    expect(statuses.sort()).toEqual(['duplicate', 'processed']);
+
+    const submissions = await unscopedPrisma.marketingFormSubmission.count({
+      where: { formId: form.id, status: { not: 'duplicate' } },
+    });
+    expect(submissions).toBe(1);
   });
 });

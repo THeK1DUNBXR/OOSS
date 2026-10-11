@@ -50,7 +50,13 @@ export async function seedStatutory(): Promise<void> {
 
   for (const rule of rules) {
     const existing = await prisma.statutoryRule.findFirst({
-      where: { tenantId, domain: rule.domain, key: rule.key, jurisdiction: rule.jurisdiction, effectiveFrom: EFFECTIVE_FROM },
+      where: {
+        tenantId,
+        domain: rule.domain,
+        key: rule.key,
+        jurisdiction: rule.jurisdiction,
+        effectiveFrom: EFFECTIVE_FROM,
+      },
     });
     if (!existing) {
       await prisma.statutoryRule.create({ data: { tenantId, effectiveFrom: EFFECTIVE_FROM, ...rule } });

@@ -10,7 +10,12 @@ import { financialYearOf, isoWeekLabel, isoWeekRange } from '@kaizen/shared';
 import { asUser, prisma, tenantId, unscopedPrisma } from '../helpers.js';
 import { hire, transitionEmployment } from '../../domains/employment.js';
 import { createLeaveRequest, accrueEntitlement } from '../../domains/leave.js';
-import { createRequisition, transitionRequisition, createApplication, transitionApplication } from '../../domains/hiring.js';
+import {
+  createRequisition,
+  transitionRequisition,
+  createApplication,
+  transitionApplication,
+} from '../../domains/hiring.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import {
   createHoliday,
@@ -151,12 +156,16 @@ describe('CMP-LAB-004 — leave carry-forward is idempotent against a re-run in 
       expect(Number(afterFirst.balanceDays)).toBe(5); // trimmed to the cap
 
       const fy = financialYearOf(new Date());
-      const closeRows = await prisma.leaveYearClose.findMany({ where: { tenantId: TENANT, leaveTypeId: leaveType.id, fy } });
+      const closeRows = await prisma.leaveYearClose.findMany({
+        where: { tenantId: TENANT, leaveTypeId: leaveType.id, fy },
+      });
       expect(closeRows).toHaveLength(1);
 
       const second = await runLeaveYearClose();
       // The type is already closed for this FY — nothing more is processed for it.
-      const closeRowsAfter = await prisma.leaveYearClose.findMany({ where: { tenantId: TENANT, leaveTypeId: leaveType.id, fy } });
+      const closeRowsAfter = await prisma.leaveYearClose.findMany({
+        where: { tenantId: TENANT, leaveTypeId: leaveType.id, fy },
+      });
       expect(closeRowsAfter).toHaveLength(1);
       void second;
 
@@ -204,7 +213,13 @@ describe('Leave encashment', () => {
     await asUser('operations@kaizen.co.in', async () => {
       const stamp = Date.now();
       const leaveType = await prisma.leaveType.create({
-        data: { tenantId: TENANT, code: `EO${stamp}`, name: `Fixture Over ${stamp}`, encashable: true, maxEncashDays: 3 },
+        data: {
+          tenantId: TENANT,
+          code: `EO${stamp}`,
+          name: `Fixture Over ${stamp}`,
+          encashable: true,
+          maxEncashDays: 3,
+        },
       });
       await accrueEntitlement({ employmentRelationshipId: employment.id, leaveTypeId: leaveType.id, days: 10 });
       await expect(encashLeave(employment.id, { leaveTypeId: leaveType.id, days: 5 })).rejects.toThrow();
@@ -306,9 +321,7 @@ describe('CMP-LAB-001 — a POSH complaint past its 90-day inquiry deadline rais
 
   it('concealed complaints are listed only to a holder of posh_cases:view', async () => {
     await asUser('finance@kaizen.co.in', async () => {
-      await expect(
-        (await import('../../domains/compliance/labour.js')).listPoshComplaints(),
-      ).rejects.toThrow();
+      await expect((await import('../../domains/compliance/labour.js')).listPoshComplaints()).rejects.toThrow();
     });
   });
 });
@@ -327,10 +340,30 @@ describe('POSH Internal Committee validation', () => {
       expect(incomplete.compliant).toBe(false);
       expect(incomplete.missing.length).toBeGreaterThan(0);
 
-      await appointIccMember({ role: 'presiding', isWoman: true, externalName: 'Fixture Presiding Officer', appointedOn: new Date() });
-      await appointIccMember({ role: 'member', isWoman: true, externalName: 'Fixture Member A', appointedOn: new Date() });
-      await appointIccMember({ role: 'member', isWoman: false, externalName: 'Fixture Member B', appointedOn: new Date() });
-      await appointIccMember({ role: 'external', isWoman: true, externalName: 'Fixture External NGO Rep', appointedOn: new Date() });
+      await appointIccMember({
+        role: 'presiding',
+        isWoman: true,
+        externalName: 'Fixture Presiding Officer',
+        appointedOn: new Date(),
+      });
+      await appointIccMember({
+        role: 'member',
+        isWoman: true,
+        externalName: 'Fixture Member A',
+        appointedOn: new Date(),
+      });
+      await appointIccMember({
+        role: 'member',
+        isWoman: false,
+        externalName: 'Fixture Member B',
+        appointedOn: new Date(),
+      });
+      await appointIccMember({
+        role: 'external',
+        isWoman: true,
+        externalName: 'Fixture External NGO Rep',
+        appointedOn: new Date(),
+      });
 
       const complete = await validateCommittee();
       expect(complete.presidingIsWoman).toBe(true);
@@ -362,7 +395,11 @@ describe('Disciplinary process', () => {
 
     await asUser('operations@kaizen.co.in', async () => {
       await advanceDisciplinaryCase(kase.id, { event: 'reply', note: 'Employee replied.' });
-      await advanceDisciplinaryCase(kase.id, { event: 'inquiry', note: 'Inquiry opened.', inquiryOfficer: 'Fixture Officer' });
+      await advanceDisciplinaryCase(kase.id, {
+        event: 'inquiry',
+        note: 'Inquiry opened.',
+        inquiryOfficer: 'Fixture Officer',
+      });
       const { case: decided } = await advanceDisciplinaryCase(kase.id, {
         event: 'decision',
         note: 'Decision: warning.',
@@ -453,7 +490,7 @@ describe('Letters are final once issued', () => {
 // Statutory registers — CSV shape
 // ===========================================================================
 
-describe('Statutory registers export as CSV under the register\'s statutory name', () => {
+describe("Statutory registers export as CSV under the register's statutory name", () => {
   it('the employees register has a header row and one row per employment', async () => {
     await makeEmployee('register');
     const { filename, csv } = await asUser('finance@kaizen.co.in', () => registerEmployees());
@@ -492,12 +529,20 @@ describe('BGV consent and code-of-conduct acknowledgement', () => {
 
   it('an employee can only set their own', async () => {
     const rogue = await unscopedPrisma.employmentRelationship.findFirstOrThrow({
-      where: { tenantId: TENANT, personId: { not: (await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'ravi@kaizen.co.in' } })).personId } },
+      where: {
+        tenantId: TENANT,
+        personId: {
+          not: (await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'ravi@kaizen.co.in' } })).personId,
+        },
+      },
     });
     await expect(asUser('ravi@kaizen.co.in', () => recordBgvConsent(rogue.id))).rejects.toThrow();
 
     const own = await unscopedPrisma.employmentRelationship.findFirstOrThrow({
-      where: { tenantId: TENANT, personId: (await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'ravi@kaizen.co.in' } })).personId },
+      where: {
+        tenantId: TENANT,
+        personId: (await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'ravi@kaizen.co.in' } })).personId,
+      },
     });
     const result = await asUser('ravi@kaizen.co.in', () => recordBgvConsent(own.id));
     expect(result.backgroundVerificationConsentAt).toBeInstanceOf(Date);

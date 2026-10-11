@@ -81,7 +81,7 @@ export function BuildFootnote() {
 
   const parts = [
     `web ${WEB.known ? WEB.sequence || WEB.commit : '—'}`,
-    `api ${apiStamp ? (apiStamp.sequence || apiStamp.commit || '—') : '…'}`,
+    `api ${apiStamp ? apiStamp.sequence || apiStamp.commit || '—' : '…'}`,
     seed ? `data #${seed.sequence}` : neverSeeded ? 'data never seeded' : 'data …',
   ];
 

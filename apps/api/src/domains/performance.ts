@@ -28,13 +28,15 @@ import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, can, scopeFor, assertScopeAll } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
-import { auditRegulatedRead } from '../platform/audit.js';
+import { auditRegulatedRead, registerGovernedEntities } from '../platform/audit.js';
 import { claimFromLearningCompletion } from './capability.js';
 import { assertEmploymentVisible, employmentVisibilityWhere } from '../platform/recordScope.js';
 
 // ---------------------------------------------------------------------------
 // Goals
 // ---------------------------------------------------------------------------
+
+registerGovernedEntities('performance', ['goal']);
 
 export async function listGoals(employmentRelationshipId: string) {
   const auth = currentAuth();
@@ -74,9 +76,7 @@ export async function createGoal(input: {
   await emit({
     name: EVENTS.GOAL_CREATED,
     subject: { entityType: 'goal', entityId: goal.id },
-    related: [
-      { relation: 'held_by', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
-    ],
+    related: [{ relation: 'held_by', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
     newState: { status: 'Draft', description: input.description, keyResultRef: input.keyResultRef },
     owner: { partyId: employment.personId },
     impact: { domains: ['hr'] },
@@ -220,9 +220,7 @@ export async function recordEvidence(input: {
   await emit({
     name: EVENTS.PERFORMANCE_EVIDENCE_RECORDED,
     subject: { entityType: 'performance_evidence', entityId: evidence.id },
-    related: [
-      { relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
-    ],
+    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
     // The description is deliberately not in the event body. A case-scoped
     // note would otherwise be readable by anyone who can read the event log,
     // which is a wider audience than the case.

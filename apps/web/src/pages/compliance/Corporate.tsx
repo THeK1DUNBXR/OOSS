@@ -24,7 +24,8 @@ import {
 } from '../../components/ui.js';
 import { CreateModal, TextArea, TextInput, messageOf } from '../../components/forms.js';
 
-type Tab = 'security' | 'registrations' | 'registers' | 'board' | 'mca' | 'contracts' | 'fema' | 'refunds' | 'certificates';
+type Tab =
+  'security' | 'registrations' | 'registers' | 'board' | 'mca' | 'contracts' | 'fema' | 'refunds' | 'certificates';
 
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'security', label: 'Security' },
@@ -87,8 +88,14 @@ interface MfaEnrolResult {
 function SecurityTab() {
   const { user } = useSession();
   const qc = useQueryClient();
-  const policy = useQuery({ queryKey: ['cmp-corporate', 'security-policy'], queryFn: () => api.get<SecurityPolicyView>('/compliance/corporate/security/policy') });
-  const backups = useQuery({ queryKey: ['cmp-corporate', 'backups'], queryFn: () => api.get<BackupRunView[]>('/compliance/corporate/security/backups') });
+  const policy = useQuery({
+    queryKey: ['cmp-corporate', 'security-policy'],
+    queryFn: () => api.get<SecurityPolicyView>('/compliance/corporate/security/policy'),
+  });
+  const backups = useQuery({
+    queryKey: ['cmp-corporate', 'backups'],
+    queryFn: () => api.get<BackupRunView[]>('/compliance/corporate/security/backups'),
+  });
 
   const [enrolment, setEnrolment] = useState<MfaEnrolResult | null>(null);
   const [code, setCode] = useState('');
@@ -113,10 +120,14 @@ function SecurityTab() {
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Card title="Your second factor" subtitle="A TOTP code from an authenticator app (Google Authenticator, Authy, 1Password).">
+      <Card
+        title="Your second factor"
+        subtitle="A TOTP code from an authenticator app (Google Authenticator, Authy, 1Password)."
+      >
         {mfaRequired && (
           <p className="mb-3 text-2xs text-band-warning">
-            The {user?.roleSlug.replace('_', ' ')} role requires MFA to approve a refund, an MCA filing, or an e-signature request.
+            The {user?.roleSlug?.replace('_', ' ')} role requires MFA to approve a refund, an MCA filing, or an
+            e-signature request.
           </p>
         )}
         {!enrolment ? (
@@ -125,10 +136,16 @@ function SecurityTab() {
           </button>
         ) : (
           <div className="space-y-2">
-            <p className="text-2xs text-ink-400">Scan this into an authenticator app, or enter the secret manually. Shown once.</p>
+            <p className="text-2xs text-ink-400">
+              Scan this into an authenticator app, or enter the secret manually. Shown once.
+            </p>
             <p className="break-all rounded bg-ink-950 p-2 font-mono text-2xs text-ink-200">{enrolment.secret}</p>
             <TextInput label="Code from the app" value={code} onChange={setCode} placeholder="123456" />
-            <button className="btn-primary" onClick={() => confirm.mutate()} disabled={confirm.isPending || code.length !== 6}>
+            <button
+              className="btn-primary"
+              onClick={() => confirm.mutate()}
+              disabled={confirm.isPending || code.length !== 6}
+            >
               {confirm.isPending ? 'Confirming…' : 'Confirm enrolment'}
             </button>
             {confirm.isError && <ErrorBox error={confirm.error} />}
@@ -137,16 +154,24 @@ function SecurityTab() {
       </Card>
 
       <Card title="Policy" subtitle="Chairman-only to change.">
-        {policy.isLoading ? <Loading /> : policy.data && (
-          <dl>
-            <Field label="MFA required for">{policy.data.mfaRequiredForRoleSlugs.join(', ') || 'nobody'}</Field>
-            <Field label="Session length">{policy.data.sessionHours} hours</Field>
-            <Field label="Password minimum length">{policy.data.passwordMinLength} characters</Field>
-          </dl>
+        {policy.isLoading ? (
+          <Loading />
+        ) : (
+          policy.data && (
+            <dl>
+              <Field label="MFA required for">{policy.data.mfaRequiredForRoleSlugs.join(', ') || 'nobody'}</Field>
+              <Field label="Session length">{policy.data.sessionHours} hours</Field>
+              <Field label="Password minimum length">{policy.data.passwordMinLength} characters</Field>
+            </dl>
+          )
         )}
       </Card>
 
-      <Card title="Backups" subtitle="A daily backup of the books. If backups have not been turned on for this server, nothing runs — that is not a failure." className="lg:col-span-2">
+      <Card
+        title="Backups"
+        subtitle="A daily backup of the books. If backups have not been turned on for this server, nothing runs — that is not a failure."
+        className="lg:col-span-2"
+      >
         <button className="btn mb-3" onClick={() => runBackup.mutate()} disabled={runBackup.isPending}>
           {runBackup.isPending ? 'Running…' : 'Run now'}
         </button>
@@ -169,7 +194,12 @@ function SecurityTab() {
               {backups.data.map((b) => (
                 <tr key={b.id} className="border-t border-ink-800">
                   <td className="py-1">{dateTime(b.startedAt)}</td>
-                  <td><StatusChip status={b.status} tone={b.status === 'completed' ? 'good' : b.status === 'failed' ? 'bad' : 'neutral'} /></td>
+                  <td>
+                    <StatusChip
+                      status={b.status}
+                      tone={b.status === 'completed' ? 'good' : b.status === 'failed' ? 'bad' : 'neutral'}
+                    />
+                  </td>
                   <td>{b.sizeBytes ? `${(b.sizeBytes / 1024).toFixed(0)} KB` : '—'}</td>
                   <td title={b.sha256 ?? undefined}>{b.sha256 ? 'yes' : '—'}</td>
                   <td className="max-w-xs truncate text-band-critical">{b.error ?? ''}</td>
@@ -197,12 +227,18 @@ interface CompanyProfileView {
 }
 
 function RegistrationsTab() {
-  const profile = useQuery({ queryKey: ['company-profile'], queryFn: () => api.get<CompanyProfileView>('/books/company-profile') });
+  const profile = useQuery({
+    queryKey: ['company-profile'],
+    queryFn: () => api.get<CompanyProfileView>('/books/company-profile'),
+  });
   if (profile.isLoading) return <Loading />;
   if (!profile.data) return <EmptyState message="No company profile yet." />;
   const p = profile.data;
   return (
-    <Card title="Registrations" subtitle="Edited from Settings → Company details. Shown here as the facts the rest of this page relies on.">
+    <Card
+      title="Registrations"
+      subtitle="Edited from Settings → Company details. Shown here as the facts the rest of this page relies on."
+    >
       <dl>
         <Field label="Legal name">{p.legalName}</Field>
         <Field label="GSTIN">{p.gstin ?? '—'}</Field>
@@ -212,7 +248,9 @@ function RegistrationsTab() {
         <Field label="Udyam registration">{p.udyamNumber ?? '—'}</Field>
       </dl>
       {p.pan && p.gstin && (
-        <p className="mt-2 text-2xs text-band-good">The GSTIN's embedded PAN agrees with the company PAN — the platform checks this on every save.</p>
+        <p className="mt-2 text-2xs text-band-good">
+          The GSTIN's embedded PAN agrees with the company PAN — the platform checks this on every save.
+        </p>
       )}
     </Card>
   );
@@ -232,7 +270,17 @@ function RegistersTab() {
 
   const entries = useQuery({
     queryKey: ['cmp-corporate', 'registers', kind],
-    queryFn: () => api.get<Array<{ id: string; recordCode: string; subjectKey: string; body: Record<string, unknown>; createdAt: string; supersedesId: string | null }>>(`/compliance/corporate/registers/${kind}/current`),
+    queryFn: () =>
+      api.get<
+        Array<{
+          id: string;
+          recordCode: string;
+          subjectKey: string;
+          body: Record<string, unknown>;
+          createdAt: string;
+          supersedesId: string | null;
+        }>
+      >(`/compliance/corporate/registers/${kind}/current`),
   });
 
   return (
@@ -243,13 +291,20 @@ function RegistersTab() {
         <div className="flex gap-2">
           <select className="input" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
             {REGISTER_KINDS.map((k) => (
-              <option key={k} value={k}>{k.replace('_', ' ')}</option>
+              <option key={k} value={k}>
+                {k.replace('_', ' ')}
+              </option>
             ))}
           </select>
-          <button className="btn" onClick={() => api.download(`/compliance/corporate/registers/${kind}/export.csv`, `${kind}-register.csv`)}>
+          <button
+            className="btn"
+            onClick={() => api.download(`/compliance/corporate/registers/${kind}/export.csv`, `${kind}-register.csv`)}
+          >
             Export CSV
           </button>
-          <button className="btn-primary" onClick={() => setOpen(true)}>Add entry</button>
+          <button className="btn-primary" onClick={() => setOpen(true)}>
+            Add entry
+          </button>
         </div>
       }
     >
@@ -270,10 +325,14 @@ function RegistersTab() {
           <tbody>
             {entries.data.map((e) => (
               <tr key={e.id} className="border-t border-ink-800">
-                <td className="py-1"><RecordCode code={e.recordCode} /></td>
+                <td className="py-1">
+                  <RecordCode code={e.recordCode} />
+                </td>
                 <td>{e.subjectKey}</td>
                 <td className="max-w-md truncate text-2xs text-ink-400" title={JSON.stringify(e.body)}>
-                  {Object.entries(e.body).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join(' · ') || '—'}
+                  {Object.entries(e.body)
+                    .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
+                    .join(' · ') || '—'}
                 </td>
                 <td>{date(e.createdAt)}</td>
               </tr>
@@ -288,9 +347,20 @@ function RegistersTab() {
         submitLabel="Add"
         onClose={() => setOpen(false)}
         invalidate={[['cmp-corporate', 'registers', kind]]}
-        onSubmit={() => api.post('/compliance/corporate/registers', { registerKind: kind, subjectKey, body: JSON.parse(bodyText || '{}') })}
+        onSubmit={() =>
+          api.post('/compliance/corporate/registers', {
+            registerKind: kind,
+            subjectKey,
+            body: JSON.parse(bodyText || '{}'),
+          })
+        }
       >
-        <TextInput label="Subject key" value={subjectKey} onChange={setSubjectKey} placeholder="e.g. director:din-01234567" />
+        <TextInput
+          label="Subject key"
+          value={subjectKey}
+          onChange={setSubjectKey}
+          placeholder="e.g. director:din-01234567"
+        />
         <TextArea label="Details (JSON)" value={bodyText} onChange={setBodyText} rows={5} />
       </CreateModal>
     </Card>
@@ -324,7 +394,10 @@ function BoardTab() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [heldOn, setHeldOn] = useState('');
-  const meetings = useQuery({ queryKey: ['cmp-corporate', 'board'], queryFn: () => api.get<BoardMeetingView[]>('/compliance/corporate/board/meetings') });
+  const meetings = useQuery({
+    queryKey: ['cmp-corporate', 'board'],
+    queryFn: () => api.get<BoardMeetingView[]>('/compliance/corporate/board/meetings'),
+  });
 
   const record = useMutation({
     mutationFn: (id: string) => api.post(`/compliance/corporate/board/meetings/${id}/record`),
@@ -335,7 +408,11 @@ function BoardTab() {
     <Card
       title="Board minutes"
       subtitle="Distinct from a business Decision — a statutory record. A recorded meeting's resolutions are final; a correction is a new resolution."
-      actions={<button className="btn-primary" onClick={() => setOpen(true)}>New meeting</button>}
+      actions={
+        <button className="btn-primary" onClick={() => setOpen(true)}>
+          New meeting
+        </button>
+      }
     >
       {meetings.isLoading ? (
         <Loading />
@@ -347,12 +424,17 @@ function BoardTab() {
             <div key={m.id} className="rounded border border-ink-800 p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <RecordCode code={m.recordCode} /> <span className="ml-2 text-xs text-ink-300">{m.kind.toUpperCase()} — {date(m.heldOn)}</span>
+                  <RecordCode code={m.recordCode} />{' '}
+                  <span className="ml-2 text-xs text-ink-300">
+                    {m.kind.toUpperCase()} — {date(m.heldOn)}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusChip status={m.status} tone={m.status === 'recorded' ? 'good' : 'neutral'} />
                   {m.status === 'draft' && (
-                    <button className="btn text-2xs" onClick={() => record.mutate(m.id)} disabled={record.isPending}>Record</button>
+                    <button className="btn text-2xs" onClick={() => record.mutate(m.id)} disabled={record.isPending}>
+                      Record
+                    </button>
                   )}
                 </div>
               </div>
@@ -387,16 +469,36 @@ function BoardTab() {
 // MCA filings
 // ---------------------------------------------------------------------------
 
-interface McaFilingTypeView { form: string; label: string; dueRule: string }
-interface McaFilingView { id: string; form: string; fy: string; status: string; srn: string | null; filedOn: string | null }
+interface McaFilingTypeView {
+  form: string;
+  label: string;
+  dueRule: string;
+}
+interface McaFilingView {
+  id: string;
+  form: string;
+  fy: string;
+  status: string;
+  srn: string | null;
+  filedOn: string | null;
+}
 
 function McaTab() {
-  const types = useQuery({ queryKey: ['cmp-corporate', 'mca-types'], queryFn: () => api.get<McaFilingTypeView[]>('/compliance/corporate/mca/filings/types') });
-  const filings = useQuery({ queryKey: ['cmp-corporate', 'mca'], queryFn: () => api.get<McaFilingView[]>('/compliance/corporate/mca/filings') });
+  const types = useQuery({
+    queryKey: ['cmp-corporate', 'mca-types'],
+    queryFn: () => api.get<McaFilingTypeView[]>('/compliance/corporate/mca/filings/types'),
+  });
+  const filings = useQuery({
+    queryKey: ['cmp-corporate', 'mca'],
+    queryFn: () => api.get<McaFilingView[]>('/compliance/corporate/mca/filings'),
+  });
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Card title="What the MCA expects" subtitle="AOC-4, MGT-7/7A, DIR-3 KYC, ADT-1, DPT-3, MSME-1. This platform does not file — it records the filing once it is done.">
+      <Card
+        title="What the MCA expects"
+        subtitle="AOC-4, MGT-7/7A, DIR-3 KYC, ADT-1, DPT-3, MSME-1. This platform does not file — it records the filing once it is done."
+      >
         <ul className="space-y-1.5 text-xs">
           {types.data?.map((t) => (
             <li key={t.form}>
@@ -407,16 +509,28 @@ function McaTab() {
         </ul>
       </Card>
       <Card title="Filed">
-        {filings.isLoading ? <Loading /> : !filings.data?.length ? (
+        {filings.isLoading ? (
+          <Loading />
+        ) : !filings.data?.length ? (
           <EmptyState message="Nothing filed yet." />
         ) : (
           <table className="w-full text-xs">
-            <thead><tr className="text-left text-2xs uppercase text-ink-500"><th>Form</th><th>FY</th><th>Status</th><th>SRN</th></tr></thead>
+            <thead>
+              <tr className="text-left text-2xs uppercase text-ink-500">
+                <th>Form</th>
+                <th>FY</th>
+                <th>Status</th>
+                <th>SRN</th>
+              </tr>
+            </thead>
             <tbody>
               {filings.data.map((f) => (
                 <tr key={f.id} className="border-t border-ink-800">
-                  <td className="py-1">{f.form}</td><td>{f.fy}</td>
-                  <td><StatusChip status={f.status} tone={f.status === 'filed' ? 'good' : 'neutral'} /></td>
+                  <td className="py-1">{f.form}</td>
+                  <td>{f.fy}</td>
+                  <td>
+                    <StatusChip status={f.status} tone={f.status === 'filed' ? 'good' : 'neutral'} />
+                  </td>
                   <td>{f.srn ?? '—'}</td>
                 </tr>
               ))}
@@ -432,16 +546,36 @@ function McaTab() {
 // Contracts: stamp duty, e-signature, retention
 // ---------------------------------------------------------------------------
 
-interface StampDutyRuleView { id: string; agreementKind: string; percentOfValue: string | null; flatAmount: string | null; note: string | null }
-interface RetentionRuleView { id: string; documentKind: string; anchor: string; years: number }
+interface StampDutyRuleView {
+  id: string;
+  agreementKind: string;
+  percentOfValue: string | null;
+  flatAmount: string | null;
+  note: string | null;
+}
+interface RetentionRuleView {
+  id: string;
+  documentKind: string;
+  anchor: string;
+  years: number;
+}
 
 function ContractsTab() {
-  const rules = useQuery({ queryKey: ['cmp-corporate', 'stamp-duty'], queryFn: () => api.get<StampDutyRuleView[]>('/compliance/corporate/contracts/stamp-duty-rules') });
-  const retention = useQuery({ queryKey: ['cmp-corporate', 'retention'], queryFn: () => api.get<RetentionRuleView[]>('/compliance/corporate/contracts/retention-rules') });
+  const rules = useQuery({
+    queryKey: ['cmp-corporate', 'stamp-duty'],
+    queryFn: () => api.get<StampDutyRuleView[]>('/compliance/corporate/contracts/stamp-duty-rules'),
+  });
+  const retention = useQuery({
+    queryKey: ['cmp-corporate', 'retention'],
+    queryFn: () => api.get<RetentionRuleView[]>('/compliance/corporate/contracts/retention-rules'),
+  });
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Card title="Stamp duty" subtitle="Checked when an MoU/Contract/Partner agreement is marked signed. Placeholder figures — confirm against the current TN Stamp Act schedule.">
+      <Card
+        title="Stamp duty"
+        subtitle="Checked when an MoU/Contract/Partner agreement is marked signed. Placeholder figures — confirm against the current TN Stamp Act schedule."
+      >
         {rules.data?.map((r) => (
           <Field key={r.id} label={r.agreementKind}>
             {r.percentOfValue ? `${r.percentOfValue}% of value` : r.flatAmount ? money(Number(r.flatAmount)) : '—'}
@@ -449,16 +583,31 @@ function ContractsTab() {
           </Field>
         ))}
       </Card>
-      <Card title="E-signature" subtitle="No provider is set up yet (Aadhaar eSign or DSC) — every request is refused until one is.">
+      <Card
+        title="E-signature"
+        subtitle="No provider is set up yet (Aadhaar eSign or DSC) — every request is refused until one is."
+      >
         <EmptyState message="No e-signature provider configured for this tenant." />
       </Card>
-      <Card title="Document retention" subtitle="Contracts: 8 years after expiry. Invoices: 8 financial years. HR files: 3 years after exit." className="lg:col-span-2">
+      <Card
+        title="Document retention"
+        subtitle="Contracts: 8 years after expiry. Invoices: 8 financial years. HR files: 3 years after exit."
+        className="lg:col-span-2"
+      >
         <table className="w-full text-xs">
-          <thead><tr className="text-left text-2xs uppercase text-ink-500"><th>Document kind</th><th>Anchor</th><th>Years</th></tr></thead>
+          <thead>
+            <tr className="text-left text-2xs uppercase text-ink-500">
+              <th>Document kind</th>
+              <th>Anchor</th>
+              <th>Years</th>
+            </tr>
+          </thead>
           <tbody>
             {retention.data?.map((r) => (
               <tr key={r.id} className="border-t border-ink-800">
-                <td className="py-1">{r.documentKind}</td><td>{r.anchor.replace(/_/g, ' ')}</td><td>{r.years}</td>
+                <td className="py-1">{r.documentKind}</td>
+                <td>{r.anchor.replace(/_/g, ' ')}</td>
+                <td>{r.years}</td>
               </tr>
             ))}
           </tbody>
@@ -474,7 +623,10 @@ function ContractsTab() {
 
 function FemaTab() {
   return (
-    <Card title="Foreign receipts (FEMA/FIRC)" subtitle="A foreign receipt's currency, amount and FIRC are set from a payment's own record. Anything still missing its FIRC after 30 days is flagged.">
+    <Card
+      title="Foreign receipts (FEMA/FIRC)"
+      subtitle="A foreign receipt's currency, amount and FIRC are set from a payment's own record. Anything still missing its FIRC after 30 days is flagged."
+    >
       <EmptyState message="Update foreign receipt details from a payment's own record." />
     </Card>
   );
@@ -501,7 +653,10 @@ function RefundsTab() {
   const [receiptId, setReceiptId] = useState('');
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
-  const refunds = useQuery({ queryKey: ['cmp-corporate', 'refunds'], queryFn: () => api.get<RefundView[]>('/compliance/corporate/refunds') });
+  const refunds = useQuery({
+    queryKey: ['cmp-corporate', 'refunds'],
+    queryFn: () => api.get<RefundView[]>('/compliance/corporate/refunds'),
+  });
 
   const approve = useMutation({
     mutationFn: (id: string) => api.post(`/compliance/corporate/refunds/${id}/approve`),
@@ -512,7 +667,11 @@ function RefundsTab() {
     <Card
       title="Refunds"
       subtitle="A refund is its own record: requesting and approving are decisions on this row; paying books a separate outward transaction. The original invoice or receipt is never edited."
-      actions={<button className="btn-primary" onClick={() => setOpen(true)}>Request refund</button>}
+      actions={
+        <button className="btn-primary" onClick={() => setOpen(true)}>
+          Request refund
+        </button>
+      }
     >
       {refunds.isLoading ? (
         <Loading />
@@ -520,17 +679,31 @@ function RefundsTab() {
         <EmptyState message="No refunds requested." />
       ) : (
         <table className="w-full text-xs">
-          <thead><tr className="text-left text-2xs uppercase text-ink-500"><th>Code</th><th>Amount</th><th>Reason</th><th>Status</th><th /></tr></thead>
+          <thead>
+            <tr className="text-left text-2xs uppercase text-ink-500">
+              <th>Code</th>
+              <th>Amount</th>
+              <th>Reason</th>
+              <th>Status</th>
+              <th />
+            </tr>
+          </thead>
           <tbody>
             {refunds.data.map((r) => (
               <tr key={r.id} className="border-t border-ink-800">
-                <td className="py-1"><RecordCode code={r.recordCode} /></td>
+                <td className="py-1">
+                  <RecordCode code={r.recordCode} />
+                </td>
                 <td>{money(Number(r.amount))}</td>
                 <td className="max-w-xs truncate">{r.reason}</td>
-                <td><StatusChip status={r.status} tone={r.status === 'paid' ? 'good' : 'neutral'} /></td>
+                <td>
+                  <StatusChip status={r.status} tone={r.status === 'paid' ? 'good' : 'neutral'} />
+                </td>
                 <td>
                   {r.status === 'requested' && (
-                    <button className="btn text-2xs" onClick={() => approve.mutate(r.id)} disabled={approve.isPending}>Approve</button>
+                    <button className="btn text-2xs" onClick={() => approve.mutate(r.id)} disabled={approve.isPending}>
+                      Approve
+                    </button>
                   )}
                 </td>
               </tr>
@@ -558,12 +731,22 @@ function RefundsTab() {
 // Certificates
 // ---------------------------------------------------------------------------
 
-interface CertificateView { id: string; number: string; enrollmentId: string; kind: string; issuedAt: string; verificationCode: string }
+interface CertificateView {
+  id: string;
+  number: string;
+  enrollmentId: string;
+  kind: string;
+  issuedAt: string;
+  verificationCode: string;
+}
 
 function CertificatesTab() {
   const [code, setCode] = useState('');
   const [result, setResult] = useState<string | null>(null);
-  const certs = useQuery({ queryKey: ['cmp-corporate', 'certificates'], queryFn: () => api.get<CertificateView[]>('/compliance/corporate/certificates') });
+  const certs = useQuery({
+    queryKey: ['cmp-corporate', 'certificates'],
+    queryFn: () => api.get<CertificateView[]>('/compliance/corporate/certificates'),
+  });
 
   const verify = useMutation({
     mutationFn: () => api.get(`/compliance/corporate/certificates/verify/${encodeURIComponent(code)}`),
@@ -574,24 +757,41 @@ function CertificatesTab() {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card title="Issued certificates" subtitle="Final once issued. A correction is a new certificate, never an edit.">
-        {certs.isLoading ? <Loading /> : !certs.data?.length ? (
+        {certs.isLoading ? (
+          <Loading />
+        ) : !certs.data?.length ? (
           <EmptyState message="No certificates issued yet." />
         ) : (
           <table className="w-full text-xs">
-            <thead><tr className="text-left text-2xs uppercase text-ink-500"><th>Number</th><th>Kind</th><th>Issued</th></tr></thead>
+            <thead>
+              <tr className="text-left text-2xs uppercase text-ink-500">
+                <th>Number</th>
+                <th>Kind</th>
+                <th>Issued</th>
+              </tr>
+            </thead>
             <tbody>
               {certs.data.map((c) => (
                 <tr key={c.id} className="border-t border-ink-800">
-                  <td className="py-1"><RecordCode code={c.number} /></td><td>{c.kind}</td><td>{date(c.issuedAt)}</td>
+                  <td className="py-1">
+                    <RecordCode code={c.number} />
+                  </td>
+                  <td>{c.kind}</td>
+                  <td>{date(c.issuedAt)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </Card>
-      <Card title="Verify a certificate" subtitle="This check runs behind sign-in like every other screen here — it is not a public verification page.">
+      <Card
+        title="Verify a certificate"
+        subtitle="This check runs behind sign-in like every other screen here — it is not a public verification page."
+      >
         <TextInput label="Verification code" value={code} onChange={setCode} />
-        <button className="btn-primary mt-2" onClick={() => verify.mutate()} disabled={!code}>Verify</button>
+        <button className="btn-primary mt-2" onClick={() => verify.mutate()} disabled={!code}>
+          Verify
+        </button>
         {result && <p className="mt-2 text-xs text-ink-300">{result}</p>}
       </Card>
     </div>

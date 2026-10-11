@@ -40,7 +40,14 @@ let tenantCounter = 0;
  *  is needed, since `assertCan` resolves the grant from the tenant's seeded
  *  `AccessRole`/`Grant` rows by `roleSlug` alone. */
 function boardAuth(tid: string, roleSlug: string, partyId = `test-party-${roleSlug}`): AuthContext {
-  return authFor({ tenantId: tid, partyId, userId: `test-user-${roleSlug}`, affiliationId: `test-aff-${roleSlug}`, roleSlug, branch: null });
+  return authFor({
+    tenantId: tid,
+    partyId,
+    userId: `test-user-${roleSlug}`,
+    affiliationId: `test-aff-${roleSlug}`,
+    roleSlug,
+    branch: null,
+  });
 }
 
 /** A freshly bootstrapped, empty tenant — so a test that cares about the
@@ -106,7 +113,13 @@ describe('EQT-BRD-001 — a meeting called on short notice is refused unless con
     // Refused again with no reason attached to the consent.
     const noReason = await expectReject(() =>
       asPrincipal(chairman, () =>
-        callMeeting({ kind: 'board', title: 'Q3 review', scheduledFor, mode: 'vc', shortNoticeConsent: { reason: '' } }),
+        callMeeting({
+          kind: 'board',
+          title: 'Q3 review',
+          scheduledFor,
+          mode: 'vc',
+          shortNoticeConsent: { reason: '' },
+        }),
       ),
     );
     expect(noReason.message).toMatch(/clear days/);
@@ -135,7 +148,12 @@ describe('EQT-BRD-002 — a meeting without quorum cannot be marked held', () =>
     const members = await addDirectors(tid, 7);
 
     const meetingRow = await asPrincipal(chairman, () =>
-      callMeeting({ kind: 'board', title: 'Annual review', scheduledFor: new Date(Date.now() + 10 * DAY_MS), mode: 'physical' }),
+      callMeeting({
+        kind: 'board',
+        title: 'Annual review',
+        scheduledFor: new Date(Date.now() + 10 * DAY_MS),
+        mode: 'physical',
+      }),
     );
     expect(meetingRow.quorumRequired).toBe(3);
 
@@ -240,8 +258,12 @@ describe('EQT-BRD-005 — a third of the board demanding a meeting closes the ci
     );
     await asPrincipal(chairman, () => openForCirculation(proposed.id, { dispatchProofRef: 'EMAIL-2026-09-14' }));
 
-    await asPrincipal(chairman, () => castVote(proposed.id, { boardMemberId: members[0].id, choice: 'against', demandsMeeting: true }));
-    await asPrincipal(chairman, () => castVote(proposed.id, { boardMemberId: members[1].id, choice: 'against', demandsMeeting: true }));
+    await asPrincipal(chairman, () =>
+      castVote(proposed.id, { boardMemberId: members[0].id, choice: 'against', demandsMeeting: true }),
+    );
+    await asPrincipal(chairman, () =>
+      castVote(proposed.id, { boardMemberId: members[1].id, choice: 'against', demandsMeeting: true }),
+    );
     await asPrincipal(chairman, () => castVote(proposed.id, { boardMemberId: members[2].id, choice: 'for' }));
 
     const closed = await asPrincipal(chairman, () => closeCirculation(proposed.id));
@@ -256,7 +278,12 @@ describe('EQT-BRD-006 — minutes entered after thirty days are recorded as late
     const members = await addDirectors(tid, 2); // quorum = 2
 
     const meetingRow = await asPrincipal(chairman, () =>
-      callMeeting({ kind: 'board', title: 'Budget review', scheduledFor: new Date(Date.now() + 10 * DAY_MS), mode: 'physical' }),
+      callMeeting({
+        kind: 'board',
+        title: 'Budget review',
+        scheduledFor: new Date(Date.now() + 10 * DAY_MS),
+        mode: 'physical',
+      }),
     );
     await asPrincipal(chairman, () =>
       recordAttendance(meetingRow.id, [
@@ -271,7 +298,9 @@ describe('EQT-BRD-006 — minutes entered after thirty days are recorded as late
     expect(refused.message).toMatch(/30 days/);
     expect(refused.message).toMatch(/late: true/);
 
-    const missingReason = await expectReject(() => asPrincipal(chairman, () => enterMinutes(meetingRow.id, { late: true })));
+    const missingReason = await expectReject(() =>
+      asPrincipal(chairman, () => enterMinutes(meetingRow.id, { late: true })),
+    );
     expect(missingReason.message).toMatch(/reason/);
 
     const entered = await asPrincipal(chairman, () =>
@@ -337,7 +366,12 @@ describe('EQT-BRD-008 — a shareholder sees no board meetings and a director se
     const tid = await newTenant('008');
     const chairman = boardAuth(tid, 'chairman');
     const meetingRow = await asPrincipal(chairman, () =>
-      callMeeting({ kind: 'board', title: 'Ordinary board meeting', scheduledFor: new Date(Date.now() + 10 * DAY_MS), mode: 'vc' }),
+      callMeeting({
+        kind: 'board',
+        title: 'Ordinary board meeting',
+        scheduledFor: new Date(Date.now() + 10 * DAY_MS),
+        mode: 'vc',
+      }),
     );
 
     const shareholder = boardAuth(tid, 'shareholder');

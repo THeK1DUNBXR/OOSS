@@ -66,7 +66,12 @@ describe('merge field rendering', () => {
   });
 
   it('HTML-escapes values when escape: true', () => {
-    const result = renderMergeFields('Hi {{person.firstName}}', undefined, { person: { firstName: '<b>Sam</b> & co' } }, { escape: true });
+    const result = renderMergeFields(
+      'Hi {{person.firstName}}',
+      undefined,
+      { person: { firstName: '<b>Sam</b> & co' } },
+      { escape: true },
+    );
     expect(result.body).toBe('Hi &lt;b&gt;Sam&lt;/b&gt; &amp; co');
   });
 
@@ -152,7 +157,11 @@ describe('msg91 adapter (India DLT)', () => {
   it('is not_configured without auth key / sender id', async () => {
     const adapter = new Msg91Adapter();
     expect(adapter.isConfigured()).toBe(false);
-    const result = await adapter.send({ to: { personId: 'p1', address: '+911234567890' }, body: 'hi', dltTemplateId: 'tpl1' });
+    const result = await adapter.send({
+      to: { personId: 'p1', address: '+911234567890' },
+      body: 'hi',
+      dltTemplateId: 'tpl1',
+    });
     expect(result.status).toBe('not_configured');
   });
 });
@@ -178,6 +187,15 @@ describe('inbound webhook parsing is defensive', () => {
     expect(adapter.parseInboundWebhook({})).toEqual([]);
     expect(adapter.parseInboundWebhook({ events: 'nope' })).toEqual([]);
     expect(adapter.parseInboundWebhook({ events: [{ id: 1, event: 'delivered' }] })).toEqual([]);
+  });
+
+  it('httpEmail carries the envelope eventId onto every event it parses', () => {
+    const adapter = new HttpEmailAdapter();
+    const events = adapter.parseInboundWebhook({
+      eventId: 'evt-42',
+      events: [{ id: 'msg-1', event: 'delivered', timestamp: '2026-01-01T00:00:00Z' }],
+    });
+    expect(events[0].eventId).toBe('evt-42');
   });
 
   it('httpEmail parses a well-formed payload', () => {

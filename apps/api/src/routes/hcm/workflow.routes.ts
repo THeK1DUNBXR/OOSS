@@ -25,13 +25,19 @@ import {
 
 const router = Router();
 
-router.get('/_status', handler(async () => ({ module: 'workflow', ready: true })));
+router.get(
+  '/_status',
+  handler(async () => ({ module: 'workflow', ready: true })),
+);
 
 // ---------------------------------------------------------------------------
 // Request types
 // ---------------------------------------------------------------------------
 
-router.get('/request-types', handler(async (req) => listRequestTypes(bool(req.query.activeOnly))));
+router.get(
+  '/request-types',
+  handler(async (req) => listRequestTypes(bool(req.query.activeOnly))),
+);
 
 const chainStepSchema = z.object({
   level: z.number().int().positive(),
@@ -59,9 +65,15 @@ router.post(
 // Requests
 // ---------------------------------------------------------------------------
 
-router.get('/requests/mine', handler(async () => listMyRequests()));
+router.get(
+  '/requests/mine',
+  handler(async () => listMyRequests()),
+);
 
-router.get('/requests/:id', handler(async (req) => getRequest(req.params.id)));
+router.get(
+  '/requests/:id',
+  handler(async (req) => getRequest(req.params.id)),
+);
 
 router.post(
   '/requests',
@@ -78,7 +90,10 @@ router.post(
   }),
 );
 
-router.post('/requests/:id/withdraw', handler(async (req) => withdrawRequest(req.params.id)));
+router.post(
+  '/requests/:id/withdraw',
+  handler(async (req) => withdrawRequest(req.params.id)),
+);
 
 router.post(
   '/requests/:id/decide',
@@ -93,13 +108,19 @@ router.post(
 // Inbox — what /people/approvals and RequestInbox.tsx render.
 // ---------------------------------------------------------------------------
 
-router.get('/inbox', handler(async (req) => listInbox(str(req.query.forParty))));
+router.get(
+  '/inbox',
+  handler(async (req) => listInbox(str(req.query.forParty))),
+);
 
 // ---------------------------------------------------------------------------
 // Delegation of authority
 // ---------------------------------------------------------------------------
 
-router.get('/delegations', handler(async () => listDelegations()));
+router.get(
+  '/delegations',
+  handler(async () => listDelegations()),
+);
 
 router.post(
   '/delegations',
@@ -124,6 +145,9 @@ router.post(
   }),
 );
 
-router.post('/delegations/:id/revoke', handler(async (req) => revokeDelegation(req.params.id)));
+router.post(
+  '/delegations/:id/revoke',
+  handler(async (req) => revokeDelegation(req.params.id)),
+);
 
 export default router;

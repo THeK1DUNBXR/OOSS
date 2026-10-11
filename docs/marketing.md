@@ -308,7 +308,7 @@ A send computes its recipient list by excluding anyone lacking a granted
 marketing consent, anyone with `doNotContact` set, and anyone opted out of
 the specific channel — and records each exclusion as
 `skipped_no_consent`/`skipped_dnc` rather than quietly shrinking the count. A
-send *requested* against recipients who fail this check is `EX-MKT-003` and
+send _requested_ against recipients who fail this check is `EX-MKT-003` and
 is blocked, not queued. The public unsubscribe link
 (`GET/POST /public/unsubscribe/:token`) is unauthenticated by design — DPDP
 withdrawal cannot require a login — and calls the same withdrawal path.
@@ -406,8 +406,13 @@ parsing — checks for that null and reports it as `EX-MKT-011` /
 `blockedReason`, not as a false success. `GET /settings/adapters` exposes
 adapter status directly so this is visible before anyone tries to send.
 
-**Delivery webhooks** land at `POST /public/webhooks/:provider`
-(unauthenticated, provider-keyed: email/sms/whatsapp/forms), are stored
+**Delivery webhooks** land at `POST /public/webhooks/:provider/:endpointToken`.
+The token names the tenant (provision one with `POST /webhook-endpoints`, which
+returns the signing secret once). Each request must carry `X-Kai-Timestamp` and
+`X-Kai-Signature: sha256=<HMAC-SHA256 of "<timestamp>.<raw body>">`, with a JSON
+body that has a string `eventId`; a bad or stale signature is 401 and changes
+nothing, and a replayed `eventId` answers 200 without being applied again.
+Provider-keyed: email/sms/whatsapp/forms. Stored
 verbatim as `MarketingWebhookInbound`, and — when the adapter can parse
 them — update the matching `MarketingSendRecipient` rows (delivered, opened,
 clicked, bounced, unsubscribed). A send whose bounce rate crosses 5% is
@@ -577,23 +582,23 @@ campaigns, channels or leads for anyone holding export on
 
 ## Exceptions
 
-| Code | Condition | Severity |
-|---|---|---|
-| EX-MKT-001 | Lead created with no attributable source (unattributed lead) | S1 |
-| EX-MKT-002 | Campaign spend exceeds planned budget | S2 |
-| EX-MKT-003 | Send requested to recipients lacking marketing consent (blocked) | S2 |
-| EX-MKT-004 | Live campaign with no touchpoints for 7 days (stale) | S1 |
-| EX-MKT-005 | Bounce rate above 5% on a send | S2 |
-| EX-MKT-006 | Unsubscribe spike on a send (>2%) | S2 |
-| EX-MKT-007 | Form submission unconverted for 24h | S1 |
-| EX-MKT-008 | Event completed with follow-ups outstanding after 3 days | S1 |
-| EX-MKT-009 | DLT/WhatsApp template used before registration/approval | S3 |
-| EX-MKT-010 | Campaign live past endAt | S1 |
-| EX-MKT-011 | Channel adapter not configured but send requested | S1 |
-| EX-MKT-012 | Asset used past usage-rights expiry | S2 |
-| EX-MKT-013 | Referral reward pending beyond 30 days | S1 |
-| EX-MKT-014 | Budget period has no approved budget while spend recorded | S2 |
-| EX-MKT-015 | Journey run stuck (nextAt overdue by 2 days) | S1 |
+| Code       | Condition                                                        | Severity |
+| ---------- | ---------------------------------------------------------------- | -------- |
+| EX-MKT-001 | Lead created with no attributable source (unattributed lead)     | S1       |
+| EX-MKT-002 | Campaign spend exceeds planned budget                            | S2       |
+| EX-MKT-003 | Send requested to recipients lacking marketing consent (blocked) | S2       |
+| EX-MKT-004 | Live campaign with no touchpoints for 7 days (stale)             | S1       |
+| EX-MKT-005 | Bounce rate above 5% on a send                                   | S2       |
+| EX-MKT-006 | Unsubscribe spike on a send (>2%)                                | S2       |
+| EX-MKT-007 | Form submission unconverted for 24h                              | S1       |
+| EX-MKT-008 | Event completed with follow-ups outstanding after 3 days         | S1       |
+| EX-MKT-009 | DLT/WhatsApp template used before registration/approval          | S3       |
+| EX-MKT-010 | Campaign live past endAt                                         | S1       |
+| EX-MKT-011 | Channel adapter not configured but send requested                | S1       |
+| EX-MKT-012 | Asset used past usage-rights expiry                              | S2       |
+| EX-MKT-013 | Referral reward pending beyond 30 days                           | S1       |
+| EX-MKT-014 | Budget period has no approved budget while spend recorded        | S2       |
+| EX-MKT-015 | Journey run stuck (nextAt overdue by 2 days)                     | S1       |
 
 ---
 
@@ -630,16 +635,16 @@ kz.mkt.webhook.received
 
 ## AI touchpoints
 
-| Code | Touchpoint | Tier |
-|---|---|---|
-| AI-MKT-001 | Campaign brief drafting | DRAFT |
-| AI-MKT-002 | Email/SMS/WhatsApp copy & subject line suggestions | DRAFT (never auto-sent) |
-| AI-MKT-003 | Audience/segment suggestion from lead outcomes | RECOMMEND |
-| AI-MKT-004 | Lead score rule tuning suggestions | RECOMMEND |
-| AI-MKT-005 | Next-best-action for a lead from touchpoints | RECOMMEND |
-| AI-MKT-006 | Anomaly alert on send metrics (bounce/unsub) | AUTONOMOUS_WITHIN_POLICY (raises an exception only) |
-| AI-MKT-007 | Send approval | PROHIBITED |
-| AI-MKT-008 | Budget approval | PROHIBITED |
+| Code       | Touchpoint                                         | Tier                                                |
+| ---------- | -------------------------------------------------- | --------------------------------------------------- |
+| AI-MKT-001 | Campaign brief drafting                            | DRAFT                                               |
+| AI-MKT-002 | Email/SMS/WhatsApp copy & subject line suggestions | DRAFT (never auto-sent)                             |
+| AI-MKT-003 | Audience/segment suggestion from lead outcomes     | RECOMMEND                                           |
+| AI-MKT-004 | Lead score rule tuning suggestions                 | RECOMMEND                                           |
+| AI-MKT-005 | Next-best-action for a lead from touchpoints       | RECOMMEND                                           |
+| AI-MKT-006 | Anomaly alert on send metrics (bounce/unsub)       | AUTONOMOUS_WITHIN_POLICY (raises an exception only) |
+| AI-MKT-007 | Send approval                                      | PROHIBITED                                          |
+| AI-MKT-008 | Budget approval                                    | PROHIBITED                                          |
 
 `POST /ai/draft` is the one entry point for the DRAFT/RECOMMEND touchpoints
 above (`campaign_brief`, `copy`, `subject_lines`, `segment`,
@@ -756,8 +761,8 @@ purpose `marketing`) — `GET /preferences`; `POST /preferences/consent`
 /public/forms/:publicToken/submit` (honeypot, rate limit, dedupe); `GET/POST
 /touchpoints`; `POST /attribution/recompute`, `GET /attribution/lead/:leadId`;
 `GET/POST/PATCH/DELETE /score-rules`, `POST /score-rules/preview|apply`;
-`GET/POST /links`, unauthenticated `GET /public/l/:slug`; unauthenticated
-`POST /public/webhooks/:provider`.
+`GET/POST /links`, unauthenticated `GET /public/l/:slug`; signed
+`POST /public/webhooks/:provider/:endpointToken` (see Delivery webhooks above).
 
 **Events** (`marketing_events`) — `GET/POST /events`, `GET/PATCH
 /events/:id`; `open`, `close`, `start`, `complete`, `cancel`; `GET

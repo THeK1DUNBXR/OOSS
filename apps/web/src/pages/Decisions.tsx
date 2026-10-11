@@ -10,7 +10,16 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { DecisionView } from '@kaizen/shared';
 import { api, date, money, relative, titleCase } from '../lib/api.js';
-import { Card, ContributionBar, EmptyState, ErrorBox, Loading, Metric, PageHeader, StatusChip } from '../components/ui.js';
+import {
+  Card,
+  ContributionBar,
+  EmptyState,
+  ErrorBox,
+  Loading,
+  Metric,
+  PageHeader,
+  StatusChip,
+} from '../components/ui.js';
 import { NewButton } from '../components/forms.js';
 import { NewDecision } from '../components/createForms.js';
 
@@ -27,7 +36,11 @@ interface Calibration {
 
 export function Decisions() {
   const [creating, setCreating] = useState(false);
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['decisions'],
     queryFn: () => api.get<DecisionView[]>('/command/decisions'),
   });
@@ -88,7 +101,9 @@ export function Decisions() {
                       />
                       <span className="chip border-ink-700 text-ink-400">{titleCase(d.authorityBasis)}</span>
                       {d.requiredAuthorityValue !== null && (
-                        <span className="chip border-ink-700 text-ink-400">{money(d.requiredAuthorityValue, d.currency ?? 'INR')}</span>
+                        <span className="chip border-ink-700 text-ink-400">
+                          {money(d.requiredAuthorityValue, d.currency ?? 'INR')}
+                        </span>
                       )}
                     </div>
 
@@ -130,10 +145,7 @@ export function Decisions() {
         </div>
 
         <div className="space-y-5">
-          <Card
-            title="Your decisions, calibrated"
-            subtitle="Stated confidence against what actually happened."
-          >
+          <Card title="Your decisions, calibrated" subtitle="Stated confidence against what actually happened.">
             {!calibration || calibration.sampleSize === 0 ? (
               <EmptyState
                 message="Not enough reviewed decisions yet."
@@ -148,7 +160,8 @@ export function Decisions() {
                       <div className="flex items-center justify-between text-2xs">
                         <span className="text-ink-300">{b.band} stated</span>
                         <span className="tabular-nums text-ink-400">
-                          {b.realised === null ? '—' : `${b.realised}% realised`} · {b.count} decision{b.count === 1 ? '' : 's'}
+                          {b.realised === null ? '—' : `${b.realised}% realised`} · {b.count} decision
+                          {b.count === 1 ? '' : 's'}
                         </span>
                       </div>
                       <div className="mt-1">
@@ -164,7 +177,10 @@ export function Decisions() {
             )}
           </Card>
 
-          <Card title="The evidence pack" subtitle="Seven mandatory components, assembled before routing — never after.">
+          <Card
+            title="The evidence pack"
+            subtitle="Seven mandatory components, assembled before routing — never after."
+          >
             <ol className="space-y-1">
               {(calibration?.components ?? []).map((c, i) => (
                 <li key={c} className="text-2xs text-ink-400">

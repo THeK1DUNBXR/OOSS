@@ -88,11 +88,11 @@ correctly-named `kz.it.*` event.
 ## Lifecycle machines (`packages/shared/src/it/itsm.ts`, pure)
 
 - `itIncidentMachine`: `declared → acknowledged → mitigated → resolved →
-  closed`.
+closed`.
 - `itProblemMachine`: `open → analysing → known_error|resolved → closed`,
   with `REOPEN` from `resolved`.
 - `itChangeMachine`: `draft → submitted → approved → scheduled →
-  implemented → reviewed | failed | rolled_back`, plus `rejected` from
+implemented → reviewed | failed | rolled_back`, plus `rejected` from
   `submitted`.
 
 Each detail endpoint exposes `availableTransitions` (filtered further for
@@ -162,6 +162,7 @@ change (`IT_INCIDENT_DECLARED/_TRANSITIONED/_REVIEW_PUBLISHED`,
 ### Summary shapes
 
 `GET /it/incidents/summary`:
+
 ```json
 {
   "notYetMeasured": false,
@@ -171,20 +172,27 @@ change (`IT_INCIDENT_DECLARED/_TRANSITIONED/_REVIEW_PUBLISHED`,
   "reviewsOutstanding": 0
 }
 ```
+
 `mttrMinutes30d` is `null`, not `0`, when no incident resolved in the last
 30 days. `notYetMeasured: true` (with every other field zeroed) only when
 the tenant has no incidents at all.
 
 `GET /it/changes/summary`:
+
 ```json
 {
   "notYetMeasured": false,
   "awaitingApproval": 2,
   "scheduledThisWeek": 1,
   "successRate90d": 0.75,
-  "freezeInForce": { "name": "Quarter close freeze", "until": "2026-10-05T00:00:00.000Z", "blockedKinds": ["standard", "normal"] }
+  "freezeInForce": {
+    "name": "Quarter close freeze",
+    "until": "2026-10-05T00:00:00.000Z",
+    "blockedKinds": ["standard", "normal"]
+  }
 }
 ```
+
 `successRate90d` is `null` with no change reaching `reviewed | failed |
 rolled_back` in 90 days. `freezeInForce` is `null` when no freeze covers
 the current moment. `blockedKinds` names every change `kind` at least one
@@ -192,7 +200,7 @@ freeze covering the moment actually blocks right now — `standard` and
 `normal` always, `emergency` only when no freeze covering the moment
 declares `allowEmergency`; when two freezes overlap the moment with
 different `allowEmergency` settings, `blockedKinds` still reflects the
-union (an emergency change is blocked unless *every* freeze covering the
+union (an emergency change is blocked unless _every_ freeze covering the
 moment allows it), while the reported `name`/`until` are whichever of the
 covering freezes runs latest. This is the "in force right now" figure for
 the KPI tile — a specific change's own risk is `changeDetail`'s
@@ -232,13 +240,13 @@ what a person reports happened, not a deployment log the platform captured.
 
 ## Acceptance
 
-| ID | Test |
-|---|---|
-| IT-INC-001 | `IT-INC-001: timeline stamps are set once; a second acknowledge is a 409` |
-| IT-INC-002 | `IT-INC-002: a sev1 cannot close without a published review, and a published review is final` |
-| IT-CHG-001 | `IT-CHG-001: a normal change one raised cannot be approved by its raiser, while a standard change needs no step` |
+| ID         | Test                                                                                                                         |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| IT-INC-001 | `IT-INC-001: timeline stamps are set once; a second acknowledge is a 409`                                                    |
+| IT-INC-002 | `IT-INC-002: a sev1 cannot close without a published review, and a published review is final`                                |
+| IT-CHG-001 | `IT-CHG-001: a normal change one raised cannot be approved by its raiser, while a standard change needs no step`             |
 | IT-CHG-002 | `IT-CHG-002: scheduling inside a freeze window is refused with the window named; emergency passes when the freeze allows it` |
-| IT-CHG-003 | `IT-CHG-003: changeSuccessRate counts only reviewed/failed/rolled_back and is null with none` |
+| IT-CHG-003 | `IT-CHG-003: changeSuccessRate counts only reviewed/failed/rolled_back and is null with none`                                |
 
 Plus: `mttrMinutes` and `isInFreeze` pure-arithmetic tests; a problem
 opened from an incident, carried through its lifecycle, and linked back;

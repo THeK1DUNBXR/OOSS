@@ -52,7 +52,11 @@ const MODULE_LOADERS: Record<string, () => Promise<Record<string, unknown>>> = {
  * are all logged and treated as zero work done — never a hard failure of the
  * job itself.
  */
-async function callDetector(mod: string, fn: string, ...args: unknown[]): Promise<{ count: number; error: string | null }> {
+async function callDetector(
+  mod: string,
+  fn: string,
+  ...args: unknown[]
+): Promise<{ count: number; error: string | null }> {
   try {
     const loader = MODULE_LOADERS[mod];
     if (!loader) {
@@ -132,7 +136,9 @@ async function recomputeAttribution(): Promise<JobResult> {
   });
 
   const results = await Promise.all(
-    touched.flatMap((t) => ATTRIBUTION_MODELS.map((model) => callDetector('attribution', 'computeAttribution', t.leadId, model))),
+    touched.flatMap((t) =>
+      ATTRIBUTION_MODELS.map((model) => callDetector('attribution', 'computeAttribution', t.leadId, model)),
+    ),
   );
   return summarise(results);
 }

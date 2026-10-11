@@ -56,11 +56,21 @@ database already holds a tenant — so re-running it never touches your data.
 
 Logs land in `.dev/api.log` and `.dev/web.log`.
 
+## Before a deploy: people with no role
+
+An affiliation with no role gives its holder no access. Before a deploy, run the read-only report to see who that is:
+
+```
+pnpm --filter @kaizen/api report:roleless
+```
+
+It prints, per active tenant, the count of active affiliations with no role and the person record codes behind them. It prints no names or emails. Anyone listed cannot sign in to work until someone names a role for them; fix that in the people area before the deploy, not after a complaint.
+
 ## Databases
 
-| | |
-|---|---|
-| `kaizen` | development and demonstration |
+|               |                                                           |
+| ------------- | --------------------------------------------------------- |
+| `kaizen`      | development and demonstration                             |
 | `kaizen_test` | the acceptance suite, provisioned by `scripts/test-db.sh` |
 
 ```bash
@@ -86,8 +96,23 @@ Warning: the three later migrations install triggers and immutability
 boundaries (journal balance, closed-period guard, audit and consent
 append-only) that `db push` never installed. Run them on a copy of the
 database first, and look at the failures before pointing the real database at
-them. Tenant row-level security is not in these migrations; it is held in
-`apps/api/prisma/pending/ledger_rls.sql` until FX-51 owns it.
+them. Tenant row-level security is in `20261010210000_tenant_rls` (FX-51): every
+table with a `tenantId` column is forced under a policy keyed on
+`app.tenant_id`. Two database roles carry this, and both are checked at boot
+(`platform/rlsGuard.ts`):
+
+| Role                                               | Connects as              | Required privilege                                                 | Used for                                                                                                                         | Boot check                                |
+| -------------------------------------------------- | ------------------------ | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Application role `kaizen_app`                      | `DATABASE_URL`           | neither `rolsuper` nor `rolbypassrls`; row-level security binds it | every request, through the scoped client                                                                                         | refuses to start with either privilege    |
+| Unscoped role (the owner, `kaizen` in development) | `UNSCOPED_DATABASE_URL`  | `rolbypassrls` or `rolsuper`                                       | the cross-tenant jobs (outbox drain, scheduler, audit chain), the seed, and the session lookup by token before a tenant is known | refuses to start without either privilege |
+| Migration owner                                    | `MIGRATION_DATABASE_URL` | owns the tables                                                    | `prisma migrate` only                                                                                                            | none; it is never the request role        |
+
+`UNSCOPED_DATABASE_URL` is required when `NODE_ENV=production`. Outside
+production it must still be set for the server to start, because the check
+applies to every non-test run. `scripts/app-role.sql` creates `kaizen_app`
+with no superuser and no BYPASSRLS; `scripts/setup.sh` and `docker-compose.yml`
+run it. Every tenant table has the `tenant_isolation` policy, and
+`rls.test.ts` (RLS-003) fails if one is missing.
 
 ## Seeding
 
@@ -139,6 +164,24 @@ governed act.
 The acceptance suite asserts the plan is empty, so drift between the declared
 matrix and what a tenant holds fails the build.
 
+## Encrypting bank advices written before FX-61
+
+Bank advices generated before FX-61 was fixed store the NEFT file and each
+beneficiary's account number and IFSC in clear. Anyone with DB or backup access
+could read every employee's bank details. New advices are sealed on write. Run
+this once per deployment to seal the old rows:
+
+```bash
+cd apps/api
+npx tsx scripts/encrypt-bank-advices.ts               # every tenant
+npx tsx scripts/encrypt-bank-advices.ts <tenant-slug> # one tenant
+```
+
+It prints scanned, converted and already-encrypted counts per tenant. It is
+idempotent: plaintext is detected by the missing `enc:v1:` prefix, so a second
+run converts nothing. It changes only the storage encoding; the bank file
+content is unchanged, and no advice is deleted or regenerated.
+
 ## Jobs
 
 ```bash
@@ -157,17 +200,19 @@ that runs twice does not act twice.
 
 ## Environment
 
-| Variable | Default | |
-|---|---|---|
-| `DATABASE_URL` | — | required |
-| `JWT_SECRET` | — | required |
-| `PORT` | `4000` | |
-| `WEB_DIST_DIR` | *(unset)* | path to the built client (`apps/web/dist`). Set in production so the API serves the client as well as `/api`; Caddy proxies to it (`deploy/Caddyfile`) |
-| `JOBS_ENABLED` | `true` | in-process scheduler |
-| `TENANT_ENFORCE_MODE` | `enforce` | `warn` logs an unscoped query instead of throwing — for migration only |
-| `PORTAL_HOSTS` | *(empty)* | comma-separated hostnames the equity portal shell serves — read into `surfaceHosts.portal` by `/api/meta/version` |
-| `TENANT_KIND` | `standalone` | read once at a tenant's first bootstrap as a stated starting guess — `reconcileTenantKinds` (run at the end of every bootstrap and at boot) recomputes it from the actual parent/child rows regardless, so a wrong guess here never sticks |
-| `PARENT_TENANT_SLUG` | *(unset)* | the parent tenant's slug, read by `pnpm seed` for the default tenant and overridable per call to `pnpm tenant:create --parent` |
+| Variable                 | Default      |                                                                                                                                                                                                                                            |
+| ------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`           | —            | required. The application role (`kaizen_app`); see the database roles above                                                                                                                                                                |
+| `MIGRATION_DATABASE_URL` | —            | the owner, for `prisma migrate` (schema `directUrl`)                                                                                                                                                                                       |
+| `UNSCOPED_DATABASE_URL`  | —            | required in production; the unscoped role above. Without a `rolbypassrls` or `rolsuper` role the server refuses to start                                                                                                                   |
+| `JWT_SECRET`             | —            | required                                                                                                                                                                                                                                   |
+| `PORT`                   | `4000`       |                                                                                                                                                                                                                                            |
+| `WEB_DIST_DIR`           | _(unset)_    | path to the built client (`apps/web/dist`). Set in production so the API serves the client as well as `/api`; Caddy proxies to it (`deploy/Caddyfile`)                                                                                     |
+| `JOBS_ENABLED`           | `true`       | in-process scheduler                                                                                                                                                                                                                       |
+| `TENANT_ENFORCE_MODE`    | `enforce`    | `warn` logs an unscoped query instead of throwing — for migration only                                                                                                                                                                     |
+| `PORTAL_HOSTS`           | _(empty)_    | comma-separated hostnames the equity portal shell serves — read into `surfaceHosts.portal` by `/api/meta/version`                                                                                                                          |
+| `TENANT_KIND`            | `standalone` | read once at a tenant's first bootstrap as a stated starting guess — `reconcileTenantKinds` (run at the end of every bootstrap and at boot) recomputes it from the actual parent/child rows regardless, so a wrong guess here never sticks |
+| `PARENT_TENANT_SLUG`     | _(unset)_    | the parent tenant's slug, read by `pnpm seed` for the default tenant and overridable per call to `pnpm tenant:create --parent`                                                                                                             |
 
 `TENANT_ENFORCE_MODE=warn` is a migration aid, not a configuration. Running it
 in production means a service that forgets a tenant predicate returns another
@@ -180,7 +225,6 @@ from `process.env` directly rather than through the Zod config, so a hostname
 change needs no code. The Caddy site block in `deploy/Caddyfile` must also
 answer on that hostname, since Caddy is what routes by host now.
 
-
 ---
 
 ## Setting the company up to invoice
@@ -190,7 +234,7 @@ under **Company details**, in the Set up group.
 
 1. **The registration.** The legal name, the address and the GSTIN. An invoice
    without them is a letter about money rather than a tax invoice, and a return
-   is filed *under* a GSTIN. The GSTIN is validated on shape, state code and
+   is filed _under_ a GSTIN. The GSTIN is validated on shape, state code and
    check digit, because a mistyped registration is rejected by the portal weeks
    later with nothing to say which field caused it.
 
@@ -202,7 +246,7 @@ under **Company details**, in the Set up group.
 
 3. **Where each series starts.** A company adopting the platform part-way
    through a year has already issued some of this year's documents by hand.
-   *Start from…* moves a series forwards so the platform does not re-issue a
+   _Start from…_ moves a series forwards so the platform does not re-issue a
    number that is already on a document somebody is holding. It only ever moves
    forwards.
 
@@ -238,8 +282,7 @@ pnpm tenant:create --slug kz-edu --name "Kaizen Education Pvt Ltd" \
   --chairman-email chairman@kaizen.co.in
 ```
 
-This is the ordinary tenant bootstrap (`docs/plan/equity-portal.md` §6, phase
-0) — a new tenant, its own founding accounts, `parentTenantId` pointing at
+This is the ordinary tenant bootstrap (`docs/plan/equity-portal.md` §6, phase 0) — a new tenant, its own founding accounts, `parentTenantId` pointing at
 the holding, `config.originDivision` recording which division it grew out of.
 Before the spin-out can commit, set the subsidiary's **company details**
 (legal name, and at least two certificate signatories — a share certificate
@@ -319,3 +362,11 @@ Removes only the rows this batch created in the subsidiary, and clears
 `migratedToTenantId` on the sources — safe only while the subsidiary has not
 yet acquired a life of its own. It refuses outright if the subsidiary carries
 any transaction or register row from outside the batch.
+
+## Deploying the session change (0.2)
+
+Access tokens are now bound to a server-side Session. Tokens issued before this
+deploy carry no `jti` and are refused, so every signed-in user is asked to sign
+in once after the deploy. Expect one re-login per user; there is nothing to
+migrate. Sessions are 30 days from sign-in, and the refresh secret lives in an
+httpOnly cookie scoped to `/api/auth`, which Caddy passes through unchanged.

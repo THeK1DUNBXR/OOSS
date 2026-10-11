@@ -33,8 +33,18 @@ const ProgramInputSchema = z.object({
   terms: z.string().nullish(),
 });
 
-router.get('/referral-programs', handler(async (req) => listReferralPrograms({ active: req.query.active === 'true' ? true : req.query.active === 'false' ? false : undefined })));
-router.get('/referral-programs/:id', handler(async (req) => loadReferralProgram(req.params.id)));
+router.get(
+  '/referral-programs',
+  handler(async (req) =>
+    listReferralPrograms({
+      active: req.query.active === 'true' ? true : req.query.active === 'false' ? false : undefined,
+    }),
+  ),
+);
+router.get(
+  '/referral-programs/:id',
+  handler(async (req) => loadReferralProgram(req.params.id)),
+);
 
 router.post(
   '/referral-programs',
@@ -51,8 +61,14 @@ router.patch(
   handler(async (req) => updateReferralProgram(req.params.id, ProgramInputSchema.partial().parse(req.body))),
 );
 
-router.post('/referral-programs/:id/activate', handler(async (req) => activateReferralProgram(req.params.id)));
-router.post('/referral-programs/:id/deactivate', handler(async (req) => deactivateReferralProgram(req.params.id)));
+router.post(
+  '/referral-programs/:id/activate',
+  handler(async (req) => activateReferralProgram(req.params.id)),
+);
+router.post(
+  '/referral-programs/:id/deactivate',
+  handler(async (req) => deactivateReferralProgram(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Referrals
@@ -97,7 +113,10 @@ router.post(
   }),
 );
 
-router.post('/referrals/:id/qualify', handler(async (req) => qualifyReferral(req.params.id)));
+router.post(
+  '/referrals/:id/qualify',
+  handler(async (req) => qualifyReferral(req.params.id)),
+);
 
 router.post(
   '/referrals/:id/reward',

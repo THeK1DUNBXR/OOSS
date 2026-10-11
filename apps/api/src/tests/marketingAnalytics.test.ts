@@ -38,7 +38,14 @@ beforeAll(async () => {
       stages: {
         create: [
           { tenantId: TENANT_ID, stageKey: 'new', label: 'New', sequence: 1, pipelinePosition: 0, isOpen: true },
-          { tenantId: TENANT_ID, stageKey: 'qualified', label: 'Qualified', sequence: 2, pipelinePosition: 30, isOpen: true },
+          {
+            tenantId: TENANT_ID,
+            stageKey: 'qualified',
+            label: 'Qualified',
+            sequence: 2,
+            pipelinePosition: 30,
+            isOpen: true,
+          },
         ],
       },
     },
@@ -151,6 +158,10 @@ describe('MKT-ANA-001 — funnel conversion rates', () => {
 describe('MKT-ANA-002 — channel cost per lead', () => {
   it('costPerLead is null when a channel has spend but zero leads', async () => {
     await run(async () => {
+      // The spend is dated one day inside the window, not at `to`. Stamping it
+      // with `new Date()` after `to` was captured put it a millisecond past the
+      // inclusive upper bound whenever the insert crossed a ms boundary, so the
+      // channel intermittently vanished from the result.
       const from = new Date(Date.now() - 3 * 86_400_000);
       const to = new Date();
 
@@ -161,7 +172,7 @@ describe('MKT-ANA-002 — channel cost per lead', () => {
           channelKey: 'print_only_channel_test',
           division: 'software',
           amount: 5000,
-          spendDate: new Date(),
+          spendDate: new Date(Date.now() - 86_400_000),
         },
       });
 
@@ -187,7 +198,14 @@ describe('MKT-ANA-003 — overview KPI tiles', () => {
       const result = await overview();
       const keys = result.kpis.map((k) => k.key).sort();
       expect(keys).toEqual(
-        ['consent_coverage', 'cost_per_lead', 'leads_attributed', 'live_campaigns', 'pipeline_value', 'send_deliverability'].sort(),
+        [
+          'consent_coverage',
+          'cost_per_lead',
+          'leads_attributed',
+          'live_campaigns',
+          'pipeline_value',
+          'send_deliverability',
+        ].sort(),
       );
       for (const kpi of result.kpis) {
         expect(typeof kpi.measured).toBe('boolean');
@@ -314,7 +332,9 @@ describe('MKT-GOV — marketing jobs are registered and runnable', () => {
     for (const name of expectedNames) {
       expect(results[name]).toBeDefined();
     }
-    const runs = await unscopedPrisma.jobRun.findMany({ where: { tenantId: TENANT_ID, jobName: { in: expectedNames } } });
+    const runs = await unscopedPrisma.jobRun.findMany({
+      where: { tenantId: TENANT_ID, jobName: { in: expectedNames } },
+    });
     for (const r of runs) {
       expect(r.status).toBe('completed');
     }
@@ -328,7 +348,11 @@ describe('MKT-GOV — marketing jobs are registered and runnable', () => {
 describe('MKT-GOV — AI-MKT draft touchpoints', () => {
   it('drafts a campaign brief as an AgentAction at the DRAFT tier, never anything sent', async () => {
     await run(async () => {
-      const result = await draft('campaign_brief', { name: 'Spring intake', objective: 'lead_gen', division: 'software' });
+      const result = await draft('campaign_brief', {
+        name: 'Spring intake',
+        objective: 'lead_gen',
+        division: 'software',
+      });
       expect(result.tier).toBe('DRAFT');
       expect(typeof result.draft).toBe('string');
 
@@ -380,7 +404,9 @@ describe('MKT-GOV — AI-MKT draft touchpoints', () => {
   it('registers the marketing-assistant agent idempotently, never granted a write tool', async () => {
     await run(async () => {
       await draft('copy', { offeringName: 'Test offering' });
-      const agents = await unscopedPrisma.agentPrincipal.findMany({ where: { tenantId: TENANT_ID, agentKey: 'marketing-assistant' } });
+      const agents = await unscopedPrisma.agentPrincipal.findMany({
+        where: { tenantId: TENANT_ID, agentKey: 'marketing-assistant' },
+      });
       expect(agents.length).toBe(1);
       expect(['DRAFT', 'RECOMMEND']).toContain(agents[0].tier);
     });

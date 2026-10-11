@@ -84,9 +84,7 @@ for (const [title, dir] of srcRoots) {
     const ls = lines(f);
     const syms = [];
     ls.forEach((l, i) => {
-      const m = l.match(
-        /^export\s+(?:async\s+)?(?:function|const|class|type|interface|enum)\s+(\w+)/
-      );
+      const m = l.match(/^export\s+(?:async\s+)?(?:function|const|class|type|interface|enum)\s+(\w+)/);
       if (m) syms.push(`${m[1]}:${i + 1}`);
     });
     if (!syms.length) continue;

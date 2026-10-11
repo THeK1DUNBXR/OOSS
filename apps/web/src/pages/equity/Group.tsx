@@ -9,8 +9,11 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import type {
-  GroupComplianceRowView, GroupEntityFinancialView, GroupHolderRowView,
-  GroupStructureView, GroupEntityBadge,
+  GroupComplianceRowView,
+  GroupEntityFinancialView,
+  GroupHolderRowView,
+  GroupStructureView,
+  GroupEntityBadge,
 } from '@kaizen/shared';
 import { GROUP_ENTITY_BADGE_LABELS } from '@kaizen/shared';
 import { api, dateTime, money } from '../../lib/api.js';
@@ -56,15 +59,20 @@ export function Group() {
   });
   const holders = useQuery({
     queryKey: ['group-holders'],
-    queryFn: () => api.get<{ entities: Array<{ tenantId: string; name: string }>; holders: GroupHolderRowView[] }>('/group/holders'),
+    queryFn: () =>
+      api.get<{ entities: Array<{ tenantId: string; name: string }>; holders: GroupHolderRowView[] }>('/group/holders'),
     enabled: tab === 'holders',
   });
   const financials = useQuery({
     queryKey: ['group-financials'],
     queryFn: () =>
-      api.get<{ entities: GroupEntityFinancialView[]; totalLabel: string; totalCash: number | null; totalPnlMonth: { income: number; expense: number; net: number } | null; intercompanyTotal: { in: number; out: number } | null }>(
-        '/group/financials',
-      ),
+      api.get<{
+        entities: GroupEntityFinancialView[];
+        totalLabel: string;
+        totalCash: number | null;
+        totalPnlMonth: { income: number; expense: number; net: number } | null;
+        intercompanyTotal: { in: number; out: number } | null;
+      }>('/group/financials'),
     enabled: tab === 'financials',
   });
   const compliance = useQuery({
@@ -105,7 +113,10 @@ export function Group() {
 
       {!hasSubsidiaries && childNodes.every((n) => n.kind === 'not_yet_incorporated') && (
         <Card className="mb-4">
-          <EmptyState message="This company has no subsidiaries." hint="Every division below is not yet incorporated as its own entity." />
+          <EmptyState
+            message="This company has no subsidiaries."
+            hint="Every division below is not yet incorporated as its own entity."
+          />
         </Card>
       )}
 
@@ -143,12 +154,18 @@ export function Group() {
                         )}
                         <div
                           className={`flex min-w-[10rem] flex-col items-center gap-1 rounded-md border p-3 text-center shadow-raised ${
-                            n.kind === 'not_yet_incorporated' ? 'border-dashed border-ink-800 bg-ink-925' : 'border-ink-700 bg-ink-900'
+                            n.kind === 'not_yet_incorporated'
+                              ? 'border-dashed border-ink-800 bg-ink-925'
+                              : 'border-ink-700 bg-ink-900'
                           }`}
                         >
                           <p className="text-xs font-semibold text-ink-100">{n.name}</p>
                           <BadgeChip badge={n.badge} />
-                          {n.layerLimitExceeded && <span className="chip border-band-critical/40 bg-band-critical/10 text-band-critical">Layer limit</span>}
+                          {n.layerLimitExceeded && (
+                            <span className="chip border-band-critical/40 bg-band-critical/10 text-band-critical">
+                              Layer limit
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
@@ -205,10 +222,14 @@ export function Group() {
                         return (
                           <td key={e.tenantId} className="text-right tabular-nums">
                             {stake ? (
-                              <span title={`Direct ${stake.directFullyDilutedPct.toFixed(2)}% · look-through ${stake.lookThroughFullyDilutedPct.toFixed(2)}%`}>
+                              <span
+                                title={`Direct ${stake.directFullyDilutedPct.toFixed(2)}% · look-through ${stake.lookThroughFullyDilutedPct.toFixed(2)}%`}
+                              >
                                 {stake.lookThroughFullyDilutedPct.toFixed(2)}%
                                 {stake.lookThroughFullyDilutedPct !== stake.directFullyDilutedPct && (
-                                  <span className="ml-1 text-2xs text-ink-500">({stake.directFullyDilutedPct.toFixed(2)}% direct)</span>
+                                  <span className="ml-1 text-2xs text-ink-500">
+                                    ({stake.directFullyDilutedPct.toFixed(2)}% direct)
+                                  </span>
                                 )}
                               </span>
                             ) : (
@@ -220,7 +241,11 @@ export function Group() {
                       <td className="text-2xs text-ink-400">
                         {[...new Set(Object.values(h.perEntity).map((s) => s.matchedBy))].join(', ')}
                       </td>
-                      <td>{h.sbo && <span className="chip border-band-watch/40 bg-band-watch/10 text-band-watch">SBO ≥10%</span>}</td>
+                      <td>
+                        {h.sbo && (
+                          <span className="chip border-band-watch/40 bg-band-watch/10 text-band-watch">SBO ≥10%</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -263,7 +288,9 @@ export function Group() {
                   <tr className="total-row">
                     <td>{financials.data.totalLabel}</td>
                     <td className="text-right tabular-nums">{money(financials.data.totalCash)}</td>
-                    <td className="text-right tabular-nums">{financials.data.totalPnlMonth ? money(financials.data.totalPnlMonth.net) : '—'}</td>
+                    <td className="text-right tabular-nums">
+                      {financials.data.totalPnlMonth ? money(financials.data.totalPnlMonth.net) : '—'}
+                    </td>
                     <td />
                     <td className="text-right tabular-nums">{money(financials.data.intercompanyTotal?.in ?? null)}</td>
                     <td className="text-right tabular-nums">{money(financials.data.intercompanyTotal?.out ?? null)}</td>
@@ -296,11 +323,17 @@ export function Group() {
                     <tr key={r.tenantId}>
                       <td>{r.name}</td>
                       <td className="text-ink-300">{r.dematStatus ?? '—'}</td>
-                      <td className="text-ink-300">{r.isSmallCompany === null ? '—' : r.isSmallCompany ? 'Yes' : 'No'}</td>
+                      <td className="text-ink-300">
+                        {r.isSmallCompany === null ? '—' : r.isSmallCompany ? 'Yes' : 'No'}
+                      </td>
                       <td className="text-right tabular-nums">{r.certificateOverdueCount}</td>
                       <td>
                         <span className="text-2xs text-ink-400">{publishedWords(r.publishedAt, r.staleSeconds)}</span>
-                        {r.stale && <span className="ml-2 chip border-band-critical/40 bg-band-critical/10 text-band-critical">Stale</span>}
+                        {r.stale && (
+                          <span className="ml-2 chip border-band-critical/40 bg-band-critical/10 text-band-critical">
+                            Stale
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -348,7 +381,11 @@ function EntityTile({ node }: { node: GroupStructureView['nodes'][number] }) {
   void user;
 
   return (
-    <button onClick={open} disabled={busy} className="flex flex-col items-start gap-1.5 rounded-lg border border-ink-800 bg-ink-900 p-4 text-left shadow-raised transition-all duration-150 hover:-translate-y-px hover:shadow-floating disabled:opacity-60">
+    <button
+      onClick={open}
+      disabled={busy}
+      className="flex flex-col items-start gap-1.5 rounded-lg border border-ink-800 bg-ink-900 p-4 text-left shadow-raised transition-all duration-150 hover:-translate-y-px hover:shadow-floating disabled:opacity-60"
+    >
       <div className="flex w-full items-center justify-between gap-2">
         <span className="text-sm font-semibold text-ink-100">{node.name}</span>
         <BadgeChip badge={node.badge} />
@@ -356,10 +393,14 @@ function EntityTile({ node }: { node: GroupStructureView['nodes'][number] }) {
       {detail.data && (
         <>
           <p className="text-2xs text-ink-400">
-            {detail.data.compliance.dematStatus ? detail.data.compliance.dematStatus.replace(/_/g, ' ') : 'No demat status on record'}
+            {detail.data.compliance.dematStatus
+              ? detail.data.compliance.dematStatus.replace(/_/g, ' ')
+              : 'No demat status on record'}
           </p>
           <p className="text-2xs text-ink-400">
-            {detail.data.valuation ? `Last valuation ${money((detail.data.valuation as never as { equityValue?: number }).equityValue ?? null)} · ${detail.data.valuation.basis.replace(/_/g, ' ')}` : 'No valuation on record'}
+            {detail.data.valuation
+              ? `Last valuation ${money((detail.data.valuation as never as { equityValue?: number }).equityValue ?? null)} · ${detail.data.valuation.basis.replace(/_/g, ' ')}`
+              : 'No valuation on record'}
           </p>
           {detail.data.compliance.certificateOverdueCount > 0 && (
             <span className="chip border-band-critical/40 bg-band-critical/10 text-band-critical">

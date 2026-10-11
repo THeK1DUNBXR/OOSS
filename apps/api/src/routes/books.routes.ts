@@ -22,16 +22,34 @@ import { handler, str, date, numeric } from '../lib/http.js';
 import { num } from '../platform/db.js';
 import { assertCan, canSeeMoney } from '../platform/permissions.js';
 import {
-  listAccounts, createAccount, accountBalances,
-  listCategories, createCategory,
-  listTransactions, recordTransaction, reverseTransaction, groupCounterpartyOptions,
-  listVendorBills, recordVendorBill, payVendorBill, payablesAgeing,
-  priceInvoiceGst, gstSummary,
-  setBudgetLine, budgetVariance,
-  listAssets, createAsset, assetSchedule,
-  listLoans, createLoan, loanSchedule,
+  listAccounts,
+  createAccount,
+  accountBalances,
+  listCategories,
+  createCategory,
+  listTransactions,
+  recordTransaction,
+  reverseTransaction,
+  groupCounterpartyOptions,
+  listVendorBills,
+  recordVendorBill,
+  payVendorBill,
+  payablesAgeing,
+  priceInvoiceGst,
+  gstSummary,
+  setBudgetLine,
+  budgetVariance,
+  listAssets,
+  createAsset,
+  assetSchedule,
+  listLoans,
+  createLoan,
+  loanSchedule,
   generateRecurring,
-  profitAndLoss, monthlyTrend, cashPosition, cashForecast,
+  profitAndLoss,
+  monthlyTrend,
+  cashPosition,
+  cashForecast,
   postPayrollToBooks,
 } from '../domains/books.js';
 import {
@@ -100,7 +118,10 @@ router.post(
   }),
 );
 
-router.get('/categories', handler(async () => listCategories()));
+router.get(
+  '/categories',
+  handler(async () => listCategories()),
+);
 
 router.post(
   '/categories',
@@ -182,7 +203,10 @@ router.post(
   }),
 );
 
-router.get('/group-entities', handler(async () => ({ items: await groupCounterpartyOptions() })));
+router.get(
+  '/group-entities',
+  handler(async () => ({ items: await groupCounterpartyOptions() })),
+);
 
 router.post(
   '/transactions/:id/reverse',
@@ -302,14 +326,15 @@ router.get(
   }),
 );
 
-router.get('/gst/rates', handler(async () => GST_RATES));
+router.get(
+  '/gst/rates',
+  handler(async () => GST_RATES),
+);
 
 /** The state codes a place of supply is named by, for the pickers. */
 router.get(
   '/gst/states',
-  handler(async () =>
-    Object.entries(GST_STATE_CODES).map(([code, name]) => ({ code, name })),
-  ),
+  handler(async () => Object.entries(GST_STATE_CODES).map(([code, name]) => ({ code, name }))),
 );
 
 // ---------------------------------------------------------------------------
@@ -366,7 +391,10 @@ router.get(
   }),
 );
 
-router.get('/gst/filings/:id', handler(async (req) => filingDetail(req.params.id)));
+router.get(
+  '/gst/filings/:id',
+  handler(async (req) => filingDetail(req.params.id)),
+);
 
 /**
  * What stands between this prepared return and a filed one.
@@ -375,20 +403,27 @@ router.get('/gst/filings/:id', handler(async (req) => filingDetail(req.params.id
  * for the books as they stand now — which is the only reading that means
  * anything to somebody about to file.
  */
-router.get('/gst/filings/:id/blockers', handler(async (req) => filingBlockers(req.params.id)));
+router.get(
+  '/gst/filings/:id/blockers',
+  handler(async (req) => filingBlockers(req.params.id)),
+);
 
 /** The return in the offline utility's shape, for upload to the portal. */
-router.get('/gst/filings/:id/export', handler(async (req) => exportFilingJson(req.params.id)));
+router.get(
+  '/gst/filings/:id/export',
+  handler(async (req) => exportFilingJson(req.params.id)),
+);
 
 /** Whether a month is closed, and by which filing. */
-router.get('/gst/period', handler(async (req) => periodStatus(periodOf(req.query.period))));
+router.get(
+  '/gst/period',
+  handler(async (req) => periodStatus(periodOf(req.query.period))),
+);
 
 router.post(
   '/gst/filings',
   handler(async (req, res) => {
-    const body = z
-      .object({ returnType: returnTypeEnum, period: period, note: z.string().nullish() })
-      .parse(req.body);
+    const body = z.object({ returnType: returnTypeEnum, period: period, note: z.string().nullish() }).parse(req.body);
     const result = await prepareReturn(body.returnType, body.period, body.note);
     res.status(201).json(result);
     return undefined;
@@ -598,7 +633,10 @@ router.post(
   }),
 );
 
-router.get('/assets/:id/schedule', handler(async (req) => assetSchedule(req.params.id)));
+router.get(
+  '/assets/:id/schedule',
+  handler(async (req) => assetSchedule(req.params.id)),
+);
 
 router.get(
   '/loans',
@@ -635,7 +673,10 @@ router.post(
   }),
 );
 
-router.get('/loans/:id/schedule', handler(async (req) => loanSchedule(req.params.id)));
+router.get(
+  '/loans/:id/schedule',
+  handler(async (req) => loanSchedule(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Recurring

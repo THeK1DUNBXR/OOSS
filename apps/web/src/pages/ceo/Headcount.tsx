@@ -16,8 +16,19 @@ export function Headcount() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <Metric label="Planned hires" value="10" sub="Across the next two quarters" drillTo="/ceo/financial-plan" />
-        <Metric label="Monthly payroll" value="₹31.5L" sub="Pre-approval baseline" drillTo="/ceo/financial-plan" tone="neutral" />
-        <Metric label="Variance to plan" value="-2" sub="Lower than projected staffing" noActionReason="This is a portfolio-level planning view, not a per-person approval drill" />
+        <Metric
+          label="Monthly payroll"
+          value="₹31.5L"
+          sub="Pre-approval baseline"
+          drillTo="/ceo/financial-plan"
+          tone="neutral"
+        />
+        <Metric
+          label="Variance to plan"
+          value="-2"
+          sub="Lower than projected staffing"
+          noActionReason="This is a portfolio-level planning view, not a per-person approval drill"
+        />
       </div>
 
       <Card title="Division plan" subtitle="Planned versus actual staffing and annualised cost envelope.">
@@ -42,7 +53,10 @@ export function Headcount() {
                   <td className="px-3 py-3 text-ink-300">{division.hiring}</td>
                   <td className="px-3 py-3 text-ink-300">{division.comp}</td>
                   <td className="px-3 py-3">
-                    <StatusChip status={division.actual >= division.planned ? 'on track' : 'watch'} tone={division.actual >= division.planned ? 'good' : 'warn'} />
+                    <StatusChip
+                      status={division.actual >= division.planned ? 'on track' : 'watch'}
+                      tone={division.actual >= division.planned ? 'good' : 'warn'}
+                    />
                   </td>
                 </tr>
               ))}

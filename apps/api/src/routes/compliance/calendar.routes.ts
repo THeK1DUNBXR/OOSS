@@ -14,7 +14,10 @@ import {
 /** Compliance — calendar (docs/plan/compliance.md). Mounted at /api/compliance/calendar. */
 const router = Router();
 
-router.get('/types', handler(async () => listTypes()));
+router.get(
+  '/types',
+  handler(async () => listTypes()),
+);
 
 router.get(
   '/',
@@ -28,9 +31,15 @@ router.get(
   }),
 );
 
-router.get('/summary', handler(async () => summary()));
+router.get(
+  '/summary',
+  handler(async () => summary()),
+);
 
-router.get('/:id', handler(async (req) => obligationDetail(req.params.id)));
+router.get(
+  '/:id',
+  handler(async (req) => obligationDetail(req.params.id)),
+);
 
 router.post(
   '/generate',

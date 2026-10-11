@@ -39,7 +39,8 @@ import { registerHook } from '../../platform/hooks.js';
 import type { JobResult } from '../../jobs/scheduler.js';
 
 /** The registers are read by spreadsheet tools that expect RFC 4180 line endings. */
-const toCsv = (headers: string[], rows: Array<Array<string | number | null | undefined>>) => sharedToCsv(headers, rows, '\r\n');
+const toCsv = (headers: string[], rows: Array<Array<string | number | null | undefined>>) =>
+  sharedToCsv(headers, rows, '\r\n');
 
 registerGovernedEntities('cmp_labour', [
   'holiday',
@@ -82,7 +83,13 @@ export async function listHolidays(year?: number) {
   });
 }
 
-export async function createHoliday(input: { date: Date; name: string; kind: string; state?: string | null; note?: string | null }) {
+export async function createHoliday(input: {
+  date: Date;
+  name: string;
+  kind: string;
+  state?: string | null;
+  note?: string | null;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'holidays', verb: 'create' });
   if (!['national', 'state', 'restricted'].includes(input.kind)) {
@@ -237,7 +244,9 @@ export async function encashLeave(employmentRelationshipId: string, input: { lea
   }
   const maxDays = num(leaveType.maxEncashDays);
   if (maxDays !== null && input.days > maxDays) {
-    throw ApiError.unprocessable(`${leaveType.name} may be encashed up to ${maxDays} days; ${input.days} was asked for.`);
+    throw ApiError.unprocessable(
+      `${leaveType.name} may be encashed up to ${maxDays} days; ${input.days} was asked for.`,
+    );
   }
 
   const balance = await prisma.leaveBalance.findFirst({
@@ -245,7 +254,9 @@ export async function encashLeave(employmentRelationshipId: string, input: { lea
   });
   const current = num(balance?.balanceDays) ?? 0;
   if (input.days > current) {
-    throw ApiError.unprocessable(`Only ${current} days of ${leaveType.name} are available; ${input.days} was asked for.`);
+    throw ApiError.unprocessable(
+      `Only ${current} days of ${leaveType.name} are available; ${input.days} was asked for.`,
+    );
   }
   if (!balance) throw ApiError.notFound('Leave balance');
 
@@ -278,7 +289,12 @@ export async function encashLeave(employmentRelationshipId: string, input: { lea
     return [t, e];
   });
 
-  await auditWrite({ action: 'create', subjectType: 'leave_encashment', subjectId: encashment.id, after: encashment as never });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'leave_encashment',
+    subjectId: encashment.id,
+    after: encashment as never,
+  });
   await emit({
     name: 'kz.hr.leave_encashment.recorded',
     subject: { entityType: 'leave_encashment', entityId: encashment.id },
@@ -353,7 +369,11 @@ export async function runWeeklyHoursCheck(): Promise<JobResult> {
   let notified = 0;
   for (const employment of employments) {
     const attendance = await prisma.workAttendance.aggregate({
-      where: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, workDate: { gte: start, lt: endExclusive } },
+      where: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: employment.id,
+        workDate: { gte: start, lt: endExclusive },
+      },
       _sum: { workedMinutes: true, overtimeMinutes: true },
     });
     const workedMinutes = attendance._sum.workedMinutes ?? 0;
@@ -367,7 +387,13 @@ export async function runWeeklyHoursCheck(): Promise<JobResult> {
       const basicPay = await basicPayFor(employment.id, end);
       const amount = overtimeAmount(basicPay, otHours, otMultiplier);
       await prisma.overtimeAccrual.upsert({
-        where: { tenantId_employmentRelationshipId_isoWeek: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, isoWeek: week } },
+        where: {
+          tenantId_employmentRelationshipId_isoWeek: {
+            tenantId: auth.tenantId,
+            employmentRelationshipId: employment.id,
+            isoWeek: week,
+          },
+        },
         create: {
           tenantId: auth.tenantId,
           employmentRelationshipId: employment.id,
@@ -427,7 +453,18 @@ export async function registerWages(period: string): Promise<RegisterExport> {
     orderBy: { createdAt: 'asc' },
   });
   const csv = toCsv(
-    ['Employee', 'Designation', 'Gross', 'PF Employee', 'PF Employer', 'ESI Employee', 'ESI Employer', 'PT', 'Deductions', 'Net'],
+    [
+      'Employee',
+      'Designation',
+      'Gross',
+      'PF Employee',
+      'PF Employer',
+      'ESI Employee',
+      'ESI Employer',
+      'PT',
+      'Deductions',
+      'Net',
+    ],
     rows.map((r) => [
       r.employmentRelationship.person.fullName,
       r.employmentRelationship.legalEntity,
@@ -454,7 +491,12 @@ export async function registerLeave(fy: string): Promise<RegisterExport> {
   });
   const csv = toCsv(
     ['Employee', 'Leave Type', 'Balance Days', 'Held Days'],
-    balances.map((b) => [b.employmentRelationship.person.fullName, b.leaveType.name, num(b.balanceDays), num(b.heldDays)]),
+    balances.map((b) => [
+      b.employmentRelationship.person.fullName,
+      b.leaveType.name,
+      num(b.balanceDays),
+      num(b.heldDays),
+    ]),
   );
   await auditExport('leave_balance', `leave:${fy}`, balances.length);
   return { filename: `${REGISTER_NAMES.leave} - ${fy}.csv`, csv };
@@ -473,7 +515,13 @@ export async function registerMusterRoll(period: string): Promise<RegisterExport
   });
   const csv = toCsv(
     ['Employee', 'Date', 'Worked Minutes', 'Overtime Minutes', 'Status'],
-    rows.map((r) => [r.employmentRelationship.person.fullName, ymd(r.workDate), r.workedMinutes, r.overtimeMinutes, r.status]),
+    rows.map((r) => [
+      r.employmentRelationship.person.fullName,
+      ymd(r.workDate),
+      r.workedMinutes,
+      r.overtimeMinutes,
+      r.status,
+    ]),
   );
   await auditExport('work_attendance', `muster-roll:${period}`, rows.length);
   return { filename: `${REGISTER_NAMES['muster-roll']} - ${period}.csv`, csv };
@@ -484,11 +532,14 @@ export async function registerEmployees(): Promise<RegisterExport> {
   await assertCan({ resource: 'statutory_registers', verb: 'export' });
   const rows = await prisma.employmentRelationship.findMany({
     where: { tenantId: auth.tenantId },
-    include: { person: true, assignments: { where: { rowStatus: 'Effective' }, include: { position: { include: { job: true } } }, take: 1 } },
+    include: {
+      person: true,
+      assignments: { where: { rowStatus: 'Effective' }, include: { position: { include: { job: true } } }, take: 1 },
+    },
     orderBy: { hireEffectiveDate: 'asc' },
   });
   const csv = toCsv(
-    ["Name", "Father's Name", 'Date of Birth', 'Date of Joining', 'Designation', 'Engagement Type'],
+    ['Name', "Father's Name", 'Date of Birth', 'Date of Joining', 'Designation', 'Engagement Type'],
     rows.map((r) => [
       r.person.fullName,
       // Not carried by this platform — a blank cell, not a guess.
@@ -510,7 +561,10 @@ export async function registerEmployees(): Promise<RegisterExport> {
 export async function listIccMembers() {
   const auth = currentAuth();
   await assertCan({ resource: 'posh_cases', verb: 'view' });
-  return prisma.internalCommitteeMember.findMany({ where: { tenantId: auth.tenantId }, orderBy: { appointedOn: 'asc' } });
+  return prisma.internalCommitteeMember.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { appointedOn: 'asc' },
+  });
 }
 
 export async function appointIccMember(input: {
@@ -550,7 +604,13 @@ export async function endIccMemberTerm(id: string, termEnds: Date) {
   const row = await prisma.internalCommitteeMember.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Committee member');
   const updated = await prisma.internalCommitteeMember.update({ where: { id }, data: { termEnds } });
-  await auditWrite({ action: 'update', subjectType: 'icc_member', subjectId: id, before: row as never, after: updated as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'icc_member',
+    subjectId: id,
+    before: row as never,
+    after: updated as never,
+  });
   return updated;
 }
 
@@ -614,7 +674,12 @@ export async function createPoshComplaint(input: {
       inquiryDueAt: computeInquiryDueAt(input.receivedOn),
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'posh_complaint', subjectId: row.id, after: { number, status: row.status } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'posh_complaint',
+    subjectId: row.id,
+    after: { number, status: row.status },
+  });
   await emit({
     name: 'kz.hr.posh_complaint.received',
     subject: { entityType: 'posh_complaint', entityId: row.id, recordCode: number },
@@ -691,11 +756,22 @@ export async function runPoshOverdueCheck(): Promise<JobResult> {
 // POSH — Workshops and the annual report
 // ---------------------------------------------------------------------------
 
-export async function createPoshWorkshop(input: { heldOn: Date; topic: string; attendeeCount: number; note?: string | null }) {
+export async function createPoshWorkshop(input: {
+  heldOn: Date;
+  topic: string;
+  attendeeCount: number;
+  note?: string | null;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'posh_cases', verb: 'create' });
   return prisma.poshWorkshop.create({
-    data: { tenantId: auth.tenantId, heldOn: input.heldOn, topic: input.topic, attendeeCount: input.attendeeCount, note: input.note ?? null },
+    data: {
+      tenantId: auth.tenantId,
+      heldOn: input.heldOn,
+      topic: input.topic,
+      attendeeCount: input.attendeeCount,
+      note: input.note ?? null,
+    },
   });
 }
 
@@ -729,9 +805,18 @@ export async function poshAnnualReport(year: number) {
     prisma.poshWorkshop.count({ where: { tenantId: auth.tenantId, heldOn: { gte: from, lt: to } } }),
   ]);
 
-  const snapshot = { year, received, disposed, pending: received - disposed, pendingOver90Days: pendingOver90, workshopsHeld: workshops };
+  const snapshot = {
+    year,
+    received,
+    disposed,
+    pending: received - disposed,
+    pendingOver90Days: pendingOver90,
+    workshopsHeld: workshops,
+  };
 
-  const existing = await prisma.poshAnnualReport.findUnique({ where: { tenantId_year: { tenantId: auth.tenantId, year } } });
+  const existing = await prisma.poshAnnualReport.findUnique({
+    where: { tenantId_year: { tenantId: auth.tenantId, year } },
+  });
   if (existing?.status === 'filed') return existing; // filed is final — never recomputed under the same id.
 
   const row = await prisma.poshAnnualReport.upsert({
@@ -739,7 +824,12 @@ export async function poshAnnualReport(year: number) {
     create: { tenantId: auth.tenantId, year, snapshot: snapshot as never, preparedById: auth.partyId },
     update: { snapshot: snapshot as never, preparedAt: new Date(), preparedById: auth.partyId },
   });
-  await auditWrite({ action: existing ? 'update' : 'create', subjectType: 'posh_annual_report', subjectId: row.id, after: snapshot as never });
+  await auditWrite({
+    action: existing ? 'update' : 'create',
+    subjectType: 'posh_annual_report',
+    subjectId: row.id,
+    after: snapshot as never,
+  });
   return row;
 }
 
@@ -748,8 +838,17 @@ export async function markPoshAnnualReportFiled(year: number) {
   await assertCan({ resource: 'posh_cases', verb: 'edit' });
   const row = await prisma.poshAnnualReport.findUnique({ where: { tenantId_year: { tenantId: auth.tenantId, year } } });
   if (!row) throw ApiError.notFound('POSH annual report');
-  const updated = await prisma.poshAnnualReport.update({ where: { id: row.id }, data: { status: 'filed', filedAt: new Date(), filedById: auth.partyId } });
-  await auditWrite({ action: 'update', subjectType: 'posh_annual_report', subjectId: row.id, before: { status: row.status }, after: { status: 'filed' } });
+  const updated = await prisma.poshAnnualReport.update({
+    where: { id: row.id },
+    data: { status: 'filed', filedAt: new Date(), filedById: auth.partyId },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'posh_annual_report',
+    subjectId: row.id,
+    before: { status: row.status },
+    after: { status: 'filed' },
+  });
   return updated;
 }
 
@@ -777,7 +876,11 @@ export async function listDisciplinaryCases(employmentRelationshipId?: string) {
   });
 }
 
-export async function openDisciplinaryCase(input: { employmentRelationshipId: string; showCauseIssuedAt?: Date; note: string }) {
+export async function openDisciplinaryCase(input: {
+  employmentRelationshipId: string;
+  showCauseIssuedAt?: Date;
+  note: string;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'disciplinary_cases', verb: 'create' });
 
@@ -805,7 +908,12 @@ export async function openDisciplinaryCase(input: { employmentRelationshipId: st
     caseRef: row.id,
   });
 
-  await auditWrite({ action: 'create', subjectType: 'disciplinary_case', subjectId: row.id, after: { status: row.status } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'disciplinary_case',
+    subjectId: row.id,
+    after: { status: row.status },
+  });
   await emit({
     name: 'kz.hr.disciplinary_case.opened',
     subject: { entityType: 'disciplinary_case', entityId: row.id },
@@ -843,20 +951,23 @@ export async function advanceDisciplinaryCase(
       data.replyReceivedAt = new Date();
       break;
     case 'inquiry':
-      if (!['show_cause', 'reply_received'].includes(row.status)) throw ApiError.unprocessable(`Case is ${row.status}; an inquiry cannot open from there.`);
+      if (!['show_cause', 'reply_received'].includes(row.status))
+        throw ApiError.unprocessable(`Case is ${row.status}; an inquiry cannot open from there.`);
       data.status = 'inquiry';
       data.inquiryOfficer = input.inquiryOfficer ?? null;
       data.inquiryStartedAt = new Date();
       break;
     case 'decision':
-      if (row.status !== 'inquiry') throw ApiError.unprocessable(`Case is ${row.status}; a decision follows an inquiry.`);
+      if (row.status !== 'inquiry')
+        throw ApiError.unprocessable(`Case is ${row.status}; a decision follows an inquiry.`);
       data.status = 'decision';
       data.decision = input.decision ?? null;
       data.decidedAt = new Date();
       data.outcome = input.outcome ?? 'none';
       break;
     case 'close':
-      if (row.status !== 'decision') throw ApiError.unprocessable(`Case is ${row.status}; only a decided case is closed.`);
+      if (row.status !== 'decision')
+        throw ApiError.unprocessable(`Case is ${row.status}; only a decided case is closed.`);
       data.status = 'closed';
       data.closedAt = new Date();
       if (row.outcome === 'termination') terminationNote = 'Disciplinary decision: termination.';
@@ -950,7 +1061,12 @@ export async function issueLetter(input: IssueLetterInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'hr_letter', subjectId: row.id, after: { kind: input.kind, number } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'hr_letter',
+    subjectId: row.id,
+    after: { kind: input.kind, number },
+  });
   await emit({
     name: 'kz.hr.hr_letter.issued',
     subject: { entityType: 'hr_letter', entityId: row.id, recordCode: number },
@@ -989,7 +1105,9 @@ export async function letterDocument(id: string) {
 export async function recordBgvConsent(employmentRelationshipId: string) {
   const auth = currentAuth();
   await assertEmploymentVisible('employees', employmentRelationshipId, 'edit');
-  const before = await prisma.employmentRelationship.findFirst({ where: { id: employmentRelationshipId, tenantId: auth.tenantId } });
+  const before = await prisma.employmentRelationship.findFirst({
+    where: { id: employmentRelationshipId, tenantId: auth.tenantId },
+  });
   const row = await prisma.employmentRelationship.update({
     where: { id: employmentRelationshipId },
     data: { backgroundVerificationConsentAt: new Date() },
@@ -1000,7 +1118,6 @@ export async function recordBgvConsent(employmentRelationshipId: string) {
     subjectId: employmentRelationshipId,
     before: { backgroundVerificationConsentAt: before?.backgroundVerificationConsentAt ?? null },
     after: { backgroundVerificationConsentAt: row.backgroundVerificationConsentAt },
-    force: true,
   });
   return { backgroundVerificationConsentAt: row.backgroundVerificationConsentAt };
 }
@@ -1008,7 +1125,9 @@ export async function recordBgvConsent(employmentRelationshipId: string) {
 export async function recordCodeOfConductAck(employmentRelationshipId: string) {
   const auth = currentAuth();
   await assertEmploymentVisible('employees', employmentRelationshipId, 'edit');
-  const before = await prisma.employmentRelationship.findFirst({ where: { id: employmentRelationshipId, tenantId: auth.tenantId } });
+  const before = await prisma.employmentRelationship.findFirst({
+    where: { id: employmentRelationshipId, tenantId: auth.tenantId },
+  });
   const row = await prisma.employmentRelationship.update({
     where: { id: employmentRelationshipId },
     data: { codeOfConductAcknowledgedAt: new Date() },
@@ -1019,7 +1138,6 @@ export async function recordCodeOfConductAck(employmentRelationshipId: string) {
     subjectId: employmentRelationshipId,
     before: { codeOfConductAcknowledgedAt: before?.codeOfConductAcknowledgedAt ?? null },
     after: { codeOfConductAcknowledgedAt: row.codeOfConductAcknowledgedAt },
-    force: true,
   });
   return { codeOfConductAcknowledgedAt: row.codeOfConductAcknowledgedAt };
 }
@@ -1030,12 +1148,21 @@ export async function recordCodeOfConductAck(employmentRelationshipId: string) {
 
 export async function handleOffboardingCompleted(payload: {
   offboarding: { id: string; checklist: unknown; employmentRelationshipId: string };
-  employmentRelationship: { id: string; personId: string; legalEntity: string; hireEffectiveDate: Date; separationDate: Date | null; separationType: string | null };
+  employmentRelationship: {
+    id: string;
+    personId: string;
+    legalEntity: string;
+    hireEffectiveDate: Date;
+    separationDate: Date | null;
+    separationType: string | null;
+  };
 }) {
   const { offboarding, employmentRelationship } = payload;
   const auth = currentAuth();
 
-  const person = await prisma.person.findFirst({ where: { id: employmentRelationship.personId, tenantId: auth.tenantId } });
+  const person = await prisma.person.findFirst({
+    where: { id: employmentRelationship.personId, tenantId: auth.tenantId },
+  });
   const assignment = await prisma.assignment.findFirst({
     where: { tenantId: auth.tenantId, employmentRelationshipId: employmentRelationship.id },
     include: { position: { include: { job: true } } },

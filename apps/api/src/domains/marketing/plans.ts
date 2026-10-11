@@ -10,7 +10,13 @@
  * single view — it writes nothing.
  */
 
-import { EVENTS, MARKETING_PLAN_TRANSITIONS, type MarketingPlanStatus, type PlanView, type MarketingCalendarItem } from '@kaizen/shared';
+import {
+  EVENTS,
+  MARKETING_PLAN_TRANSITIONS,
+  type MarketingPlanStatus,
+  type PlanView,
+  type MarketingCalendarItem,
+} from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -129,10 +135,15 @@ export async function approvePlan(id: string): Promise<PlanView> {
     throw ApiError.conflict(`Cannot approve: plan is ${row.status}, not draft.`);
   }
   if (row.createdById && auth.partyId && row.createdById === auth.partyId) {
-    throw ApiError.forbidden("The Self-Dealing Bar is unconditional: a plan's proposer may never approve it, even the chairman.");
+    throw ApiError.forbidden(
+      "The Self-Dealing Bar is unconditional: a plan's proposer may never approve it, even the chairman.",
+    );
   }
 
-  const updated = await prisma.marketingPlan.update({ where: { id }, data: { status: 'approved', updatedById: auth.partyId } });
+  const updated = await prisma.marketingPlan.update({
+    where: { id },
+    data: { status: 'approved', updatedById: auth.partyId },
+  });
   await emit({
     name: EVENTS.MKT_PLAN_APPROVED,
     subject: { entityType: 'marketing_plan', entityId: id, recordCode: row.recordCode },
@@ -158,7 +169,10 @@ export async function closePlan(id: string): Promise<PlanView> {
     throw ApiError.conflict(`Cannot close: plan is ${row.status}, must be approved or active.`);
   }
 
-  const updated = await prisma.marketingPlan.update({ where: { id }, data: { status: 'closed', updatedById: auth.partyId } });
+  const updated = await prisma.marketingPlan.update({
+    where: { id },
+    data: { status: 'closed', updatedById: auth.partyId },
+  });
   await emit({
     name: EVENTS.MKT_PLAN_CLOSED,
     subject: { entityType: 'marketing_plan', entityId: id, recordCode: row.recordCode },
@@ -183,7 +197,12 @@ export async function calendar(from: Date, to: Date): Promise<MarketingCalendarI
       select: { id: true, recordCode: true, name: true, startAt: true, endAt: true, status: true, division: true },
     }),
     prisma.marketingEvent.findMany({
-      where: { tenantId: auth.tenantId, deletedAt: null, startAt: { lte: to }, OR: [{ endAt: { gte: from } }, { endAt: null }] },
+      where: {
+        tenantId: auth.tenantId,
+        deletedAt: null,
+        startAt: { lte: to },
+        OR: [{ endAt: { gte: from } }, { endAt: null }],
+      },
       select: { id: true, recordCode: true, name: true, startAt: true, endAt: true, status: true, division: true },
     }),
     prisma.marketingSend.findMany({

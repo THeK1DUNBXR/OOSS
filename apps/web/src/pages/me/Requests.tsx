@@ -164,8 +164,14 @@ function MyTravelTab({ employmentId }: { employmentId: string }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
-    purpose: '', fromLocation: '', toLocation: '', startDate: '', endDate: '',
-    mode: 'flight' as 'flight' | 'train' | 'road' | 'other', estimatedCost: '', advanceRequested: '',
+    purpose: '',
+    fromLocation: '',
+    toLocation: '',
+    startDate: '',
+    endDate: '',
+    mode: 'flight' as 'flight' | 'train' | 'road' | 'other',
+    estimatedCost: '',
+    advanceRequested: '',
   });
 
   const requests = useQuery({
@@ -201,9 +207,13 @@ function MyTravelTab({ employmentId }: { employmentId: string }) {
                   {r.fromLocation} → {r.toLocation}
                   <p className="text-2xs text-ink-500">{r.purpose}</p>
                 </td>
-                <td>{date(r.startDate)} – {date(r.endDate)}</td>
+                <td>
+                  {date(r.startDate)} – {date(r.endDate)}
+                </td>
                 <td>{r.estimatedCost === null ? '—' : `₹${r.estimatedCost.toLocaleString('en-IN')}`}</td>
-                <td><StatusChip status={r.status} tone={STATUS_TONE[r.status]} /></td>
+                <td>
+                  <StatusChip status={r.status} tone={STATUS_TONE[r.status]} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -231,12 +241,34 @@ function MyTravelTab({ employmentId }: { employmentId: string }) {
       >
         <TextInput label="Purpose" value={form.purpose} onChange={(v) => setForm({ ...form, purpose: v })} required />
         <Row>
-          <TextInput label="From" value={form.fromLocation} onChange={(v) => setForm({ ...form, fromLocation: v })} required />
-          <TextInput label="To" value={form.toLocation} onChange={(v) => setForm({ ...form, toLocation: v })} required />
+          <TextInput
+            label="From"
+            value={form.fromLocation}
+            onChange={(v) => setForm({ ...form, fromLocation: v })}
+            required
+          />
+          <TextInput
+            label="To"
+            value={form.toLocation}
+            onChange={(v) => setForm({ ...form, toLocation: v })}
+            required
+          />
         </Row>
         <Row>
-          <TextInput label="Departure" type="date" value={form.startDate} onChange={(v) => setForm({ ...form, startDate: v })} required />
-          <TextInput label="Return" type="date" value={form.endDate} onChange={(v) => setForm({ ...form, endDate: v })} required />
+          <TextInput
+            label="Departure"
+            type="date"
+            value={form.startDate}
+            onChange={(v) => setForm({ ...form, startDate: v })}
+            required
+          />
+          <TextInput
+            label="Return"
+            type="date"
+            value={form.endDate}
+            onChange={(v) => setForm({ ...form, endDate: v })}
+            required
+          />
         </Row>
         <SelectInput
           label="Mode"
@@ -250,8 +282,21 @@ function MyTravelTab({ employmentId }: { employmentId: string }) {
           ]}
         />
         <Row>
-          <TextInput label="Estimated cost" type="number" value={form.estimatedCost} onChange={(v) => setForm({ ...form, estimatedCost: v })} required hint="₹" />
-          <TextInput label="Advance requested" type="number" value={form.advanceRequested} onChange={(v) => setForm({ ...form, advanceRequested: v })} hint="₹, optional" />
+          <TextInput
+            label="Estimated cost"
+            type="number"
+            value={form.estimatedCost}
+            onChange={(v) => setForm({ ...form, estimatedCost: v })}
+            required
+            hint="₹"
+          />
+          <TextInput
+            label="Advance requested"
+            type="number"
+            value={form.advanceRequested}
+            onChange={(v) => setForm({ ...form, advanceRequested: v })}
+            hint="₹, optional"
+          />
         </Row>
       </CreateModal>
     </Card>
@@ -295,7 +340,16 @@ function MyLettersTab({ employmentId }: { employmentId: string }) {
     <Card
       title="My letter requests"
       subtitle="Address proof, salary certificate, NOC, visa or experience letters — HR fulfils these from People → Assets."
-      actions={<NewButton label="Request a letter" onClick={() => { setKind('salary_certificate'); setNote(''); setOpen(true); }} />}
+      actions={
+        <NewButton
+          label="Request a letter"
+          onClick={() => {
+            setKind('salary_certificate');
+            setNote('');
+            setOpen(true);
+          }}
+        />
+      }
     >
       {requests.isLoading && <Loading />}
       {requests.error && <ErrorBox error={requests.error} />}
@@ -316,7 +370,9 @@ function MyLettersTab({ employmentId }: { employmentId: string }) {
                 <td>{r.kind.replace(/_/g, ' ')}</td>
                 <td>
                   <StatusChip status={r.status} tone={STATUS_TONE[r.status]} />
-                  {r.status === 'rejected' && r.decisionNote && <p className="mt-0.5 text-2xs text-ink-500">{r.decisionNote}</p>}
+                  {r.status === 'rejected' && r.decisionNote && (
+                    <p className="mt-0.5 text-2xs text-ink-500">{r.decisionNote}</p>
+                  )}
                 </td>
                 <td className="font-mono text-2xs">{r.number ?? '—'}</td>
                 <td className="text-right">
@@ -349,7 +405,9 @@ function MyLettersTab({ employmentId }: { employmentId: string }) {
         title="Request a letter"
         onClose={() => setOpen(false)}
         invalidate={[['me-letters', employmentId]]}
-        onSubmit={() => api.post('/hcm/assets/letters', { employmentRelationshipId: employmentId, kind, note: note || undefined })}
+        onSubmit={() =>
+          api.post('/hcm/assets/letters', { employmentRelationshipId: employmentId, kind, note: note || undefined })
+        }
       >
         <SelectInput label="Kind" value={kind} onChange={setKind} options={LETTER_KIND_OPTIONS} />
         <TextArea label="Note (optional)" value={note} onChange={setNote} />

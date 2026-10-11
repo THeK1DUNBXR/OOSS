@@ -60,8 +60,12 @@ export function Referrals() {
               {tab === 'programmes' && <NewButton label="New programme" onClick={() => setCreatingProgramme(true)} />}
               {tab === 'referrals' && (
                 <>
-                  <button className="btn" onClick={() => setRedeeming(true)}>Redeem a code</button>
-                  <button className="btn-primary" onClick={() => setIssuing(true)}>Issue a code</button>
+                  <button className="btn" onClick={() => setRedeeming(true)}>
+                    Redeem a code
+                  </button>
+                  <button className="btn-primary" onClick={() => setIssuing(true)}>
+                    Issue a code
+                  </button>
                 </>
               )}
             </>
@@ -103,9 +107,15 @@ function ProgrammesTab() {
 
   return (
     <div>
-      {error && <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
       {items.length === 0 ? (
-        <Card><EmptyState message="No referral programmes yet." /></Card>
+        <Card>
+          <EmptyState message="No referral programmes yet." />
+        </Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {items.map((p: ReferralProgramView) => (
@@ -124,9 +134,19 @@ function ProgrammesTab() {
               {can('marketing_referrals:E') && (
                 <div className="mt-3 border-t border-ink-800 pt-3">
                   {p.active ? (
-                    <button className="btn-quiet btn-sm" onClick={() => deactivate.mutate(p.id, { onError: (e) => setError(messageOf(e)) })}>Deactivate</button>
+                    <button
+                      className="btn-quiet btn-sm"
+                      onClick={() => deactivate.mutate(p.id, { onError: (e) => setError(messageOf(e)) })}
+                    >
+                      Deactivate
+                    </button>
                   ) : (
-                    <button className="btn-quiet btn-sm" onClick={() => activate.mutate(p.id, { onError: (e) => setError(messageOf(e)) })}>Activate</button>
+                    <button
+                      className="btn-quiet btn-sm"
+                      onClick={() => activate.mutate(p.id, { onError: (e) => setError(messageOf(e)) })}
+                    >
+                      Activate
+                    </button>
                   )}
                 </div>
               )}
@@ -152,14 +172,34 @@ function CreateProgrammeModal({ open, onClose }: { open: boolean; onClose: () =>
       title="New referral programme"
       onClose={onClose}
       invalidate={[['mkt', 'referral-programs']]}
-      onSubmit={() => create.mutateAsync({ name, kind, rewardKind, rewardAmount: rewardAmount ? Number(rewardAmount) : undefined, terms: terms || undefined })}
+      onSubmit={() =>
+        create.mutateAsync({
+          name,
+          kind,
+          rewardKind,
+          rewardAmount: rewardAmount ? Number(rewardAmount) : undefined,
+          terms: terms || undefined,
+        })
+      }
     >
       <TextInput label="Name" required value={name} onChange={setName} placeholder="Student referral — batch 12" />
       <Row>
-        <SelectInput label="Kind" value={kind} onChange={(v) => setKind(v as ReferralProgramKind)} options={REFERRAL_PROGRAM_KINDS.map((k) => ({ value: k, label: REFERRAL_PROGRAM_KIND_LABELS[k] }))} />
-        <SelectInput label="Reward" value={rewardKind} onChange={(v) => setRewardKind(v as RewardKind)} options={REWARD_KINDS.map((k) => ({ value: k, label: REWARD_KIND_LABELS[k] }))} />
+        <SelectInput
+          label="Kind"
+          value={kind}
+          onChange={(v) => setKind(v as ReferralProgramKind)}
+          options={REFERRAL_PROGRAM_KINDS.map((k) => ({ value: k, label: REFERRAL_PROGRAM_KIND_LABELS[k] }))}
+        />
+        <SelectInput
+          label="Reward"
+          value={rewardKind}
+          onChange={(v) => setRewardKind(v as RewardKind)}
+          options={REWARD_KINDS.map((k) => ({ value: k, label: REWARD_KIND_LABELS[k] }))}
+        />
       </Row>
-      {rewardKind !== 'none' && <TextInput label="Reward amount" type="number" value={rewardAmount} onChange={setRewardAmount} />}
+      {rewardKind !== 'none' && (
+        <TextInput label="Reward amount" type="number" value={rewardAmount} onChange={setRewardAmount} />
+      )}
       <TextInput label="Terms" value={terms} onChange={setTerms} placeholder="One reward per successful enrolment" />
     </CreateModal>
   );
@@ -182,18 +222,46 @@ function ReferralsTab({ programId, onProgramChange }: { programId: string; onPro
   return (
     <div>
       <Row>
-        <SelectInput label="Programme" value={programId} onChange={onProgramChange} placeholder="All programmes" options={(programs.data?.items ?? []).map((p) => ({ value: p.id, label: p.name }))} />
-        <SelectInput label="Status" value={status} onChange={(v) => setStatus(v as ReferralStatus)} placeholder="All statuses" options={REFERRAL_STATUSES.map((s) => ({ value: s, label: REFERRAL_STATUS_LABELS[s] }))} />
+        <SelectInput
+          label="Programme"
+          value={programId}
+          onChange={onProgramChange}
+          placeholder="All programmes"
+          options={(programs.data?.items ?? []).map((p) => ({ value: p.id, label: p.name }))}
+        />
+        <SelectInput
+          label="Status"
+          value={status}
+          onChange={(v) => setStatus(v as ReferralStatus)}
+          placeholder="All statuses"
+          options={REFERRAL_STATUSES.map((s) => ({ value: s, label: REFERRAL_STATUS_LABELS[s] }))}
+        />
       </Row>
 
-      {error && <p className="my-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="my-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
 
       {items.length === 0 ? (
-        <Card className="mt-4"><EmptyState message="No referrals match." /></Card>
+        <Card className="mt-4">
+          <EmptyState message="No referrals match." />
+        </Card>
       ) : (
         <Card className="mt-4" bodyClassName="p-0 overflow-x-auto">
           <table className="table">
-            <thead><tr><th>Code</th><th>Programme</th><th>Referrer</th><th>Referred</th><th>Lead</th><th>Status</th><th /></tr></thead>
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Programme</th>
+                <th>Referrer</th>
+                <th>Referred</th>
+                <th>Lead</th>
+                <th>Status</th>
+                <th />
+              </tr>
+            </thead>
             <tbody>
               {items.map((r) => {
                 const next = REFERRAL_TRANSITIONS[r.status] ?? [];
@@ -204,22 +272,35 @@ function ReferralsTab({ programId, onProgramChange }: { programId: string; onPro
                     <td className="text-xs text-ink-200">{r.referrerName ?? r.referrerOrganizationName ?? '—'}</td>
                     <td className="text-xs text-ink-200">{r.referredName ?? '—'}</td>
                     <td className="mono text-2xs text-ink-400">{r.leadRecordCode ?? '—'}</td>
-                    <td><StatusChip status={r.status} tone={r.status === 'rewarded' ? 'good' : r.status === 'void' ? 'bad' : 'neutral'} /></td>
+                    <td>
+                      <StatusChip
+                        status={r.status}
+                        tone={r.status === 'rewarded' ? 'good' : r.status === 'void' ? 'bad' : 'neutral'}
+                      />
+                    </td>
                     <td>
                       {can('marketing_referrals:E') && (
                         <div className="flex flex-wrap justify-end gap-1.5">
                           {next.includes('qualified') && (
-                            <button className="btn-quiet btn-sm" onClick={() => qualify.mutate(r.id, { onError: (e) => setError(messageOf(e)) })}>Qualify</button>
+                            <button
+                              className="btn-quiet btn-sm"
+                              onClick={() => qualify.mutate(r.id, { onError: (e) => setError(messageOf(e)) })}
+                            >
+                              Qualify
+                            </button>
                           )}
                           {next.includes('rewarded') && (
-                            <button className="btn-quiet btn-sm" onClick={() => setRewarding(r.id)}>Reward</button>
+                            <button className="btn-quiet btn-sm" onClick={() => setRewarding(r.id)}>
+                              Reward
+                            </button>
                           )}
                           {next.includes('void') && (
                             <button
                               className="btn-quiet btn-sm"
                               onClick={() => {
                                 const reason = prompt('Reason for voiding this referral?');
-                                if (reason) voidRef.mutate({ id: r.id, reason }, { onError: (e) => setError(messageOf(e)) });
+                                if (reason)
+                                  voidRef.mutate({ id: r.id, reason }, { onError: (e) => setError(messageOf(e)) });
                               }}
                             >
                               Void
@@ -253,7 +334,12 @@ function RewardModal({ id, onClose }: { id: string; onClose: () => void }) {
       invalidate={[['mkt', 'referrals']]}
       onSubmit={() => reward.mutateAsync({ id, rewardTransactionRef: rewardTransactionRef || undefined })}
     >
-      <TextInput label="Finance transaction reference" value={rewardTransactionRef} onChange={setRef} hint="marketing never posts money itself — this points at the ledger entry" />
+      <TextInput
+        label="Finance transaction reference"
+        value={rewardTransactionRef}
+        onChange={setRef}
+        hint="marketing never posts money itself — this points at the ledger entry"
+      />
     </CreateModal>
   );
 }
@@ -280,7 +366,13 @@ function IssueModal({ open, onClose }: { open: boolean; onClose: () => void }) {
         })
       }
     >
-      <SelectInput label="Programme" required value={programId} onChange={setProgramId} options={(programs.data?.items ?? []).filter((p) => p.active).map((p) => ({ value: p.id, label: p.name }))} />
+      <SelectInput
+        label="Programme"
+        required
+        value={programId}
+        onChange={setProgramId}
+        options={(programs.data?.items ?? []).filter((p) => p.active).map((p) => ({ value: p.id, label: p.name }))}
+      />
       <div className="flex gap-2">
         {(['person', 'organization'] as const).map((v) => (
           <button
@@ -296,7 +388,12 @@ function IssueModal({ open, onClose }: { open: boolean; onClose: () => void }) {
       {who === 'person' ? (
         <TextInput label="Referrer person ID" required value={referrerPersonId} onChange={setReferrerPersonId} />
       ) : (
-        <TextInput label="Referrer organization ID" required value={referrerOrganizationId} onChange={setReferrerOrganizationId} />
+        <TextInput
+          label="Referrer organization ID"
+          required
+          value={referrerOrganizationId}
+          onChange={setReferrerOrganizationId}
+        />
       )}
     </CreateModal>
   );
@@ -321,7 +418,10 @@ function RedeemModal({ open, onClose }: { open: boolean; onClose: () => void }) 
         redeem.mutateAsync(
           who === 'existing'
             ? { code, referredPersonId }
-            : { code, person: { fullName, primaryPhone: primaryPhone || undefined, primaryEmail: primaryEmail || undefined } },
+            : {
+                code,
+                person: { fullName, primaryPhone: primaryPhone || undefined, primaryEmail: primaryEmail || undefined },
+              },
         )
       }
     >
@@ -360,20 +460,38 @@ function LeaderboardTab({ programId, onProgramChange }: { programId: string; onP
 
   return (
     <div>
-      <SelectInput label="Programme" value={programId} onChange={onProgramChange} placeholder="Choose a programme" options={(programs.data?.items ?? []).map((p) => ({ value: p.id, label: p.name }))} />
+      <SelectInput
+        label="Programme"
+        value={programId}
+        onChange={onProgramChange}
+        placeholder="Choose a programme"
+        options={(programs.data?.items ?? []).map((p) => ({ value: p.id, label: p.name }))}
+      />
 
       {!programId ? (
-        <Card className="mt-4"><EmptyState message="Choose a programme to see its leaderboard." /></Card>
+        <Card className="mt-4">
+          <EmptyState message="Choose a programme to see its leaderboard." />
+        </Card>
       ) : leaderboard.isLoading ? (
         <Loading />
       ) : leaderboard.error ? (
         <ErrorBox error={leaderboard.error} />
       ) : !leaderboard.data?.length ? (
-        <Card className="mt-4"><EmptyState message="No referrers yet under this programme." /></Card>
+        <Card className="mt-4">
+          <EmptyState message="No referrers yet under this programme." />
+        </Card>
       ) : (
         <Card className="mt-4" bodyClassName="p-0 overflow-x-auto">
           <table className="table">
-            <thead><tr><th>Referrer</th><th className="text-right">Issued</th><th className="text-right">Used</th><th className="text-right">Qualified</th><th className="text-right">Rewarded</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Referrer</th>
+                <th className="text-right">Issued</th>
+                <th className="text-right">Used</th>
+                <th className="text-right">Qualified</th>
+                <th className="text-right">Rewarded</th>
+              </tr>
+            </thead>
             <tbody>
               {leaderboard.data.map((row, i) => (
                 <tr key={i}>

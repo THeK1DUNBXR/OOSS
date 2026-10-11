@@ -37,9 +37,7 @@ router.get(
       where: { id: auth.tenantId },
       select: { config: true },
     });
-    const seed = ((tenant?.config as { seed?: Partial<SeedStamp> } | null)?.seed ?? null) as
-      | Partial<SeedStamp>
-      | null;
+    const seed = ((tenant?.config as { seed?: Partial<SeedStamp> } | null)?.seed ?? null) as Partial<SeedStamp> | null;
 
     // Has the seed run since this build was deployed? The one that catches a
     // vocabulary change that never reached the tenant.

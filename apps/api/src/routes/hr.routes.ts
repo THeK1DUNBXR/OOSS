@@ -51,36 +51,84 @@ import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, can, canSeeMoney, scopeFor } from '../platform/permissions.js';
 import {
-  listOrgUnits, createOrgUnit, listJobs, createJob,
-  listPositions, createPosition, transitionPosition,
-  listEmployments, getEmployment, hire, transitionEmployment, setConfirmationState,
-  updateEmployeeProfile, redactRegulatedEmploymentFields,
-  proposeAssignment, transitionAssignment,
-  proposeCompensation, transitionCompensation, currentCompensation, listCompensationForEmployment,
-  transitionOnboarding, transitionOffboarding,
+  listOrgUnits,
+  createOrgUnit,
+  listJobs,
+  createJob,
+  listPositions,
+  createPosition,
+  transitionPosition,
+  listEmployments,
+  getEmployment,
+  hire,
+  transitionEmployment,
+  setConfirmationState,
+  updateEmployeeProfile,
+  redactRegulatedEmploymentFields,
+  proposeAssignment,
+  transitionAssignment,
+  proposeCompensation,
+  transitionCompensation,
+  currentCompensation,
+  listCompensationForEmployment,
+  transitionOnboarding,
+  transitionOffboarding,
   headcountByDivision,
 } from '../domains/employment.js';
 import {
-  listRequisitions, createRequisition, transitionRequisition,
-  listApplications, createApplication, transitionApplication,
-  joinFromApplication, hiringFunnel,
+  listRequisitions,
+  createRequisition,
+  transitionRequisition,
+  listApplications,
+  createApplication,
+  transitionApplication,
+  joinFromApplication,
+  hiringFunnel,
 } from '../domains/hiring.js';
 import {
-  listLeaveTypes, createLeaveType, accrueEntitlement, leaveBalances, leaveLedger,
-  listLeaveRequests, createLeaveRequest, transitionLeaveRequest,
-  recordAttendance, transitionAttendance, attendanceForPeriod, lockAttendancePeriod,
+  listLeaveTypes,
+  createLeaveType,
+  accrueEntitlement,
+  leaveBalances,
+  leaveLedger,
+  listLeaveRequests,
+  createLeaveRequest,
+  transitionLeaveRequest,
+  recordAttendance,
+  transitionAttendance,
+  attendanceForPeriod,
+  lockAttendancePeriod,
 } from '../domains/leave.js';
 import {
-  listPayrollRuns, getPayrollRun, openPayrollRun, setInstructionAmounts,
-  transitionPayrollRun, payrollCostByDivision, payrollTrend,
+  listPayrollRuns,
+  getPayrollRun,
+  openPayrollRun,
+  setInstructionAmounts,
+  transitionPayrollRun,
+  payrollCostByDivision,
+  payrollTrend,
 } from '../domains/payroll.js';
 import {
-  listSkills, createSkill, capabilitiesForParty, assertClaim, addEvidence,
-  verifyClaim, recordContradiction, changeClaimState, findCapableParties,
+  listSkills,
+  createSkill,
+  capabilitiesForParty,
+  assertClaim,
+  addEvidence,
+  verifyClaim,
+  recordContradiction,
+  changeClaimState,
+  findCapableParties,
 } from '../domains/capability.js';
 import {
-  listGoals, createGoal, transitionGoal, listEvidence, recordEvidence,
-  listLearningActivities, createLearningActivity, enrolInLearning, completeLearning,
+  listGoals,
+  createGoal,
+  transitionGoal,
+  listEvidence,
+  recordEvidence,
+  listLearningActivities,
+  createLearningActivity,
+  enrolInLearning,
+  completeLearning,
   outstandingCompliance,
 } from '../domains/performance.js';
 
@@ -110,9 +158,7 @@ router.get(
       name: machine.name,
       states: Object.keys(machine.transitions),
       transitions: machine.transitions,
-      terminalStates: Object.keys(machine.transitions).filter((s) =>
-        machine.isTerminal(s as never),
-      ),
+      terminalStates: Object.keys(machine.transitions).filter((s) => machine.isTerminal(s as never)),
     }));
   }),
 );
@@ -121,7 +167,10 @@ router.get(
 // Org structure
 // ---------------------------------------------------------------------------
 
-router.get('/org-units', handler(async () => listOrgUnits()));
+router.get(
+  '/org-units',
+  handler(async () => listOrgUnits()),
+);
 
 router.post(
   '/org-units',
@@ -138,7 +187,10 @@ router.post(
   }),
 );
 
-router.get('/jobs', handler(async () => listJobs()));
+router.get(
+  '/jobs',
+  handler(async () => listJobs()),
+);
 
 router.post(
   '/jobs',
@@ -229,7 +281,10 @@ router.get(
 
     return {
       ...redactRegulatedEmploymentFields(e, { revealLast4 }),
-      assignments: e.assignments.map((a) => ({ ...a, availableTransitions: assignmentMachine.allowedEvents(a.requestStatus as never) })),
+      assignments: e.assignments.map((a) => ({
+        ...a,
+        availableTransitions: assignmentMachine.allowedEvents(a.requestStatus as never),
+      })),
       canCreateAssignment,
       // Whether the viewer may see pay at all, kept separate from whether
       // there is any. A single null would conflate "withheld from you" with
@@ -241,7 +296,9 @@ router.get(
       // change at all, so the client can leave it out rather than render
       // fields it already knows will be refused.
       canEditEmploymentDetails: revealLast4,
-      currentCompensation: pay ? { amount: num(pay.amount), currency: pay.currency, effectiveFrom: pay.effectiveFrom } : null,
+      currentCompensation: pay
+        ? { amount: num(pay.amount), currency: pay.currency, effectiveFrom: pay.effectiveFrom }
+        : null,
       availableTransitions: employmentRelationshipMachine.allowedEvents(e.status as never),
       onboardingTransitions: e.onboarding ? onboardingMachine.allowedEvents(e.onboarding.status as never) : [],
       offboardingTransitions: e.offboarding ? offboardingMachine.allowedEvents(e.offboarding.status as never) : [],
@@ -523,13 +580,19 @@ router.post(
   }),
 );
 
-router.get('/hiring/funnel', handler(async () => hiringFunnel()));
+router.get(
+  '/hiring/funnel',
+  handler(async () => hiringFunnel()),
+);
 
 // ---------------------------------------------------------------------------
 // Leave
 // ---------------------------------------------------------------------------
 
-router.get('/leave-types', handler(async () => listLeaveTypes()));
+router.get(
+  '/leave-types',
+  handler(async () => listLeaveTypes()),
+);
 
 router.post(
   '/leave-types',
@@ -769,9 +832,7 @@ router.post(
 router.patch(
   '/payroll/instructions/:id',
   handler(async (req) => {
-    const body = z
-      .object({ grossAmount: z.number().optional(), deductions: z.number().optional() })
-      .parse(req.body);
+    const body = z.object({ grossAmount: z.number().optional(), deductions: z.number().optional() }).parse(req.body);
     return setInstructionAmounts(req.params.id, body);
   }),
 );
@@ -793,7 +854,10 @@ router.get(
 // Capability
 // ---------------------------------------------------------------------------
 
-router.get('/skills', handler(async () => listSkills()));
+router.get(
+  '/skills',
+  handler(async () => listSkills()),
+);
 
 router.post(
   '/skills',
@@ -845,9 +909,9 @@ router.post(
   handler(async (req) => {
     const body = z
       .object({
+        // The two-person rule's inputs are not accepted here: they are derived
+        // from the skill and the reporting line (domains/capability.ts).
         secondVerifierPartyId: z.string().nullish(),
-        feedsCompensationOrPromotionOrMobility: z.boolean().optional(),
-        verifierIsManagerOnly: z.boolean().optional(),
         note: z.string().nullish(),
       })
       .parse(req.body);
@@ -860,13 +924,7 @@ router.post(
   handler(async (req) => {
     const body = z
       .object({
-        type: z.enum([
-          'tier_conflict',
-          'level_conflict',
-          'temporal_conflict',
-          'issuer_conflict',
-          'identity_conflict',
-        ]),
+        type: z.enum(['tier_conflict', 'level_conflict', 'temporal_conflict', 'issuer_conflict', 'identity_conflict']),
         score: z.number(),
         detail: z.string().optional(),
       })
@@ -935,7 +993,10 @@ router.post(
   }),
 );
 
-router.get('/employees/:id/evidence', handler(async (req) => listEvidence(req.params.id)));
+router.get(
+  '/employees/:id/evidence',
+  handler(async (req) => listEvidence(req.params.id)),
+);
 
 router.post(
   '/evidence',
@@ -949,11 +1010,22 @@ router.post(
         caseRef: z.string().nullish(),
       })
       .parse(req.body);
-    return recordEvidence(body as { employmentRelationshipId: string; kind: PerformanceEvidenceKind; description: string; caseScoped?: boolean; caseRef?: string | null });
+    return recordEvidence(
+      body as {
+        employmentRelationshipId: string;
+        kind: PerformanceEvidenceKind;
+        description: string;
+        caseScoped?: boolean;
+        caseRef?: string | null;
+      },
+    );
   }),
 );
 
-router.get('/learning-activities', handler(async () => listLearningActivities()));
+router.get(
+  '/learning-activities',
+  handler(async () => listLearningActivities()),
+);
 
 router.post(
   '/learning-activities',
@@ -986,12 +1058,18 @@ router.post(
   }),
 );
 
-router.get('/learning/outstanding-compliance', handler(async () => outstandingCompliance()));
+router.get(
+  '/learning/outstanding-compliance',
+  handler(async () => outstandingCompliance()),
+);
 
 // ---------------------------------------------------------------------------
 // Rollups for the Command Center
 // ---------------------------------------------------------------------------
 
-router.get('/headcount-by-division', handler(async () => headcountByDivision()));
+router.get(
+  '/headcount-by-division',
+  handler(async () => headcountByDivision()),
+);
 
 export default router;

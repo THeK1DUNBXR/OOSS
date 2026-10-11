@@ -58,7 +58,10 @@ describe('IT-OVR-001: the technology overview composes every section honestly', 
   it('every section is withheld or carries a boolean notYetMeasured, and the top-level flag follows', async () => {
     const result = await asUser('chairman@kaizen.co.in', () => overview());
 
-    const sections = SECTION_NAMES.map((name) => ({ name, value: (result as unknown as Record<string, Section | Withheld>)[name] }));
+    const sections = SECTION_NAMES.map((name) => ({
+      name,
+      value: (result as unknown as Record<string, Section | Withheld>)[name],
+    }));
 
     for (const { name, value } of sections) {
       // Never missing.

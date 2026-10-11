@@ -37,16 +37,16 @@ Money masking: `cost` (Asset) and `estimatedCost`/`advanceRequested` (TravelRequ
 
 ### Routes (`apps/api/src/routes/hcm/assets.routes.ts`), mounted at `/api/hcm/assets`
 
-| Method & path | Calls |
-|---|---|
-| `GET /_status` | — |
-| `GET /me/employment` | `myEmployment` |
-| `GET/POST /inventory`, `POST /inventory/:id/transition` | `listAssets`, `createAsset`, `transitionAsset` |
-| `GET /pending`, `GET /pending/:employmentId` | `assetsPendingCount`, `assetsPendingForEmployment` |
-| `GET/POST /assignments`, `POST /assignments/:id/return` | `listAssetAssignments`, `assignAsset`, `returnAsset` |
-| `GET/POST /travel`, `POST /travel/:id/decide`, `POST /travel/:id/settle` | `listTravelRequests`, `createTravelRequest`, `decideTravelRequest`, `settleTravelRequest` |
+| Method & path                                                                                                    | Calls                                                                                                            |
+| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `GET /_status`                                                                                                   | —                                                                                                                |
+| `GET /me/employment`                                                                                             | `myEmployment`                                                                                                   |
+| `GET/POST /inventory`, `POST /inventory/:id/transition`                                                          | `listAssets`, `createAsset`, `transitionAsset`                                                                   |
+| `GET /pending`, `GET /pending/:employmentId`                                                                     | `assetsPendingCount`, `assetsPendingForEmployment`                                                               |
+| `GET/POST /assignments`, `POST /assignments/:id/return`                                                          | `listAssetAssignments`, `assignAsset`, `returnAsset`                                                             |
+| `GET/POST /travel`, `POST /travel/:id/decide`, `POST /travel/:id/settle`                                         | `listTravelRequests`, `createTravelRequest`, `decideTravelRequest`, `settleTravelRequest`                        |
 | `GET/POST /letters`, `GET /letters/issued/:employmentId`, `POST /letters/:id/fulfil`, `POST /letters/:id/reject` | `listLetterRequests`, `createLetterRequest`, `listIssuedHrLetters`, `fulfilLetterRequest`, `rejectLetterRequest` |
-| `GET/POST /idcards`, `POST /idcards/:id/lost`, `POST /idcards/:id/return` | `listIdCards`, `issueIdCard`, `reportIdCardLost`, `returnIdCard` |
+| `GET/POST /idcards`, `POST /idcards/:id/lost`, `POST /idcards/:id/return`                                        | `listIdCards`, `issueIdCard`, `reportIdCardLost`, `returnIdCard`                                                 |
 
 ### Screens
 
@@ -55,21 +55,21 @@ Money masking: `cost` (Asset) and `estimatedCost`/`advanceRequested` (TravelRequ
 
 ## Acceptance table
 
-| ID | PASS means | Test |
-|---|---|---|
+| ID             | PASS means                                                                                                 | Test                                                       |
+| -------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | HCM-ASSETS-001 | An asset's `cost` is null for a viewer without `hcm_assets:financial` and the real figure for the chairman | `Asset inventory (HCM-ASSETS-001, 002)` › `HCM-ASSETS-001` |
-| HCM-ASSETS-002 | An asset that is not `in_stock` cannot be assigned again | same describe › `HCM-ASSETS-002` |
-| HCM-ASSETS-003 | Returning `poor` sends the asset to `repair`; `good` returns it to `in_stock` | `Asset assignment and return` › `HCM-ASSETS-003` |
-| HCM-ASSETS-004 | A `retired` asset cannot move back to `in_stock` | same describe › `HCM-ASSETS-004` |
-| HCM-ASSETS-005 | An employee's assignment list is scoped to their own employment | same describe › `HCM-ASSETS-005` |
-| HCM-ASSETS-006 | An employee may submit their own travel request | `Travel requests` › `HCM-ASSETS-006` |
-| HCM-ASSETS-007 | The Self-Dealing Bar refuses a traveller deciding their own request (403) | same describe › `HCM-ASSETS-007` |
-| HCM-ASSETS-008 | A different approver may approve; settlement records the WS7 `expenseClaimId` and cannot repeat | same describe › `HCM-ASSETS-008` |
-| HCM-ASSETS-009 | Fulfilling `experience` issues a real `HrLetter` via `compliance/labour.ts` | `Letter requests` › `HCM-ASSETS-009` |
-| HCM-ASSETS-010 | Fulfilling `noc` writes this workstream's own snapshot, no `HrLetter` | same describe › `HCM-ASSETS-010` |
-| HCM-ASSETS-011 | A fulfilled or rejected letter request cannot be fulfilled again (422) | same describe › `HCM-ASSETS-011` |
-| HCM-ASSETS-012 | Reporting a card lost marks it `lost` and issues a distinct `reissued` card | `ID cards` › `HCM-ASSETS-012` |
-| HCM-ASSETS-013 | An asset is invisible from another tenant (404, not a leak) | `Cross-tenant isolation` › `HCM-ASSETS-013` |
+| HCM-ASSETS-002 | An asset that is not `in_stock` cannot be assigned again                                                   | same describe › `HCM-ASSETS-002`                           |
+| HCM-ASSETS-003 | Returning `poor` sends the asset to `repair`; `good` returns it to `in_stock`                              | `Asset assignment and return` › `HCM-ASSETS-003`           |
+| HCM-ASSETS-004 | A `retired` asset cannot move back to `in_stock`                                                           | same describe › `HCM-ASSETS-004`                           |
+| HCM-ASSETS-005 | An employee's assignment list is scoped to their own employment                                            | same describe › `HCM-ASSETS-005`                           |
+| HCM-ASSETS-006 | An employee may submit their own travel request                                                            | `Travel requests` › `HCM-ASSETS-006`                       |
+| HCM-ASSETS-007 | The Self-Dealing Bar refuses a traveller deciding their own request (403)                                  | same describe › `HCM-ASSETS-007`                           |
+| HCM-ASSETS-008 | A different approver may approve; settlement records the WS7 `expenseClaimId` and cannot repeat            | same describe › `HCM-ASSETS-008`                           |
+| HCM-ASSETS-009 | Fulfilling `experience` issues a real `HrLetter` via `compliance/labour.ts`                                | `Letter requests` › `HCM-ASSETS-009`                       |
+| HCM-ASSETS-010 | Fulfilling `noc` writes this workstream's own snapshot, no `HrLetter`                                      | same describe › `HCM-ASSETS-010`                           |
+| HCM-ASSETS-011 | A fulfilled or rejected letter request cannot be fulfilled again (422)                                     | same describe › `HCM-ASSETS-011`                           |
+| HCM-ASSETS-012 | Reporting a card lost marks it `lost` and issues a distinct `reissued` card                                | `ID cards` › `HCM-ASSETS-012`                              |
+| HCM-ASSETS-013 | An asset is invisible from another tenant (404, not a leak)                                                | `Cross-tenant isolation` › `HCM-ASSETS-013`                |
 
 Run: `npx vitest run src/tests/hcm/assets.test.ts` from `apps/api`, against `kaizen_test_assets`.
 

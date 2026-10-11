@@ -214,7 +214,12 @@ export async function unclassifiedLines() {
  * wrong thing on its face.
  */
 async function beforeIssueClassification(payload: Record<string, unknown>) {
-  const invoice = payload.invoice as { id: string; invoiceType: string; reverseCharge: boolean; enrollmentDate: Date | string | null };
+  const invoice = payload.invoice as {
+    id: string;
+    invoiceType: string;
+    reverseCharge: boolean;
+    enrollmentDate: Date | string | null;
+  };
   const lines = payload.lines as Array<{ id: string; supplyType: string; gstRate: unknown; taxAmount: unknown }>;
 
   // A course-fee invoice is never a tax document (see the `Invoice` doc
@@ -231,7 +236,10 @@ async function beforeIssueClassification(payload: Record<string, unknown>) {
   const profile = await companyProfile();
 
   for (const line of lines) {
-    if (isNonTaxableSupply(line.supplyType) && ((num(line.gstRate as never) ?? 0) !== 0 || (num(line.taxAmount as never) ?? 0) !== 0)) {
+    if (
+      isNonTaxableSupply(line.supplyType) &&
+      ((num(line.gstRate as never) ?? 0) !== 0 || (num(line.taxAmount as never) ?? 0) !== 0)
+    ) {
       throw ApiError.unprocessable(
         `A ${line.supplyType} line cannot carry a tax rate or tax amount. Reclassify it before issuing.`,
       );
@@ -399,7 +407,9 @@ export async function issueDebitNote(invoiceId: string, input: DebitNoteInput) {
   await assertCan({ resource: 'debit_notes', verb: 'create' });
 
   if (!NOTE_REASON_CODES.includes(input.reasonCode)) {
-    throw ApiError.badRequest(`"${input.reasonCode}" is not a reason code. Use one of: ${NOTE_REASON_CODES.join(', ')}.`);
+    throw ApiError.badRequest(
+      `"${input.reasonCode}" is not a reason code. Use one of: ${NOTE_REASON_CODES.join(', ')}.`,
+    );
   }
   if (!(input.amount > 0)) throw ApiError.badRequest('A debit note has to raise the invoice by a positive amount.');
 
@@ -410,7 +420,12 @@ export async function issueDebitNote(invoiceId: string, input: DebitNoteInput) {
   }
 
   const numbering = await documentNumbering();
-  const recordCode = await nextDocumentNumber(DOCUMENT_SERIES.debitNote, numbering.prefix, new Date(), numbering.yearFormat);
+  const recordCode = await nextDocumentNumber(
+    DOCUMENT_SERIES.debitNote,
+    numbering.prefix,
+    new Date(),
+    numbering.yearFormat,
+  );
 
   const note = await prisma.debitNote.create({
     data: {
@@ -518,7 +533,12 @@ export async function setEInvoiceConfig(input: { provider: string; credentialsRe
     create: { tenantId: auth.tenantId, provider: input.provider, credentialsRef: input.credentialsRef ?? null },
     update: { provider: input.provider, credentialsRef: input.credentialsRef ?? null, active: true },
   });
-  await auditWrite({ action: 'update', subjectType: 'einvoice_config', subjectId: row.id, after: { provider: row.provider } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'einvoice_config',
+    subjectId: row.id,
+    after: { provider: row.provider },
+  });
   return row;
 }
 
@@ -542,7 +562,9 @@ export async function requestEInvoice(invoiceId: string) {
     throw ApiError.unprocessable('E-invoicing registers an issued document; this one has not been issued yet.');
   }
   if (invoice.eInvoiceStatus === 'not_applicable') {
-    throw ApiError.unprocessable('E-invoicing does not apply to this tenant (Company details → e-invoicing applicable).');
+    throw ApiError.unprocessable(
+      'E-invoicing does not apply to this tenant (Company details → e-invoicing applicable).',
+    );
   }
 
   const provider = await resolveProvider();
@@ -584,7 +606,12 @@ export async function requestEInvoice(invoiceId: string) {
         eInvoiceStatus: 'registered',
       },
     });
-    await auditWrite({ action: 'update', subjectType: 'invoice', subjectId: invoiceId, after: { eInvoiceStatus: 'registered' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'invoice',
+      subjectId: invoiceId,
+      after: { eInvoiceStatus: 'registered' },
+    });
     return updated;
   } catch (err) {
     if (err instanceof ApiError && err.code === 'EINVOICE_NOT_CONFIGURED') {
@@ -644,7 +671,12 @@ export async function importGstr2b(input: Gstr2bImportInput) {
 
   const importRow = await prisma.gstr2bImport.upsert({
     where: { tenantId_period: { tenantId: auth.tenantId, period: input.period } },
-    create: { tenantId: auth.tenantId, period: input.period, rows: input.b2b as unknown as object, importedById: auth.partyId },
+    create: {
+      tenantId: auth.tenantId,
+      period: input.period,
+      rows: input.b2b as unknown as object,
+      importedById: auth.partyId,
+    },
     update: { rows: input.b2b as unknown as object, importedById: auth.partyId, importedAt: new Date() },
   });
 
@@ -781,9 +813,8 @@ export async function gstExposure(period: string) {
       cap: num(rates.cap) ?? 0,
       interestPct: num(rates.interestPct) ?? 0,
     });
-    const netCash = returnType === 'GSTR3B' ? num(prepared?.netPayable) ?? 0 : 0;
-    const interestDue =
-      returnType === 'GSTR3B' ? interest(netCash, daysLate, num(rates.interestPct) ?? 0) : 0;
+    const netCash = returnType === 'GSTR3B' ? (num(prepared?.netPayable) ?? 0) : 0;
+    const interestDue = returnType === 'GSTR3B' ? interest(netCash, daysLate, num(rates.interestPct) ?? 0) : 0;
 
     returns.push({
       returnType,

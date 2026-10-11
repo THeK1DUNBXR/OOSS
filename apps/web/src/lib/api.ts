@@ -6,23 +6,27 @@
 
 import type { EntitySelectionResponse, SessionUser } from '@kaizen/shared';
 
-const TOKEN_KEY = 'kaizen.token';
+/**
+ * The access token lives in memory only. localStorage would hand it to any
+ * script on the page, and it is re-issued from the httpOnly refresh cookie on
+ * every page load (restoreSession), so nothing is lost by not persisting it.
+ */
+let accessToken: string | null = null;
+
+/** Earlier builds kept the token and refresh secret in localStorage. Clear them once. */
+try {
+  localStorage.removeItem('kaizen.token');
+  localStorage.removeItem('kaizen.refreshToken');
+} catch {
+  /* private window */
+}
 
 export function getToken(): string | null {
-  try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
-  }
+  return accessToken;
 }
 
 export function setToken(token: string | null) {
-  try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
-  } catch {
-    /* private window */
-  }
+  accessToken = token;
 }
 
 export interface ApiFailure {
@@ -66,7 +70,66 @@ export function onUnauthorized(listener: (() => void) | null) {
 /** Paths where a 401 is an expected outcome, not an expired session. */
 const AUTH_PATHS = new Set(['/auth/login', '/auth/switch-entity']);
 
-async function request<T>(path: string, init?: RequestInit, tokenOverride?: string): Promise<T> {
+/** Paths that must never trigger a refresh: refreshing to end a session would loop, and a sign-in has no session to refresh. */
+const NO_REFRESH_PATHS = new Set([...AUTH_PATHS, '/auth/refresh', '/auth/logout', '/auth/mfa/verify']);
+
+/**
+ * One refresh in flight at a time. Five requests failing together on an expired
+ * access token must present the cookie once. Across tabs the Web Locks API
+ * serialises the refresh, so a second tab waits and then presents the cookie
+ * the first tab has already rotated, rather than racing it (the server's grace
+ * window covers the case where no lock is available).
+ */
+let refreshing: Promise<boolean> | null = null;
+
+async function refreshOnce(): Promise<boolean> {
+  try {
+    // The cookie is sent by the browser; the body carries nothing the server reads.
+    const res = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (!res.ok) return false;
+    const issued = (await res.json()) as SessionIssued;
+    setToken(issued.token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function refreshAccessToken(): Promise<boolean> {
+  if (refreshing) return refreshing;
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  const viaLock = async (): Promise<boolean> =>
+    locks ? await locks.request('kz-refresh', refreshOnce) : await refreshOnce();
+  const pending = viaLock();
+  refreshing = pending.finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
+}
+
+/** Renews the access token from the refresh cookie, for a page load that has none in memory. */
+export function restoreSession(): Promise<boolean> {
+  return refreshAccessToken();
+}
+
+/**
+ * fetch with one renewal: a 401 on an authorised call refreshes the access
+ * token once and repeats the call. Used by the helpers that cannot go through
+ * request() because they stream a file either way.
+ */
+export async function fetchWithRenewal(path: string, build: () => RequestInit): Promise<Response> {
+  const first = await fetch(`/api${path}`, build());
+  if (first.status !== 401 || NO_REFRESH_PATHS.has(path)) return first;
+  if (!(await refreshAccessToken())) return first;
+  return fetch(`/api${path}`, build());
+}
+
+async function request<T>(path: string, init?: RequestInit, tokenOverride?: string, retried = false): Promise<T> {
   const token = tokenOverride ?? getToken();
   const res = await fetch(`/api${path}`, {
     ...init,
@@ -83,6 +146,11 @@ async function request<T>(path: string, init?: RequestInit, tokenOverride?: stri
   const body = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
+    // The access token lives fifteen minutes. An expired one is renewed once
+    // and the request retried, so the user sees a slow page at most, not a sign-in.
+    if (res.status === 401 && !retried && tokenOverride === undefined && !NO_REFRESH_PATHS.has(path)) {
+      if (await refreshAccessToken()) return request<T>(path, init, undefined, true);
+    }
     if (res.status === 401 && !AUTH_PATHS.has(path)) {
       setToken(null);
       unauthorizedListener?.();
@@ -124,9 +192,9 @@ export const api = {
    * which is what an unauthenticated anchor would have saved.
    */
   download: async (path: string, fallbackName: string): Promise<void> => {
-    const token = getToken();
-    const res = await fetch(`/api${path}`, {
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    const res = await fetchWithRenewal(path, () => {
+      const token = getToken();
+      return { headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) } };
     });
     if (!res.ok) {
       const text = await res.text();
@@ -164,16 +232,18 @@ export const api = {
    * because the default JSON header would be a lie about the bytes.
    */
   upload: async <T>(path: string, file: File, headers: Record<string, string> = {}): Promise<T> => {
-    const token = getToken();
-    const res = await fetch(`/api${path}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': file.type || 'application/octet-stream',
-        'X-File-Name': encodeHeader(file.name),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...headers,
-      },
-      body: file,
+    const res = await fetchWithRenewal(path, () => {
+      const token = getToken();
+      return {
+        method: 'POST',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          'X-File-Name': encodeHeader(file.name),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...headers,
+        },
+        body: file,
+      };
     });
 
     const text = await res.text();
@@ -203,7 +273,7 @@ function encodeHeader(value: string): string {
 
 /** A session, or one of the two half-way states a sign-in can stop at. */
 export type MfaRequired = { mfaRequired: true; challengeToken: string };
-export type SessionIssued = { token: string; user: SessionUser };
+export type SessionIssued = { token: string; refreshToken?: string; user: SessionUser };
 export type LoginOutcome = SessionIssued | MfaRequired | EntitySelectionResponse;
 
 function storeIfSession<T extends SessionIssued | MfaRequired | EntitySelectionResponse>(res: T): T {
@@ -224,15 +294,16 @@ export async function login(email: string, password: string): Promise<LoginOutco
 /** Completes a login that stopped at `{ mfaRequired: true }`. */
 export async function verifyMfa(challengeToken: string, code: string) {
   const res = await api.post<SessionIssued>('/auth/mfa/verify', { challengeToken, code });
-  setToken(res.token);
-  return res;
+  return storeIfSession(res);
 }
 
 /** Completes the entity picker shown at sign-in, authorised by the
  *  selection token `login()` returned rather than a session token. The
  *  chosen entity's account may itself ask for a second factor. */
 export async function chooseEntity(tenantId: string, selectionToken: string): Promise<SessionIssued | MfaRequired> {
-  return storeIfSession(await api.postWithToken<SessionIssued | MfaRequired>('/auth/switch-entity', { tenantId }, selectionToken));
+  return storeIfSession(
+    await api.postWithToken<SessionIssued | MfaRequired>('/auth/switch-entity', { tenantId }, selectionToken),
+  );
 }
 
 /** Moves an already-signed-in principal into another entity they hold an
@@ -250,8 +321,20 @@ export async function switchContext(affiliationId: string, stepUpPassword?: stri
   return res;
 }
 
+/**
+ * Ends the session on the server as well as in the browser. The server revokes
+ * whichever it is given: the bearer token's session, or the refresh cookie's
+ * when the access token had already expired. It also clears the cookie.
+ */
 export function logout() {
+  const token = getToken();
   setToken(null);
+  void fetch('/api/auth/logout', {
+    method: 'POST',
+    credentials: 'same-origin',
+    keepalive: true,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  }).catch(() => undefined);
 }
 
 // ---------------------------------------------------------------------------

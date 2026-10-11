@@ -11,12 +11,28 @@ import type { EsopPlanView, OptionGrantView, ShareClassView, VestingTranche } fr
 import { api, date, money } from '../../lib/api.js';
 import { useSession } from '../../lib/session.js';
 import { Card, ContributionBar, EmptyState, ErrorBox, Loading, PageHeader, StatusChip } from '../../components/ui.js';
-import { CreateModal, MoneyInput, NewButton, Row, SelectInput, TextArea, TextInput, messageOf } from '../../components/forms.js';
+import {
+  CreateModal,
+  MoneyInput,
+  NewButton,
+  Row,
+  SelectInput,
+  TextArea,
+  TextInput,
+  messageOf,
+} from '../../components/forms.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
 type PlanWithPool = EsopPlanView & {
-  pool: { authorised: number | null; granted: number; vested: number; exercised: number; lapsed: number; available: number | null };
+  pool: {
+    authorised: number | null;
+    granted: number;
+    vested: number;
+    exercised: number;
+    lapsed: number;
+    available: number | null;
+  };
 };
 
 interface EmployeeOption {
@@ -107,7 +123,9 @@ function NewPlan({ open, onClose }: { open: boolean; onClose: () => void }) {
           value={poolShareClassId}
           onChange={setPool}
           placeholder="A share class of instrument 'option'"
-          options={(classes.data?.items ?? []).filter((c) => c.instrument === 'option').map((c) => ({ value: c.id, label: c.name }))}
+          options={(classes.data?.items ?? [])
+            .filter((c) => c.instrument === 'option')
+            .map((c) => ({ value: c.id, label: c.name }))}
         />
         <SelectInput
           label="Converts into"
@@ -115,7 +133,9 @@ function NewPlan({ open, onClose }: { open: boolean; onClose: () => void }) {
           value={targetShareClassId}
           onChange={setTarget}
           placeholder="The equity class an exercise allots into"
-          options={(classes.data?.items ?? []).filter((c) => c.kind === 'equity').map((c) => ({ value: c.id, label: c.name }))}
+          options={(classes.data?.items ?? [])
+            .filter((c) => c.kind === 'equity')
+            .map((c) => ({ value: c.id, label: c.name }))}
         />
       </Row>
       <MoneyInput label="Default exercise price" value={exercisePriceDefault} onChange={setPrice} />
@@ -135,11 +155,19 @@ function NewPlan({ open, onClose }: { open: boolean; onClose: () => void }) {
             { value: 'annual', label: 'Annual' },
           ]}
         />
-        <TextInput label="Exercise window after exit (months)" type="number" required value={exerciseWindowMonthsAfterExit} onChange={setWindow} />
+        <TextInput
+          label="Exercise window after exit (months)"
+          type="number"
+          required
+          value={exerciseWindowMonthsAfterExit}
+          onChange={setWindow}
+        />
       </Row>
       <p className="text-2xs text-ink-500">
         First vesting must be at least 12 months after the grant (Rule 12). A cliff of {cliffMonths || '0'} month(s)
-        {Number(cliffMonths) < 12 ? ' is short of that — activation and every grant under it will be refused.' : ' satisfies it.'}
+        {Number(cliffMonths) < 12
+          ? ' is short of that — activation and every grant under it will be refused.'
+          : ' satisfies it.'}
       </p>
     </CreateModal>
   );
@@ -156,9 +184,13 @@ function ActivatePlan({ open, onClose, planId }: { open: boolean; onClose: () =>
       submitLabel="Activate it"
       onClose={onClose}
       invalidate={[['esop-plans']]}
-      onSubmit={() => api.post(`/esop/plans/${planId}/activate`, { approvedOn, resolutionRef, mgt14Srn: mgt14Srn || null })}
+      onSubmit={() =>
+        api.post(`/esop/plans/${planId}/activate`, { approvedOn, resolutionRef, mgt14Srn: mgt14Srn || null })
+      }
     >
-      <p className="text-2xs text-ink-500">Rule 12: a scheme needs its own shareholder resolution before any grant is proposed under it.</p>
+      <p className="text-2xs text-ink-500">
+        Rule 12: a scheme needs its own shareholder resolution before any grant is proposed under it.
+      </p>
       <TextInput label="Resolution date" type="date" required value={approvedOn} onChange={setApprovedOn} />
       <TextInput label="Resolution reference" required value={resolutionRef} onChange={setResolutionRef} />
       <TextInput label="MGT-14 SRN" value={mgt14Srn} onChange={setMgt14Srn} />
@@ -197,7 +229,11 @@ function NewGrant({ open, onClose, plans }: { open: boolean; onClose: () => void
           count: Number(count),
           exercisePrice: exercisePrice ? Number(exercisePrice) : null,
           vestingOverride: override
-            ? { cliffMonths: Number(cliffMonths), totalMonths: Number(totalMonths), frequency: frequency || 'quarterly' }
+            ? {
+                cliffMonths: Number(cliffMonths),
+                totalMonths: Number(totalMonths),
+                frequency: frequency || 'quarterly',
+              }
             : null,
           resolutionRef: resolutionRef || null,
           grantLetterRef: grantLetterRef || null,
@@ -224,8 +260,15 @@ function NewGrant({ open, onClose, plans }: { open: boolean; onClose: () => void
         <TextInput label="Granted on" type="date" required value={grantedOn} onChange={setGrantedOn} />
         <TextInput label="Count" type="number" required value={count} onChange={setCount} />
       </Row>
-      <MoneyInput label="Exercise price" value={exercisePrice} onChange={setExercisePrice} hint="leave blank to use the plan default" />
-      <p className="text-2xs text-ink-500">Vesting override — leave every field blank to use the plan's own schedule.</p>
+      <MoneyInput
+        label="Exercise price"
+        value={exercisePrice}
+        onChange={setExercisePrice}
+        hint="leave blank to use the plan default"
+      />
+      <p className="text-2xs text-ink-500">
+        Vesting override — leave every field blank to use the plan's own schedule.
+      </p>
       <Row>
         <TextInput label="Cliff (months)" type="number" value={cliffMonths} onChange={setCliffMonths} />
         <TextInput label="Total vesting (months)" type="number" value={totalMonths} onChange={setTotalMonths} />
@@ -242,22 +285,45 @@ function NewGrant({ open, onClose, plans }: { open: boolean; onClose: () => void
         ]}
       />
       <p className="text-2xs text-ink-500">
-        First vesting must be at least 12 months after the grant (Rule 12){cliffMonths ? ` — a cliff of ${cliffMonths} month(s) ${Number(cliffMonths) < 12 ? 'will be refused.' : 'satisfies it.'}` : '.'}
+        First vesting must be at least 12 months after the grant (Rule 12)
+        {cliffMonths
+          ? ` — a cliff of ${cliffMonths} month(s) ${Number(cliffMonths) < 12 ? 'will be refused.' : 'satisfies it.'}`
+          : '.'}
       </p>
-      <TextInput label="Resolution reference" value={resolutionRef} onChange={setResolutionRef} hint="needed if this grant is ≥1% of issued capital" />
+      <TextInput
+        label="Resolution reference"
+        value={resolutionRef}
+        onChange={setResolutionRef}
+        hint="needed if this grant is ≥1% of issued capital"
+      />
       <TextInput label="Grant letter reference" value={grantLetterRef} onChange={setGrantLetterRef} />
     </CreateModal>
   );
 }
 
 function ReasonModal({
-  open, title, submitLabel, onClose, onSubmit,
+  open,
+  title,
+  submitLabel,
+  onClose,
+  onSubmit,
 }: {
-  open: boolean; title: string; submitLabel: string; onClose: () => void; onSubmit: (reason: string) => Promise<unknown>;
+  open: boolean;
+  title: string;
+  submitLabel: string;
+  onClose: () => void;
+  onSubmit: (reason: string) => Promise<unknown>;
 }) {
   const [reason, setReason] = useState('');
   return (
-    <CreateModal open={open} title={title} submitLabel={submitLabel} onClose={onClose} invalidate={[['esop-grants']]} onSubmit={() => onSubmit(reason)}>
+    <CreateModal
+      open={open}
+      title={title}
+      submitLabel={submitLabel}
+      onClose={onClose}
+      invalidate={[['esop-grants']]}
+      onSubmit={() => onSubmit(reason)}
+    >
       <TextArea label="Reason" required value={reason} onChange={setReason} rows={3} />
     </CreateModal>
   );
@@ -267,7 +333,11 @@ function TranchePopover({ tranches }: { tranches: VestingTranche[] }) {
   const [open, setOpen] = useState(false);
   return (
     <span className="relative inline-block">
-      <button type="button" className="text-2xs text-accent-soft underline decoration-dotted" onClick={() => setOpen((v) => !v)}>
+      <button
+        type="button"
+        className="text-2xs text-accent-soft underline decoration-dotted"
+        onClick={() => setOpen((v) => !v)}
+      >
         {tranches.length} tranche{tranches.length === 1 ? '' : 's'}
       </button>
       {open && (
@@ -303,14 +373,30 @@ function PlanCard({ p, onActivate }: { p: PlanWithPool; onActivate: () => void }
         <ContributionBar value={authorised != null ? authorised - (available ?? 0) : 0} max={authorised ?? 0} />
       </div>
       <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-2xs sm:grid-cols-5">
-        <div><span className="text-ink-500">Authorised</span><div className="tabular-nums text-ink-100">{authorised ?? 'Not set'}</div></div>
-        <div><span className="text-ink-500">Granted</span><div className="tabular-nums text-ink-100">{granted.toLocaleString('en-IN')}</div></div>
-        <div><span className="text-ink-500">Vested</span><div className="tabular-nums text-ink-100">{vested.toLocaleString('en-IN')}</div></div>
-        <div><span className="text-ink-500">Exercised</span><div className="tabular-nums text-ink-100">{exercised.toLocaleString('en-IN')}</div></div>
-        <div><span className="text-ink-500">Lapsed</span><div className="tabular-nums text-ink-100">{lapsed.toLocaleString('en-IN')}</div></div>
+        <div>
+          <span className="text-ink-500">Authorised</span>
+          <div className="tabular-nums text-ink-100">{authorised ?? 'Not set'}</div>
+        </div>
+        <div>
+          <span className="text-ink-500">Granted</span>
+          <div className="tabular-nums text-ink-100">{granted.toLocaleString('en-IN')}</div>
+        </div>
+        <div>
+          <span className="text-ink-500">Vested</span>
+          <div className="tabular-nums text-ink-100">{vested.toLocaleString('en-IN')}</div>
+        </div>
+        <div>
+          <span className="text-ink-500">Exercised</span>
+          <div className="tabular-nums text-ink-100">{exercised.toLocaleString('en-IN')}</div>
+        </div>
+        <div>
+          <span className="text-ink-500">Lapsed</span>
+          <div className="tabular-nums text-ink-100">{lapsed.toLocaleString('en-IN')}</div>
+        </div>
       </div>
       <p className="mt-2 text-2xs text-ink-500">
-        Available: {available != null ? available.toLocaleString('en-IN') : 'Not set'} · {p.isDpiitRecognised ? 'DPIIT-recognised' : 'Not DPIIT-recognised'}
+        Available: {available != null ? available.toLocaleString('en-IN') : 'Not set'} ·{' '}
+        {p.isDpiitRecognised ? 'DPIIT-recognised' : 'Not DPIIT-recognised'}
       </p>
     </Card>
   );
@@ -326,9 +412,18 @@ export function Esop() {
   const [lapsing, setLapsing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const plans = useQuery({ queryKey: ['esop-plans'], queryFn: () => api.get<{ items: PlanWithPool[] }>('/esop/plans') });
-  const grants = useQuery({ queryKey: ['esop-grants'], queryFn: () => api.get<{ items: OptionGrantView[] }>('/esop/grants') });
-  const exercises = useQuery({ queryKey: ['esop-exercises'], queryFn: () => api.get<{ items: ExerciseRow[] }>('/esop/exercises') });
+  const plans = useQuery({
+    queryKey: ['esop-plans'],
+    queryFn: () => api.get<{ items: PlanWithPool[] }>('/esop/plans'),
+  });
+  const grants = useQuery({
+    queryKey: ['esop-grants'],
+    queryFn: () => api.get<{ items: OptionGrantView[] }>('/esop/grants'),
+  });
+  const exercises = useQuery({
+    queryKey: ['esop-exercises'],
+    queryFn: () => api.get<{ items: ExerciseRow[] }>('/esop/exercises'),
+  });
   const employees = useEmployees();
 
   const act = useMutation({
@@ -353,7 +448,8 @@ export function Esop() {
 
   if (plans.error) return <ErrorBox error={plans.error} />;
 
-  const employeeName = (employmentId: string) => employees.data?.find((e) => e.id === employmentId)?.fullName ?? employmentId;
+  const employeeName = (employmentId: string) =>
+    employees.data?.find((e) => e.id === employmentId)?.fullName ?? employmentId;
   const planName = (planId: string) => plans.data?.items.find((p) => p.id === planId)?.name ?? planId;
 
   const pendingExercises = (exercises.data?.items ?? []).filter((x) => x.status === 'requested');
@@ -398,7 +494,10 @@ export function Esop() {
             {can('esop_plans:create') && <NewButton label="New plan" onClick={() => setCreatingPlan(true)} />}
             {can('option_grants:create') && <NewButton label="New grant" onClick={() => setCreatingGrant(true)} />}
             {can('esop_plans:view') && (
-              <button className="btn-ghost" onClick={() => api.download('/esop/register/sh-6.xlsx', 'sh-6-register.xlsx')}>
+              <button
+                className="btn-ghost"
+                onClick={() => api.download('/esop/register/sh-6.xlsx', 'sh-6-register.xlsx')}
+              >
                 Download SH-6 register
               </button>
             )}
@@ -407,14 +506,19 @@ export function Esop() {
       />
 
       {error && (
-        <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>
+        <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
       )}
 
       {plans.isLoading ? (
         <Loading />
       ) : (plans.data?.items.length ?? 0) === 0 ? (
         <Card>
-          <EmptyState message="No ESOP plan exists yet." hint="Create one, then activate it with its shareholder resolution before proposing a grant." />
+          <EmptyState
+            message="No ESOP plan exists yet."
+            hint="Create one, then activate it with its shareholder resolution before proposing a grant."
+          />
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
@@ -461,13 +565,18 @@ export function Esop() {
                         <td className="text-right tabular-nums">{g.count.toLocaleString('en-IN')}</td>
                         <td className="text-right tabular-nums">{money(g.exercisePrice)}</td>
                         <td className="text-2xs tabular-nums text-ink-400">
-                          {g.vested.toLocaleString('en-IN')} / {g.exercised.toLocaleString('en-IN')} / {g.lapsed.toLocaleString('en-IN')}
+                          {g.vested.toLocaleString('en-IN')} / {g.exercised.toLocaleString('en-IN')} /{' '}
+                          {g.lapsed.toLocaleString('en-IN')}
                         </td>
-                        <td><TranchePopover tranches={g.vesting.schedule} /></td>
+                        <td>
+                          <TranchePopover tranches={g.vesting.schedule} />
+                        </td>
                         <td>
                           <StatusChip status={g.status} tone={STATUS_TONE[g.status]} />
                           {isOwnProposal && g.status === 'proposed' && (
-                            <p className="mt-1 text-2xs italic text-ink-500">You proposed this; another approver must act.</p>
+                            <p className="mt-1 text-2xs italic text-ink-500">
+                              You proposed this; another approver must act.
+                            </p>
                           )}
                           {isGrantee && g.status === 'proposed' && (
                             <p className="mt-1 text-2xs italic text-ink-500">You cannot approve your own grant.</p>
@@ -475,15 +584,25 @@ export function Esop() {
                         </td>
                         <td>
                           <div className="flex flex-wrap justify-end gap-1">
-                            {g.status === 'proposed' && !isOwnProposal && !isGrantee && can('option_grants:approve') && (
-                              <button className="btn-ghost" onClick={() => act.mutate({ id: g.id, path: 'approve' })}>Approve</button>
-                            )}
+                            {g.status === 'proposed' &&
+                              !isOwnProposal &&
+                              !isGrantee &&
+                              can('option_grants:approve') && (
+                                <button className="btn-ghost" onClick={() => act.mutate({ id: g.id, path: 'approve' })}>
+                                  Approve
+                                </button>
+                              )}
                             {g.status === 'proposed' && can('option_grants:edit') && (
-                              <button className="btn-ghost" onClick={() => setCancelling(g.id)}>Cancel</button>
+                              <button className="btn-ghost" onClick={() => setCancelling(g.id)}>
+                                Cancel
+                              </button>
                             )}
-                            {['granted', 'partly_vested', 'fully_vested'].includes(g.status) && can('option_grants:edit') && (
-                              <button className="btn-ghost" onClick={() => setLapsing(g.id)}>Lapse</button>
-                            )}
+                            {['granted', 'partly_vested', 'fully_vested'].includes(g.status) &&
+                              can('option_grants:edit') && (
+                                <button className="btn-ghost" onClick={() => setLapsing(g.id)}>
+                                  Lapse
+                                </button>
+                              )}
                           </div>
                         </td>
                       </tr>
@@ -500,7 +619,9 @@ export function Esop() {
         <div>
           <h2 className="mb-2 text-sm font-semibold text-ink-100">Exercise requests</h2>
           {pendingExercises.length === 0 ? (
-            <Card><EmptyState message="No exercise requests are waiting." /></Card>
+            <Card>
+              <EmptyState message="No exercise requests are waiting." />
+            </Card>
           ) : (
             <Card bodyClassName="p-0">
               <div className="overflow-x-auto">
@@ -521,10 +642,16 @@ export function Esop() {
                         <td className="mono text-2xs">{x.grantId}</td>
                         <td className="text-2xs text-ink-400">{date(x.requestedOn)}</td>
                         <td className="text-right tabular-nums">{x.count.toLocaleString('en-IN')}</td>
-                        <td className="text-right tabular-nums">{x.fmvBasis === 'merchant_banker' ? money(x.fmvPerShare) : 'Not available'}</td>
-                        <td className="text-right tabular-nums">{x.perquisite != null ? money(x.perquisite) : x.perquisiteNote}</td>
+                        <td className="text-right tabular-nums">
+                          {x.fmvBasis === 'merchant_banker' ? money(x.fmvPerShare) : 'Not available'}
+                        </td>
+                        <td className="text-right tabular-nums">
+                          {x.perquisite != null ? money(x.perquisite) : x.perquisiteNote}
+                        </td>
                         <td className="text-right">
-                          <button className="btn-ghost" onClick={() => approveExercise.mutate(x.id)}>Approve &amp; allot</button>
+                          <button className="btn-ghost" onClick={() => approveExercise.mutate(x.id)}>
+                            Approve &amp; allot
+                          </button>
                         </td>
                       </tr>
                     ))}

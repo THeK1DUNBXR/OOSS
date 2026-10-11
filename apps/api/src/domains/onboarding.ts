@@ -194,8 +194,8 @@ export function applyTenantOnboardingTransition(
     step: tenantOnboardingStepFor(nextStatus),
     startedAt: current?.startedAt ?? now,
     updatedAt: now,
-    completedAt: nextStatus === 'active' ? current?.completedAt ?? now : current?.completedAt,
-    blockedReason: nextStatus === 'blocked' ? current?.blockedReason ?? 'Awaiting a required step.' : undefined,
+    completedAt: nextStatus === 'active' ? (current?.completedAt ?? now) : current?.completedAt,
+    blockedReason: nextStatus === 'blocked' ? (current?.blockedReason ?? 'Awaiting a required step.') : undefined,
   };
 }
 
@@ -231,7 +231,7 @@ export async function tenantOnboardingState(): Promise<TenantOnboardingStateReco
     step: tenantOnboardingStepFor(status),
     startedAt: saved.startedAt ?? new Date().toISOString(),
     updatedAt: saved.updatedAt ?? new Date().toISOString(),
-    completedAt: status === 'active' ? saved.completedAt ?? new Date().toISOString() : saved.completedAt,
+    completedAt: status === 'active' ? (saved.completedAt ?? new Date().toISOString()) : saved.completedAt,
   };
 
   await prisma.tenant.update({

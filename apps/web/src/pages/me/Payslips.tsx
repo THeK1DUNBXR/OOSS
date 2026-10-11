@@ -37,7 +37,11 @@ interface PayrollQueryRow {
   response: string | null;
 }
 
-const QUERY_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = { Open: 'warn', Responded: 'good', Closed: 'neutral' };
+const QUERY_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
+  Open: 'warn',
+  Responded: 'good',
+  Closed: 'neutral',
+};
 
 export function Payslips() {
   const qc = useQueryClient();
@@ -45,8 +49,14 @@ export function Payslips() {
   const [raiseFor, setRaiseFor] = useState<Payslip | null>(null);
   const [form, setForm] = useState({ subject: '', message: '' });
 
-  const payslips = useQuery({ queryKey: ['me-payslips'], queryFn: () => api.get<Payslip[]>('/compliance/payroll/payslips') });
-  const queries = useQuery({ queryKey: ['me-payroll-queries'], queryFn: () => api.get<PayrollQueryRow[]>('/hcm/payrollops/queries') });
+  const payslips = useQuery({
+    queryKey: ['me-payslips'],
+    queryFn: () => api.get<Payslip[]>('/compliance/payroll/payslips'),
+  });
+  const queries = useQuery({
+    queryKey: ['me-payroll-queries'],
+    queryFn: () => api.get<PayrollQueryRow[]>('/hcm/payrollops/queries'),
+  });
 
   return (
     <>
@@ -59,7 +69,10 @@ export function Payslips() {
         {payslips.isLoading && <Loading />}
         {payslips.error && <ErrorBox error={payslips.error} />}
         {payslips.data && payslips.data.length === 0 && (
-          <EmptyState message="No payslip has been issued to you yet." hint="One appears here once a payroll run carrying your pay is approved." />
+          <EmptyState
+            message="No payslip has been issued to you yet."
+            hint="One appears here once a payroll run carrying your pay is approved."
+          />
         )}
         {payslips.data && payslips.data.length > 0 && (
           <div className="flex flex-col gap-2">
@@ -68,14 +81,22 @@ export function Payslips() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-medium text-ink-100">{p.payPeriod}</p>
-                    <p className="text-2xs text-ink-500">{p.number} · issued {date(p.issuedAt)}</p>
+                    <p className="text-2xs text-ink-500">
+                      {p.number} · issued {date(p.issuedAt)}
+                    </p>
                   </div>
                   <div className="flex items-center gap-3">
                     <p className="tabular-nums text-sm text-ink-100">{money(p.snapshot?.net ?? null)}</p>
                     <button className="btn text-2xs" onClick={() => setOpenId(openId === p.id ? null : p.id)}>
                       {openId === p.id ? 'Hide' : 'View'}
                     </button>
-                    <button className="btn text-2xs" onClick={() => { setRaiseFor(p); setForm({ subject: '', message: '' }); }}>
+                    <button
+                      className="btn text-2xs"
+                      onClick={() => {
+                        setRaiseFor(p);
+                        setForm({ subject: '', message: '' });
+                      }}
+                    >
                       Raise a query
                     </button>
                   </div>
@@ -102,14 +123,18 @@ export function Payslips() {
                         .map(([k, v]) => (
                           <div key={k} className="flex justify-between text-xs text-ink-300">
                             <span>{k}</span>
-                            <span className="tabular-nums">{v === null ? <StatusChip status="withheld" /> : money(v as number)}</span>
+                            <span className="tabular-nums">
+                              {v === null ? <StatusChip status="withheld" /> : money(v as number)}
+                            </span>
                           </div>
                         ))}
                       <div className="mt-1 flex justify-between text-xs font-medium text-ink-100">
                         <span>Net pay</span>
                         <span className="tabular-nums">{money(p.snapshot?.net ?? null)}</span>
                       </div>
-                      {p.snapshot?.bankLast4 && <p className="mt-1 text-2xs text-ink-500">Paid to account ending {p.snapshot.bankLast4}</p>}
+                      {p.snapshot?.bankLast4 && (
+                        <p className="mt-1 text-2xs text-ink-500">Paid to account ending {p.snapshot.bankLast4}</p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -129,7 +154,9 @@ export function Payslips() {
               {queries.data.map((q) => (
                 <div key={q.id} className="rounded border border-ink-800 p-3">
                   <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-ink-100">{q.subject} <span className="ml-2 text-2xs text-ink-500">{q.payPeriod}</span></p>
+                    <p className="text-sm font-medium text-ink-100">
+                      {q.subject} <span className="ml-2 text-2xs text-ink-500">{q.payPeriod}</span>
+                    </p>
                     <StatusChip status={q.status} tone={QUERY_TONE[q.status] ?? 'neutral'} />
                   </div>
                   <p className="text-xs text-ink-300">{q.message}</p>
@@ -158,8 +185,20 @@ export function Payslips() {
             : Promise.reject(new Error('No payslip selected.'))
         }
       >
-        <TextInput label="Subject" value={form.subject} onChange={(v) => setForm({ ...form, subject: v })} required placeholder="e.g. Lower than expected" />
-        <TextArea label="Message" value={form.message} onChange={(v) => setForm({ ...form, message: v })} required rows={4} />
+        <TextInput
+          label="Subject"
+          value={form.subject}
+          onChange={(v) => setForm({ ...form, subject: v })}
+          required
+          placeholder="e.g. Lower than expected"
+        />
+        <TextArea
+          label="Message"
+          value={form.message}
+          onChange={(v) => setForm({ ...form, message: v })}
+          required
+          rows={4}
+        />
       </CreateModal>
     </>
   );

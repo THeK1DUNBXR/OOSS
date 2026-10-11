@@ -16,9 +16,13 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// The API connects as the application role (DATABASE_URL), which row-level
+// security binds. Migrations run as the owner (MIGRATION_DATABASE_URL), which
+// owns the tables; the app role must not own them or it would bypass policies.
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("MIGRATION_DATABASE_URL")
 }
 
 // ===========================================================================
@@ -817,6 +821,11 @@ model ApprovalStep {
   subjectId     String
   subjectLabel  String?
   action        String // mou.approve | contract.sign | quote.issue
+  /// The permission resource the gate checked `approve` against. Stored so a
+  /// decision is checked against the same grant the step was opened under;
+  /// re-deriving it from subjectType gets share_transaction wrong (it gates on
+  /// share_ledger). Null on rows opened before this column existed.
+  resource      String?
 
   requestedById  String
   requestedAt    DateTime @default(now())
@@ -1034,6 +1043,30 @@ model EventDeadLetter {
   @@map("event_dead_letters")
 }
 
+/// Transactional outbox (FX-24, D-16). Written in the same transaction as the
+/// business write and its EventRecord, so an event exists if and only if the
+/// write committed. A dispatcher claims rows with FOR UPDATE SKIP LOCKED and
+/// delivers to in-process subscribers; `deliveredTo` records which subscribers
+/// already succeeded so a retry never re-fires one that did not fail.
+model OutboxEvent {
+  id            String   @id @default(cuid())
+  tenantId      String
+  eventRecordId String
+  eventName     String
+  payload       Json
+  state         String   @default("pending") // pending | dispatched | dead
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+  deliveredTo   String[] @default([])
+  lastError     String?
+  createdAt     DateTime @default(now())
+  dispatchedAt  DateTime?
+
+  @@index([state, nextAttemptAt])
+  @@index([tenantId, state])
+  @@map("outbox_events")
+}
+
 /// One claim per (job, tenant, cron occurrence) — the durable substrate that
 /// replaces an in-process setInterval, which lost its queue state on every
 /// restart and could not be distributed across more than one process.
@@ -1202,10 +1235,38 @@ model Session {
 
   jti String @unique
 
-  /// Hashed the same way a password is (`hashPassword`) — a database read
-  /// must not be enough to replay the cookie; only the browser holding the
-  /// httpOnly cookie itself can.
+  /// SHA-256 of the current refresh secret. Not `hashPassword`: the secret is
+  /// 256 bits of randomness, so a slow password hash buys nothing against
+  /// guessing and costs ~70ms on every refresh. A database read still cannot
+  /// replay the credential, because the preimage is not recoverable.
   refreshTokenHash String
+
+  /// SHA-256 of the secret this session rotated away from. Presenting it again
+  /// is the reuse signal: a stolen copy and the legitimate browser cannot both
+  /// keep refreshing, so the whole session is revoked (lib/auth.ts refreshSession).
+  previousRefreshTokenHash String?
+
+  /// SHA-256 of the secret the previous one replaced. Presenting it after the
+  /// previous secret was used is reuse. Kept as a third slot because a flag on
+  /// the current secret cannot record that it was used: presenting it rotates
+  /// it into `previousRefreshTokenHash`, so use is recorded by which slot a
+  /// secret sits in.
+  olderRefreshTokenHash String?
+
+  /// SHA-256 of the rotated-in secret that a lost-response recovery dropped
+  /// unused (lib/auth.ts recoverLostRefresh). The victim never saw it used, so
+  /// presenting it later means someone else recovered the session in its place.
+  abandonedRefreshTokenHash String?
+  abandonedAt               DateTime?
+
+  /// When the secret was last rotated. A replay of `previousRefreshTokenHash`
+  /// inside a short grace is a second tab, not a thief (lib/auth.ts refreshSession).
+  rotatedAt DateTime?
+
+  /// When this session last proved a second factor. Carried through a refresh
+  /// only while its own window is open, so step-up does not lapse with the
+  /// fifteen-minute access token.
+  stepUpAt DateTime?
 
   issuedAt  DateTime  @default(now())
   expiresAt DateTime
@@ -3546,6 +3607,10 @@ model Enrollment {
   guardianPhone String?
   guardianEmail String?
   isMinor       Boolean @default(false)
+  /// The guardian consent this enrolment rests on, when it is a minor's. Null
+  /// for an adult. The consent row is what makes the processing lawful; the
+  /// guardian contact alone is not evidence of consent.
+  guardianConsentId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -4634,6 +4699,10 @@ model Skill {
   /// still be stale in between.
   halfLifeMonths   Int    @default(24)
   proficiencyScale Json   @default("[]")
+  /// Whether a Verified claim on this skill moves pay, promotion or mobility.
+  /// Defaults to true: until the owner marks a skill otherwise, every claim on
+  /// it needs two independent verifiers. Fail closed, never open.
+  feedsCompensationOrPromotionOrMobility Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

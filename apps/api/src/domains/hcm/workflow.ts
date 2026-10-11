@@ -25,7 +25,7 @@ import {
   type ApprovalResolverKind,
   type DelegationFact,
 } from '@kaizen/shared';
-import { prisma, unscopedPrisma } from '../../platform/db.js';
+import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan, scopeFor } from '../../platform/permissions.js';
@@ -52,7 +52,8 @@ let reportingLineTableExists = false;
 async function reportingLineTablePresent(): Promise<boolean> {
   if (reportingLineTableChecked) return reportingLineTableExists;
   try {
-    const rows = await unscopedPrisma.$queryRaw<Array<{ present: string | null }>>`
+    // The catalog, not a tenant table: no tenant setting is needed for it.
+    const rows = await prisma.$queryRaw<Array<{ present: string | null }>>`
       SELECT to_regclass('public.hcm_workforce_reporting_lines')::text AS present
     `;
     reportingLineTableExists = Boolean(rows[0]?.present);
@@ -72,17 +73,14 @@ export function _resetReportingLineTableCache(): void {
 async function managerEmploymentIdViaReportingLine(tenantId: string, employmentId: string): Promise<string | null> {
   if (!(await reportingLineTablePresent())) return null;
   try {
-    const rows = await unscopedPrisma.$queryRaw<Array<{ managerEmploymentRelationshipId: string }>>`
-      SELECT "managerEmploymentRelationshipId"
-      FROM hcm_workforce_reporting_lines
-      WHERE "tenantId" = ${tenantId}
-        AND "employmentRelationshipId" = ${employmentId}
-        AND kind = 'primary'
-        AND "effectiveTo" IS NULL
-      ORDER BY "effectiveFrom" DESC
-      LIMIT 1
-    `;
-    return rows[0]?.managerEmploymentRelationshipId ?? null;
+    // Through the scoped model, so the tenant filter and row-level security both
+    // apply. It was an unscoped raw read, which saw every tenant's lines.
+    const row = await prisma.reportingLine.findFirst({
+      where: { tenantId, employmentRelationshipId: employmentId, kind: 'primary', effectiveTo: null },
+      orderBy: { effectiveFrom: 'desc' },
+      select: { managerEmploymentRelationshipId: true },
+    });
+    return row?.managerEmploymentRelationshipId ?? null;
   } catch {
     // The table exists but the query failed (shape drift mid-build across
     // workstreams) — fall back rather than fail the request.
@@ -99,8 +97,12 @@ async function partyIdForEmployment(tenantId: string, employmentId: string): Pro
 }
 
 /** The active affiliate holding `roleSlug`, excluding `excludePartyId`. */
-async function partyIdForRole(tenantId: string, roleSlug: string, excludePartyId: string | null): Promise<string | null> {
-  const affiliation = await unscopedPrisma.affiliation.findFirst({
+async function partyIdForRole(
+  tenantId: string,
+  roleSlug: string,
+  excludePartyId: string | null,
+): Promise<string | null> {
+  const affiliation = await prisma.affiliation.findFirst({
     where: {
       tenantId,
       roleSlug,
@@ -190,7 +192,12 @@ export async function listRequestTypes(activeOnly = false) {
   });
 }
 
-export async function createRequestType(input: { code: string; name: string; approvalChain: ApprovalChain; slaHours?: number }) {
+export async function createRequestType(input: {
+  code: string;
+  name: string;
+  approvalChain: ApprovalChain;
+  slaHours?: number;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'hr_request_types', verb: 'create' });
 
@@ -227,7 +234,13 @@ export interface HrRequestWithApprovals {
   requestedById: string;
   createdAt: Date;
   closedAt: Date | null;
-  approvals: Array<{ level: number; approverPartyId: string | null; decision: string; note: string | null; decidedAt: Date | null }>;
+  approvals: Array<{
+    level: number;
+    approverPartyId: string | null;
+    decision: string;
+    note: string | null;
+    decidedAt: Date | null;
+  }>;
 }
 
 async function openLevel(
@@ -280,7 +293,9 @@ export async function submitRequest(input: { typeId: string; subjectEmploymentId
 
   const chain = type.approvalChain as unknown;
   if (!isValidApprovalChain(chain)) {
-    throw ApiError.unprocessable(`Request type "${type.name}" carries an invalid approval chain and cannot be submitted against.`);
+    throw ApiError.unprocessable(
+      `Request type "${type.name}" carries an invalid approval chain and cannot be submitted against.`,
+    );
   }
 
   const subjectPartyId = await partyIdForEmployment(auth.tenantId, input.subjectEmploymentId);
@@ -407,7 +422,10 @@ export async function decide(requestId: string, approve: boolean, note?: string)
   const auth = currentAuth();
   await assertCan({ resource: 'hr_requests', verb: 'approve' });
 
-  const request = await prisma.hrRequest.findFirst({ where: { id: requestId, tenantId: auth.tenantId }, include: { type: true } });
+  const request = await prisma.hrRequest.findFirst({
+    where: { id: requestId, tenantId: auth.tenantId },
+    include: { type: true },
+  });
   if (!request) throw ApiError.notFound('HR request');
   if (request.status !== 'submitted') {
     throw ApiError.conflict(`This request is already ${request.status}.`);
@@ -415,7 +433,9 @@ export async function decide(requestId: string, approve: boolean, note?: string)
 
   const subjectPartyId = await partyIdForEmployment(auth.tenantId, request.subjectEmploymentId);
   if (tripsSelfDealingBar(auth.partyId, request.requestedById, subjectPartyId)) {
-    throw ApiError.forbidden('The Self-Dealing Bar is unconditional: you may never decide a request you raised or that is about you.');
+    throw ApiError.forbidden(
+      'The Self-Dealing Bar is unconditional: you may never decide a request you raised or that is about you.',
+    );
   }
 
   const approval = await prisma.hrRequestApproval.findFirst({
@@ -549,7 +569,13 @@ export async function listDelegations() {
   });
 }
 
-export async function createDelegation(input: { toPartyId: string; fromDate: Date; toDate: Date; scope?: string; note?: string }) {
+export async function createDelegation(input: {
+  toPartyId: string;
+  fromDate: Date;
+  toDate: Date;
+  scope?: string;
+  note?: string;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'authority_delegations', verb: 'create' });
   const fromPartyId = auth.partyId;

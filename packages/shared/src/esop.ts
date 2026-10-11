@@ -23,7 +23,13 @@ export const VESTING_FREQUENCY_MONTHS: Record<VestingFrequency, number> = {
 };
 
 export const OPTION_GRANT_STATUSES = [
-  'proposed', 'granted', 'partly_vested', 'fully_vested', 'exercised', 'lapsed', 'cancelled',
+  'proposed',
+  'granted',
+  'partly_vested',
+  'fully_vested',
+  'exercised',
+  'lapsed',
+  'cancelled',
 ] as const;
 export type OptionGrantStatus = (typeof OPTION_GRANT_STATUSES)[number];
 

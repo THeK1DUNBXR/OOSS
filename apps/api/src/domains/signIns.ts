@@ -12,6 +12,7 @@
 
 import { EVENTS } from '@kaizen/shared';
 import { assertCan } from '../platform/permissions.js';
+import { assertCanAssignRole } from '../platform/roleAssignment.js';
 import { currentAuth } from '../platform/context.js';
 import { prisma } from '../platform/db.js';
 import { emit } from '../platform/eventBus.js';
@@ -55,6 +56,16 @@ export async function createOrResetSignIn(input: CreateSignInInput): Promise<Sig
   const person = await prisma.person.findFirst({ where: { id: input.personId } });
   if (!person) throw ApiError.notFound('Person');
 
+  // The affiliation is what carries the role. Creating or reactivating it makes
+  // the role effective, so it is an assignment, and it is checked before the
+  // principal and user below are written: a refused sign-in writes nothing.
+  const existingAffiliation = await prisma.affiliation.findFirst({
+    where: { partyId: person.id, roleSlug: input.roleSlug, affiliationType: input.roleSlug },
+  });
+  if (!existingAffiliation || existingAffiliation.status !== 'active') {
+    await assertCanAssignRole({ roleSlug: input.roleSlug, targetPartyId: person.id });
+  }
+
   const email = input.email.toLowerCase();
   const { principalId, password } = await ensureSignInPrincipal(email, Boolean(input.reset));
 
@@ -67,9 +78,6 @@ export async function createOrResetSignIn(input: CreateSignInInput): Promise<Sig
     user = await prisma.user.update({ where: { id: user.id }, data: { principalId } });
   }
 
-  const existingAffiliation = await prisma.affiliation.findFirst({
-    where: { partyId: person.id, roleSlug: input.roleSlug, affiliationType: input.roleSlug },
-  });
   const affiliation = existingAffiliation
     ? existingAffiliation.status === 'active'
       ? existingAffiliation
@@ -90,7 +98,6 @@ export async function createOrResetSignIn(input: CreateSignInInput): Promise<Sig
     subjectType: 'user',
     subjectId: user.id,
     after: { email, roleSlug: input.roleSlug, affiliationId: affiliation.id },
-    force: true,
   });
 
   await emit({

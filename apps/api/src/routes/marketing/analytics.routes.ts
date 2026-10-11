@@ -2,11 +2,23 @@ import { Router } from 'express';
 import { ATTRIBUTION_MODELS, type AttributionModel } from '@kaizen/shared';
 import { handler, str, date } from '../../lib/http.js';
 import { ApiError } from '../../platform/errors.js';
-import { overview, funnel, channels, campaigns, attributionSummary, cohorts, exportCsv, type ExportKind } from '../../domains/marketing/analytics.js';
+import {
+  overview,
+  funnel,
+  channels,
+  campaigns,
+  attributionSummary,
+  cohorts,
+  exportCsv,
+  type ExportKind,
+} from '../../domains/marketing/analytics.js';
 
 const router = Router();
 
-router.get('/overview', handler(async () => overview()));
+router.get(
+  '/overview',
+  handler(async () => overview()),
+);
 
 router.get(
   '/analytics/funnel',
@@ -39,7 +51,10 @@ router.get(
   }),
 );
 
-router.get('/analytics/cohorts', handler(async (req) => cohorts({ by: (str(req.query.by) as 'month' | undefined) ?? 'month' })));
+router.get(
+  '/analytics/cohorts',
+  handler(async (req) => cohorts({ by: (str(req.query.by) as 'month' | undefined) ?? 'month' })),
+);
 
 router.get(
   '/analytics/export',

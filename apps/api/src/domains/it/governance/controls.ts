@@ -37,7 +37,8 @@ export async function createControl(input: CreateControlInput) {
   if (!code) throw ApiError.badRequest('A control needs a code.');
   if (!title) throw ApiError.badRequest('A control needs a title.');
   if (!input.ownerPartyId) throw ApiError.badRequest('A control needs an owner.');
-  if (!input.frequencyDays || input.frequencyDays < 1) throw ApiError.badRequest('A control needs a positive test frequency in days.');
+  if (!input.frequencyDays || input.frequencyDays < 1)
+    throw ApiError.badRequest('A control needs a positive test frequency in days.');
 
   const existing = await prisma.itControl.findFirst({ where: { tenantId: auth.tenantId, code } });
   if (existing) throw ApiError.conflict(`'${code}' already names a control (${existing.recordCode}).`);
@@ -56,7 +57,12 @@ export async function createControl(input: CreateControlInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_control', subjectId: control.id, after: { recordCode, code, title } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_control',
+    subjectId: control.id,
+    after: { recordCode, code, title },
+  });
   return control;
 }
 
@@ -105,7 +111,9 @@ export async function listControls(filter: ControlFilter = {}) {
     orderBy: { code: 'asc' },
   });
   if (!filter.framework) return rows;
-  return rows.filter((r) => (r.frameworkRefs as Array<{ framework: string }>).some((f) => f.framework === filter.framework));
+  return rows.filter((r) =>
+    (r.frameworkRefs as Array<{ framework: string }>).some((f) => f.framework === filter.framework),
+  );
 }
 
 export async function controlDetail(id: string) {
@@ -113,7 +121,10 @@ export async function controlDetail(id: string) {
   const control = await prisma.itControl.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!control) throw ApiError.notFound('Control');
   await assertCan({ resource: RESOURCE, verb: 'view' });
-  const tests = await prisma.itControlTest.findMany({ where: { tenantId: auth.tenantId, controlId: id }, orderBy: { testedAt: 'desc' } });
+  const tests = await prisma.itControlTest.findMany({
+    where: { tenantId: auth.tenantId, controlId: id },
+    orderBy: { testedAt: 'desc' },
+  });
   return { ...control, tests };
 }
 
@@ -149,7 +160,12 @@ export async function recordTest(id: string, input: RecordTestInput) {
     data: { lastTestedAt: now, lastResult: input.result, testOverdueNotifiedAt: null },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_control_test', subjectId: test.id, after: { controlId: id, result: input.result } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_control_test',
+    subjectId: test.id,
+    after: { controlId: id, result: input.result },
+  });
   await emit({
     name: EVENTS.IT_CONTROL_TESTED,
     subject: { entityType: 'it_control', entityId: id, recordCode: control.recordCode },

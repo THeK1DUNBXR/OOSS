@@ -26,20 +26,10 @@ export type EmployeeDocumentKind = (typeof EMPLOYEE_DOCUMENT_KINDS)[number];
 export const REPORTING_LINE_KINDS = ['primary', 'dotted'] as const;
 export type ReportingLineKind = (typeof REPORTING_LINE_KINDS)[number];
 
-export const EMPLOYEE_STATUS_CHANGE_KINDS = [
-  'transfer',
-  'promotion',
-  'demotion',
-  'redesignation',
-] as const;
+export const EMPLOYEE_STATUS_CHANGE_KINDS = ['transfer', 'promotion', 'demotion', 'redesignation'] as const;
 export type EmployeeStatusChangeKind = (typeof EMPLOYEE_STATUS_CHANGE_KINDS)[number];
 
-export const EMPLOYEE_STATUS_CHANGE_STATES = [
-  'pending_approval',
-  'approved',
-  'rejected',
-  'applied',
-] as const;
+export const EMPLOYEE_STATUS_CHANGE_STATES = ['pending_approval', 'approved', 'rejected', 'applied'] as const;
 export type EmployeeStatusChangeState = (typeof EMPLOYEE_STATUS_CHANGE_STATES)[number];
 
 /**
@@ -48,20 +38,14 @@ export type EmployeeStatusChangeState = (typeof EMPLOYEE_STATUS_CHANGE_STATES)[n
  * back from `rejected` or `applied` — a correction is a new request, the
  * same discipline every lifecycle on this platform follows.
  */
-export const EMPLOYEE_STATUS_CHANGE_TRANSITIONS: Record<
-  EmployeeStatusChangeState,
-  EmployeeStatusChangeState[]
-> = {
+export const EMPLOYEE_STATUS_CHANGE_TRANSITIONS: Record<EmployeeStatusChangeState, EmployeeStatusChangeState[]> = {
   pending_approval: ['approved', 'rejected'],
   approved: ['applied'],
   rejected: [],
   applied: [],
 };
 
-export function canTransitionStatusChange(
-  from: EmployeeStatusChangeState,
-  to: EmployeeStatusChangeState,
-): boolean {
+export function canTransitionStatusChange(from: EmployeeStatusChangeState, to: EmployeeStatusChangeState): boolean {
   return EMPLOYEE_STATUS_CHANGE_TRANSITIONS[from]?.includes(to) ?? false;
 }
 

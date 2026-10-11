@@ -77,7 +77,12 @@ export function MarketingEvents() {
       />
 
       {items.length === 0 ? (
-        <Card><EmptyState message="No events yet." hint="An event's registrations feed straight into leads on completion." /></Card>
+        <Card>
+          <EmptyState
+            message="No events yet."
+            hint="An event's registrations feed straight into leads on completion."
+          />
+        </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
           <table className="table">
@@ -95,18 +100,33 @@ export function MarketingEvents() {
               {items.map((e) => (
                 <tr key={e.id}>
                   <td>
-                    <Link to={`/marketing/events/${e.id}`} className="text-xs font-medium text-ink-100 hover:text-accent-soft">
+                    <Link
+                      to={`/marketing/events/${e.id}`}
+                      className="text-xs font-medium text-ink-100 hover:text-accent-soft"
+                    >
                       {e.name}
                     </Link>
-                    <p className="text-2xs text-ink-500"><RecordCode code={e.recordCode} /></p>
+                    <p className="text-2xs text-ink-500">
+                      <RecordCode code={e.recordCode} />
+                    </p>
                   </td>
                   <td className="text-xs text-ink-300">{MARKETING_EVENT_KIND_LABELS[e.kind] ?? titleCase(e.kind)}</td>
-                  <td><span className={`chip border-div-${e.division}/40 text-div-${e.division}`}>{titleCase(e.division)}</span></td>
+                  <td>
+                    <span className={`chip border-div-${e.division}/40 text-div-${e.division}`}>
+                      {titleCase(e.division)}
+                    </span>
+                  </td>
                   <td className="text-2xs text-ink-400">{date(e.startAt)}</td>
                   <td className="text-right tabular-nums text-xs">
-                    {e.registeredCount}{e.capacity ? ` / ${e.capacity}` : ''} · {e.attendedCount} attended
+                    {e.registeredCount}
+                    {e.capacity ? ` / ${e.capacity}` : ''} · {e.attendedCount} attended
                   </td>
-                  <td><StatusChip status={e.status} tone={e.status === 'completed' ? 'good' : e.status === 'cancelled' ? 'bad' : 'neutral'} /></td>
+                  <td>
+                    <StatusChip
+                      status={e.status}
+                      tone={e.status === 'completed' ? 'good' : e.status === 'cancelled' ? 'bad' : 'neutral'}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -158,7 +178,12 @@ function CreateEventModal({ open, onClose }: { open: boolean; onClose: () => voi
       {error && <p className="text-2xs text-band-critical">{error}</p>}
       <TextInput label="Name" required value={name} onChange={setName} placeholder="Full Stack open day — September" />
       <Row>
-        <SelectInput label="Kind" value={kind} onChange={(v) => setKind(v as MarketingEventKind)} options={MARKETING_EVENT_KINDS.map((k) => ({ value: k, label: MARKETING_EVENT_KIND_LABELS[k] }))} />
+        <SelectInput
+          label="Kind"
+          value={kind}
+          onChange={(v) => setKind(v as MarketingEventKind)}
+          options={MARKETING_EVENT_KINDS.map((k) => ({ value: k, label: MARKETING_EVENT_KIND_LABELS[k] }))}
+        />
         <SelectInput label="Division" value={division} onChange={setDivision} options={DIVISIONS} />
       </Row>
       <Row>
@@ -167,10 +192,22 @@ function CreateEventModal({ open, onClose }: { open: boolean; onClose: () => voi
       </Row>
       <Row>
         <TextInput label="Venue" value={venue} onChange={setVenue} placeholder="Online, or a physical address" />
-        <SelectInput label="Campaign" value={campaignId} onChange={setCampaignId} placeholder="No campaign" options={(campaigns.data?.items ?? []).map((c) => ({ value: c.id, label: c.name }))} />
+        <SelectInput
+          label="Campaign"
+          value={campaignId}
+          onChange={setCampaignId}
+          placeholder="No campaign"
+          options={(campaigns.data?.items ?? []).map((c) => ({ value: c.id, label: c.name }))}
+        />
       </Row>
       <Row>
-        <TextInput label="Capacity" type="number" value={capacity} onChange={setCapacity} hint="leave blank for unlimited" />
+        <TextInput
+          label="Capacity"
+          type="number"
+          value={capacity}
+          onChange={setCapacity}
+          hint="leave blank for unlimited"
+        />
         <TextInput label="Planned cost" type="number" value={costPlanned} onChange={setCostPlanned} />
       </Row>
       <label className="flex items-center gap-2 text-sm text-ink-200">
@@ -185,7 +222,10 @@ function CreateEventModal({ open, onClose }: { open: boolean; onClose: () => voi
 // Detail
 // ---------------------------------------------------------------------------
 
-const TRANSITION_ACTIONS: Record<MarketingEventStatus, { label: string; hook: 'open' | 'close' | 'start' | 'complete' }[]> = {
+const TRANSITION_ACTIONS: Record<
+  MarketingEventStatus,
+  { label: string; hook: 'open' | 'close' | 'start' | 'complete' }[]
+> = {
   planned: [{ label: 'Open for registration', hook: 'open' }],
   open: [{ label: 'Close registration', hook: 'close' }],
   closed: [{ label: 'Go live', hook: 'start' }],
@@ -232,7 +272,11 @@ export function MarketingEventDetail() {
     <div>
       <PageHeader
         title={e.name}
-        subtitle={<span className="mono">{e.recordCode} · {MARKETING_EVENT_KIND_LABELS[e.kind]}</span>}
+        subtitle={
+          <span className="mono">
+            {e.recordCode} · {MARKETING_EVENT_KIND_LABELS[e.kind]}
+          </span>
+        }
         actions={
           <>
             {can('marketing_events:E') && (
@@ -272,7 +316,11 @@ export function MarketingEventDetail() {
             {can('marketing_events:export') && (
               <button
                 className="btn-quiet"
-                onClick={() => api.download(`/marketing/events/${id}/export`, `${e.recordCode}-registrations.csv`).catch((err) => setError(messageOf(err)))}
+                onClick={() =>
+                  api
+                    .download(`/marketing/events/${id}/export`, `${e.recordCode}-registrations.csv`)
+                    .catch((err) => setError(messageOf(err)))
+                }
               >
                 Export CSV
               </button>
@@ -281,17 +329,34 @@ export function MarketingEventDetail() {
         }
       />
 
-      {error && <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
 
       <div className="mb-5 grid gap-3 sm:grid-cols-4">
-        <Metric label="Status" value={<StatusChip status={e.status} tone={e.status === 'completed' ? 'good' : 'neutral'} />} noActionReason="the state machine drives this" />
-        <Metric label="Registered" value={e.registeredCount} sub={e.capacity ? `of ${e.capacity} seats` : 'no capacity limit'} noActionReason="see the table below" />
+        <Metric
+          label="Status"
+          value={<StatusChip status={e.status} tone={e.status === 'completed' ? 'good' : 'neutral'} />}
+          noActionReason="the state machine drives this"
+        />
+        <Metric
+          label="Registered"
+          value={e.registeredCount}
+          sub={e.capacity ? `of ${e.capacity} seats` : 'no capacity limit'}
+          noActionReason="see the table below"
+        />
         <Metric label="Attended" value={e.attendedCount} noActionReason="see the table below" />
         <Metric
           label="Cost per attendee"
           value={e.costPerAttendee === null ? '—' : money(e.costPerAttendee)}
           tone={e.costPerAttendee === null ? 'neutral' : 'neutral'}
-          noActionReason={e.costPerAttendee === null ? 'not yet measured — no actual cost recorded' : `${money(e.costActual)} actual ÷ ${e.attendedCount} attended`}
+          noActionReason={
+            e.costPerAttendee === null
+              ? 'not yet measured — no actual cost recorded'
+              : `${money(e.costActual)} actual ÷ ${e.attendedCount} attended`
+          }
         />
       </div>
 
@@ -299,10 +364,15 @@ export function MarketingEventDetail() {
         <div className="mb-5">
           <div className="mb-1 flex justify-between text-2xs text-ink-400">
             <span>Capacity</span>
-            <span>{e.registeredCount} / {e.capacity}</span>
+            <span>
+              {e.registeredCount} / {e.capacity}
+            </span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-ink-800">
-            <div className={`h-full rounded-full ${pct >= 100 ? 'bg-band-critical' : pct >= 80 ? 'bg-band-watch' : 'bg-accent'}`} style={{ width: `${pct}%` }} />
+            <div
+              className={`h-full rounded-full ${pct >= 100 ? 'bg-band-critical' : pct >= 80 ? 'bg-band-watch' : 'bg-accent'}`}
+              style={{ width: `${pct}%` }}
+            />
           </div>
         </div>
       )}
@@ -312,31 +382,60 @@ export function MarketingEventDetail() {
           <Card
             title="Registrations"
             bodyClassName="p-0"
-            actions={can('marketing_events:C') && <button className="btn btn-sm" onClick={() => setRegistering(true)}>Register somebody</button>}
+            actions={
+              can('marketing_events:C') && (
+                <button className="btn btn-sm" onClick={() => setRegistering(true)}>
+                  Register somebody
+                </button>
+              )
+            }
           >
             {items.length === 0 ? (
               <EmptyState message="Nobody has registered yet." />
             ) : (
               <table className="table">
                 <thead>
-                  <tr><th>Person</th><th>Status</th><th>Follow-up</th><th /></tr>
+                  <tr>
+                    <th>Person</th>
+                    <th>Status</th>
+                    <th>Follow-up</th>
+                    <th />
+                  </tr>
                 </thead>
                 <tbody>
                   {items.map((r) => (
                     <tr key={r.id}>
                       <td className="text-xs text-ink-100">
                         {r.personName}
-                        {r.leadRecordCode && <span className="ml-1.5 mono text-2xs text-ink-500">{r.leadRecordCode}</span>}
+                        {r.leadRecordCode && (
+                          <span className="ml-1.5 mono text-2xs text-ink-500">{r.leadRecordCode}</span>
+                        )}
                       </td>
-                      <td><StatusChip status={r.status} tone={r.status === 'attended' ? 'good' : r.status === 'no_show' || r.status === 'cancelled' ? 'bad' : 'neutral'} /></td>
+                      <td>
+                        <StatusChip
+                          status={r.status}
+                          tone={
+                            r.status === 'attended'
+                              ? 'good'
+                              : r.status === 'no_show' || r.status === 'cancelled'
+                                ? 'bad'
+                                : 'neutral'
+                          }
+                        />
+                      </td>
                       <td>
                         <label className="flex items-center gap-1.5 text-2xs text-ink-400">
                           <input
                             type="checkbox"
                             checked={r.followUpDone}
                             onChange={(ev) => {
-                              const note = ev.target.checked ? prompt('Follow-up note (optional)') ?? undefined : undefined;
-                              followUp.mutate({ id: r.id, done: ev.target.checked, note }, { onError: (err) => setError(messageOf(err)) });
+                              const note = ev.target.checked
+                                ? (prompt('Follow-up note (optional)') ?? undefined)
+                                : undefined;
+                              followUp.mutate(
+                                { id: r.id, done: ev.target.checked, note },
+                                { onError: (err) => setError(messageOf(err)) },
+                              );
                             }}
                           />
                           done
@@ -344,12 +443,34 @@ export function MarketingEventDetail() {
                       </td>
                       <td>
                         <div className="flex flex-wrap justify-end gap-1.5">
-                          {r.status === 'registered' && <button className="btn-quiet btn-sm" onClick={() => confirm.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}>Confirm</button>}
+                          {r.status === 'registered' && (
+                            <button
+                              className="btn-quiet btn-sm"
+                              onClick={() => confirm.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}
+                            >
+                              Confirm
+                            </button>
+                          )}
                           {(r.status === 'registered' || r.status === 'confirmed') && (
                             <>
-                              <button className="btn-quiet btn-sm" onClick={() => checkIn.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}>Check in</button>
-                              <button className="btn-quiet btn-sm" onClick={() => noShow.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}>No-show</button>
-                              <button className="btn-quiet btn-sm" onClick={() => cancelReg.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}>Cancel</button>
+                              <button
+                                className="btn-quiet btn-sm"
+                                onClick={() => checkIn.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}
+                              >
+                                Check in
+                              </button>
+                              <button
+                                className="btn-quiet btn-sm"
+                                onClick={() => noShow.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}
+                              >
+                                No-show
+                              </button>
+                              <button
+                                className="btn-quiet btn-sm"
+                                onClick={() => cancelReg.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}
+                              >
+                                Cancel
+                              </button>
                             </>
                           )}
                         </div>
@@ -401,7 +522,10 @@ function RegisterModal({ eventId, open, onClose }: { eventId: string; open: bool
         register.mutateAsync(
           who === 'existing'
             ? { personId, source: 'manual' }
-            : { person: { fullName, primaryPhone: primaryPhone || undefined, primaryEmail: primaryEmail || undefined }, source: 'manual' },
+            : {
+                person: { fullName, primaryPhone: primaryPhone || undefined, primaryEmail: primaryEmail || undefined },
+                source: 'manual',
+              },
         )
       }
     >

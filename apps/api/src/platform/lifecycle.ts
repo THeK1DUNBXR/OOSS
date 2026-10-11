@@ -92,6 +92,18 @@ export async function transition<S extends string, E extends string>(
     ? `${input.eventPrefix}.${input.eventObject}.${input.verbs[input.event]}`
     : hrTransitionEvent(input.eventObject, input.verbs[input.event]);
 
+  // Audit before emit, so that a refused audit (an unregistered subject throws)
+  // stops the transition before any event is published. Emitting first let
+  // subscribers act on a transition that then failed to be recorded.
+  await auditWrite({
+    action: 'update',
+    subjectType: input.subjectType,
+    subjectId: input.subjectId,
+    before: { status: input.from },
+    after: { status: to, ...input.detail },
+    meta: { transition: input.event, machine: input.machine.name },
+  });
+
   await emit({
     name: eventName,
     subject: { entityType: input.subjectType, entityId: input.subjectId, recordCode: input.recordCode },
@@ -103,16 +115,6 @@ export async function transition<S extends string, E extends string>(
     impact: { domains: [input.impactDomain ?? 'hr'] },
   });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: input.subjectType,
-    subjectId: input.subjectId,
-    before: { status: input.from },
-    after: { status: to, ...input.detail },
-    meta: { transition: input.event, machine: input.machine.name },
-    force: true,
-  });
-
   return { from: input.from, to, eventName };
 }
 
@@ -122,10 +124,7 @@ export async function transition<S extends string, E extends string>(
  * viewer cannot press is a different problem from a transition that does not
  * exist.
  */
-export function availableTransitions<S extends string, E extends string>(
-  machine: Machine<S, E>,
-  state: S,
-): E[] {
+export function availableTransitions<S extends string, E extends string>(machine: Machine<S, E>, state: S): E[] {
   return machine.allowedEvents(state);
 }
 

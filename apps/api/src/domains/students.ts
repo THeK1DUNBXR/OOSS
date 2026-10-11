@@ -24,6 +24,7 @@
 import {
   EVENTS,
   FUNDING_FRAMEWORKS,
+  istDateKey,
   FUNDING_SOURCES,
   type FundingFramework,
   type FundingSource,
@@ -32,16 +33,28 @@ import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
-import { auditWrite } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { findOrCreatePerson, normalisePhone, normaliseEmail } from './identity.js';
-import { requireGuardianConsentForMinor } from './compliance/privacy.js';
+import {
+  assertMinorHasGuardian,
+  encryptField,
+  parseStatedDateOfBirth,
+  requireGuardianConsentForMinor,
+} from './compliance/privacy.js';
+
+registerGovernedEntities('edu', ['student_profile']);
 
 export const STUDENT_STATUSES = ['prospective', 'active', 'alumni', 'withdrawn'] as const;
 export type StudentStatus = (typeof STUDENT_STATUSES)[number];
 
 export interface StudentInput {
   fullName: string;
+  /** Stated date of birth, recorded on the person when none is on file. FX-64. */
+  dateOfBirth?: string | null;
+  /** The enrolling user's attestation that the learner is 18 or over, for a
+   * person with no date of birth on file. FX-64. */
+  adultAttested?: boolean;
   primaryPhone?: string | null;
   primaryEmail?: string | null;
   registrationNumber?: string | null;
@@ -239,12 +252,42 @@ export async function attachStudentProfile(personId: string, input: StudentInput
     input.institutionId ?? null,
   );
 
+  // A date of birth typed here is recorded on the person when none is on file,
+  // as enrolStudent does. One on file that differs is refused, not preferred:
+  // the minor rule turns on it. FX-64.
+  const statedDob = input.dateOfBirth ? parseStatedDateOfBirth(input.dateOfBirth) : null;
+  if (person.dateOfBirth && statedDob && istDateKey(statedDob) !== istDateKey(person.dateOfBirth)) {
+    throw ApiError.conflict(
+      'This person already has a different date of birth on file. Correct it on their record first.',
+    );
+  }
+  const dateOfBirth = person.dateOfBirth ?? statedDob;
+  const adultAttested = input.adultAttested === true;
+  // Refused before the date of birth is written, so a refusal changes nothing.
+  assertMinorHasGuardian({
+    dateOfBirth,
+    adultAttested,
+    guardianName: input.guardianName,
+    guardianPhone: input.guardianPhone,
+  });
+  if (!person.dateOfBirth && statedDob) {
+    await prisma.person.update({ where: { id: personId }, data: { dateOfBirth: statedDob } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'person',
+      subjectId: personId,
+      before: { dateOfBirth: null },
+      after: { dateOfBirth: statedDob },
+    });
+  }
+
   // DPDP: a minor cannot be enrolled without a named guardian and a recorded
   // guardian consent (CMP-DPD-003). `null` when the person is not (measurably)
   // a minor — nothing to gate, nothing to stamp.
   const guardianConsentId = await requireGuardianConsentForMinor({
     personId,
-    dateOfBirth: person.dateOfBirth,
+    dateOfBirth,
+    adultAttested,
     guardianName: input.guardianName,
     guardianPhone: input.guardianPhone,
   });
@@ -264,8 +307,9 @@ export async function attachStudentProfile(personId: string, input: StudentInput
       placeOfSupply: input.placeOfSupply ?? null,
       gstin: input.gstin ?? null,
       attachedById: auth.partyId,
-      guardianName: input.guardianName ?? null,
-      guardianPhone: input.guardianPhone ?? null,
+      // Regulated: encrypted like PAN and bank values (CMP-DPD-004). FX-64.
+      guardianName: input.guardianName?.trim() ? encryptField(input.guardianName.trim()) : null,
+      guardianPhone: input.guardianPhone?.trim() ? encryptField(input.guardianPhone.trim()) : null,
       guardianConsentId,
     },
   });
@@ -275,6 +319,9 @@ export async function attachStudentProfile(personId: string, input: StudentInput
     subjectType: 'student_profile',
     subjectId: profile.id,
     after: { registrationNumber: profile.registrationNumber, status: profile.status },
+    // Who said the learner was an adult, when the rule was released on that
+    // statement rather than on a date of birth. FX-64.
+    meta: adultAttested && dateOfBirth === null ? { adultAttestedBy: auth.partyId } : undefined,
   });
   await emit({
     name: EVENTS.PERSON_CREATED,
@@ -303,8 +350,7 @@ export async function updateStudent(id: string, input: Partial<StudentInput>): P
   const next = {
     funding: (input.funding ?? profile.funding) as FundingSource,
     sponsorId: input.sponsorId !== undefined ? input.sponsorId : profile.sponsorId,
-    fundingFramework:
-      input.fundingFramework !== undefined ? input.fundingFramework : profile.fundingFramework,
+    fundingFramework: input.fundingFramework !== undefined ? input.fundingFramework : profile.fundingFramework,
     institutionId: input.institutionId !== undefined ? input.institutionId : profile.institutionId,
   };
   await assertFundingCoherent(next.funding, next.sponsorId, next.fundingFramework, next.institutionId);
@@ -490,9 +536,7 @@ function toView(row: Row, enrolmentCount: number): StudentView {
       : null,
     funding: row.funding,
     fundingFramework: row.fundingFramework,
-    sponsor: row.sponsor
-      ? { id: row.sponsor.id, name: row.sponsor.name, recordCode: row.sponsor.recordCode }
-      : null,
+    sponsor: row.sponsor ? { id: row.sponsor.id, name: row.sponsor.name, recordCode: row.sponsor.recordCode } : null,
     deliveryLocation: row.deliveryLocation,
     billable: isBillable(row.funding),
     enrolmentCount,
@@ -512,9 +556,6 @@ async function assertRegistrationFree(registrationNumber: string | null, exceptI
     include: { person: { select: { fullName: true } } },
   });
   if (clash) {
-    throw ApiError.conflict(
-      `Registration number ${registrationNumber} already belongs to ${clash.person.fullName}.`,
-    );
+    throw ApiError.conflict(`Registration number ${registrationNumber} already belongs to ${clash.person.fullName}.`);
   }
 }
-

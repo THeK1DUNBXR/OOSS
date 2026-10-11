@@ -1,5 +1,17 @@
+/// Only APPROVED rows are ever resolved. DRAFT and HOLD exist so a pack can be
+/// loaded and reviewed before it changes a payslip or a filing.
+enum StatutoryRuleStatus {
+  DRAFT
+  APPROVED
+  HOLD
+}
+
 /// Versioned statutory parameters. Values are data, not application constants.
 /// A null tenantId is a platform pack row; tenant overrides remain possible.
+/// Overlap of [effectiveFrom, effectiveTo) among APPROVED rows per (tenant, domain,
+/// jurisdiction, key) is enforced by a partial EXCLUDE constraint in the migration,
+/// which Prisma cannot model. DRAFT and HOLD rows do not resolve, so they may overlap:
+/// a next-year rate can be staged while this year's open-ended rule is still APPROVED.
 model StatutoryRule {
   id            String    @id @default(cuid())
   tenantId      String?
@@ -9,7 +21,17 @@ model StatutoryRule {
   effectiveFrom DateTime  @db.Date
   effectiveTo   DateTime? @db.Date
   value         Json
+  /// Citation: notification, circular or gazette reference. Required non-blank
+  /// by a CHECK in the migration.
   source        String
+
+  status     StatutoryRuleStatus @default(DRAFT)
+  /// The author, recorded so approval can refuse the author. Null only for rows
+  /// written before this column existed; those cannot be approved until re-entered,
+  /// because maker and checker cannot be shown to differ.
+  createdBy  String?
+  approvedBy String?
+  approvedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

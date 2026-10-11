@@ -72,7 +72,11 @@ export function proratedAccrual(
  * the difference between the cap and the balance already standing, floored
  * at zero. `maxBalanceDays` of `null` means uncapped.
  */
-export function creditableWithinCap(currentBalance: number, proposedCredit: number, maxBalanceDays: number | null): number {
+export function creditableWithinCap(
+  currentBalance: number,
+  proposedCredit: number,
+  maxBalanceDays: number | null,
+): number {
   if (maxBalanceDays == null) return round2(proposedCredit);
   return round2(Math.max(0, Math.min(proposedCredit, maxBalanceDays - currentBalance)));
 }
@@ -168,7 +172,10 @@ export interface PolicyValidationResult {
  * statements about what is wrong — never a blanket "not allowed" — so a
  * surface can show the employee exactly what to fix.
  */
-export function validateLeaveRequestAgainstPolicy(rule: PolicyRuleFacts, facts: LeaveRequestFacts): PolicyValidationResult {
+export function validateLeaveRequestAgainstPolicy(
+  rule: PolicyRuleFacts,
+  facts: LeaveRequestFacts,
+): PolicyValidationResult {
   const violations: PolicyViolation[] = [];
   const effectiveDays = effectiveLeaveDays(facts.startDate, facts.endDate, facts.workingDays, rule.sandwichRule);
 
@@ -196,7 +203,12 @@ export function validateLeaveRequestAgainstPolicy(rule: PolicyRuleFacts, facts: 
     });
   }
 
-  if (rule.applicableGender && rule.applicableGender !== 'any' && facts.gender && facts.gender !== rule.applicableGender) {
+  if (
+    rule.applicableGender &&
+    rule.applicableGender !== 'any' &&
+    facts.gender &&
+    facts.gender !== rule.applicableGender
+  ) {
     violations.push({
       code: 'gender_not_applicable',
       message: `This leave type applies to ${rule.applicableGender} employees only.`,

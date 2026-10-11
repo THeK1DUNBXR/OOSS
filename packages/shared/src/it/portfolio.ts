@@ -39,7 +39,7 @@ export type ItTechDebtSeverity = (typeof IT_TECH_DEBT_SEVERITIES)[number];
 // ---------------------------------------------------------------------------
 
 export type ItInitiativeStage =
-  | 'idea' | 'assessed' | 'approved' | 'in_flight' | 'delivered' | 'benefits_realised' | 'cancelled';
+  'idea' | 'assessed' | 'approved' | 'in_flight' | 'delivered' | 'benefits_realised' | 'cancelled';
 
 export type ItInitiativeEvent = 'ASSESS' | 'APPROVE' | 'START' | 'DELIVER' | 'REALISE_BENEFITS' | 'CANCEL';
 
@@ -162,7 +162,12 @@ export interface BurnAheadResult {
  * `marginPct` — e.g. 60% of the year gone but 80% of the budget spent, on a
  * 15% margin, is 20 points ahead and exceeds it.
  */
-export function burnAhead(planned: number, actual: number, elapsedFraction: number, marginPct: number): BurnAheadResult {
+export function burnAhead(
+  planned: number,
+  actual: number,
+  elapsedFraction: number,
+  marginPct: number,
+): BurnAheadResult {
   const burnFraction = planned > 0 ? actual / planned : actual > 0 ? Infinity : 0;
   const aheadBy = burnFraction - elapsedFraction;
   return { burnFraction, aheadBy, exceeds: aheadBy > marginPct / 100 };

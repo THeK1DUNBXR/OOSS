@@ -26,7 +26,13 @@ export async function seedPayroll(): Promise<void> {
   const esi = await prisma.esiRateTable.findFirst({ where: { tenantId } });
   if (!esi) {
     await prisma.esiRateTable.create({
-      data: { tenantId, effectiveFrom: EFFECTIVE_FROM, employeeRate: 0.0075, employerRate: 0.0325, wageCeiling: 21_000 },
+      data: {
+        tenantId,
+        effectiveFrom: EFFECTIVE_FROM,
+        employeeRate: 0.0075,
+        employerRate: 0.0325,
+        wageCeiling: 21_000,
+      },
     });
   }
 
@@ -48,7 +54,8 @@ export async function seedPayroll(): Promise<void> {
           { minGross: 60_001, maxGross: 75_000, halfYearlyAmount: 1025 },
           { minGross: 75_001, maxGross: null, halfYearlyAmount: 1250 },
         ],
-        confirmNote: 'Confirm against the Greater Chennai Corporation (or the applicable local body) professional tax schedule currently in force.',
+        confirmNote:
+          'Confirm against the Greater Chennai Corporation (or the applicable local body) professional tax schedule currently in force.',
       },
     });
   }
@@ -63,7 +70,8 @@ export async function seedPayroll(): Promise<void> {
         employeeAmount: 20,
         employerAmount: 40,
         dueMonth: 12,
-        confirmNote: 'Confirm the current Tamil Nadu Labour Welfare Fund Act contribution against the latest notification.',
+        confirmNote:
+          'Confirm the current Tamil Nadu Labour Welfare Fund Act contribution against the latest notification.',
       },
     });
   }
@@ -71,7 +79,13 @@ export async function seedPayroll(): Promise<void> {
   const mw = await prisma.minimumWageTable.findFirst({ where: { tenantId, state: 'Tamil Nadu', category: 'general' } });
   if (!mw) {
     await prisma.minimumWageTable.create({
-      data: { tenantId, state: 'Tamil Nadu', category: 'general', monthlyAmount: 12_000, effectiveFrom: EFFECTIVE_FROM },
+      data: {
+        tenantId,
+        state: 'Tamil Nadu',
+        category: 'general',
+        monthlyAmount: 12_000,
+        effectiveFrom: EFFECTIVE_FROM,
+      },
     });
   }
 }

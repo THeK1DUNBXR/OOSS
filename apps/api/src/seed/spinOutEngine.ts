@@ -33,12 +33,17 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { findOrCreatePerson } from '../domains/identity.js';
 import { companyProfile } from '../domains/companyProfile.js';
 import {
-  createShareClass, createHolder, issueCertificateFor, nextDistinctiveStart, nextFolioNumber,
+  createShareClass,
+  createHolder,
+  issueCertificateFor,
+  nextDistinctiveStart,
+  nextFolioNumber,
 } from '../domains/equity.js';
 
 const SAMPLE_SIZE = 5;
 
-export type SpinOutModel = 'transactions' | 'employmentRelationships' | 'courses' | 'cohorts' | 'enrollments' | 'organizations';
+export type SpinOutModel =
+  'transactions' | 'employmentRelationships' | 'courses' | 'cohorts' | 'enrollments' | 'organizations';
 
 const MODEL_LABEL: Record<SpinOutModel, string> = {
   transactions: 'Transactions',
@@ -49,9 +54,18 @@ const MODEL_LABEL: Record<SpinOutModel, string> = {
   organizations: 'Organisations',
 };
 
-interface Bucket { count: number; sample: string[] }
-interface RefusedRow { code: string; reason: string }
-interface RefusedBucket { count: number; sample: RefusedRow[] }
+interface Bucket {
+  count: number;
+  sample: string[];
+}
+interface RefusedRow {
+  code: string;
+  reason: string;
+}
+interface RefusedBucket {
+  count: number;
+  sample: RefusedRow[];
+}
 
 class Ledger {
   carried: Partial<Record<SpinOutModel, Bucket>> = {};
@@ -88,7 +102,13 @@ async function resolveOrgUnitDivision(orgUnitId: string): Promise<string | null>
 }
 
 /** Names which record this transaction is linked to, when it is linked to one this script does not carry. */
-function transactionLinkName(t: { payrollRunId: string | null; invoiceId: string | null; vendorBillId: string | null; fixedAssetId: string | null; loanId: string | null }): string | null {
+function transactionLinkName(t: {
+  payrollRunId: string | null;
+  invoiceId: string | null;
+  vendorBillId: string | null;
+  fixedAssetId: string | null;
+  loanId: string | null;
+}): string | null {
   if (t.invoiceId) return 'an invoice';
   if (t.vendorBillId) return 'a vendor bill';
   if (t.payrollRunId) return 'a payroll run';
@@ -98,29 +118,72 @@ function transactionLinkName(t: { payrollRunId: string | null; invoiceId: string
 }
 
 interface CarriedTransaction {
-  id: string; recordCode: string; accountName: string; categoryName: string | null;
-  txnDate: Date; direction: string; amount: unknown; currency: string;
-  division: string | null; counterparty: string | null; method: string; reference: string | null; note: string | null;
+  id: string;
+  recordCode: string;
+  accountName: string;
+  categoryName: string | null;
+  txnDate: Date;
+  direction: string;
+  amount: unknown;
+  currency: string;
+  division: string | null;
+  counterparty: string | null;
+  method: string;
+  reference: string | null;
+  note: string | null;
 }
 interface CarriedEmployment {
-  id: string; recordCode: string; personId: string;
-  hireEffectiveDate: Date; status: string; panNumber: string | null; aadhaarReference: string | null; uanNumber: string | null;
+  id: string;
+  recordCode: string;
+  personId: string;
+  hireEffectiveDate: Date;
+  status: string;
+  panNumber: string | null;
+  aadhaarReference: string | null;
+  uanNumber: string | null;
 }
 interface CarriedCourse {
-  id: string; recordCode: string; name: string; code: string; description: string | null; durationWeeks: number | null;
-  feeAmount: unknown; gstRate: unknown; hsnSac: string | null; division: string;
+  id: string;
+  recordCode: string;
+  name: string;
+  code: string;
+  description: string | null;
+  durationWeeks: number | null;
+  feeAmount: unknown;
+  gstRate: unknown;
+  hsnSac: string | null;
+  division: string;
 }
 interface CarriedCohort {
-  id: string; recordCode: string; courseId: string; name: string; startDate: Date; endDate: Date | null;
-  capacity: number; status: string;
+  id: string;
+  recordCode: string;
+  courseId: string;
+  name: string;
+  startDate: Date;
+  endDate: Date | null;
+  capacity: number;
+  status: string;
 }
 interface CarriedEnrollment {
-  id: string; recordCode: string; personId: string; cohortId: string; status: string;
-  enrolledAt: Date | null; completedAt: Date | null; progressPct: number; attendancePct: number;
+  id: string;
+  recordCode: string;
+  personId: string;
+  cohortId: string;
+  status: string;
+  enrolledAt: Date | null;
+  completedAt: Date | null;
+  progressPct: number;
+  attendancePct: number;
 }
 interface CarriedOrganization {
-  id: string; recordCode: string; kind: string; roles: string[]; name: string; website: string | null;
-  locations: unknown; tags: string[];
+  id: string;
+  recordCode: string;
+  kind: string;
+  roles: string[];
+  name: string;
+  website: string | null;
+  locations: unknown;
+  tags: string[];
 }
 
 interface Candidates {
@@ -145,26 +208,49 @@ async function collectCandidates(holdingTenantId: string, division: Division): P
 
     // ---- Transactions -------------------------------------------------
     const txnRows = await prisma.transaction.findMany({
-      where: { tenantId: holdingTenantId, deletedAt: null, migratedToTenantId: null, division: { in: [division, 'shared'] } },
+      where: {
+        tenantId: holdingTenantId,
+        deletedAt: null,
+        migratedToTenantId: null,
+        division: { in: [division, 'shared'] },
+      },
       include: { account: true, category: true },
       orderBy: { txnDate: 'asc' },
     });
     const transactions: CarriedTransaction[] = [];
     for (const t of txnRows) {
       if (t.division === 'shared') {
-        ledger.refuse('transactions', t.recordCode, 'Tagged to the shared division, so it cannot be attributed to one subsidiary. Split it before the spin-out.');
+        ledger.refuse(
+          'transactions',
+          t.recordCode,
+          'Tagged to the shared division, so it cannot be attributed to one subsidiary. Split it before the spin-out.',
+        );
         continue;
       }
       const linked = transactionLinkName(t);
       if (linked) {
-        ledger.refuse('transactions', t.recordCode, `Linked to ${linked}, which this script does not carry. Record the equivalent directly in the subsidiary instead.`);
+        ledger.refuse(
+          'transactions',
+          t.recordCode,
+          `Linked to ${linked}, which this script does not carry. Record the equivalent directly in the subsidiary instead.`,
+        );
         continue;
       }
       ledger.carry('transactions', t.recordCode);
       transactions.push({
-        id: t.id, recordCode: t.recordCode, accountName: t.account.name, categoryName: t.category?.name ?? null,
-        txnDate: t.txnDate, direction: t.direction, amount: t.amount, currency: t.currency,
-        division: t.division, counterparty: t.counterparty, method: t.method, reference: t.reference, note: t.note,
+        id: t.id,
+        recordCode: t.recordCode,
+        accountName: t.account.name,
+        categoryName: t.category?.name ?? null,
+        txnDate: t.txnDate,
+        direction: t.direction,
+        amount: t.amount,
+        currency: t.currency,
+        division: t.division,
+        counterparty: t.counterparty,
+        method: t.method,
+        reference: t.reference,
+        note: t.note,
       });
     }
 
@@ -179,25 +265,42 @@ async function collectCandidates(holdingTenantId: string, division: Division): P
       const divisions = new Set<string | null>();
       for (const a of e.assignments) divisions.add(await resolveOrgUnitDivision(a.position.orgUnitId));
       if (divisions.size > 1) {
-        ledger.refuse('employmentRelationships', e.recordCode, 'Holds more than one current assignment, in different divisions. Resolve which unit this person moves with before the spin-out.');
+        ledger.refuse(
+          'employmentRelationships',
+          e.recordCode,
+          'Holds more than one current assignment, in different divisions. Resolve which unit this person moves with before the spin-out.',
+        );
         continue;
       }
       const div = [...divisions][0];
       if (div === 'shared') {
-        ledger.refuse('employmentRelationships', e.recordCode, 'Assigned to a shared unit, not one division. Reassign before the spin-out if this person is moving.');
+        ledger.refuse(
+          'employmentRelationships',
+          e.recordCode,
+          'Assigned to a shared unit, not one division. Reassign before the spin-out if this person is moving.',
+        );
         continue;
       }
       if (div !== division) continue; // a different division's employee — not in scope, not a refusal
       const person = await prisma.person.findFirst({ where: { id: e.personId } });
       if (!person?.primaryEmail && !person?.primaryPhone) {
-        ledger.refuse('employmentRelationships', e.recordCode, 'No email or phone on file for this person, so they cannot be resolved in the new tenant.');
+        ledger.refuse(
+          'employmentRelationships',
+          e.recordCode,
+          'No email or phone on file for this person, so they cannot be resolved in the new tenant.',
+        );
         continue;
       }
       ledger.carry('employmentRelationships', e.recordCode);
       employmentRelationships.push({
-        id: e.id, recordCode: e.recordCode, personId: e.personId,
-        hireEffectiveDate: e.hireEffectiveDate, status: e.status,
-        panNumber: e.panNumber, aadhaarReference: e.aadhaarReference, uanNumber: e.uanNumber,
+        id: e.id,
+        recordCode: e.recordCode,
+        personId: e.personId,
+        hireEffectiveDate: e.hireEffectiveDate,
+        status: e.status,
+        panNumber: e.panNumber,
+        aadhaarReference: e.aadhaarReference,
+        uanNumber: e.uanNumber,
       });
     }
 
@@ -207,46 +310,79 @@ async function collectCandidates(holdingTenantId: string, division: Division): P
     const carriedCourseIds = new Set<string>();
     for (const c of courseRows) {
       if (c.division === 'shared') {
-        ledger.refuse('courses', c.recordCode, 'Tagged to the shared division, so it cannot be attributed to one subsidiary.');
+        ledger.refuse(
+          'courses',
+          c.recordCode,
+          'Tagged to the shared division, so it cannot be attributed to one subsidiary.',
+        );
         continue;
       }
       if (c.division !== division) continue;
       ledger.carry('courses', c.recordCode);
       courses.push({
-        id: c.id, recordCode: c.recordCode, name: c.name, code: c.code, description: c.description,
-        durationWeeks: c.durationWeeks, feeAmount: c.feeAmount, gstRate: c.gstRate, hsnSac: c.hsnSac, division: c.division,
+        id: c.id,
+        recordCode: c.recordCode,
+        name: c.name,
+        code: c.code,
+        description: c.description,
+        durationWeeks: c.durationWeeks,
+        feeAmount: c.feeAmount,
+        gstRate: c.gstRate,
+        hsnSac: c.hsnSac,
+        division: c.division,
       });
       carriedCourseIds.add(c.id);
     }
 
     const cohortRows = carriedCourseIds.size
-      ? await prisma.cohort.findMany({ where: { tenantId: holdingTenantId, migratedToTenantId: null, courseId: { in: [...carriedCourseIds] } } })
+      ? await prisma.cohort.findMany({
+          where: { tenantId: holdingTenantId, migratedToTenantId: null, courseId: { in: [...carriedCourseIds] } },
+        })
       : [];
     const cohorts: CarriedCohort[] = [];
     const carriedCohortIds = new Set<string>();
     for (const co of cohortRows) {
       ledger.carry('cohorts', co.recordCode);
       cohorts.push({
-        id: co.id, recordCode: co.recordCode, courseId: co.courseId, name: co.name,
-        startDate: co.startDate, endDate: co.endDate, capacity: co.capacity, status: co.status,
+        id: co.id,
+        recordCode: co.recordCode,
+        courseId: co.courseId,
+        name: co.name,
+        startDate: co.startDate,
+        endDate: co.endDate,
+        capacity: co.capacity,
+        status: co.status,
       });
       carriedCohortIds.add(co.id);
     }
 
     const enrollmentRows = carriedCohortIds.size
-      ? await prisma.enrollment.findMany({ where: { tenantId: holdingTenantId, migratedToTenantId: null, cohortId: { in: [...carriedCohortIds] } } })
+      ? await prisma.enrollment.findMany({
+          where: { tenantId: holdingTenantId, migratedToTenantId: null, cohortId: { in: [...carriedCohortIds] } },
+        })
       : [];
     const enrollments: CarriedEnrollment[] = [];
     for (const en of enrollmentRows) {
       const person = await prisma.person.findFirst({ where: { id: en.personId } });
       if (!person?.primaryEmail && !person?.primaryPhone) {
-        ledger.refuse('enrollments', en.recordCode, 'No email or phone on file for this learner, so they cannot be resolved in the new tenant.');
+        ledger.refuse(
+          'enrollments',
+          en.recordCode,
+          'No email or phone on file for this learner, so they cannot be resolved in the new tenant.',
+        );
         continue;
       }
       ledger.carry('enrollments', en.recordCode);
       enrollments.push({
-        id: en.id, recordCode: en.recordCode, personId: en.personId, cohortId: en.cohortId, status: en.status,
-        enrolledAt: en.enrolledAt, completedAt: en.completedAt, progressPct: en.progressPct, attendancePct: en.attendancePct,
+        id: en.id,
+        recordCode: en.recordCode,
+        personId: en.personId,
+        cohortId: en.cohortId,
+        status: en.status,
+        enrolledAt: en.enrolledAt,
+        completedAt: en.completedAt,
+        progressPct: en.progressPct,
+        attendancePct: en.attendancePct,
       });
     }
 
@@ -267,7 +403,11 @@ async function collectCandidates(holdingTenantId: string, division: Division): P
       if (divs.size > 1) {
         const org = await prisma.organization.findFirst({ where: { id: orgId } });
         if (org && org.migratedToTenantId === null) {
-          ledger.refuse('organizations', org.recordCode, `Invoiced from more than one division (${[...divs].sort().join(', ')}); not attributable to a single subsidiary.`);
+          ledger.refuse(
+            'organizations',
+            org.recordCode,
+            `Invoiced from more than one division (${[...divs].sort().join(', ')}); not attributable to a single subsidiary.`,
+          );
         }
         continue;
       }
@@ -275,17 +415,29 @@ async function collectCandidates(holdingTenantId: string, division: Division): P
       if (only === 'shared') {
         const org = await prisma.organization.findFirst({ where: { id: orgId } });
         if (org && org.migratedToTenantId === null) {
-          ledger.refuse('organizations', org.recordCode, 'Invoiced under the shared division; not attributable to a single subsidiary.');
+          ledger.refuse(
+            'organizations',
+            org.recordCode,
+            'Invoiced under the shared division; not attributable to a single subsidiary.',
+          );
         }
         continue;
       }
       if (only !== division) continue;
-      const org = await prisma.organization.findFirst({ where: { id: orgId, deletedAt: null, migratedToTenantId: null } });
+      const org = await prisma.organization.findFirst({
+        where: { id: orgId, deletedAt: null, migratedToTenantId: null },
+      });
       if (!org) continue;
       ledger.carry('organizations', org.recordCode);
       organizations.push({
-        id: org.id, recordCode: org.recordCode, kind: org.kind, roles: org.roles, name: org.name,
-        website: org.website, locations: org.locations, tags: org.tags,
+        id: org.id,
+        recordCode: org.recordCode,
+        kind: org.kind,
+        roles: org.roles,
+        name: org.name,
+        website: org.website,
+        locations: org.locations,
+        tags: org.tags,
       });
     }
 
@@ -324,7 +476,11 @@ async function findSubsidiary(holdingTenantId: string, division: Division) {
  * `assertNotHoldingsAncestor` in `domains/equity.ts`) of a tenant that is not
  * its own.
  */
-export async function previewSpinOut(holdingTenantId: string, division: Division, deep = true): Promise<SpinOutPreview> {
+export async function previewSpinOut(
+  holdingTenantId: string,
+  division: Division,
+  deep = true,
+): Promise<SpinOutPreview> {
   const holding = await unscopedPrisma.tenant.findFirstOrThrow({ where: { id: holdingTenantId } });
   const subsidiaryTenant = await findSubsidiary(holdingTenantId, division);
   const candidates = await collectCandidates(holdingTenantId, division);
@@ -338,26 +494,38 @@ export async function previewSpinOut(holdingTenantId: string, division: Division
   } else if (subsidiaryTenant.parentTenantId !== holdingTenantId) {
     blockers.push(`Tenant "${subsidiaryTenant.slug}" does not name "${holding.slug}" as its parent.`);
   } else if (deep) {
-    const registerCount = await asSystem(subsidiaryTenant.id, async () => await prisma.shareClass.count({ where: { tenantId: subsidiaryTenant.id } }));
+    const registerCount = await asSystem(
+      subsidiaryTenant.id,
+      async () => await prisma.shareClass.count({ where: { tenantId: subsidiaryTenant.id } }),
+    );
     if (registerCount > 0) {
-      blockers.push(`"${subsidiaryTenant.slug}" already has ${registerCount} share class(es) on its register. A spin-out is only the first thing that happens to a subsidiary.`);
+      blockers.push(
+        `"${subsidiaryTenant.slug}" already has ${registerCount} share class(es) on its register. A spin-out is only the first thing that happens to a subsidiary.`,
+      );
     }
-    const signatories = await asSystem(subsidiaryTenant.id, async () => (await companyProfile()).certificateSignatories as unknown[]);
+    const signatories = await asSystem(
+      subsidiaryTenant.id,
+      async () => (await companyProfile()).certificateSignatories as unknown[],
+    );
     if (!Array.isArray(signatories) || signatories.length < 2) {
-      blockers.push(`"${subsidiaryTenant.slug}" has fewer than two certificate signatories on its company profile. Set them before the opening allotment can issue certificates.`);
+      blockers.push(
+        `"${subsidiaryTenant.slug}" has fewer than two certificate signatories on its company profile. Set them before the opening allotment can issue certificates.`,
+      );
     }
   }
 
   return {
     division,
     holding: { tenantId: holding.id, slug: holding.slug },
-    subsidiary: subsidiaryTenant ? { tenantId: subsidiaryTenant.id, slug: subsidiaryTenant.slug, name: subsidiaryTenant.name } : null,
+    subsidiary: subsidiaryTenant
+      ? { tenantId: subsidiaryTenant.id, slug: subsidiaryTenant.slug, name: subsidiaryTenant.name }
+      : null,
     ready: blockers.length === 0,
     blockers,
     carried: candidates.ledger.carried,
     refused: candidates.ledger.refused,
     openingAllotment: {
-      note: 'Cash never moves by data migration — the subsidiary\'s ledger accounts open at zero, with a note that the balance is to be set from the transfer of funds.',
+      note: "Cash never moves by data migration — the subsidiary's ledger accounts open at zero, with a note that the balance is to be set from the transfer of funds.",
     },
   };
 }
@@ -366,7 +534,12 @@ export async function previewSpinOut(holdingTenantId: string, division: Division
 // Commit
 // ---------------------------------------------------------------------------
 
-export interface SpinOutHolderInput { name: string; count: number; email?: string; phone?: string }
+export interface SpinOutHolderInput {
+  name: string;
+  count: number;
+  email?: string;
+  phone?: string;
+}
 
 export interface SpinOutCommitInput {
   holdingTenantId: string;
@@ -386,7 +559,6 @@ export interface SpinOutCommitResult {
   openingAllotment: { shareClassId: string; holders: Array<{ holderId: string; count: number }> };
 }
 
-
 export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutCommitResult> {
   const preview = await previewSpinOut(input.holdingTenantId, input.division);
   if (!preview.ready || !preview.subsidiary) {
@@ -397,13 +569,17 @@ export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutC
   const batchId = `SPINOUT-${ulid()}`;
 
   const carried: Record<string, number> = {};
-  const bump = (k: string) => { carried[k] = (carried[k] ?? 0) + 1; };
+  const bump = (k: string) => {
+    carried[k] = (carried[k] ?? 0) + 1;
+  };
 
   // ---- Ledger accounts and categories, copied by name at zero -----------
   // Source names are already on each carried transaction candidate — no
   // second read of the holding tenant is needed to know what to copy.
   const accountNames = new Set(candidates.transactions.map((t) => t.accountName));
-  const categoryNames = new Set(candidates.transactions.map((t) => t.categoryName).filter((n): n is string => Boolean(n)));
+  const categoryNames = new Set(
+    candidates.transactions.map((t) => t.categoryName).filter((n): n is string => Boolean(n)),
+  );
 
   const sourceAccountsByName = await asSystem(input.holdingTenantId, async () => {
     const out = new Map<string, { accountType: string; ledgerGroup: string; currency: string }>();
@@ -414,10 +590,14 @@ export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutC
     return out;
   });
   const sourceCategoriesByName = await asSystem(input.holdingTenantId, async () => {
-    const out = new Map<string, { kind: string; behaviour: string; defaultDivision: string | null; mustPay: boolean }>();
+    const out = new Map<
+      string,
+      { kind: string; behaviour: string; defaultDivision: string | null; mustPay: boolean }
+    >();
     for (const name of categoryNames) {
       const c = await prisma.ledgerCategory.findFirst({ where: { tenantId: input.holdingTenantId, name } });
-      if (c) out.set(name, { kind: c.kind, behaviour: c.behaviour, defaultDivision: c.defaultDivision, mustPay: c.mustPay });
+      if (c)
+        out.set(name, { kind: c.kind, behaviour: c.behaviour, defaultDivision: c.defaultDivision, mustPay: c.mustPay });
     }
     return out;
   });
@@ -470,7 +650,7 @@ export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutC
     for (const t of candidates.transactions) {
       const accountId = accountIdByName.get(t.accountName);
       if (!accountId) continue; // its account failed to resolve — should not happen, given the loop above
-      const categoryId = t.categoryName ? categoryIdByName.get(t.categoryName) ?? null : null;
+      const categoryId = t.categoryName ? (categoryIdByName.get(t.categoryName) ?? null) : null;
       await prisma.transaction.create({
         data: {
           tenantId: subsidiaryTenantId,
@@ -541,7 +721,10 @@ export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutC
     for (const en of candidates.enrollments) {
       const cohortId = cohortIdMap.get(en.cohortId);
       if (!cohortId) continue;
-      const sourcePerson = await asSystem(input.holdingTenantId, async () => await prisma.person.findFirstOrThrow({ where: { id: en.personId } }));
+      const sourcePerson = await asSystem(
+        input.holdingTenantId,
+        async () => await prisma.person.findFirstOrThrow({ where: { id: en.personId } }),
+      );
       const resolved = await findOrCreatePerson({
         fullName: sourcePerson.fullName,
         primaryEmail: sourcePerson.primaryEmail,
@@ -589,7 +772,10 @@ export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutC
     // chairman takes on purpose, not a side effect of a data migration. -------
     const subsidiaryLegalName = (await companyProfile()).legalName;
     for (const e of candidates.employmentRelationships) {
-      const sourcePerson = await asSystem(input.holdingTenantId, async () => await prisma.person.findFirstOrThrow({ where: { id: e.personId } }));
+      const sourcePerson = await asSystem(
+        input.holdingTenantId,
+        async () => await prisma.person.findFirstOrThrow({ where: { id: e.personId } }),
+      );
       const resolved = await findOrCreatePerson({
         fullName: sourcePerson.fullName,
         primaryEmail: sourcePerson.primaryEmail,
@@ -616,12 +802,36 @@ export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutC
 
   // ---- Mark every carried source row migrated, in the holding tenant -------
   await asSystem(input.holdingTenantId, async () => {
-    if (candidates.transactions.length) await prisma.transaction.updateMany({ where: { id: { in: candidates.transactions.map((r) => r.id) } }, data: { migratedToTenantId: subsidiaryTenantId } });
-    if (candidates.employmentRelationships.length) await prisma.employmentRelationship.updateMany({ where: { id: { in: candidates.employmentRelationships.map((r) => r.id) } }, data: { migratedToTenantId: subsidiaryTenantId } });
-    if (candidates.courses.length) await prisma.course.updateMany({ where: { id: { in: candidates.courses.map((r) => r.id) } }, data: { migratedToTenantId: subsidiaryTenantId } });
-    if (candidates.cohorts.length) await prisma.cohort.updateMany({ where: { id: { in: candidates.cohorts.map((r) => r.id) } }, data: { migratedToTenantId: subsidiaryTenantId } });
-    if (candidates.enrollments.length) await prisma.enrollment.updateMany({ where: { id: { in: candidates.enrollments.map((r) => r.id) } }, data: { migratedToTenantId: subsidiaryTenantId } });
-    if (candidates.organizations.length) await prisma.organization.updateMany({ where: { id: { in: candidates.organizations.map((r) => r.id) } }, data: { migratedToTenantId: subsidiaryTenantId } });
+    if (candidates.transactions.length)
+      await prisma.transaction.updateMany({
+        where: { id: { in: candidates.transactions.map((r) => r.id) } },
+        data: { migratedToTenantId: subsidiaryTenantId },
+      });
+    if (candidates.employmentRelationships.length)
+      await prisma.employmentRelationship.updateMany({
+        where: { id: { in: candidates.employmentRelationships.map((r) => r.id) } },
+        data: { migratedToTenantId: subsidiaryTenantId },
+      });
+    if (candidates.courses.length)
+      await prisma.course.updateMany({
+        where: { id: { in: candidates.courses.map((r) => r.id) } },
+        data: { migratedToTenantId: subsidiaryTenantId },
+      });
+    if (candidates.cohorts.length)
+      await prisma.cohort.updateMany({
+        where: { id: { in: candidates.cohorts.map((r) => r.id) } },
+        data: { migratedToTenantId: subsidiaryTenantId },
+      });
+    if (candidates.enrollments.length)
+      await prisma.enrollment.updateMany({
+        where: { id: { in: candidates.enrollments.map((r) => r.id) } },
+        data: { migratedToTenantId: subsidiaryTenantId },
+      });
+    if (candidates.organizations.length)
+      await prisma.organization.updateMany({
+        where: { id: { in: candidates.organizations.map((r) => r.id) } },
+        data: { migratedToTenantId: subsidiaryTenantId },
+      });
   });
 
   // ---- Opening allotment: the holding as an entity holder, plus anyone else
@@ -644,14 +854,24 @@ export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutC
 
     const entries: Array<{ holderId: string; count: number }> = [];
     if (input.kiplStake && input.kiplStake > 0) {
-      const holder = await createHolder({ kind: 'entity', heldByTenantId: input.holdingTenantId, residency: 'resident' });
+      const holder = await createHolder({
+        kind: 'entity',
+        heldByTenantId: input.holdingTenantId,
+        residency: 'resident',
+      });
       entries.push({ holderId: holder.id, count: input.kiplStake });
     }
     for (const other of input.otherHolders ?? []) {
       if (!other.email && !other.phone) {
-        throw new Error(`"${other.name}" needs an email or a phone number to be resolved as a person in the new tenant — pass --other-holder "${other.name}|<email>=${other.count}".`);
+        throw new Error(
+          `"${other.name}" needs an email or a phone number to be resolved as a person in the new tenant — pass --other-holder "${other.name}|<email>=${other.count}".`,
+        );
       }
-      const holder = await createHolder({ kind: 'person', person: { fullName: other.name, email: other.email, phone: other.phone }, residency: 'resident' });
+      const holder = await createHolder({
+        kind: 'person',
+        person: { fullName: other.name, email: other.email, phone: other.phone },
+        residency: 'resident',
+      });
       entries.push({ holderId: holder.id, count: other.count });
     }
 
@@ -686,7 +906,10 @@ export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutC
         issuedOn: txn.effectiveOn,
         issuedForTransactionId: txn.id,
       });
-      await prisma.shareCertificate.updateMany({ where: { issuedForTransactionId: txn.id }, data: { spinOutBatchId: batchId } });
+      await prisma.shareCertificate.updateMany({
+        where: { issuedForTransactionId: txn.id },
+        data: { spinOutBatchId: batchId },
+      });
       await prisma.holder.update({ where: { id: entry.holderId }, data: { spinOutBatchId: batchId } });
       holdingHolders.push(entry);
     }
@@ -697,7 +920,8 @@ export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutC
       where: { id: subsidiaryTenantId },
       data: {
         config: {
-          ...((await unscopedPrisma.tenant.findFirstOrThrow({ where: { id: subsidiaryTenantId } })).config as object ?? {}),
+          ...(((await unscopedPrisma.tenant.findFirstOrThrow({ where: { id: subsidiaryTenantId } }))
+            .config as object) ?? {}),
           spinOut: { from: preview.holding.slug, division: input.division, at: new Date().toISOString(), batchId },
         } as never,
       },
@@ -745,17 +969,33 @@ export interface SpinOutRevertResult {
  * — reverting a spin-out is only safe while the subsidiary has done nothing
  * else yet.
  */
-export async function revertSpinOut(input: { holdingTenantId: string; subsidiaryTenantId: string; batchId: string }): Promise<SpinOutRevertResult> {
+export async function revertSpinOut(input: {
+  holdingTenantId: string;
+  subsidiaryTenantId: string;
+  batchId: string;
+}): Promise<SpinOutRevertResult> {
   const removed: Record<string, number> = {};
-  const bump = (k: string, n: number) => { if (n) removed[k] = (removed[k] ?? 0) + n; };
+  const bump = (k: string, n: number) => {
+    if (n) removed[k] = (removed[k] ?? 0) + n;
+  };
 
   await asSystem(input.subsidiaryTenantId, async () => {
     const [otherTxns, otherShares] = await Promise.all([
       // `not: batchId` alone would miss a row with no `spinOutBatchId` at all —
       // Postgres never matches NULL against `<>` — and a row outside every
       // batch is exactly the "life of its own" case this guards against.
-      prisma.transaction.count({ where: { tenantId: input.subsidiaryTenantId, OR: [{ spinOutBatchId: { not: input.batchId } }, { spinOutBatchId: null }] } }),
-      prisma.shareTransaction.count({ where: { tenantId: input.subsidiaryTenantId, OR: [{ spinOutBatchId: { not: input.batchId } }, { spinOutBatchId: null }] } }),
+      prisma.transaction.count({
+        where: {
+          tenantId: input.subsidiaryTenantId,
+          OR: [{ spinOutBatchId: { not: input.batchId } }, { spinOutBatchId: null }],
+        },
+      }),
+      prisma.shareTransaction.count({
+        where: {
+          tenantId: input.subsidiaryTenantId,
+          OR: [{ spinOutBatchId: { not: input.batchId } }, { spinOutBatchId: null }],
+        },
+      }),
     ]);
     if (otherTxns > 0 || otherShares > 0) {
       throw new Error(
@@ -763,42 +1003,70 @@ export async function revertSpinOut(input: { holdingTenantId: string; subsidiary
       );
     }
 
-    const certs = await prisma.shareCertificate.deleteMany({ where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId } });
+    const certs = await prisma.shareCertificate.deleteMany({
+      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
+    });
     bump('shareCertificates', certs.count);
-    const shts = await prisma.shareTransaction.deleteMany({ where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId } });
+    const shts = await prisma.shareTransaction.deleteMany({
+      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
+    });
     bump('shareTransactions', shts.count);
-    const holders = await prisma.holder.deleteMany({ where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId } });
+    const holders = await prisma.holder.deleteMany({
+      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
+    });
     bump('holders', holders.count);
-    const classes = await prisma.shareClass.deleteMany({ where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId } });
+    const classes = await prisma.shareClass.deleteMany({
+      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
+    });
     bump('shareClasses', classes.count);
 
-    const enrollments = await prisma.enrollment.deleteMany({ where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId } });
+    const enrollments = await prisma.enrollment.deleteMany({
+      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
+    });
     bump('enrollments', enrollments.count);
-    const cohorts = await prisma.cohort.deleteMany({ where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId } });
+    const cohorts = await prisma.cohort.deleteMany({
+      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
+    });
     bump('cohorts', cohorts.count);
-    const courses = await prisma.course.deleteMany({ where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId } });
+    const courses = await prisma.course.deleteMany({
+      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
+    });
     bump('courses', courses.count);
 
-    const orgs = await prisma.organization.deleteMany({ where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId } });
+    const orgs = await prisma.organization.deleteMany({
+      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
+    });
     bump('organizations', orgs.count);
 
-    const emps = await prisma.employmentRelationship.deleteMany({ where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId } });
+    const emps = await prisma.employmentRelationship.deleteMany({
+      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
+    });
     bump('employmentRelationships', emps.count);
 
-    const txns = await prisma.transaction.deleteMany({ where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId } });
+    const txns = await prisma.transaction.deleteMany({
+      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
+    });
     bump('transactions', txns.count);
 
     // Accounts/categories opened by this batch are only removed if this batch
     // is the only thing that ever used them — otherwise a legitimate row
     // created since would be left pointing at nothing.
-    const accounts = await prisma.ledgerAccount.findMany({ where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId } });
+    const accounts = await prisma.ledgerAccount.findMany({
+      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
+    });
     for (const a of accounts) {
-      const stillUsed = await prisma.transaction.count({ where: { tenantId: input.subsidiaryTenantId, accountId: a.id } });
+      const stillUsed = await prisma.transaction.count({
+        where: { tenantId: input.subsidiaryTenantId, accountId: a.id },
+      });
       if (stillUsed === 0) await prisma.ledgerAccount.delete({ where: { id: a.id } });
     }
-    const categories = await prisma.ledgerCategory.findMany({ where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId } });
+    const categories = await prisma.ledgerCategory.findMany({
+      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
+    });
     for (const c of categories) {
-      const stillUsed = await prisma.transaction.count({ where: { tenantId: input.subsidiaryTenantId, categoryId: c.id } });
+      const stillUsed = await prisma.transaction.count({
+        where: { tenantId: input.subsidiaryTenantId, categoryId: c.id },
+      });
       if (stillUsed === 0) await prisma.ledgerCategory.delete({ where: { id: c.id } });
     }
 
@@ -816,12 +1084,30 @@ export async function revertSpinOut(input: { holdingTenantId: string; subsidiary
   });
 
   await asSystem(input.holdingTenantId, async () => {
-    await prisma.transaction.updateMany({ where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId }, data: { migratedToTenantId: null } });
-    await prisma.employmentRelationship.updateMany({ where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId }, data: { migratedToTenantId: null } });
-    await prisma.course.updateMany({ where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId }, data: { migratedToTenantId: null } });
-    await prisma.cohort.updateMany({ where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId }, data: { migratedToTenantId: null } });
-    await prisma.enrollment.updateMany({ where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId }, data: { migratedToTenantId: null } });
-    await prisma.organization.updateMany({ where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId }, data: { migratedToTenantId: null } });
+    await prisma.transaction.updateMany({
+      where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId },
+      data: { migratedToTenantId: null },
+    });
+    await prisma.employmentRelationship.updateMany({
+      where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId },
+      data: { migratedToTenantId: null },
+    });
+    await prisma.course.updateMany({
+      where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId },
+      data: { migratedToTenantId: null },
+    });
+    await prisma.cohort.updateMany({
+      where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId },
+      data: { migratedToTenantId: null },
+    });
+    await prisma.enrollment.updateMany({
+      where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId },
+      data: { migratedToTenantId: null },
+    });
+    await prisma.organization.updateMany({
+      where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId },
+      data: { migratedToTenantId: null },
+    });
 
     await emit({
       name: EVENTS.TENANT_SPIN_OUT_REVERTED,

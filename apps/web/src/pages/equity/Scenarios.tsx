@@ -68,8 +68,8 @@ function RoundModelPanel() {
     <Card>
       <h2 className="mb-1 text-sm font-semibold">Round model</h2>
       <p className="mb-3 text-2xs text-ink-500">
-        A proposed round applied to the live cap table — every holder diluted by the same proportion of the
-        pre-round total.
+        A proposed round applied to the live cap table — every holder diluted by the same proportion of the pre-round
+        total.
       </p>
       <form
         className="flex flex-col gap-3"
@@ -87,7 +87,12 @@ function RoundModelPanel() {
           <TextInput label="Option pool top-up %" type="number" value={poolTopUpPct} onChange={setPoolTopUpPct} />
         </Row>
         <Row>
-          <TextInput label="Liquidation preference multiple" type="number" value={liquidationMultiple} onChange={setLiquidationMultiple} />
+          <TextInput
+            label="Liquidation preference multiple"
+            type="number"
+            value={liquidationMultiple}
+            onChange={setLiquidationMultiple}
+          />
           <TextInput label="Seniority (0 = paid first)" type="number" value={seniority} onChange={setSeniority} />
         </Row>
         <label className="flex items-center gap-2 text-sm">
@@ -167,8 +172,8 @@ function WaterfallPanel() {
     <Card>
       <h2 className="mb-1 text-sm font-semibold">Waterfall</h2>
       <p className="mb-3 text-2xs text-ink-500">
-        Distribution at an exit value — preference paid by seniority before common, each non-participating holder
-        taking whichever of the preference or their as-converted share is larger.
+        Distribution at an exit value — preference paid by seniority before common, each non-participating holder taking
+        whichever of the preference or their as-converted share is larger.
       </p>
       <form
         className="flex flex-col gap-3"

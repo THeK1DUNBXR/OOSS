@@ -18,17 +18,7 @@ import {
   DIVISION_LABELS,
   type AttributionModel,
 } from '@kaizen/shared';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, RecordCode, StatusChip, Tabs } from '../../components/ui.js';
 import { SelectInput, TextInput } from '../../components/forms.js';
 import { messageOf } from '../../components/forms.js';
@@ -188,7 +178,10 @@ function FunnelTab({ from, to, division }: { from: string; to: string; division:
   const maxCount = Math.max(1, ...data.stages.filter((s) => s.measured).map((s) => s.count));
 
   return (
-    <Card title="Touchpoint to enrolment" subtitle="Each bar is sized against the widest stage; the rate below it is against the stage before.">
+    <Card
+      title="Touchpoint to enrolment"
+      subtitle="Each bar is sized against the widest stage; the rate below it is against the stage before."
+    >
       {data.stages.length === 0 ? (
         <EmptyState message="No funnel stages to show for this range." />
       ) : (
@@ -201,8 +194,16 @@ function FunnelTab({ from, to, division }: { from: string; to: string; division:
                 <div className="mb-1 flex items-center justify-between text-xs">
                   <span className="font-medium text-ink-200">{stage.label}</span>
                   <span className="tabular-nums text-ink-400">
-                    {stage.measured ? stage.count.toLocaleString('en-IN') : <span className="italic text-ink-500">{NOT_MEASURED}</span>}
-                    {i > 0 && <span className="ml-2 text-ink-600">{rate === null ? `· ${NOT_MEASURED}` : `· ${pct(rate)} from previous`}</span>}
+                    {stage.measured ? (
+                      stage.count.toLocaleString('en-IN')
+                    ) : (
+                      <span className="italic text-ink-500">{NOT_MEASURED}</span>
+                    )}
+                    {i > 0 && (
+                      <span className="ml-2 text-ink-600">
+                        {rate === null ? `· ${NOT_MEASURED}` : `· ${pct(rate)} from previous`}
+                      </span>
+                    )}
                   </span>
                 </div>
                 <div className="h-6 w-full overflow-hidden rounded-md bg-ink-850">
@@ -234,13 +235,18 @@ function ChannelsTab({ from, to, division }: { from: string; to: string; divisio
   // silently ignored.
   const rows = data as ChannelPerfRow[];
 
-  const chartData = rows.map((r) => ({ label: CHANNEL_KEY_LABELS[r.channelKey] ?? r.label, key: r.channelKey, leads: r.leads }));
+  const chartData = rows.map((r) => ({
+    label: CHANNEL_KEY_LABELS[r.channelKey] ?? r.label,
+    key: r.channelKey,
+    leads: r.leads,
+  }));
 
   return (
     <div className="space-y-4">
       {division && (
         <p className="text-2xs text-ink-500">
-          Channel figures are not cut by division — touchpoints do not carry one. The division filter applies to the Funnel and Campaigns tabs.
+          Channel figures are not cut by division — touchpoints do not carry one. The division filter applies to the
+          Funnel and Campaigns tabs.
         </p>
       )}
       <Card title="Leads by channel">
@@ -253,8 +259,21 @@ function ChannelsTab({ from, to, division }: { from: string; to: string; divisio
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 8 }}>
                 <CartesianGrid stroke={GRID} horizontal={false} />
-                <XAxis type="number" tick={{ fill: MUTED, fontSize: 11 }} tickLine={false} axisLine={{ stroke: GRID }} allowDecimals={false} />
-                <YAxis type="category" dataKey="label" width={140} tick={{ fill: MUTED, fontSize: 11 }} tickLine={false} axisLine={false} />
+                <XAxis
+                  type="number"
+                  tick={{ fill: MUTED, fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={{ stroke: GRID }}
+                  allowDecimals={false}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="label"
+                  width={140}
+                  tick={{ fill: MUTED, fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                />
                 <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                 <Bar dataKey="leads" name="Leads" radius={4} maxBarSize={22}>
                   {chartData.map((d) => (
@@ -289,10 +308,16 @@ function ChannelsTab({ from, to, division }: { from: string; to: string; divisio
                 <tr key={r.channelKey}>
                   <td>
                     <span className="inline-flex items-center gap-2">
-                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colourFor(r.channelKey) }} />
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ background: colourFor(r.channelKey) }}
+                      />
                       {CHANNEL_KEY_LABELS[r.channelKey] ?? r.label}
                       {!r.measured && (
-                        <span className="chip border-ink-700 bg-ink-850 text-ink-500" title="Not enough activity on this channel yet to trust the derived figures.">
+                        <span
+                          className="chip border-ink-700 bg-ink-850 text-ink-500"
+                          title="Not enough activity on this channel yet to trust the derived figures."
+                        >
                           {NOT_MEASURED}
                         </span>
                       )}
@@ -303,8 +328,20 @@ function ChannelsTab({ from, to, division }: { from: string; to: string; divisio
                   <td className="num">{r.opportunities.toLocaleString('en-IN')}</td>
                   <td className="num">{r.won.toLocaleString('en-IN')}</td>
                   <td className="num">{money(r.spend)}</td>
-                  <td className="num">{r.measured && r.costPerLead !== null ? money(r.costPerLead) : <span className="italic text-ink-500">{NOT_MEASURED}</span>}</td>
-                  <td className="num">{r.measured && r.roi !== null ? `${(r.roi * 100).toFixed(0)}%` : <span className="italic text-ink-500">{NOT_MEASURED}</span>}</td>
+                  <td className="num">
+                    {r.measured && r.costPerLead !== null ? (
+                      money(r.costPerLead)
+                    ) : (
+                      <span className="italic text-ink-500">{NOT_MEASURED}</span>
+                    )}
+                  </td>
+                  <td className="num">
+                    {r.measured && r.roi !== null ? (
+                      `${(r.roi * 100).toFixed(0)}%`
+                    ) : (
+                      <span className="italic text-ink-500">{NOT_MEASURED}</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -319,7 +356,17 @@ function ChannelsTab({ from, to, division }: { from: string; to: string; divisio
 // Campaigns
 // ---------------------------------------------------------------------------
 
-type CampaignSortKey = 'name' | 'leads' | 'opportunities' | 'won' | 'enrolments' | 'pipelineValue' | 'spend' | 'budgetPlanned' | 'costPerLead' | 'romi';
+type CampaignSortKey =
+  | 'name'
+  | 'leads'
+  | 'opportunities'
+  | 'won'
+  | 'enrolments'
+  | 'pipelineValue'
+  | 'spend'
+  | 'budgetPlanned'
+  | 'costPerLead'
+  | 'romi';
 
 function CampaignsTab({ from, to, division }: { from: string; to: string; division: string }) {
   const { data = [], isLoading, error } = useCampaignPerformance({ from: from || undefined, to: to || undefined });
@@ -340,7 +387,9 @@ function CampaignsTab({ from, to, division }: { from: string; to: string; divisi
   const sortButton = (key: CampaignSortKey, label: string) => (
     <button
       className={`inline-flex items-center gap-1 hover:text-ink-100 ${sortKey === key ? 'text-ink-100' : ''}`}
-      onClick={() => (sortKey === key ? setSortDir((d) => (d === 'asc' ? 'desc' : 'asc')) : (setSortKey(key), setSortDir('desc')))}
+      onClick={() =>
+        sortKey === key ? setSortDir((d) => (d === 'asc' ? 'desc' : 'asc')) : (setSortKey(key), setSortDir('desc'))
+      }
     >
       {label}
       {sortKey === key && <span aria-hidden>{sortDir === 'asc' ? '▲' : '▼'}</span>}
@@ -348,7 +397,11 @@ function CampaignsTab({ from, to, division }: { from: string; to: string; divisi
   );
 
   return (
-    <Card title="Campaign performance" subtitle="Targets are what the campaign was set up to hit; actuals are what has happened so far." bodyClassName="p-0 overflow-x-auto">
+    <Card
+      title="Campaign performance"
+      subtitle="Targets are what the campaign was set up to hit; actuals are what has happened so far."
+      bodyClassName="p-0 overflow-x-auto"
+    >
       {isLoading ? (
         <Loading />
       ) : sorted.length === 0 ? (
@@ -380,7 +433,9 @@ function CampaignsTab({ from, to, division }: { from: string; to: string; divisi
                 <td>
                   <StatusChip status={c.status} />
                 </td>
-                <td className="text-2xs text-ink-400">{DIVISION_LABELS[c.division as keyof typeof DIVISION_LABELS] ?? titleCase(c.division)}</td>
+                <td className="text-2xs text-ink-400">
+                  {DIVISION_LABELS[c.division as keyof typeof DIVISION_LABELS] ?? titleCase(c.division)}
+                </td>
                 <td className="num">{c.leads.toLocaleString('en-IN')}</td>
                 <td className="num">{c.opportunities.toLocaleString('en-IN')}</td>
                 <td className="num">{c.won.toLocaleString('en-IN')}</td>
@@ -389,8 +444,20 @@ function CampaignsTab({ from, to, division }: { from: string; to: string; divisi
                 <td className="num">
                   {money(c.spend)} <span className="text-ink-600">/ {money(c.budgetPlanned)}</span>
                 </td>
-                <td className="num">{c.costPerLead !== null ? money(c.costPerLead) : <span className="italic text-ink-500">{NOT_MEASURED}</span>}</td>
-                <td className="num">{c.romi !== null ? `${(c.romi * 100).toFixed(0)}%` : <span className="italic text-ink-500">{NOT_MEASURED}</span>}</td>
+                <td className="num">
+                  {c.costPerLead !== null ? (
+                    money(c.costPerLead)
+                  ) : (
+                    <span className="italic text-ink-500">{NOT_MEASURED}</span>
+                  )}
+                </td>
+                <td className="num">
+                  {c.romi !== null ? (
+                    `${(c.romi * 100).toFixed(0)}%`
+                  ) : (
+                    <span className="italic text-ink-500">{NOT_MEASURED}</span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -448,12 +515,32 @@ function AttributionTab({ from, to }: { from: string; to: string }) {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 4, left: 8 }}>
                 <CartesianGrid stroke={GRID} vertical={false} />
-                <XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 10 }} tickLine={false} axisLine={{ stroke: GRID }} interval={0} angle={-20} textAnchor="end" height={56} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: MUTED, fontSize: 10 }}
+                  tickLine={false}
+                  axisLine={{ stroke: GRID }}
+                  interval={0}
+                  angle={-20}
+                  textAnchor="end"
+                  height={56}
+                />
                 <YAxis tick={{ fill: MUTED, fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
                 <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-                <Legend wrapperStyle={{ fontSize: 11 }} formatter={(v) => CHANNEL_KEY_LABELS[v as keyof typeof CHANNEL_KEY_LABELS] ?? v} />
+                <Legend
+                  wrapperStyle={{ fontSize: 11 }}
+                  formatter={(v) => CHANNEL_KEY_LABELS[v as keyof typeof CHANNEL_KEY_LABELS] ?? v}
+                />
                 {channelsPresent.map((ch) => (
-                  <Bar key={ch} dataKey={ch} name={CHANNEL_KEY_LABELS[ch as keyof typeof CHANNEL_KEY_LABELS] ?? ch} stackId="a" fill={colourFor(ch)} radius={0} maxBarSize={40} />
+                  <Bar
+                    key={ch}
+                    dataKey={ch}
+                    name={CHANNEL_KEY_LABELS[ch as keyof typeof CHANNEL_KEY_LABELS] ?? ch}
+                    stackId="a"
+                    fill={colourFor(ch)}
+                    radius={0}
+                    maxBarSize={40}
+                  />
                 ))}
               </BarChart>
             </ResponsiveContainer>
@@ -461,7 +548,11 @@ function AttributionTab({ from, to }: { from: string; to: string }) {
         )}
       </Card>
 
-      <Card title="Attribution detail" subtitle="Every lead that could not be tied to a campaign lands in Unattributed — it is never dropped from the total." bodyClassName="p-0 overflow-x-auto">
+      <Card
+        title="Attribution detail"
+        subtitle="Every lead that could not be tied to a campaign lands in Unattributed — it is never dropped from the total."
+        bodyClassName="p-0 overflow-x-auto"
+      >
         {rows.length === 0 ? (
           <EmptyState message="Nothing to show yet." />
         ) : (
@@ -479,9 +570,15 @@ function AttributionTab({ from, to }: { from: string; to: string }) {
               {rows.map((r, i) => (
                 <tr key={`${r.campaignId ?? 'unattributed'}-${r.channelKey ?? 'any'}-${i}`}>
                   <td className={r.campaignId ? undefined : 'italic text-ink-500'}>
-                    {r.campaignId ? <RecordCode code={r.campaignName} to={`/marketing/campaigns/${r.campaignId}`} /> : r.campaignName}
+                    {r.campaignId ? (
+                      <RecordCode code={r.campaignName} to={`/marketing/campaigns/${r.campaignId}`} />
+                    ) : (
+                      r.campaignName
+                    )}
                   </td>
-                  <td className="text-2xs text-ink-400">{r.channelKey ? (CHANNEL_KEY_LABELS[r.channelKey] ?? r.channelKey) : '—'}</td>
+                  <td className="text-2xs text-ink-400">
+                    {r.channelKey ? (CHANNEL_KEY_LABELS[r.channelKey] ?? r.channelKey) : '—'}
+                  </td>
                   <td className="num">{num(r.weightedLeads)}</td>
                   <td className="num">{num(r.weightedWon)}</td>
                   <td className="num">{money(r.weightedValue)}</td>
@@ -505,7 +602,11 @@ function CohortsTab() {
   if (error) return <ErrorBox error={error} />;
 
   return (
-    <Card title="Month cohorts" subtitle="Everyone whose first touch fell in a given month, and how far they have gone since." bodyClassName="p-0 overflow-x-auto">
+    <Card
+      title="Month cohorts"
+      subtitle="Everyone whose first touch fell in a given month, and how far they have gone since."
+      bodyClassName="p-0 overflow-x-auto"
+    >
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
@@ -528,7 +629,9 @@ function CohortsTab() {
                 <td className="num">{c.leads.toLocaleString('en-IN')}</td>
                 <td className="num">{c.converted.toLocaleString('en-IN')}</td>
                 <td className="num">{c.enrolled.toLocaleString('en-IN')}</td>
-                <td className="num">{c.rate !== null ? pct(c.rate) : <span className="italic text-ink-500">{NOT_MEASURED}</span>}</td>
+                <td className="num">
+                  {c.rate !== null ? pct(c.rate) : <span className="italic text-ink-500">{NOT_MEASURED}</span>}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -564,7 +667,11 @@ function ExportTab({ rangeParams, canExport }: { rangeParams: { from?: string; t
     setPending(kind);
     setError(null);
     try {
-      await mk.exportAnalytics(kind, `marketing-${kind}-${rangeParams.from ?? 'all'}-to-${rangeParams.to ?? 'now'}.csv`, rangeParams);
+      await mk.exportAnalytics(
+        kind,
+        `marketing-${kind}-${rangeParams.from ?? 'all'}-to-${rangeParams.to ?? 'now'}.csv`,
+        rangeParams,
+      );
     } catch (e) {
       setError(messageOf(e));
     } finally {
@@ -575,7 +682,9 @@ function ExportTab({ rangeParams, canExport }: { rangeParams: { from?: string; t
   return (
     <Card title="Export to CSV" subtitle="Each export uses the date range set above.">
       {error && (
-        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
       )}
       <div className="grid gap-3 sm:grid-cols-3">
         {EXPORT_KINDS.map((k) => (

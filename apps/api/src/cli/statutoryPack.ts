@@ -37,10 +37,18 @@ async function main() {
   });
   const incoming = new Set(input.map(identity));
   changes.push(...installed.filter((rule) => !incoming.has(identity(rule))).map((rule) => ({ type: 'removed', rule })));
-  console.log(JSON.stringify({ changedRules: changes.length, affectedTenants: 'tenant-specific overrides must be reviewed', changes }, null, 2));
+  console.log(
+    JSON.stringify(
+      { changedRules: changes.length, affectedTenants: 'tenant-specific overrides must be reviewed', changes },
+      null,
+      2,
+    ),
+  );
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-}).finally(() => unscopedPrisma.$disconnect());
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(() => unscopedPrisma.$disconnect());

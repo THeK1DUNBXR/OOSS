@@ -18,14 +18,24 @@
  */
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { CHANNEL_KEYS, EVENTS, VERTICALS, type ChannelKey, type FormSubmissionStatus, type Vertical } from '@kaizen/shared';
+import {
+  CHANNEL_KEYS,
+  EVENTS,
+  VERTICALS,
+  type ChannelKey,
+  type FormSubmissionStatus,
+  type Vertical,
+} from '@kaizen/shared';
 import { prisma, unscopedPrisma, Prisma } from '../../platform/db.js';
 import { asSystem, currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
+import { verifyWebhookSignature } from '../../lib/webhookSignature.js';
+import { decryptField, encryptField } from '../compliance/privacy.js';
 import { findOrCreatePerson, type PersonInput } from '../identity.js';
 import { createLead } from '../leads.js';
 import { recordTouchpoint } from './attribution.js';
@@ -64,12 +74,14 @@ export interface FormInput {
 export type { FormView } from '@kaizen/shared';
 
 function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')
-    .slice(0, 80) || `form-${Date.now()}`;
+  return (
+    name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')
+      .slice(0, 80) || `form-${Date.now()}`
+  );
 }
 
 function validateFields(fields: unknown): FormFieldDef[] {
@@ -86,7 +98,13 @@ function validateFields(fields: unknown): FormFieldDef[] {
     if (f.type === 'select' && (!Array.isArray(f.options) || f.options.length === 0)) {
       throw ApiError.badRequest(`fields[${i}] is type 'select' and requires a non-empty options[].`);
     }
-    return { key: f.key, label: f.label, type: f.type as FormFieldType, required: Boolean(f.required), options: f.options };
+    return {
+      key: f.key,
+      label: f.label,
+      type: f.type as FormFieldType,
+      required: Boolean(f.required),
+      options: f.options,
+    };
   });
 }
 
@@ -267,30 +285,10 @@ export async function formEmbedInfo(id: string): Promise<{ publicUrl: string; em
 // Public submission — no auth, tenant resolved from the token
 // ---------------------------------------------------------------------------
 
-interface RateLimitState {
-  timestamps: number[];
-}
-
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX = 30;
-const rateLimitByIp = new Map<string, RateLimitState>();
-
-function checkRateLimit(ip: string): void {
-  const now = Date.now();
-  const state = rateLimitByIp.get(ip) ?? { timestamps: [] };
-  state.timestamps = state.timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
-  if (state.timestamps.length >= RATE_LIMIT_MAX) {
-    rateLimitByIp.set(ip, state);
-    throw new ApiError(429, 'RATE_LIMITED', 'Too many submissions from this address. Try again in a minute.');
-  }
-  state.timestamps.push(now);
-  rateLimitByIp.set(ip, state);
-}
-
-/** Test-only: clears the in-memory rate-limit table between test cases. */
-export function resetRateLimitForTests(): void {
-  rateLimitByIp.clear();
-}
+// The per-address limit lives on the route (routes/marketing/public.routes.ts),
+// where it is counted in Postgres and keyed on the proxy-derived address. A
+// counter here would be per process, and keyed on whatever the caller put in
+// X-Forwarded-For.
 
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
@@ -307,7 +305,13 @@ function str(v: unknown): string | undefined {
 
 /** Tolerant of common aliases: fullName/name/full_name, email, phone/mobile. */
 function personInputFromPayload(payload: Record<string, unknown>): PersonInput {
-  const fullName = str(payload.fullName) ?? str(payload.name) ?? str(payload.full_name) ?? str(payload.email) ?? str(payload.phone) ?? 'Unknown';
+  const fullName =
+    str(payload.fullName) ??
+    str(payload.name) ??
+    str(payload.full_name) ??
+    str(payload.email) ??
+    str(payload.phone) ??
+    'Unknown';
   return {
     fullName,
     primaryEmail: str(payload.email) ?? str(payload.primaryEmail),
@@ -333,8 +337,6 @@ export async function submitPublicForm(
   payload: Record<string, unknown>,
   meta: SubmitMeta = {},
 ): Promise<{ ok: true; message: string }> {
-  checkRateLimit(meta.ip ?? 'unknown');
-
   const form = await unscopedPrisma.marketingForm.findFirst({ where: { publicToken } });
   if (!form || !form.active || form.deletedAt) throw ApiError.notFound('Form');
 
@@ -429,7 +431,10 @@ export async function submitPublicForm(
   });
 }
 
-async function resolveCampaignId(utm: Record<string, unknown>, defaultCampaignId: string | null): Promise<string | null> {
+async function resolveCampaignId(
+  utm: Record<string, unknown>,
+  defaultCampaignId: string | null,
+): Promise<string | null> {
   const utmCampaignSlug = str(utm.campaign) ?? str(utm.utm_campaign);
   if (utmCampaignSlug) {
     const campaign = await prisma.marketingCampaign.findFirst({ where: { utmCampaign: utmCampaignSlug } });
@@ -457,7 +462,9 @@ export interface ConvertContext {
  */
 export async function convertSubmission(submissionId: string, ctx: ConvertContext = {}) {
   const auth = currentAuth();
-  const submission = await prisma.marketingFormSubmission.findFirst({ where: { id: submissionId, tenantId: auth.tenantId } });
+  const submission = await prisma.marketingFormSubmission.findFirst({
+    where: { id: submissionId, tenantId: auth.tenantId },
+  });
   if (!submission) throw ApiError.notFound('Submission');
   if (submission.status !== 'received') return submission;
 
@@ -477,7 +484,9 @@ export async function convertSubmission(submissionId: string, ctx: ConvertContex
     throw err;
   }
 
-  const vertical = (VERTICALS as readonly string[]).includes(form.vertical ?? '') ? (form.vertical as Vertical) : 'other';
+  const vertical = (VERTICALS as readonly string[]).includes(form.vertical ?? '')
+    ? (form.vertical as Vertical)
+    : 'other';
 
   const lead = await createLead({
     title: `Web enquiry — ${form.name}`,
@@ -521,7 +530,9 @@ export async function convertSubmission(submissionId: string, ctx: ConvertContex
 export async function rejectSubmission(submissionId: string, reason: string) {
   await assertCan({ resource: 'marketing_forms', verb: 'edit' });
   const auth = currentAuth();
-  const submission = await prisma.marketingFormSubmission.findFirst({ where: { id: submissionId, tenantId: auth.tenantId } });
+  const submission = await prisma.marketingFormSubmission.findFirst({
+    where: { id: submissionId, tenantId: auth.tenantId },
+  });
   if (!submission) throw ApiError.notFound('Submission');
   return prisma.marketingFormSubmission.update({ where: { id: submissionId }, data: { status: 'rejected' } });
 }
@@ -529,7 +540,9 @@ export async function rejectSubmission(submissionId: string, reason: string) {
 export async function markSpamSubmission(submissionId: string) {
   await assertCan({ resource: 'marketing_forms', verb: 'edit' });
   const auth = currentAuth();
-  const submission = await prisma.marketingFormSubmission.findFirst({ where: { id: submissionId, tenantId: auth.tenantId } });
+  const submission = await prisma.marketingFormSubmission.findFirst({
+    where: { id: submissionId, tenantId: auth.tenantId },
+  });
   if (!submission) throw ApiError.notFound('Submission');
   return prisma.marketingFormSubmission.update({ where: { id: submissionId }, data: { status: 'spam' } });
 }
@@ -643,7 +656,10 @@ export async function createShortLink(input: ShortLinkInput) {
 export async function listShortLinks() {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_forms', verb: 'view' });
-  const items = await prisma.marketingShortLink.findMany({ where: { tenantId: auth.tenantId, deletedAt: null }, orderBy: { createdAt: 'desc' } });
+  const items = await prisma.marketingShortLink.findMany({
+    where: { tenantId: auth.tenantId, deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
   return { items, total: items.length };
 }
 
@@ -696,45 +712,158 @@ export async function resolveAndClick(slug: string, meta: SubmitMeta = {}): Prom
 
 const KNOWN_WEBHOOK_PROVIDERS = new Set(['email', 'sms', 'whatsapp', 'forms']);
 
+registerGovernedEntities('mkt', ['webhook_endpoint']);
+
+export interface InboundWebhook {
+  provider: string;
+  /** From the URL path. It names the endpoint, and through the endpoint the tenant. */
+  endpointToken: string | undefined;
+  /** The exact bytes received. The signature covers these, not a re-serialised body. */
+  rawBody: Buffer | undefined;
+  timestamp: string | undefined;
+  signature: string | undefined;
+}
+
 export interface WebhookMeta {
-  tenantSlug?: string;
   ip?: string;
   userAgent?: string;
 }
 
 /**
- * Tenant resolution for a provider webhook: the `X-Kai-Tenant` header or a
- * `tenant` query param, carrying the tenant's slug — documented here because
- * there is no session to resolve it from. A tenant that does not resolve is a
- * 400 (the caller's webhook is misconfigured, not a marketing-domain concern);
- * an unrecognised *provider*, once the tenant IS known, is what stores as
- * `status: 'unrouted'` and still answers 202 — never silently dropped.
+ * One refusal for every authentication failure. Saying which check failed, or
+ * whether the token exists, would tell a prober which half of a forgery is right.
  */
-export async function receiveWebhook(provider: string, payload: Record<string, unknown>, meta: WebhookMeta = {}) {
-  if (!meta.tenantSlug) throw ApiError.badRequest('Webhook requires X-Kai-Tenant header or ?tenant= query param.');
-  const tenant = await unscopedPrisma.tenant.findFirst({ where: { slug: meta.tenantSlug, status: 'active' } });
-  if (!tenant) throw ApiError.badRequest(`Unknown tenant '${meta.tenantSlug}'.`);
+function webhookUnauthenticated(): ApiError {
+  return ApiError.unauthorized('Webhook signature could not be verified.');
+}
 
-  return asSystem(tenant.id, async () => {
-    const row = await prisma.marketingWebhookInbound.create({
-      data: {
-        tenantId: tenant.id,
-        recordCode: internalCode('WHK'),
-        provider,
-        eventKind: typeof payload.event === 'string' ? payload.event : 'unknown',
-        payload: payload as never,
-        status: 'received',
-      },
-    });
+/**
+ * Provisions the signing endpoint for one provider. The secret is returned once
+ * and stored only encrypted: the HMAC needs the key itself, so a hash would not
+ * do. It appears neither in the URL the provider is given nor in the audit row.
+ */
+export async function createWebhookEndpoint(provider: string) {
+  if (!KNOWN_WEBHOOK_PROVIDERS.has(provider)) throw ApiError.badRequest(`Unknown webhook provider '${provider}'.`);
+  await assertCan({ resource: 'marketing_settings', verb: 'create' });
+  const auth = currentAuth();
 
-    if (!KNOWN_WEBHOOK_PROVIDERS.has(provider)) {
-      await prisma.marketingWebhookInbound.update({ where: { id: row.id }, data: { status: 'unrouted' } });
-      await emit({
-        name: EVENTS.MKT_WEBHOOK_RECEIVED,
-        subject: { entityType: 'marketing_webhook_inbound', entityId: row.id, recordCode: row.recordCode },
-        newState: { provider, status: 'unrouted' },
+  const existing = await prisma.marketingWebhookEndpoint.findFirst({
+    where: { tenantId: auth.tenantId, provider, deletedAt: null },
+  });
+  if (existing) throw ApiError.conflict(`A webhook endpoint for '${provider}' already exists.`);
+
+  const signingSecret = randomBytes(32).toString('hex');
+  const token = randomBytes(24).toString('base64url');
+  const recordCode = internalCode('WHE');
+  const endpoint = await prisma.marketingWebhookEndpoint.create({
+    data: {
+      tenantId: auth.tenantId,
+      recordCode,
+      provider,
+      token,
+      secretCipher: encryptField(signingSecret),
+      createdById: auth.partyId,
+    },
+  });
+
+  await auditWrite({
+    action: 'create',
+    subjectType: 'webhook_endpoint',
+    subjectId: endpoint.id,
+    after: { provider, active: true },
+  });
+  await emit({
+    name: EVENTS.MKT_WEBHOOK_ENDPOINT_PROVISIONED,
+    subject: { entityType: 'marketing_webhook_endpoint', entityId: endpoint.id, recordCode },
+    newState: { provider },
+  });
+
+  return {
+    id: endpoint.id,
+    provider,
+    token,
+    path: `/api/marketing/public/webhooks/${provider}/${token}`,
+    signingSecret,
+  };
+}
+
+function parseWebhookBody(rawBody: Buffer): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody.toString('utf8'));
+  } catch {
+    throw ApiError.badRequest('Webhook body is not valid JSON.');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw ApiError.badRequest('Webhook body must be a JSON object.');
+  }
+  return parsed as Record<string, unknown>;
+}
+
+/**
+ * Applies one signed provider delivery. The tenant is the one the endpoint
+ * belongs to, found from the URL token; no header or body field can pick it.
+ * The signature is checked before any row is written, so a refused request
+ * changes no state. A provider event id already applied answers `duplicate`
+ * without applying again, so a provider retry cannot double count (FX-50).
+ */
+export async function receiveWebhook(inbound: InboundWebhook, meta: WebhookMeta = {}) {
+  if (!KNOWN_WEBHOOK_PROVIDERS.has(inbound.provider)) throw webhookUnauthenticated();
+  if (!inbound.endpointToken || !inbound.rawBody || !inbound.timestamp || !inbound.signature)
+    throw webhookUnauthenticated();
+
+  // Unscoped on purpose: there is no session yet, and the token is what finds the tenant.
+  const endpoint = await unscopedPrisma.marketingWebhookEndpoint.findFirst({
+    where: { token: inbound.endpointToken, provider: inbound.provider, active: true, deletedAt: null },
+  });
+  if (!endpoint) throw webhookUnauthenticated();
+
+  const verified = verifyWebhookSignature({
+    secret: decryptField(endpoint.secretCipher),
+    timestamp: inbound.timestamp,
+    rawBody: inbound.rawBody,
+    signature: inbound.signature,
+  });
+  if (!verified) throw webhookUnauthenticated();
+
+  const payload = parseWebhookBody(inbound.rawBody);
+  const eventId = payload.eventId;
+  if (typeof eventId !== 'string' || eventId.length === 0 || eventId.length > 200) {
+    throw ApiError.badRequest('A webhook payload requires a string eventId.');
+  }
+
+  const { tenantId } = endpoint;
+  const { provider } = inbound;
+  return asSystem(tenantId, async () => {
+    let row: { id: string; recordCode: string };
+    try {
+      row = await prisma.marketingWebhookInbound.create({
+        data: {
+          tenantId,
+          recordCode: internalCode('WHK'),
+          provider,
+          eventId,
+          eventKind: typeof payload.event === 'string' ? payload.event : 'unknown',
+          payload: payload as never,
+          status: 'received',
+        },
       });
-      return { accepted: true, status: 'unrouted' as const };
+    } catch (err) {
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002')) throw err;
+      const prior = await prisma.marketingWebhookInbound.findFirst({ where: { tenantId, provider, eventId } });
+      if (!prior) throw err;
+      // A failed first attempt is retried, so a transient error does not lose the event.
+      // Anything else is already applied or still in flight, and must not run twice.
+      if (prior.status !== 'failed') return { accepted: true as const, status: 'duplicate' as const, duplicate: true };
+      // The status check is repeated in the write. Two replays that both read
+      // 'failed' would otherwise both claim it; only the one whose update
+      // matches a row still 'failed' gets to apply the event.
+      const claimed = await prisma.marketingWebhookInbound.updateMany({
+        where: { id: prior.id, status: 'failed' },
+        data: { status: 'received', error: null },
+      });
+      if (claimed.count === 0) return { accepted: true as const, status: 'duplicate' as const, duplicate: true };
+      row = { id: prior.id, recordCode: prior.recordCode };
     }
 
     try {
@@ -750,7 +879,7 @@ export async function receiveWebhook(provider: string, payload: Record<string, u
         await applyDeliveryEvents(provider, events);
       }
 
-      const processed = await prisma.marketingWebhookInbound.update({
+      await prisma.marketingWebhookInbound.update({
         where: { id: row.id },
         data: { status: 'processed', processedAt: new Date() },
       });
@@ -761,7 +890,7 @@ export async function receiveWebhook(provider: string, payload: Record<string, u
         newState: { provider, status: 'processed' },
       });
 
-      return { accepted: true, status: processed.status };
+      return { accepted: true as const, status: 'processed' as const, duplicate: false };
     } catch (err) {
       await prisma.marketingWebhookInbound.update({
         where: { id: row.id },

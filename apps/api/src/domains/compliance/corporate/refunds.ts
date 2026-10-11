@@ -16,11 +16,14 @@ import { prisma } from '../../../platform/db.js';
 import { currentAuth } from '../../../platform/context.js';
 import { ApiError } from '../../../platform/errors.js';
 import { assertCan } from '../../../platform/permissions.js';
-import { auditWrite } from '../../../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../../../platform/audit.js';
 import { assertStepUpForApprove } from './security.js';
 import { documentPrefix } from '../../companyProfile.js';
 import { nextDocumentNumber, DOCUMENT_SERIES } from '../../../platform/documentNumber.js';
 import { recordTransaction } from '../../books.js';
+
+// Registered beside the writer for the reason given in corporate/board.ts.
+registerGovernedEntities('cmp_corporate', ['refund', 'refund_policy']);
 
 export async function listRefunds(status?: string) {
   await assertCan({ resource: 'refunds', verb: 'view' });
@@ -63,7 +66,12 @@ export async function requestRefund(input: {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'refund', subjectId: refund.id, after: { recordCode, amount: input.amount } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'refund',
+    subjectId: refund.id,
+    after: { recordCode, amount: input.amount },
+  });
   return refund;
 }
 
@@ -75,7 +83,9 @@ export async function approveRefund(id: string) {
   const refund = await prisma.refund.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!refund) throw ApiError.notFound('Refund');
   if (refund.status !== 'requested') {
-    throw ApiError.unprocessable(`This refund is '${refund.status}', not 'requested'. Only a requested refund can be approved.`);
+    throw ApiError.unprocessable(
+      `This refund is '${refund.status}', not 'requested'. Only a requested refund can be approved.`,
+    );
   }
   if (refund.requestedById === auth.partyId) {
     throw ApiError.forbidden('The person who requested a refund cannot also approve it.', [
@@ -87,7 +97,13 @@ export async function approveRefund(id: string) {
     where: { id },
     data: { status: 'approved', approvedById: auth.partyId, approvedAt: new Date() },
   });
-  await auditWrite({ action: 'update', subjectType: 'refund', subjectId: id, before: { status: 'requested' }, after: { status: 'approved' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'refund',
+    subjectId: id,
+    before: { status: 'requested' },
+    after: { status: 'approved' },
+  });
   return updated;
 }
 
@@ -102,7 +118,9 @@ export async function payRefund(id: string, input: { accountId: string; method?:
   const refund = await prisma.refund.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!refund) throw ApiError.notFound('Refund');
   if (refund.status !== 'approved') {
-    throw ApiError.unprocessable(`This refund is '${refund.status}', not 'approved'. Only an approved refund can be paid.`);
+    throw ApiError.unprocessable(
+      `This refund is '${refund.status}', not 'approved'. Only an approved refund can be paid.`,
+    );
   }
 
   const txn = await recordTransaction({
@@ -120,7 +138,13 @@ export async function payRefund(id: string, input: { accountId: string; method?:
     where: { id },
     data: { status: 'paid', paidPaymentId: txn.id, paidAt: new Date() },
   });
-  await auditWrite({ action: 'update', subjectType: 'refund', subjectId: id, before: { status: 'approved' }, after: { status: 'paid', paidPaymentId: txn.id } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'refund',
+    subjectId: id,
+    before: { status: 'approved' },
+    after: { status: 'paid', paidPaymentId: txn.id },
+  });
   return updated;
 }
 
@@ -144,10 +168,19 @@ export async function publishRefundPolicy(input: {
 }) {
   await assertCan({ resource: 'refunds', verb: 'create' });
   const auth = currentAuth();
-  const last = await prisma.refundPolicy.findFirst({ where: { tenantId: auth.tenantId }, orderBy: { version: 'desc' } });
+  const last = await prisma.refundPolicy.findFirst({
+    where: { tenantId: auth.tenantId },
+    orderBy: { version: 'desc' },
+  });
   const version = (last?.version ?? 0) + 1;
   const policy = await prisma.refundPolicy.create({
-    data: { tenantId: auth.tenantId, version, text: input.text, rules: input.rules as never, effectiveFrom: new Date() },
+    data: {
+      tenantId: auth.tenantId,
+      version,
+      text: input.text,
+      rules: input.rules as never,
+      effectiveFrom: new Date(),
+    },
   });
   await auditWrite({ action: 'create', subjectType: 'refund_policy', subjectId: policy.id, after: { version } });
   return policy;

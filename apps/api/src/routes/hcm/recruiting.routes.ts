@@ -11,21 +11,40 @@ import { jobPostingMachine, offerMachine } from '@kaizen/shared';
 import type { JobPostingEvent, OfferEvent } from '@kaizen/shared';
 import { handler, str } from '../../lib/http.js';
 import {
-  listJobPostings, createJobPosting, transitionJobPosting,
-  listCandidates, createCandidate,
-  listInterviewRounds, scheduleInterview, completeInterview,
-  submitScorecard, listScorecards,
-  listOffers, createOffer, transitionOffer, joinAndOnboard,
-  listReferrals, createReferral, updateReferralStatus,
-  listBackgroundVerifications, createBackgroundVerification, updateBackgroundVerification,
-  listOnboardingTemplates, createOnboardingTemplate,
-  instantiateOnboardingTasks, listOnboardingTasks, completeOnboardingTask,
+  listJobPostings,
+  createJobPosting,
+  transitionJobPosting,
+  listCandidates,
+  createCandidate,
+  listInterviewRounds,
+  scheduleInterview,
+  completeInterview,
+  submitScorecard,
+  listScorecards,
+  listOffers,
+  createOffer,
+  transitionOffer,
+  joinAndOnboard,
+  listReferrals,
+  createReferral,
+  updateReferralStatus,
+  listBackgroundVerifications,
+  createBackgroundVerification,
+  updateBackgroundVerification,
+  listOnboardingTemplates,
+  createOnboardingTemplate,
+  instantiateOnboardingTasks,
+  listOnboardingTasks,
+  completeOnboardingTask,
   recruitingFunnel,
 } from '../../domains/hcm/recruiting.js';
 
 const router = Router();
 
-router.get('/_status', handler(async () => ({ module: 'recruiting', ready: true })));
+router.get(
+  '/_status',
+  handler(async () => ({ module: 'recruiting', ready: true })),
+);
 
 // ---------------------------------------------------------------------------
 // Job postings
@@ -130,7 +149,10 @@ router.post(
   }),
 );
 
-router.get('/interviews/:id/scorecards', handler(async (req) => listScorecards(req.params.id)));
+router.get(
+  '/interviews/:id/scorecards',
+  handler(async (req) => listScorecards(req.params.id)),
+);
 
 router.post(
   '/interviews/:id/scorecards',
@@ -202,7 +224,10 @@ router.post(
 // Referrals
 // ---------------------------------------------------------------------------
 
-router.get('/referrals', handler(async (req) => listReferrals({ referrerEmploymentId: str(req.query.referrerEmploymentId) })));
+router.get(
+  '/referrals',
+  handler(async (req) => listReferrals({ referrerEmploymentId: str(req.query.referrerEmploymentId) })),
+);
 
 router.post(
   '/referrals',
@@ -238,7 +263,10 @@ router.post(
 router.get(
   '/background-verifications',
   handler(async (req) =>
-    listBackgroundVerifications({ applicationId: str(req.query.applicationId), employmentId: str(req.query.employmentId) }),
+    listBackgroundVerifications({
+      applicationId: str(req.query.applicationId),
+      employmentId: str(req.query.employmentId),
+    }),
   ),
 );
 
@@ -274,7 +302,10 @@ router.patch(
 // Onboarding
 // ---------------------------------------------------------------------------
 
-router.get('/onboarding-templates', handler(async () => listOnboardingTemplates()));
+router.get(
+  '/onboarding-templates',
+  handler(async () => listOnboardingTemplates()),
+);
 
 router.post(
   '/onboarding-templates',
@@ -320,6 +351,9 @@ router.post(
 // Funnel
 // ---------------------------------------------------------------------------
 
-router.get('/funnel', handler(async () => recruitingFunnel()));
+router.get(
+  '/funnel',
+  handler(async () => recruitingFunnel()),
+);
 
 export default router;

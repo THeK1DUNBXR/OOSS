@@ -40,18 +40,16 @@ import { ApiError } from '../../platform/errors.js';
 import { auditWrite, auditExport, auditBulkOperation, registerGovernedEntities } from '../../platform/audit.js';
 import { assertCan, FIELD_PURPOSES } from '../../platform/permissions.js';
 import { raiseException } from '../../platform/exceptions.js';
+import { normaliseEmail, normalisePhone } from '../identity.js';
 import { registerHook } from '../../platform/hooks.js';
 
-registerGovernedEntities('cmp_privacy', [
-  'privacy_notice',
-  'consent',
-  'data_principal_request',
-  'data_breach',
-]);
+registerGovernedEntities('cmp_privacy', ['privacy_notice', 'consent', 'data_principal_request', 'data_breach']);
 
 // ---------------------------------------------------------------------------
 // Privacy notice
 // ---------------------------------------------------------------------------
+
+registerGovernedEntities('cmp_privacy', ['affiliation']);
 
 export interface NoticePurpose {
   code: string;
@@ -103,10 +101,18 @@ export async function publishNotice(input: { effectiveFrom: Date; body: string; 
   });
 
   if (previous) {
-    await prisma.privacyNotice.update({ where: { id: previous.id }, data: { status: 'superseded', supersededById: notice.id } });
+    await prisma.privacyNotice.update({
+      where: { id: previous.id },
+      data: { status: 'superseded', supersededById: notice.id },
+    });
   }
 
-  await auditWrite({ action: 'create', subjectType: 'privacy_notice', subjectId: notice.id, after: { version, effectiveFrom: input.effectiveFrom } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'privacy_notice',
+    subjectId: notice.id,
+    after: { version, effectiveFrom: input.effectiveFrom },
+  });
   await emit({
     name: 'kz.cmp.privacy_notice.published',
     subject: { entityType: 'privacy_notice', entityId: notice.id, recordCode: `NOTICE-v${version}` },
@@ -136,7 +142,6 @@ export async function acknowledgeNotice(input: { personId?: string; channel: str
     subjectType: 'privacy_notice',
     subjectId: notice.id,
     after: { acknowledgedBy: personId, version: notice.version },
-    force: true,
   });
   return ack;
 }
@@ -225,8 +230,18 @@ export async function grantConsent(input: {
       evidence: (input.evidence ?? {}) as never,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'consent_ledger', subjectId: consent.id, after: { event: 'granted', purpose: input.purposeCode } });
-  await auditWrite({ action: 'create', subjectType: 'consent', subjectId: consent.id, after: { purposeCode: input.purposeCode, status: 'granted' } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'consent_ledger',
+    subjectId: consent.id,
+    after: { event: 'granted', purpose: input.purposeCode },
+  });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'consent',
+    subjectId: consent.id,
+    after: { purposeCode: input.purposeCode, status: 'granted' },
+  });
   await emit({
     name: 'kz.cmp.consent.granted',
     subject: { entityType: 'consent', entityId: consent.id },
@@ -265,7 +280,12 @@ export async function withdrawConsent(id: string, reason?: string) {
       evidence: { reason: reason ?? null } as never,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'consent_ledger', subjectId: existing.id, after: { event: 'withdrawn', purpose: existing.purposeCode } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'consent_ledger',
+    subjectId: existing.id,
+    after: { event: 'withdrawn', purpose: existing.purposeCode },
+  });
   await auditWrite({
     action: 'update',
     subjectType: 'consent',
@@ -288,11 +308,17 @@ export async function withdrawConsent(id: string, reason?: string) {
 export async function listConsentsForPerson(personId: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'consents', verb: 'view', record: { ownerPartyId: personId } });
-  const rows = await prisma.consent.findMany({ where: { tenantId: auth.tenantId, personId }, orderBy: { createdAt: 'desc' } });
+  const rows = await prisma.consent.findMany({
+    where: { tenantId: auth.tenantId, personId },
+    orderBy: { createdAt: 'desc' },
+  });
   // Consent.personId carries no Prisma relation (guardianOfPersonId can name
   // a different person entirely, so the column is deliberately untyped as a
   // foreign key) — one batched lookup, not one query per row.
-  const person = await prisma.person.findFirst({ where: { id: personId, tenantId: auth.tenantId }, select: { fullName: true } });
+  const person = await prisma.person.findFirst({
+    where: { id: personId, tenantId: auth.tenantId },
+    select: { fullName: true },
+  });
   return rows.map((r) => ({ ...r, personFullName: person?.fullName ?? null }));
 }
 
@@ -324,23 +350,63 @@ export interface MinorGateInput {
   dateOfBirth: Date | null;
   guardianName?: string | null;
   guardianPhone?: string | null;
+  /**
+   * The enrolling user's explicit attestation that the learner is 18 or over.
+   * Consulted only when no date of birth is on file. Without a date the rule
+   * is held, not waived: an unknown age is not an adult age, so the guardian
+   * requirement stands unless somebody says, on the record, that they are an
+   * adult. A measured age always wins, so an attestation can never release a
+   * measured minor. FX-64.
+   */
+  adultAttested?: boolean;
 }
 
 /**
- * CMP-DPD-003. If `dateOfBirth` puts the student under 18, refuses unless a
- * guardian name and phone are given, and returns the id of the Consent row
- * recorded for them so the caller can stamp `guardianConsentId`. Returns
- * `null` when the student is not (measurably) a minor — nothing to gate.
+ * A date of birth as typed on a form. A date with no time is read as the IST
+ * day it names: `new Date('2008-05-10')` is UTC midnight, which is 05:30 IST on
+ * the same day. Refuses a value that does not parse or lies in the future. FX-64.
  */
-export async function requireGuardianConsentForMinor(input: MinorGateInput): Promise<string | null> {
-  if (isMinor(input.dateOfBirth) !== true) return null;
+export function parseStatedDateOfBirth(value: string): Date {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) throw ApiError.badRequest('The date of birth is not a valid date.');
+  if (d.getTime() > Date.now()) throw ApiError.badRequest('The date of birth is in the future.');
+  return d;
+}
+
+/**
+ * Whether the minor rule applies, and if it does, refuses unless a guardian
+ * name and phone are given. Pure, so a caller can refuse before anything is
+ * written; the consent row is written only by `requireGuardianConsentForMinor`.
+ * Returns true when the rule applies.
+ */
+export function assertMinorHasGuardian(input: Omit<MinorGateInput, 'personId'>): boolean {
+  const measured = isMinor(input.dateOfBirth);
+  const applies = measured === true || (measured === null && input.adultAttested !== true);
+  if (!applies) return false;
 
   if (!input.guardianName?.trim() || !input.guardianPhone?.trim()) {
-    throw ApiError.badRequest(
-      `This student is under 18 (age ${ageInYears(input.dateOfBirth)}). A minor cannot be enrolled without a named guardian and a recorded guardian consent — give a guardian name and phone.`,
+    const basis =
+      measured === true
+        ? `This student is under 18 (age ${ageInYears(input.dateOfBirth)})`
+        : 'No date of birth is on file and no adult has been attested, so the minor rule applies. Give a date of birth, or a guardian name and phone, or confirm they are 18 or over';
+    // 422, not 400: the request is well formed and the learner's record is what is
+    // missing, so the caller can supply it and retry. FX-64.
+    throw ApiError.unprocessable(
+      `${basis}. A minor cannot be enrolled without a named guardian and a recorded guardian consent — give a guardian name and phone.`,
       { reason: 'MINOR_GUARDIAN_CONSENT_REQUIRED' },
     );
   }
+  return true;
+}
+
+/**
+ * CMP-DPD-003. If the minor rule applies, refuses unless a guardian name and
+ * phone are given, and returns the id of the Consent row recorded for them so
+ * the caller can stamp `guardianConsentId`. Returns `null` when the rule does
+ * not apply — nothing to gate.
+ */
+export async function requireGuardianConsentForMinor(input: MinorGateInput): Promise<string | null> {
+  if (!assertMinorHasGuardian(input)) return null;
 
   const auth = currentAuth();
   const consent = await prisma.consent.create({
@@ -352,7 +418,10 @@ export async function requireGuardianConsentForMinor(input: MinorGateInput): Pro
       status: 'granted',
       grantedAt: new Date(),
       channel: 'guardian_intake',
-      evidence: { guardianName: input.guardianName, guardianPhone: input.guardianPhone } as never,
+      evidence: {
+        guardianName: encryptField(input.guardianName!.trim()),
+        guardianPhone: encryptField(input.guardianPhone!.trim()),
+      } as never,
       guardianOfPersonId: input.personId,
     },
   });
@@ -367,16 +436,23 @@ export async function requireGuardianConsentForMinor(input: MinorGateInput): Pro
       channel: 'guardian_intake',
       event: 'granted',
       givenAt: consent.grantedAt,
-      evidence: { guardianName: input.guardianName, guardianPhone: input.guardianPhone } as never,
+      evidence: {
+        guardianName: encryptField(input.guardianName!.trim()),
+        guardianPhone: encryptField(input.guardianPhone!.trim()),
+      } as never,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'consent_ledger', subjectId: consent.id, after: { event: 'granted', purpose: 'education_delivery' } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'consent_ledger',
+    subjectId: consent.id,
+    after: { event: 'granted', purpose: 'education_delivery' },
+  });
   await auditWrite({
     action: 'create',
     subjectType: 'consent',
     subjectId: consent.id,
     after: { purposeCode: 'education_delivery', guardianOfPersonId: input.personId },
-    force: true,
   });
 
   return consent.id;
@@ -438,7 +514,12 @@ export async function raiseDataRequest(input: { personId: string; kind: string; 
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'data_principal_request', subjectId: request.id, after: { kind: input.kind, personId: input.personId } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'data_principal_request',
+    subjectId: request.id,
+    after: { kind: input.kind, personId: input.personId },
+  });
   await emit({
     name: 'kz.cmp.data_request.raised',
     subject: { entityType: 'data_principal_request', entityId: request.id, recordCode },
@@ -508,12 +589,38 @@ async function assembleAccessExport(tenantId: string, personId: string) {
     person,
     affiliations,
     employments: employmentsDecrypted,
-    studentProfile,
+    // The export is for the data principal, so the guardian values come out in
+    // the clear here, as the employment values above do.
+    studentProfile: studentProfile
+      ? {
+          ...studentProfile,
+          guardianName: readRegulated(studentProfile.guardianName),
+          guardianPhone: readRegulated(studentProfile.guardianPhone),
+        }
+      : null,
     dataMap: [
-      { source: 'person', fields: ['fullName', 'email', 'phone', 'dateOfBirth'].map((field) => ({ field, purpose: FIELD_PURPOSES[field] })) },
-      { source: 'affiliations', purpose: 'employment|education_delivery', fields: ['roleSlug', 'status', 'effectiveFrom', 'effectiveTo'] },
-      { source: 'employments', purpose: 'employment|statutory_filing', fields: ['status', 'panNumber', 'aadhaarReference', 'bankAccountNumber', 'bankAccountName', 'bankIfsc'] },
-      { source: 'studentProfile', purpose: 'education_delivery', fields: ['guardianName', 'guardianPhone', 'guardianConsentId'] },
+      {
+        source: 'person',
+        fields: ['fullName', 'email', 'phone', 'dateOfBirth'].map((field) => ({
+          field,
+          purpose: FIELD_PURPOSES[field],
+        })),
+      },
+      {
+        source: 'affiliations',
+        purpose: 'employment|education_delivery',
+        fields: ['roleSlug', 'status', 'effectiveFrom', 'effectiveTo'],
+      },
+      {
+        source: 'employments',
+        purpose: 'employment|statutory_filing',
+        fields: ['status', 'panNumber', 'aadhaarReference', 'bankAccountNumber', 'bankAccountName', 'bankIfsc'],
+      },
+      {
+        source: 'studentProfile',
+        purpose: 'education_delivery',
+        fields: ['guardianName', 'guardianPhone', 'guardianConsentId'],
+      },
     ],
     exportedAt: new Date().toISOString(),
   };
@@ -523,27 +630,190 @@ async function assembleAccessExport(tenantId: string, personId: string) {
  * Everything an erasure request can be blocked by, named rather than merely
  * refused. CMP-DPD-002.
  */
-async function erasureBlockers(tenantId: string, personId: string): Promise<{ retentionClass: string; earliestErasable: Date }[]> {
-  const affiliations = await unscopedPrisma.affiliation.findMany({
-    where: { tenantId, partyId: personId, statutoryRetentionFloor: true },
-  });
+export interface ErasureBlocker {
+  retentionClass: string;
+  /** Set when the statutory floor is measured and still running. */
+  earliestErasable: Date | null;
+  /** The floor has no schedule to measure it against. */
+  unmeasured: boolean;
+  /** An affiliation is still running, so there is no end to measure from. */
+  active: boolean;
+}
+
+/**
+ * Everything an erasure request can be blocked by, named rather than merely
+ * refused. CMP-DPD-002.
+ *
+ * An affiliation that has not ended blocks erasure whether or not it carries
+ * the statutory floor: a live relationship has no end date to measure the
+ * window from, so a floor anchored on its start would clear it early.
+ * Suspended counts as live. FX-62.
+ */
+async function erasureBlockers(tenantId: string, personId: string): Promise<ErasureBlocker[]> {
+  const affiliations = await unscopedPrisma.affiliation.findMany({ where: { tenantId, partyId: personId } });
   if (!affiliations.length) return [];
 
-  const schedules = await unscopedPrisma.retentionSchedule.findMany({ where: { tenantId }, orderBy: { effectiveFrom: 'desc' } });
-  const blockers: { retentionClass: string; earliestErasable: Date }[] = [];
+  const schedules = await unscopedPrisma.retentionSchedule.findMany({
+    where: { tenantId },
+    orderBy: { effectiveFrom: 'desc' },
+  });
+  const blockers: ErasureBlocker[] = [];
   const now = new Date();
 
   for (const aff of affiliations) {
     const retentionClass = aff.affiliationType === 'student' ? 'student_record' : 'employee_record';
-    const schedule = schedules.find((s) => s.retentionClass === retentionClass && s.effectiveFrom <= now);
-    if (!schedule) continue; // Unmeasured, not "clear to erase" — but nothing to compare a date against either.
-    const anchor = aff.effectiveTo ?? aff.effectiveFrom;
-    const window = { retentionClass, years: schedule.years, anchor };
-    if (!isPastRetentionWindow(window, now)) {
-      blockers.push({ retentionClass, earliestErasable: earliestErasableDate(window) });
+    const active = aff.status !== 'ended';
+    if (!aff.statutoryRetentionFloor && !active) continue;
+
+    let earliestErasable: Date | null = null;
+    let unmeasured = false;
+    if (aff.statutoryRetentionFloor) {
+      const schedule = schedules.find((s) => s.retentionClass === retentionClass && s.effectiveFrom <= now);
+      // No schedule means the window cannot be measured. That is a block, not a
+      // clearance: erasing now would destroy records the floor still holds.
+      // FX-62.
+      if (!schedule) {
+        unmeasured = true;
+      } else {
+        const anchor = aff.effectiveTo ?? aff.effectiveFrom;
+        const window = { retentionClass, years: schedule.years, anchor };
+        if (!isPastRetentionWindow(window, now)) earliestErasable = earliestErasableDate(window);
+      }
+    }
+    if (active || unmeasured || earliestErasable) {
+      blockers.push({ retentionClass, earliestErasable, unmeasured, active });
     }
   }
   return blockers;
+}
+
+/**
+ * The Person fields a data principal may correct. Everything else on Person is
+ * platform state (dedupe, merge pointer, soft delete, codes, classifications).
+ * Add a field here only when a principal can legitimately be the authority on
+ * it; the normalised twins are derived below, never accepted from the caller.
+ */
+const CORRECTABLE_PERSON_FIELDS = [
+  'fullName',
+  'primaryPhone',
+  'primaryEmail',
+  'additionalPhones',
+  'additionalEmails',
+  'dateOfBirth',
+  'bloodGroup',
+] as const;
+type CorrectablePersonField = (typeof CORRECTABLE_PERSON_FIELDS)[number];
+
+/**
+ * Builds the write for an allowlisted correction. The normalised columns are
+ * what identity matching reads (identity.ts), so a corrected phone or email
+ * must move them too or the person is unfindable by the number they gave us.
+ */
+function correctionData(correction: Partial<Record<CorrectablePersonField, unknown>>): Record<string, unknown> {
+  const data: Record<string, unknown> = { ...correction };
+  if (typeof correction.primaryPhone === 'string' || correction.primaryPhone === null) {
+    data.primaryPhoneNormalised = normalisePhone(correction.primaryPhone as string | null);
+  }
+  if (typeof correction.primaryEmail === 'string' || correction.primaryEmail === null) {
+    data.primaryEmailNormalised = normaliseEmail(correction.primaryEmail as string | null);
+  }
+  if (Array.isArray(correction.additionalPhones)) {
+    data.additionalPhonesNormalised = (correction.additionalPhones as string[])
+      .map((p) => normalisePhone(p))
+      .filter((p): p is string => !!p);
+  }
+  if (Array.isArray(correction.additionalEmails)) {
+    data.additionalEmailsNormalised = (correction.additionalEmails as string[])
+      .map((e) => normaliseEmail(e))
+      .filter((e): e is string => !!e);
+  }
+  return data;
+}
+
+/**
+ * A contact another active person already holds cannot be given to this one.
+ * Identity matching reads the normalised key, so two active people on one key
+ * makes either unfindable by it, and the next enrolment on that number is
+ * refused as ambiguous. Holders are matched on the normalised twin, so the
+ * same address in another case still collides. FX-63.
+ *
+ * The message names no other person: the requester is an operator, not the
+ * principal, and a refusal should not tell them whose record it is.
+ */
+async function assertContactsFree(
+  tenantId: string,
+  personId: string,
+  correction: Record<string, unknown>,
+): Promise<void> {
+  const emails = [
+    ...(typeof correction.primaryEmail === 'string' ? [correction.primaryEmail] : []),
+    ...(Array.isArray(correction.additionalEmails) ? (correction.additionalEmails as string[]) : []),
+  ]
+    .map((e) => normaliseEmail(e))
+    .filter((k): k is string => !!k);
+  const phones = [
+    ...(typeof correction.primaryPhone === 'string' ? [correction.primaryPhone] : []),
+    ...(Array.isArray(correction.additionalPhones) ? (correction.additionalPhones as string[]) : []),
+  ]
+    .map((p) => normalisePhone(p))
+    .filter((k): k is string => !!k);
+
+  const base = { tenantId, id: { not: personId }, deletedAt: null, dedupeStatus: { not: 'merged' } };
+  for (const key of emails) {
+    const holder = await unscopedPrisma.person.findFirst({
+      where: { ...base, OR: [{ primaryEmailNormalised: key }, { additionalEmailsNormalised: { has: key } }] },
+      select: { id: true },
+    });
+    if (holder)
+      throw ApiError.conflict(
+        'That email address is already held by another active person on file, so it cannot be given to this one.',
+      );
+  }
+  for (const key of phones) {
+    const holder = await unscopedPrisma.person.findFirst({
+      where: { ...base, OR: [{ primaryPhoneNormalised: key }, { additionalPhonesNormalised: { has: key } }] },
+      select: { id: true },
+    });
+    if (holder)
+      throw ApiError.conflict(
+        'That phone number is already held by another active person on file, so it cannot be given to this one.',
+      );
+  }
+}
+
+/**
+ * A corrected date of birth. It can be changed but not removed: with no date
+ * on file the minor rule applies, so clearing it would silently change what
+ * the enrolments rest on. FX-63.
+ */
+function correctedDateOfBirth(value: unknown): Date {
+  if (value === null || value === undefined || value === '') {
+    throw ApiError.badRequest(
+      'A date of birth can be corrected but not removed. With none on file the minor rule applies to the enrolments.',
+    );
+  }
+  const d = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(d.getTime())) throw ApiError.badRequest('The corrected date of birth is not a valid date.');
+  if (d.getTime() > Date.now()) throw ApiError.badRequest('The corrected date of birth is in the future.');
+  return d;
+}
+
+/**
+ * Runs the minor gate for each of the person's enrolments against the
+ * corrected date of birth, before anything is written. A learner the
+ * correction makes a minor must have a guardian name and phone on each
+ * enrolment, or the correction is refused. FX-63.
+ */
+async function reRunMinorGateForEnrolments(tenantId: string, personId: string, dateOfBirth: Date) {
+  const enrollments = await unscopedPrisma.enrollment.findMany({ where: { tenantId, personId } });
+  for (const e of enrollments) {
+    assertMinorHasGuardian({
+      dateOfBirth,
+      guardianName: readRegulated(e.guardianName),
+      guardianPhone: readRegulated(e.guardianPhone),
+    });
+  }
+  return enrollments;
 }
 
 export async function fulfilDataRequest(id: string, input: { correction?: Record<string, unknown> } = {}) {
@@ -559,7 +829,13 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
       where: { id },
       data: { status: 'fulfilled', fulfilledAt: new Date(), response: bundle as never },
     });
-    await auditWrite({ action: 'update', subjectType: 'data_principal_request', subjectId: id, before: { status: request.status }, after: { status: 'fulfilled' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'data_principal_request',
+      subjectId: id,
+      before: { status: request.status },
+      after: { status: 'fulfilled' },
+    });
     return updated;
   }
 
@@ -567,63 +843,219 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
     if (!input.correction || Object.keys(input.correction).length === 0) {
       throw ApiError.badRequest('A correction request is fulfilled by giving the corrected fields.');
     }
+    // FX-63. A principal corrects the personal values they are the subject
+    // of. Dedupe state, the merge pointer, the soft delete and the record code
+    // are the platform's to set, so they are refused by name rather than
+    // dropped silently: a silent drop would look like a correction that
+    // succeeded.
+    const disallowed = Object.keys(input.correction).filter(
+      (k) => !CORRECTABLE_PERSON_FIELDS.includes(k as CorrectablePersonField),
+    );
+    if (disallowed.length) {
+      throw ApiError.badRequest(
+        `These fields cannot be corrected by a data-principal request: ${disallowed.join(', ')}.`,
+      );
+    }
+    // Every refusal below happens before the first write, so a refused
+    // correction leaves the person, the enrolments and the request as they were.
+    await assertContactsFree(auth.tenantId, request.personId, input.correction);
+    let newDob: Date | undefined;
+    if ('dateOfBirth' in input.correction) newDob = correctedDateOfBirth(input.correction.dateOfBirth);
+    const enrollments = newDob ? await reRunMinorGateForEnrolments(auth.tenantId, request.personId, newDob) : [];
+
+    // A learner the correction makes a minor needs the guardian consent their
+    // enrolment rests on. The guardian contact is already on the enrolment (the
+    // gate above checked), so the consent is recorded from it.
+    const minorNow = newDob ? isMinor(newDob) === true : false;
+    let consentId: string | null = null;
+    if (newDob && minorNow && enrollments.some((e) => !e.guardianConsentId)) {
+      const source = enrollments[0];
+      consentId = await requireGuardianConsentForMinor({
+        personId: request.personId,
+        dateOfBirth: newDob,
+        guardianName: readRegulated(source.guardianName),
+        guardianPhone: readRegulated(source.guardianPhone),
+      });
+    }
+
     const before = await unscopedPrisma.person.findFirst({ where: { id: request.personId, tenantId: auth.tenantId } });
-    const after = await prisma.person.update({ where: { id: request.personId }, data: input.correction as never });
+    const personData = correctionData(input.correction as Partial<Record<CorrectablePersonField, unknown>>);
+    if (newDob) personData.dateOfBirth = newDob;
+    const after = await prisma.person.update({
+      where: { id: request.personId },
+      data: personData as never,
+    });
     await auditWrite({
       action: 'update',
       subjectType: 'person',
       subjectId: request.personId,
       before: before as never,
       after: after as never,
-      force: true,
     });
+
+    for (const e of enrollments) {
+      const data: { isMinor?: boolean; guardianConsentId?: string } = {};
+      if (e.isMinor !== minorNow) data.isMinor = minorNow;
+      if (minorNow && !e.guardianConsentId && consentId) data.guardianConsentId = consentId;
+      if (Object.keys(data).length === 0) continue;
+      await prisma.enrollment.update({ where: { id: e.id }, data });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'enrollment',
+        subjectId: e.id,
+        before: { isMinor: e.isMinor, guardianConsentId: e.guardianConsentId },
+        after: { isMinor: minorNow, guardianConsentId: data.guardianConsentId ?? e.guardianConsentId },
+      });
+    }
+
     const updated = await prisma.dataPrincipalRequest.update({
       where: { id },
       data: { status: 'fulfilled', fulfilledAt: new Date(), response: { corrected: input.correction } as never },
     });
-    await auditWrite({ action: 'update', subjectType: 'data_principal_request', subjectId: id, before: { status: request.status }, after: { status: 'fulfilled' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'data_principal_request',
+      subjectId: id,
+      before: { status: request.status },
+      after: { status: 'fulfilled' },
+    });
     return updated;
   }
 
   // erasure
   const blockers = await erasureBlockers(auth.tenantId, request.personId);
   if (blockers.length) {
-    const earliest = blockers.reduce((min, b) => (b.earliestErasable < min ? b.earliestErasable : min), blockers[0].earliestErasable);
-    const refusalReason =
-      `Blocked by the statutory retention floor on ${blockers.map((b) => b.retentionClass).join(', ')}. ` +
-      `Not erasable before ${earliest.toISOString().slice(0, 10)}.`;
+    const active = [...new Set(blockers.filter((b) => b.active).map((b) => b.retentionClass))];
+    const dated = blockers.filter((b): b is ErasureBlocker & { earliestErasable: Date } => b.earliestErasable !== null);
+    const unmeasured = [...new Set(blockers.filter((b) => b.unmeasured).map((b) => b.retentionClass))];
+    const parts: string[] = [];
+    if (active.length) {
+      parts.push(
+        `An affiliation is still active (${active.join(', ')}), so erasure cannot proceed until it has ended.`,
+      );
+    }
+    if (dated.length) {
+      const earliest = dated.reduce(
+        (min, b) => (b.earliestErasable < min ? b.earliestErasable : min),
+        dated[0].earliestErasable,
+      );
+      parts.push(
+        `Blocked by the statutory retention floor on ${[...new Set(dated.map((b) => b.retentionClass))].join(', ')}. Not erasable before ${earliest.toISOString().slice(0, 10)}.`,
+      );
+    }
+    if (unmeasured.length) {
+      parts.push(
+        `No retention schedule is recorded for ${unmeasured.join(', ')}, so the floor cannot be measured and erasure cannot proceed.`,
+      );
+    }
+    const refusalReason = parts.join(' ');
     const updated = await prisma.dataPrincipalRequest.update({
       where: { id },
       data: { status: 'refused', refusalReason },
     });
-    await auditWrite({ action: 'update', subjectType: 'data_principal_request', subjectId: id, before: { status: request.status }, after: { status: 'refused', refusalReason } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'data_principal_request',
+      subjectId: id,
+      before: { status: request.status },
+      after: { status: 'refused', refusalReason },
+    });
     return updated;
   }
 
   const token = `erased:${request.personId}`;
-  await prisma.person.update({
-    where: { id: request.personId },
-    data: {
-      fullName: token,
-      primaryPhone: null,
-      primaryEmail: null,
-      primaryPhoneNormalised: null,
-      primaryEmailNormalised: null,
-      additionalPhones: [],
-      additionalEmails: [],
-      additionalPhonesNormalised: [],
-      additionalEmailsNormalised: [],
-      bloodGroup: null,
-      dateOfBirth: null,
-      deletedAt: new Date(),
-    } as never,
+  // One transaction for the scrub, so the Person is never blanked while its
+  // guardian contact survives on an enrolment or a consent. FX-62. Nested
+  // writes bypass the tenant extension (CLAUDE.md rule 6), so each dependent
+  // write names the tenant itself. Rows are blanked, never deleted: the
+  // enrolment and funding history is not personal data and must survive.
+  const dependents = await prisma.$transaction(async (tx) => {
+    await tx.person.update({
+      where: { id: request.personId },
+      data: {
+        fullName: token,
+        primaryPhone: null,
+        primaryEmail: null,
+        primaryPhoneNormalised: null,
+        primaryEmailNormalised: null,
+        additionalPhones: [],
+        additionalEmails: [],
+        additionalPhonesNormalised: [],
+        additionalEmailsNormalised: [],
+        bloodGroup: null,
+        dateOfBirth: null,
+        notes: null,
+        externalIds: [],
+        deletedAt: new Date(),
+      } as never,
+    });
+    // The StudentProfile row survives; its personal values are blanked.
+    await tx.studentProfile.updateMany({
+      where: { tenantId: auth.tenantId, personId: request.personId },
+      data: { guardianName: null, guardianPhone: null, address: null },
+    });
+    const enrollmentIds = (
+      await tx.enrollment.findMany({
+        where: { tenantId: auth.tenantId, personId: request.personId },
+        select: { id: true },
+      })
+    ).map((e) => e.id);
+    await tx.enrollment.updateMany({
+      where: { tenantId: auth.tenantId, id: { in: enrollmentIds } },
+      data: { guardianName: null, guardianPhone: null, guardianEmail: null },
+    });
+    // A minor's guardian consent names the guardian in its evidence, and is
+    // matched on either the minor (personId) or the guardian link.
+    const consentIds = (
+      await tx.consent.findMany({
+        where: {
+          tenantId: auth.tenantId,
+          OR: [{ personId: request.personId }, { guardianOfPersonId: request.personId }],
+        },
+        select: { id: true },
+      })
+    ).map((c) => c.id);
+    await tx.consent.updateMany({
+      where: { tenantId: auth.tenantId, id: { in: consentIds } },
+      data: { evidence: {} as never },
+    });
+    return { enrollmentIds, consentIds };
   });
   const updated = await prisma.dataPrincipalRequest.update({
     where: { id },
     data: { status: 'fulfilled', fulfilledAt: new Date(), response: { erased: true, token } as never },
   });
-  await auditWrite({ action: 'delete', subjectType: 'person', subjectId: request.personId, after: { erased: true }, force: true });
-  await auditWrite({ action: 'update', subjectType: 'data_principal_request', subjectId: id, before: { status: request.status }, after: { status: 'fulfilled' } });
+  // Audited per dependent row, without the values: the audit log is kept
+  // longer than the record and must not become the place the value survives.
+  for (const enrollmentId of dependents.enrollmentIds) {
+    await auditWrite({
+      action: 'update',
+      subjectType: 'enrollment',
+      subjectId: enrollmentId,
+      after: { guardianContactErased: true },
+    });
+  }
+  for (const consentId of dependents.consentIds) {
+    await auditWrite({
+      action: 'update',
+      subjectType: 'consent',
+      subjectId: consentId,
+      after: { evidenceErased: true },
+    });
+  }
+  await auditWrite({
+    action: 'delete',
+    subjectType: 'person',
+    subjectId: request.personId,
+    after: { erased: true, dependents: ['student_profile', 'enrollment', 'consent'] },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'data_principal_request',
+    subjectId: id,
+    before: { status: request.status },
+    after: { status: 'fulfilled' },
+  });
   await emit({
     name: 'kz.cmp.data_request.fulfilled',
     subject: { entityType: 'data_principal_request', entityId: id, recordCode: request.recordCode },
@@ -638,8 +1070,17 @@ export async function refuseDataRequest(id: string, reason: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'data_requests', verb: 'edit' });
   const request = await getDataRequest(id);
-  const updated = await prisma.dataPrincipalRequest.update({ where: { id }, data: { status: 'refused', refusalReason: reason } });
-  await auditWrite({ action: 'update', subjectType: 'data_principal_request', subjectId: id, before: { status: request.status }, after: { status: 'refused', reason } });
+  const updated = await prisma.dataPrincipalRequest.update({
+    where: { id },
+    data: { status: 'refused', refusalReason: reason },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'data_principal_request',
+    subjectId: id,
+    before: { status: request.status },
+    after: { status: 'refused', reason },
+  });
   void auth;
   return updated;
 }
@@ -699,7 +1140,12 @@ export async function raiseBreach(input: {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'data_breach', subjectId: breach.id, after: { detectedAt: input.detectedAt, severity: input.severity } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'data_breach',
+    subjectId: breach.id,
+    after: { detectedAt: input.detectedAt, severity: input.severity },
+  });
   await emit({
     name: 'kz.cmp.breach.raised',
     subject: { entityType: 'data_breach', entityId: breach.id, recordCode },
@@ -736,7 +1182,13 @@ export async function transitionBreach(id: string, status: string, notes?: strin
   if (status === 'closed') data.closedAt = now;
 
   const updated = await prisma.dataBreach.update({ where: { id }, data: data as never });
-  await auditWrite({ action: 'update', subjectType: 'data_breach', subjectId: id, before: { status: breach.status }, after: { status } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'data_breach',
+    subjectId: id,
+    before: { status: breach.status },
+    after: { status },
+  });
   await emit({
     name: 'kz.cmp.breach.transitioned',
     subject: { entityType: 'data_breach', entityId: id, recordCode: breach.recordCode },
@@ -800,11 +1252,20 @@ export async function runBreachLadder(): Promise<number> {
 
 export async function runRetentionReport(): Promise<{ generatedAt: Date; snapshot: unknown[] }> {
   const auth = currentAuth();
-  const schedules = await prisma.retentionSchedule.findMany({ where: { tenantId: auth.tenantId }, orderBy: { effectiveFrom: 'desc' } });
+  const schedules = await prisma.retentionSchedule.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { effectiveFrom: 'desc' },
+  });
   const now = new Date();
   const classes = [...new Set(schedules.map((s) => s.retentionClass))];
 
-  const snapshot: Array<{ retentionClass: string; years: number; totalCount: number; pastWindowCount: number; cutoff: string }> = [];
+  const snapshot: Array<{
+    retentionClass: string;
+    years: number;
+    totalCount: number;
+    pastWindowCount: number;
+    cutoff: string;
+  }> = [];
   for (const retentionClass of classes) {
     const schedule = schedules.find((s) => s.retentionClass === retentionClass && s.effectiveFrom <= now);
     if (!schedule) continue;
@@ -818,12 +1279,16 @@ export async function runRetentionReport(): Promise<{ generatedAt: Date; snapsho
           ])
         : await Promise.all([
             prisma.eventRecord.count({ where: { tenantId: auth.tenantId, retentionClass } }),
-            prisma.eventRecord.count({ where: { tenantId: auth.tenantId, retentionClass, occurredAt: { lt: cutoff } } }),
+            prisma.eventRecord.count({
+              where: { tenantId: auth.tenantId, retentionClass, occurredAt: { lt: cutoff } },
+            }),
           ]);
     snapshot.push({ retentionClass, years: schedule.years, totalCount, pastWindowCount, cutoff: cutoff.toISOString() });
   }
 
-  const report = await prisma.retentionReport.create({ data: { tenantId: auth.tenantId, generatedAt: now, snapshot: snapshot as never } });
+  const report = await prisma.retentionReport.create({
+    data: { tenantId: auth.tenantId, generatedAt: now, snapshot: snapshot as never },
+  });
   return { generatedAt: report.generatedAt, snapshot };
 }
 
@@ -832,7 +1297,10 @@ export async function getRetention() {
   await assertCan({ resource: 'data_requests', verb: 'view' });
   const [latest, schedule] = await Promise.all([
     prisma.retentionReport.findFirst({ where: { tenantId: auth.tenantId }, orderBy: { generatedAt: 'desc' } }),
-    prisma.retentionSchedule.findMany({ where: { tenantId: auth.tenantId }, orderBy: [{ retentionClass: 'asc' }, { effectiveFrom: 'desc' }] }),
+    prisma.retentionSchedule.findMany({
+      where: { tenantId: auth.tenantId },
+      orderBy: [{ retentionClass: 'asc' }, { effectiveFrom: 'desc' }],
+    }),
   ]);
   return { latest, schedule };
 }
@@ -860,7 +1328,6 @@ registerHook('offboarding.completed', 'privacy.revoke_access', async (payload) =
       subjectId: aff.id,
       before: { status: 'active' },
       after: { status: 'ended', revokedReason: 'offboarding' },
-      force: true,
     });
   }
 });
@@ -885,16 +1352,27 @@ export async function runAccessReview(): Promise<number> {
     if (!existing) statusByPerson.set(e.personId, e.status);
   }
 
-  const findings: Array<{ partyId: string; fullName: string; affiliationId: string; employmentStatus: string | null }> = [];
+  const findings: Array<{ partyId: string; fullName: string; affiliationId: string; employmentStatus: string | null }> =
+    [];
   for (const aff of affiliations) {
     const status = statusByPerson.get(aff.partyId) ?? null;
     if (status !== 'Active') {
-      findings.push({ partyId: aff.partyId, fullName: aff.party.fullName, affiliationId: aff.id, employmentStatus: status });
+      findings.push({
+        partyId: aff.partyId,
+        fullName: aff.party.fullName,
+        affiliationId: aff.id,
+        employmentStatus: status,
+      });
     }
   }
 
   await prisma.accessReview.create({
-    data: { tenantId: auth.tenantId, generatedAt: new Date(), findings: findings as never, staleCount: findings.length },
+    data: {
+      tenantId: auth.tenantId,
+      generatedAt: new Date(),
+      findings: findings as never,
+      staleCount: findings.length,
+    },
   });
 
   const ownerPartyId = await privacyOwnerPartyId(auth.tenantId);
@@ -996,15 +1474,32 @@ export function readRegulated(value: string | null | undefined): string | null {
 /** EmploymentRelationship columns backfill touches. Bank IFSC is a routing
  * code rather than an identifier on its own, but it sits next to the account
  * number on the same regulated row, so it travels with it. */
-const REGULATED_EMPLOYMENT_FIELDS = ['panNumber', 'aadhaarReference', 'bankAccountNumber', 'bankAccountName', 'bankIfsc'] as const;
+const REGULATED_EMPLOYMENT_FIELDS = [
+  'panNumber',
+  'aadhaarReference',
+  'bankAccountNumber',
+  'bankAccountName',
+  'bankIfsc',
+] as const;
 
-export async function backfillEncryptAtRest(): Promise<{ fieldsScanned: number; valuesEncrypted: number; alreadyEncrypted: number }> {
+export async function backfillEncryptAtRest(): Promise<{
+  fieldsScanned: number;
+  valuesEncrypted: number;
+  alreadyEncrypted: number;
+}> {
   const auth = currentAuth();
   await assertCan({ resource: 'security_settings', verb: 'edit' });
 
   const rows = await unscopedPrisma.employmentRelationship.findMany({
     where: { tenantId: auth.tenantId },
-    select: { id: true, panNumber: true, aadhaarReference: true, bankAccountNumber: true, bankAccountName: true, bankIfsc: true },
+    select: {
+      id: true,
+      panNumber: true,
+      aadhaarReference: true,
+      bankAccountNumber: true,
+      bankAccountName: true,
+      bankIfsc: true,
+    },
   });
 
   let fieldsScanned = 0;
@@ -1032,7 +1527,11 @@ export async function backfillEncryptAtRest(): Promise<{ fieldsScanned: number; 
   await prisma.encryptionBackfillRun.create({
     data: { tenantId: auth.tenantId, fieldsScanned, valuesEncrypted, alreadyEncrypted, runById: auth.partyId },
   });
-  await auditBulkOperation('employment_relationship', 'encrypt_at_rest_backfill', { fieldsScanned, valuesEncrypted, alreadyEncrypted });
+  await auditBulkOperation('employment_relationship', 'encrypt_at_rest_backfill', {
+    fieldsScanned,
+    valuesEncrypted,
+    alreadyEncrypted,
+  });
 
   return { fieldsScanned, valuesEncrypted, alreadyEncrypted };
 }
@@ -1056,7 +1555,10 @@ export async function encryptionStatus() {
     }
   }
 
-  const lastRun = await prisma.encryptionBackfillRun.findFirst({ where: { tenantId: auth.tenantId }, orderBy: { ranAt: 'desc' } });
+  const lastRun = await prisma.encryptionBackfillRun.findFirst({
+    where: { tenantId: auth.tenantId },
+    orderBy: { ranAt: 'desc' },
+  });
   return { plaintext, encrypted, lastRun, keyConfigured: Boolean(config.FIELD_ENCRYPTION_KEY) };
 }
 

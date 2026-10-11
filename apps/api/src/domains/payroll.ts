@@ -22,6 +22,9 @@ import { transition } from '../platform/lifecycle.js';
 import { currentCompensation } from './employment.js';
 import { runHooks } from '../platform/hooks.js';
 import { computeInstruction } from './compliance/payroll.js';
+import { registerGovernedEntities } from '../platform/audit.js';
+
+registerGovernedEntities('hcm_payroll', ['payroll_run']);
 
 const PAY_PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -76,9 +79,12 @@ export async function openPayrollRun(payPeriod: string) {
 
   const existing = await prisma.payrollRun.findFirst({ where: { tenantId: auth.tenantId, payPeriod } });
   if (existing) {
-    throw ApiError.conflict(`Payroll for ${payPeriod} is already open as ${existing.recordCode} (${existing.status}).`, {
-      payrollRunId: existing.id,
-    });
+    throw ApiError.conflict(
+      `Payroll for ${payPeriod} is already open as ${existing.recordCode} (${existing.status}).`,
+      {
+        payrollRunId: existing.id,
+      },
+    );
   }
 
   const [year, month] = payPeriod.split('-').map(Number);
@@ -151,10 +157,7 @@ export async function openPayrollRun(payPeriod: string) {
 }
 
 /** Records deductions against one instruction, before the run is approved. */
-export async function setInstructionAmounts(
-  id: string,
-  input: { grossAmount?: number; deductions?: number },
-) {
+export async function setInstructionAmounts(id: string, input: { grossAmount?: number; deductions?: number }) {
   const auth = currentAuth();
   await assertCan({ resource: 'payroll', verb: 'edit' });
 

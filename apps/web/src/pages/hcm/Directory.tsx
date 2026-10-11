@@ -71,7 +71,9 @@ export function Directory() {
                   </td>
                   <td>{row.title ?? '—'}</td>
                   <td>{row.orgUnit ?? '—'}</td>
-                  <td>{row.location ? `${row.location.name}${row.location.city ? `, ${row.location.city}` : ''}` : '—'}</td>
+                  <td>
+                    {row.location ? `${row.location.name}${row.location.city ? `, ${row.location.city}` : ''}` : '—'}
+                  </td>
                   <td className="text-2xs text-ink-500">{row.person.primaryEmail ?? row.person.primaryPhone ?? '—'}</td>
                 </tr>
               ))}

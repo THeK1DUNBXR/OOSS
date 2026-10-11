@@ -256,7 +256,8 @@ export interface BonusResult {
  */
 export function bonus(basicMonthly: number, eligible: boolean, minimumWageMonthly?: number): BonusResult {
   if (!eligible || basicMonthly > BONUS_ELIGIBILITY_CEILING) return { eligible: false, amount: 0 };
-  const calcCeiling = minimumWageMonthly != null ? Math.min(BONUS_CALCULATION_CEILING, minimumWageMonthly) : BONUS_CALCULATION_CEILING;
+  const calcCeiling =
+    minimumWageMonthly != null ? Math.min(BONUS_CALCULATION_CEILING, minimumWageMonthly) : BONUS_CALCULATION_CEILING;
   const wage = Math.min(basicMonthly, calcCeiling);
   return { eligible: true, amount: round2(wage * BONUS_MIN_RATE) };
 }

@@ -165,7 +165,10 @@ export function nextDueDates(
       const dueYear = fyStartYear + (md.yearOffset ?? 0);
       const due = utc(dueYear, md.month, md.day);
       if (inHorizon(due, fromDate, horizonEnd)) {
-        out.push({ period: `FY${fyStartYear}-${String((fyStartYear + 1) % 100).padStart(2, '0')}-H${half}`, dueAt: due });
+        out.push({
+          period: `FY${fyStartYear}-${String((fyStartYear + 1) % 100).padStart(2, '0')}-H${half}`,
+          dueAt: due,
+        });
       }
       cursor = addMonthsUtc(cursor, 6);
     }

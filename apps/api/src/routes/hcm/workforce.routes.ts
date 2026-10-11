@@ -30,13 +30,19 @@ import {
 
 const router = Router();
 
-router.get('/_status', handler(async () => ({ module: 'workforce', ready: true })));
+router.get(
+  '/_status',
+  handler(async () => ({ module: 'workforce', ready: true })),
+);
 
 // ---------------------------------------------------------------------------
 // Org chart & directory
 // ---------------------------------------------------------------------------
 
-router.get('/org-chart', handler(async () => orgChart()));
+router.get(
+  '/org-chart',
+  handler(async () => orgChart()),
+);
 
 router.get(
   '/directory',
@@ -49,13 +55,19 @@ router.get(
 // Employee 360
 // ---------------------------------------------------------------------------
 
-router.get('/employees/:id/360', handler(async (req) => employee360(req.params.id)));
+router.get(
+  '/employees/:id/360',
+  handler(async (req) => employee360(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Profile extension
 // ---------------------------------------------------------------------------
 
-router.get('/employees/:id/profile', handler(async (req) => getProfileExtension(req.params.id)));
+router.get(
+  '/employees/:id/profile',
+  handler(async (req) => getProfileExtension(req.params.id)),
+);
 
 const profileBody = z.object({
   gender: z.string().nullish(),
@@ -80,7 +92,10 @@ router.patch(
 // Documents
 // ---------------------------------------------------------------------------
 
-router.get('/employees/:id/documents', handler(async (req) => listEmployeeDocuments(req.params.id)));
+router.get(
+  '/employees/:id/documents',
+  handler(async (req) => listEmployeeDocuments(req.params.id)),
+);
 
 router.post(
   '/employees/:id/documents',
@@ -118,7 +133,10 @@ router.post(
 // Reporting lines
 // ---------------------------------------------------------------------------
 
-router.get('/employees/:id/reporting-lines', handler(async (req) => listReportingLines(req.params.id)));
+router.get(
+  '/employees/:id/reporting-lines',
+  handler(async (req) => listReportingLines(req.params.id)),
+);
 
 router.post(
   '/reporting-lines',
@@ -139,13 +157,21 @@ router.post(
 // Org design — cost centres, locations, grades
 // ---------------------------------------------------------------------------
 
-router.get('/cost-centres', handler(async () => listCostCentres()));
+router.get(
+  '/cost-centres',
+  handler(async () => listCostCentres()),
+);
 router.post(
   '/cost-centres',
-  handler(async (req) => createCostCentre(z.object({ code: z.string().min(1), name: z.string().min(1) }).parse(req.body))),
+  handler(async (req) =>
+    createCostCentre(z.object({ code: z.string().min(1), name: z.string().min(1) }).parse(req.body)),
+  ),
 );
 
-router.get('/locations', handler(async () => listLocations()));
+router.get(
+  '/locations',
+  handler(async () => listLocations()),
+);
 router.post(
   '/locations',
   handler(async (req) =>
@@ -163,11 +189,16 @@ router.post(
   ),
 );
 
-router.get('/grades', handler(async () => listGrades()));
+router.get(
+  '/grades',
+  handler(async () => listGrades()),
+);
 router.post(
   '/grades',
   handler(async (req) =>
-    createGrade(z.object({ code: z.string().min(1), name: z.string().min(1), level: z.number().int() }).parse(req.body)),
+    createGrade(
+      z.object({ code: z.string().min(1), name: z.string().min(1), level: z.number().int() }).parse(req.body),
+    ),
   ),
 );
 
@@ -209,6 +240,9 @@ router.post(
   }),
 );
 
-router.post('/status-changes/:id/apply', handler(async (req) => applyStatusChange(req.params.id)));
+router.post(
+  '/status-changes/:id/apply',
+  handler(async (req) => applyStatusChange(req.params.id)),
+);
 
 export default router;

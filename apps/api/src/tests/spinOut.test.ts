@@ -16,7 +16,14 @@ import { seedBootstrap } from '../seed/bootstrap.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { previewSpinOut, commitSpinOut, revertSpinOut } from '../seed/spinOutEngine.js';
 import { spinOutPreview, spinOutDivisionsSummary } from '../domains/spinOutPreview.js';
-import { asPrincipal, authFor, expectReject, type TestPrincipal, unscopedPrisma, prisma as scopedPrisma } from './helpers.js';
+import {
+  asPrincipal,
+  authFor,
+  expectReject,
+  type TestPrincipal,
+  unscopedPrisma,
+  prisma as scopedPrisma,
+} from './helpers.js';
 
 let HOLD: string;
 let HOLD_SLUG: string;
@@ -56,58 +63,179 @@ async function seedHoldingFixtures() {
       data: { tenantId: HOLD, name: `Corp Bank ${suffix}`, accountType: 'bank', ledgerGroup: 'asset' },
     });
     const category = await scopedPrisma.ledgerCategory.create({
-      data: { tenantId: HOLD, name: `Tuition Fees ${suffix}`, kind: 'income', behaviour: 'variable', defaultDivision: 'education' },
+      data: {
+        tenantId: HOLD,
+        name: `Tuition Fees ${suffix}`,
+        kind: 'income',
+        behaviour: 'variable',
+        defaultDivision: 'education',
+      },
     });
 
     const carriedTxn = await scopedPrisma.transaction.create({
       data: {
-        tenantId: HOLD, recordCode: await nextRecordCode('TXN'), txnDate: new Date('2026-04-01'),
-        direction: 'in', amount: 1000, accountId: account.id, categoryId: category.id, division: 'education', source: 'manual',
+        tenantId: HOLD,
+        recordCode: await nextRecordCode('TXN'),
+        txnDate: new Date('2026-04-01'),
+        direction: 'in',
+        amount: 1000,
+        accountId: account.id,
+        categoryId: category.id,
+        division: 'education',
+        source: 'manual',
       },
     });
     const sharedTxn = await scopedPrisma.transaction.create({
       data: {
-        tenantId: HOLD, recordCode: await nextRecordCode('TXN'), txnDate: new Date('2026-04-02'),
-        direction: 'out', amount: 200, accountId: account.id, division: 'shared', source: 'manual',
+        tenantId: HOLD,
+        recordCode: await nextRecordCode('TXN'),
+        txnDate: new Date('2026-04-02'),
+        direction: 'out',
+        amount: 200,
+        accountId: account.id,
+        division: 'shared',
+        source: 'manual',
       },
     });
     const linkedTxn = await scopedPrisma.transaction.create({
       data: {
-        tenantId: HOLD, recordCode: await nextRecordCode('TXN'), txnDate: new Date('2026-04-03'),
-        direction: 'in', amount: 500, accountId: account.id, division: 'education', source: 'invoice', invoiceId: 'fake-invoice-id',
+        tenantId: HOLD,
+        recordCode: await nextRecordCode('TXN'),
+        txnDate: new Date('2026-04-03'),
+        direction: 'in',
+        amount: 500,
+        accountId: account.id,
+        division: 'education',
+        source: 'invoice',
+        invoiceId: 'fake-invoice-id',
       },
     });
     const otherDivisionTxn = await scopedPrisma.transaction.create({
       data: {
-        tenantId: HOLD, recordCode: await nextRecordCode('TXN'), txnDate: new Date('2026-04-04'),
-        direction: 'in', amount: 300, accountId: account.id, division: 'software', source: 'manual',
+        tenantId: HOLD,
+        recordCode: await nextRecordCode('TXN'),
+        txnDate: new Date('2026-04-04'),
+        direction: 'in',
+        amount: 300,
+        accountId: account.id,
+        division: 'software',
+        source: 'manual',
       },
     });
 
     // Employment: an org unit tree rooted in the education division, a
     // position in it, a person, and a current effective assignment.
-    const orgUnit = await scopedPrisma.orgUnit.create({ data: { tenantId: HOLD, name: `Education ${suffix}`, unitType: 'division', division: 'education' } });
-    const job = await scopedPrisma.job.create({ data: { tenantId: HOLD, title: 'Trainer', jobFamily: 'academics', jobLevel: 'L1' } });
-    const position = await scopedPrisma.position.create({ data: { tenantId: HOLD, recordCode: await nextRecordCode('POS'), orgUnitId: orgUnit.id, jobId: job.id, status: 'Filled' } });
+    const orgUnit = await scopedPrisma.orgUnit.create({
+      data: { tenantId: HOLD, name: `Education ${suffix}`, unitType: 'division', division: 'education' },
+    });
+    const job = await scopedPrisma.job.create({
+      data: { tenantId: HOLD, title: 'Trainer', jobFamily: 'academics', jobLevel: 'L1' },
+    });
+    const position = await scopedPrisma.position.create({
+      data: {
+        tenantId: HOLD,
+        recordCode: await nextRecordCode('POS'),
+        orgUnitId: orgUnit.id,
+        jobId: job.id,
+        status: 'Filled',
+      },
+    });
     const empEmail = `trainer-${suffix}@example.test`;
-    const empPerson = await scopedPrisma.person.create({ data: { tenantId: HOLD, recordCode: await nextRecordCode('PER'), fullName: 'Trainer One', primaryEmail: empEmail, primaryEmailNormalised: empEmail, source: 'test' } });
-    const employment = await scopedPrisma.employmentRelationship.create({ data: { tenantId: HOLD, recordCode: await nextRecordCode('EMP'), personId: empPerson.id, hireEffectiveDate: new Date('2025-01-01') } });
+    const empPerson = await scopedPrisma.person.create({
+      data: {
+        tenantId: HOLD,
+        recordCode: await nextRecordCode('PER'),
+        fullName: 'Trainer One',
+        primaryEmail: empEmail,
+        primaryEmailNormalised: empEmail,
+        source: 'test',
+      },
+    });
+    const employment = await scopedPrisma.employmentRelationship.create({
+      data: {
+        tenantId: HOLD,
+        recordCode: await nextRecordCode('EMP'),
+        personId: empPerson.id,
+        hireEffectiveDate: new Date('2025-01-01'),
+      },
+    });
     await scopedPrisma.assignment.create({
-      data: { tenantId: HOLD, employmentRelationshipId: employment.id, positionId: position.id, reasonCode: 'hire', rowStatus: 'Effective', effectiveFrom: new Date('2025-01-01') },
+      data: {
+        tenantId: HOLD,
+        employmentRelationshipId: employment.id,
+        positionId: position.id,
+        reasonCode: 'hire',
+        rowStatus: 'Effective',
+        effectiveFrom: new Date('2025-01-01'),
+      },
     });
 
     // Course, cohort, enrolment.
-    const course = await scopedPrisma.course.create({ data: { tenantId: HOLD, recordCode: await nextRecordCode('CRS'), name: `Diploma ${suffix}`, code: `DIP-${suffix}`, division: 'education' } });
-    const cohort = await scopedPrisma.cohort.create({ data: { tenantId: HOLD, recordCode: await nextRecordCode('COH'), courseId: course.id, name: 'Batch 1', startDate: new Date('2026-01-01') } });
+    const course = await scopedPrisma.course.create({
+      data: {
+        tenantId: HOLD,
+        recordCode: await nextRecordCode('CRS'),
+        name: `Diploma ${suffix}`,
+        code: `DIP-${suffix}`,
+        division: 'education',
+      },
+    });
+    const cohort = await scopedPrisma.cohort.create({
+      data: {
+        tenantId: HOLD,
+        recordCode: await nextRecordCode('COH'),
+        courseId: course.id,
+        name: 'Batch 1',
+        startDate: new Date('2026-01-01'),
+      },
+    });
     const studentEmail = `student-${suffix}@example.test`;
-    const studentPerson = await scopedPrisma.person.create({ data: { tenantId: HOLD, recordCode: await nextRecordCode('PER'), fullName: 'Student One', primaryEmail: studentEmail, primaryEmailNormalised: studentEmail, source: 'test' } });
-    const enrollment = await scopedPrisma.enrollment.create({ data: { tenantId: HOLD, recordCode: await nextRecordCode('ENR'), personId: studentPerson.id, cohortId: cohort.id } });
+    const studentPerson = await scopedPrisma.person.create({
+      data: {
+        tenantId: HOLD,
+        recordCode: await nextRecordCode('PER'),
+        fullName: 'Student One',
+        primaryEmail: studentEmail,
+        primaryEmailNormalised: studentEmail,
+        source: 'test',
+      },
+    });
+    const enrollment = await scopedPrisma.enrollment.create({
+      data: {
+        tenantId: HOLD,
+        recordCode: await nextRecordCode('ENR'),
+        personId: studentPerson.id,
+        cohortId: cohort.id,
+      },
+    });
 
     // Organisation owned by the division, via an invoice.
-    const org = await scopedPrisma.organization.create({ data: { tenantId: HOLD, recordCode: await nextRecordCode('ORG'), kind: 'organization', name: `Acme College ${suffix}` } });
+    const org = await scopedPrisma.organization.create({
+      data: {
+        tenantId: HOLD,
+        recordCode: await nextRecordCode('ORG'),
+        kind: 'organization',
+        name: `Acme College ${suffix}`,
+      },
+    });
     await scopedPrisma.invoice.create({ data: { tenantId: HOLD, organizationId: org.id, division: 'education' } });
 
-    return { account, category, carriedTxn, sharedTxn, linkedTxn, otherDivisionTxn, orgUnit, employment, empPerson, course, cohort, enrollment, studentPerson, org };
+    return {
+      account,
+      category,
+      carriedTxn,
+      sharedTxn,
+      linkedTxn,
+      otherDivisionTxn,
+      orgUnit,
+      employment,
+      empPerson,
+      course,
+      cohort,
+      enrollment,
+      studentPerson,
+      org,
+    };
   });
 }
 
@@ -119,15 +247,32 @@ beforeAll(async () => {
   HOLD = hold.tenantId;
   HOLD_SLUG = holdSlug;
 
-  const sub = await seedBootstrap({ tenantSlug: subSlug, tenantName: `Spin-out Education ${suffix} Pvt Ltd`, parentTenantSlug: holdSlug, originDivision: 'education' });
+  const sub = await seedBootstrap({
+    tenantSlug: subSlug,
+    tenantName: `Spin-out Education ${suffix} Pvt Ltd`,
+    parentTenantSlug: holdSlug,
+    originDivision: 'education',
+  });
   SUB = sub.tenantId;
 
   // Certificate signatories, without which the opening allotment refuses.
   await asSubChairman(() =>
     scopedPrisma.companyProfile.upsert({
       where: { tenantId: SUB },
-      create: { tenantId: SUB, legalName: `Spin-out Education ${suffix} Pvt Ltd`, certificateSignatories: [{ name: 'A Director', designation: 'Director' }, { name: 'B Secretary', designation: 'Company Secretary' }] as never },
-      update: { certificateSignatories: [{ name: 'A Director', designation: 'Director' }, { name: 'B Secretary', designation: 'Company Secretary' }] as never },
+      create: {
+        tenantId: SUB,
+        legalName: `Spin-out Education ${suffix} Pvt Ltd`,
+        certificateSignatories: [
+          { name: 'A Director', designation: 'Director' },
+          { name: 'B Secretary', designation: 'Company Secretary' },
+        ] as never,
+      },
+      update: {
+        certificateSignatories: [
+          { name: 'A Director', designation: 'Director' },
+          { name: 'B Secretary', designation: 'Company Secretary' },
+        ] as never,
+      },
     }),
   );
 
@@ -190,7 +335,9 @@ describe('EQT-SPN-005 — a shared-division transaction is refused, not carried'
     const preview = await previewSpinOut(HOLD, 'education');
     const refusedCodes = preview.refused.transactions?.sample.map((r) => r.code) ?? [];
     const carriedCodes = preview.carried.transactions?.sample ?? [];
-    const sharedTxn = await unscopedPrisma.transaction.findFirstOrThrow({ where: { tenantId: HOLD, division: 'shared' } });
+    const sharedTxn = await unscopedPrisma.transaction.findFirstOrThrow({
+      where: { tenantId: HOLD, division: 'shared' },
+    });
     expect(refusedCodes).toContain(sharedTxn.recordCode);
     expect(carriedCodes).not.toContain(sharedTxn.recordCode);
   });
@@ -218,67 +365,97 @@ describe('EQT-SPN-002, 003, 004, 007 — commit', () => {
     expect(COMMIT_BATCH.carried.enrollments).toBe(1);
     expect(COMMIT_BATCH.carried.organizations).toBe(1);
 
-    const sourceTxn = await unscopedPrisma.transaction.findFirstOrThrow({ where: { tenantId: HOLD, division: 'education', invoiceId: null } });
+    const sourceTxn = await unscopedPrisma.transaction.findFirstOrThrow({
+      where: { tenantId: HOLD, division: 'education', invoiceId: null },
+    });
     expect(sourceTxn.migratedToTenantId).toBe(SUB);
     // Never edited otherwise — the amount and date the row carried at
     // creation still read the same.
     expect(Number(sourceTxn.amount)).toBe(1000);
     expect(sourceTxn.txnDate.toISOString().slice(0, 10)).toBe('2026-04-01');
 
-    const copiedTxn = await unscopedPrisma.transaction.findFirstOrThrow({ where: { tenantId: SUB, spinOutBatchId: COMMIT_BATCH.batchId } });
+    const copiedTxn = await unscopedPrisma.transaction.findFirstOrThrow({
+      where: { tenantId: SUB, spinOutBatchId: COMMIT_BATCH.batchId },
+    });
     expect(Number(copiedTxn.amount)).toBe(1000);
     expect(copiedTxn.division).toBe('education');
 
-    const sourceEmployment = await unscopedPrisma.employmentRelationship.findFirstOrThrow({ where: { tenantId: HOLD } });
+    const sourceEmployment = await unscopedPrisma.employmentRelationship.findFirstOrThrow({
+      where: { tenantId: HOLD },
+    });
     expect(sourceEmployment.migratedToTenantId).toBe(SUB);
     // Ending the employment is deliberately not done here.
     expect(sourceEmployment.status).not.toBe('Terminated');
 
-    const copiedEmployment = await unscopedPrisma.employmentRelationship.findFirstOrThrow({ where: { tenantId: SUB, spinOutBatchId: COMMIT_BATCH.batchId } });
+    const copiedEmployment = await unscopedPrisma.employmentRelationship.findFirstOrThrow({
+      where: { tenantId: SUB, spinOutBatchId: COMMIT_BATCH.batchId },
+    });
     expect(copiedEmployment.legalEntity).toBe(`Spin-out Education ${suffix} Pvt Ltd`);
   });
 
   it('EQT-SPN-003 — the opening allotment records the holding as an entity holder and issues certificates', async () => {
-    const entityHolder = await unscopedPrisma.holder.findFirstOrThrow({ where: { tenantId: SUB, kind: 'entity', heldByTenantId: HOLD } });
-    const allotment = await unscopedPrisma.shareTransaction.findFirstOrThrow({ where: { tenantId: SUB, toHolderId: entityHolder.id } });
+    const entityHolder = await unscopedPrisma.holder.findFirstOrThrow({
+      where: { tenantId: SUB, kind: 'entity', heldByTenantId: HOLD },
+    });
+    const allotment = await unscopedPrisma.shareTransaction.findFirstOrThrow({
+      where: { tenantId: SUB, toHolderId: entityHolder.id },
+    });
     expect(allotment.status).toBe('effective');
     expect(allotment.boardResolutionRef).toBe('spin-out');
     expect(Number(allotment.count)).toBe(7000);
 
-    const cert = await unscopedPrisma.shareCertificate.findFirstOrThrow({ where: { tenantId: SUB, holderId: entityHolder.id } });
+    const cert = await unscopedPrisma.shareCertificate.findFirstOrThrow({
+      where: { tenantId: SUB, holderId: entityHolder.id },
+    });
     expect(cert.status).toBe('issued');
     expect((cert.signatories as unknown[]).length).toBeGreaterThanOrEqual(2);
 
-    const otherHolder = await unscopedPrisma.holder.findFirstOrThrow({ where: { tenantId: SUB, kind: 'person', heldByTenantId: null } });
-    const otherAllotment = await unscopedPrisma.shareTransaction.findFirstOrThrow({ where: { tenantId: SUB, toHolderId: otherHolder.id } });
+    const otherHolder = await unscopedPrisma.holder.findFirstOrThrow({
+      where: { tenantId: SUB, kind: 'person', heldByTenantId: null },
+    });
+    const otherAllotment = await unscopedPrisma.shareTransaction.findFirstOrThrow({
+      where: { tenantId: SUB, toHolderId: otherHolder.id },
+    });
     expect(Number(otherAllotment.count)).toBe(3000);
   });
 
   it('EQT-SPN-004 — cash never moves: subsidiary accounts open at zero with the note', async () => {
-    const account = await unscopedPrisma.ledgerAccount.findFirstOrThrow({ where: { tenantId: SUB, spinOutBatchId: COMMIT_BATCH.batchId } });
+    const account = await unscopedPrisma.ledgerAccount.findFirstOrThrow({
+      where: { tenantId: SUB, spinOutBatchId: COMMIT_BATCH.batchId },
+    });
     expect(Number(account.openingBalance)).toBe(0);
     expect(account.openingNote).toMatch(/transfer of funds/);
     expect(COMMIT_BATCH.accountsOpened.length).toBeGreaterThan(0);
   });
 
   it('EQT-SPN-007 — the tenant gate holds throughout: no carried row is readable from the holding after commit except through the source row', async () => {
-    const copiedTxn = await unscopedPrisma.transaction.findFirstOrThrow({ where: { tenantId: SUB, spinOutBatchId: COMMIT_BATCH.batchId } });
+    const copiedTxn = await unscopedPrisma.transaction.findFirstOrThrow({
+      where: { tenantId: SUB, spinOutBatchId: COMMIT_BATCH.batchId },
+    });
 
     // A scoped read as the holding tenant never sees the subsidiary's copy —
     // the gate injects tenantId into the query regardless of the id asked for.
-    const crossRead = await asHoldingChairman(() => scopedPrisma.transaction.findFirst({ where: { id: copiedTxn.id } }));
+    const crossRead = await asHoldingChairman(() =>
+      scopedPrisma.transaction.findFirst({ where: { id: copiedTxn.id } }),
+    );
     expect(crossRead).toBeNull();
 
     // The only way from the holding to know it happened is the source row's
     // own `migratedToTenantId` — never a foreign key into the subsidiary's table.
-    const sourceTxn = await unscopedPrisma.transaction.findFirstOrThrow({ where: { tenantId: HOLD, division: 'education', invoiceId: null } });
+    const sourceTxn = await unscopedPrisma.transaction.findFirstOrThrow({
+      where: { tenantId: HOLD, division: 'education', invoiceId: null },
+    });
     expect(sourceTxn.migratedToTenantId).toBe(SUB);
   });
 });
 
 describe('EQT-SPN-006 — revert removes only what the batch created and refuses once the subsidiary has its own rows', () => {
   it('removes the batch and clears migratedToTenantId on the sources', async () => {
-    const result = await revertSpinOut({ holdingTenantId: HOLD, subsidiaryTenantId: SUB, batchId: COMMIT_BATCH.batchId });
+    const result = await revertSpinOut({
+      holdingTenantId: HOLD,
+      subsidiaryTenantId: SUB,
+      batchId: COMMIT_BATCH.batchId,
+    });
     expect(result.removed.transactions).toBe(1);
     expect(result.removed.shareTransactions).toBeGreaterThan(0);
 
@@ -287,20 +464,37 @@ describe('EQT-SPN-006 — revert removes only what the batch created and refuses
     const remainingTxns = await unscopedPrisma.transaction.count({ where: { tenantId: SUB } });
     expect(remainingTxns).toBe(0);
 
-    const sourceTxn = await unscopedPrisma.transaction.findFirstOrThrow({ where: { tenantId: HOLD, division: 'education', invoiceId: null } });
+    const sourceTxn = await unscopedPrisma.transaction.findFirstOrThrow({
+      where: { tenantId: HOLD, division: 'education', invoiceId: null },
+    });
     expect(sourceTxn.migratedToTenantId).toBeNull();
   });
 
   it('refuses once the subsidiary has a row of its own', async () => {
-    const second = await commitSpinOut({ holdingTenantId: HOLD, division: 'education', faceValue: 10, className: `Equity2 ${suffix}` });
+    const second = await commitSpinOut({
+      holdingTenantId: HOLD,
+      division: 'education',
+      faceValue: 10,
+      className: `Equity2 ${suffix}`,
+    });
 
     // Something the batch did not create.
     const account = await unscopedPrisma.ledgerAccount.findFirstOrThrow({ where: { tenantId: SUB } });
     await unscopedPrisma.transaction.create({
-      data: { tenantId: SUB, recordCode: `TXN-OWN-${suffix}`, txnDate: new Date(), direction: 'in', amount: 1, accountId: account.id, source: 'manual' },
+      data: {
+        tenantId: SUB,
+        recordCode: `TXN-OWN-${suffix}`,
+        txnDate: new Date(),
+        direction: 'in',
+        amount: 1,
+        accountId: account.id,
+        source: 'manual',
+      },
     });
 
-    const rejection = await expectReject(() => revertSpinOut({ holdingTenantId: HOLD, subsidiaryTenantId: SUB, batchId: second.batchId }));
+    const rejection = await expectReject(() =>
+      revertSpinOut({ holdingTenantId: HOLD, subsidiaryTenantId: SUB, batchId: second.batchId }),
+    );
     expect(rejection.message).toMatch(/life of its own/);
   });
 });

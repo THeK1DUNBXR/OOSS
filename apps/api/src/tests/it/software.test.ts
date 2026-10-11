@@ -17,13 +17,7 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import {
-  annualisedCost,
-  seatUtilisation,
-  isUnderUsed,
-  renewalRung,
-  itApplicationMachine,
-} from '@kaizen/shared';
+import { annualisedCost, seatUtilisation, isUnderUsed, renewalRung, itApplicationMachine } from '@kaizen/shared';
 import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from '../helpers.js';
 import {
   createApplication,
@@ -122,7 +116,9 @@ describe('technology — applications, licences and subscriptions — domain and
     expect(activated.status).toBe('active');
     expect(activated.availableTransitions.sort()).toEqual(['RETIRE', 'SUNSET'].sort());
 
-    const rejected = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionApplication(app.id, 'REJECT')));
+    const rejected = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => transitionApplication(app.id, 'REJECT')),
+    );
     expect(rejected.status).toBe(422);
   });
 
@@ -167,7 +163,14 @@ describe('technology — applications, licences and subscriptions — domain and
       createApplication({ name: `Fixture overalloc app ${stamp()}`, category: 'productivity', hosting: 'saas' }),
     );
     const licence = await asUser('operations@kaizen.co.in', () =>
-      createLicence({ applicationId: app.id, kind: 'per_seat', seatsPurchased: 5, seatsInUse: 5, costPerPeriod: 500, billingCycle: 'monthly' }),
+      createLicence({
+        applicationId: app.id,
+        kind: 'per_seat',
+        seatsPurchased: 5,
+        seatsInUse: 5,
+        costPerPeriod: 500,
+        billingCycle: 'monthly',
+      }),
     );
     await asUser('operations@kaizen.co.in', () => updateSeats(licence.id, 8));
 
@@ -185,7 +188,14 @@ describe('technology — applications, licences and subscriptions — domain and
       createApplication({ name: `Fixture renewal app ${stamp()}`, category: 'productivity', hosting: 'saas' }),
     );
     const licence = await asUser('operations@kaizen.co.in', () =>
-      createLicence({ applicationId: app.id, kind: 'per_seat', seatsPurchased: 10, seatsInUse: 4, costPerPeriod: 50000, billingCycle: 'monthly' }),
+      createLicence({
+        applicationId: app.id,
+        kind: 'per_seat',
+        seatsPurchased: 10,
+        seatsInUse: 4,
+        costPerPeriod: 50000,
+        billingCycle: 'monthly',
+      }),
     );
 
     const newTermEnd = new Date();
@@ -196,7 +206,9 @@ describe('technology — applications, licences and subscriptions — domain and
     expect(proposed.approvalStepId).toBeTruthy();
 
     // FAIL condition guarded against: the proposer's own decision is refused.
-    const selfDecision = await expectReject(() => asUser('operations@kaizen.co.in', () => approveRenewal(licence.id, true)));
+    const selfDecision = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => approveRenewal(licence.id, true)),
+    );
     expect(selfDecision.status).toBe(403);
 
     const step = await unscopedPrisma.approvalStep.findFirstOrThrow({ where: { id: proposed.approvalStepId! } });
@@ -216,7 +228,14 @@ describe('technology — applications, licences and subscriptions — domain and
       createApplication({ name: `Fixture self-approve app ${stamp()}`, category: 'productivity', hosting: 'saas' }),
     );
     const licence = await asUser('operations@kaizen.co.in', () =>
-      createLicence({ applicationId: app.id, kind: 'per_seat', seatsPurchased: 3, seatsInUse: 1, costPerPeriod: 2000, billingCycle: 'monthly' }),
+      createLicence({
+        applicationId: app.id,
+        kind: 'per_seat',
+        seatsPurchased: 3,
+        seatsInUse: 1,
+        costPerPeriod: 2000,
+        billingCycle: 'monthly',
+      }),
     );
     const newTermEnd = new Date();
     newTermEnd.setUTCFullYear(newTermEnd.getUTCFullYear() + 1);
@@ -235,7 +254,14 @@ describe('technology — applications, licences and subscriptions — domain and
     );
     const denied = await expectReject(() =>
       asUser('finance@kaizen.co.in', () =>
-        createLicence({ applicationId: app.id, kind: 'per_seat', seatsPurchased: 1, seatsInUse: 0, costPerPeriod: 100, billingCycle: 'monthly' }),
+        createLicence({
+          applicationId: app.id,
+          kind: 'per_seat',
+          seatsPurchased: 1,
+          seatsInUse: 0,
+          costPerPeriod: 100,
+          billingCycle: 'monthly',
+        }),
       ),
     );
     expect(denied.status).toBe(403);
@@ -263,7 +289,14 @@ describe('technology — applications, licences and subscriptions — domain and
       createApplication({ name: `Fixture employee-view app ${stamp()}`, category: 'productivity', hosting: 'saas' }),
     );
     await asUser('operations@kaizen.co.in', () =>
-      createLicence({ applicationId: app.id, kind: 'per_seat', seatsPurchased: 5, seatsInUse: 2, costPerPeriod: 900, billingCycle: 'monthly' }),
+      createLicence({
+        applicationId: app.id,
+        kind: 'per_seat',
+        seatsPurchased: 5,
+        seatsInUse: 2,
+        costPerPeriod: 900,
+        billingCycle: 'monthly',
+      }),
     );
     const employeeView = await asUser('employee@kaizen.co.in', () => applicationDetail(app.id));
     expect(employeeView.licences).toEqual([]);
@@ -274,7 +307,14 @@ describe('technology — applications, licences and subscriptions — domain and
       createApplication({ name: `Fixture money-masking app ${stamp()}`, category: 'productivity', hosting: 'saas' }),
     );
     const licence = await asUser('operations@kaizen.co.in', () =>
-      createLicence({ applicationId: app.id, kind: 'per_seat', seatsPurchased: 6, seatsInUse: 3, costPerPeriod: 1234, billingCycle: 'monthly' }),
+      createLicence({
+        applicationId: app.id,
+        kind: 'per_seat',
+        seatsPurchased: 6,
+        seatsInUse: 3,
+        costPerPeriod: 1234,
+        billingCycle: 'monthly',
+      }),
     );
 
     const list = await asUser('operations@kaizen.co.in', () => listLicences());
@@ -300,13 +340,22 @@ describe('technology — applications, licences and subscriptions — domain and
       createApplication({ name: `Fixture cancel app ${stamp()}`, category: 'productivity', hosting: 'saas' }),
     );
     const licence = await asUser('operations@kaizen.co.in', () =>
-      createLicence({ applicationId: app.id, kind: 'per_seat', seatsPurchased: 4, seatsInUse: 2, costPerPeriod: 300, billingCycle: 'monthly' }),
+      createLicence({
+        applicationId: app.id,
+        kind: 'per_seat',
+        seatsPurchased: 4,
+        seatsInUse: 2,
+        costPerPeriod: 300,
+        billingCycle: 'monthly',
+      }),
     );
 
     const noReason = await expectReject(() => asUser('operations@kaizen.co.in', () => cancelLicence(licence.id, '')));
     expect(noReason.status).toBe(400);
 
-    const cancelled = await asUser('operations@kaizen.co.in', () => cancelLicence(licence.id, 'Consolidated onto a site licence.'));
+    const cancelled = await asUser('operations@kaizen.co.in', () =>
+      cancelLicence(licence.id, 'Consolidated onto a site licence.'),
+    );
     expect(cancelled.status).toBe('cancelled');
     expect(cancelled.cancelledReason).toBe('Consolidated onto a site licence.');
 
@@ -333,7 +382,14 @@ describe('technology — applications, licences and subscriptions — domain and
       createApplication({ name: `Fixture detail app ${stamp()}`, category: 'productivity', hosting: 'saas' }),
     );
     const licence = await asUser('operations@kaizen.co.in', () =>
-      createLicence({ applicationId: app.id, kind: 'per_seat', seatsPurchased: 20, seatsInUse: 10, costPerPeriod: 100, billingCycle: 'monthly' }),
+      createLicence({
+        applicationId: app.id,
+        kind: 'per_seat',
+        seatsPurchased: 20,
+        seatsInUse: 10,
+        costPerPeriod: 100,
+        billingCycle: 'monthly',
+      }),
     );
     // Finance Head: holds `it_licences:financial`, sees the real figures.
     const detail = await asUser('finance@kaizen.co.in', () => licenceDetail(licence.id));
@@ -347,7 +403,9 @@ describe('technology — applications, licences and subscriptions — domain and
     const app = await asUser('operations@kaizen.co.in', () =>
       createApplication({ name: `Fixture owner app ${stamp()}`, category: 'productivity', hosting: 'saas' }),
     );
-    const updated = await asUser('operations@kaizen.co.in', () => updateApplication(app.id, { ownerPartyId: person.id }));
+    const updated = await asUser('operations@kaizen.co.in', () =>
+      updateApplication(app.id, { ownerPartyId: person.id }),
+    );
     expect(updated.ownerPartyId).toBe(person.id);
   });
 });

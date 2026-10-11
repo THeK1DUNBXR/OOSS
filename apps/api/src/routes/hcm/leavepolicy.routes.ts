@@ -33,13 +33,19 @@ import {
 
 const router = Router();
 
-router.get('/_status', handler(async () => ({ module: 'leavepolicy', ready: true })));
+router.get(
+  '/_status',
+  handler(async () => ({ module: 'leavepolicy', ready: true })),
+);
 
 // ---------------------------------------------------------------------------
 // Policies
 // ---------------------------------------------------------------------------
 
-router.get('/policies', handler(async (req) => listLeavePolicies({ status: str(req.query.status) })));
+router.get(
+  '/policies',
+  handler(async (req) => listLeavePolicies({ status: str(req.query.status) })),
+);
 
 router.post(
   '/policies',
@@ -71,7 +77,10 @@ router.get(
   }),
 );
 
-router.get('/policies/:id', handler(async (req) => getLeavePolicy(req.params.id)));
+router.get(
+  '/policies/:id',
+  handler(async (req) => getLeavePolicy(req.params.id)),
+);
 
 router.patch(
   '/policies/:id',
@@ -92,7 +101,10 @@ router.patch(
   }),
 );
 
-router.get('/policies/:id/rules', handler(async (req) => listPolicyRules(req.params.id)));
+router.get(
+  '/policies/:id/rules',
+  handler(async (req) => listPolicyRules(req.params.id)),
+);
 
 const ruleBody = z.object({
   leaveTypeId: z.string(),
@@ -119,7 +131,10 @@ router.patch(
   handler(async (req) => updatePolicyRule(req.params.id, ruleBody.partial().parse(req.body))),
 );
 
-router.delete('/rules/:id', handler(async (req) => deletePolicyRule(req.params.id)));
+router.delete(
+  '/rules/:id',
+  handler(async (req) => deletePolicyRule(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -165,7 +180,10 @@ router.get(
 // Approval chains
 // ---------------------------------------------------------------------------
 
-router.get('/approval-chains', handler(async () => listApprovalChains()));
+router.get(
+  '/approval-chains',
+  handler(async () => listApprovalChains()),
+);
 
 router.post(
   '/approval-chains',
@@ -196,7 +214,10 @@ router.patch(
   }),
 );
 
-router.delete('/approval-chains/:id', handler(async (req) => deleteApprovalChain(req.params.id)));
+router.delete(
+  '/approval-chains/:id',
+  handler(async (req) => deleteApprovalChain(req.params.id)),
+);
 
 router.post(
   '/leave-requests/:id/initiate-chain',
@@ -206,9 +227,15 @@ router.post(
   }),
 );
 
-router.get('/leave-requests/:id/approvals', handler(async (req) => listApprovalsForRequest(req.params.id)));
+router.get(
+  '/leave-requests/:id/approvals',
+  handler(async (req) => listApprovalsForRequest(req.params.id)),
+);
 
-router.get('/approvals/inbox', handler(async () => listMyInbox()));
+router.get(
+  '/approvals/inbox',
+  handler(async () => listMyInbox()),
+);
 
 router.post(
   '/approvals/:id/decide',
@@ -241,7 +268,10 @@ router.post(
   }),
 );
 
-router.delete('/restricted-holiday-elections/:id', handler(async (req) => withdrawRestrictedHolidayElection(req.params.id)));
+router.delete(
+  '/restricted-holiday-elections/:id',
+  handler(async (req) => withdrawRestrictedHolidayElection(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Team calendar

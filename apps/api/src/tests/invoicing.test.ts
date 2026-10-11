@@ -21,6 +21,8 @@ import {
   amountInWords,
   computeGst,
   gstinCheckDigit,
+  istDateKey,
+  istMidnight,
   invoicePayable,
   isValidGstin,
   paymentTypeFor,
@@ -43,13 +45,7 @@ import {
   voidInvoice,
 } from '../domains/invoicing.js';
 import { finalInvoiceDocument, listReceipts, raiseFinalInvoice, receiptDocument } from '../domains/receipts.js';
-import {
-  computeGstr1,
-  computeGstr3b,
-  markReturnFiled,
-  periodStatus,
-  prepareReturn,
-} from '../domains/gstReturns.js';
+import { computeGstr1, computeGstr3b, markReturnFiled, periodStatus, prepareReturn } from '../domains/gstReturns.js';
 import { assignCourse, createCourse, listCourses, retireCourse, updateCourse } from '../domains/courses.js';
 import { companyProfile, updateCompanyProfile } from '../domains/companyProfile.js';
 import {
@@ -305,9 +301,7 @@ describe('an invoice is priced when it is raised', () => {
 
   it('refuses an invoice addressed to nobody, and to two customers at once', async () => {
     await asUser('latha@kaizen.co.in', async () => {
-      const noCustomer = await expectReject(() =>
-        createInvoice({ lines: [{ description: 'x', unitPrice: 100 }] }),
-      );
+      const noCustomer = await expectReject(() => createInvoice({ lines: [{ description: 'x', unitPrice: 100 }] }));
       expect(noCustomer.message).toMatch(/needs a customer/);
 
       const both = await expectReject(async () =>
@@ -379,9 +373,7 @@ describe('a line discount goes either way, and tax follows what it actually cost
       const err = await expectReject(async () =>
         createInvoice({
           organizationId: await anAccount(),
-          lines: [
-            { description: 'x', unitPrice: 1_000, discountAmount: 100, discountPercent: 10 },
-          ],
+          lines: [{ description: 'x', unitPrice: 1_000, discountAmount: 100, discountPercent: 10 }],
         }),
       );
       expect(err.message).toMatch(/both a discount amount and a discount percentage/);
@@ -490,9 +482,7 @@ describe('a draft is editable and an issued tax invoice is not', () => {
         issue: false,
         lines: [{ description: 'Draft', unitPrice: 1000 }],
       });
-      const err = await expectReject(() =>
-        collectInvoicePayment(draft.id, { amount: 100, mode: 'cash' }),
-      );
+      const err = await expectReject(() => collectInvoicePayment(draft.id, { amount: 100, mode: 'cash' }));
       expect(err.message).toMatch(/still a draft/);
     });
   });
@@ -903,6 +893,7 @@ describe('the invoice says which of the three it is addressed to', () => {
       const college = await createOrganization({ kind: 'institution', name: `Billed Polytechnic ${tag}` });
       const firm = await createOrganization({ kind: 'organization', name: `Billed Traders ${tag}` });
       const student = await createStudent({
+        adultAttested: true,
         fullName: `Billed Learner ${tag}`,
         primaryPhone: `92${tag.slice(-8)}`,
         registrationNumber: `KI-BILL/${tag}`,
@@ -936,6 +927,7 @@ describe('the invoice says which of the three it is addressed to', () => {
       const { createStudent } = await import('../domains/students.js');
       const tag = stamp();
       const student = await createStudent({
+        adultAttested: true,
         fullName: `Kerala Learner ${tag}`,
         primaryPhone: `91${tag.slice(-8)}`,
         // Ours is Tamil Nadu, so this one is an inter-state supply and carries
@@ -1277,9 +1269,7 @@ describe('GSTR-3B says what is actually paid in cash', () => {
       expect(gstr3b.outwardSupplies.taxableValue).toBe(gstr1.totals.taxableValue);
       expect(gstr3b.outwardSupplies.tax).toBe(gstr1.totals.tax);
       expect(gstr3b.outwardSupplies.cgst).toBe(900);
-      expect(gstr3b.payment.totalPayableInCash).toBe(
-        round2(gstr3b.outwardSupplies.tax - gstr3b.payment.totalUtilised),
-      );
+      expect(gstr3b.payment.totalPayableInCash).toBe(round2(gstr3b.outwardSupplies.tax - gstr3b.payment.totalUtilised));
     });
   });
 });
@@ -1407,9 +1397,7 @@ describe('the course catalogue is editable and carries its price', () => {
   it('refuses a code that already belongs to another course', async () => {
     await asUser('hr@kaizen.co.in', async () => {
       const existing = await prisma.course.findFirstOrThrow({});
-      const err = await expectReject(() =>
-        createCourse({ name: 'Clash', code: existing.code, feeAmount: 1 }),
-      );
+      const err = await expectReject(() => createCourse({ name: 'Clash', code: existing.code, feeAmount: 1 }));
       expect(err.message).toMatch(/already exists/);
     });
   });
@@ -1463,6 +1451,7 @@ describe('a course can be assigned to a customer', () => {
       const course = await createCourse({ name: 'Rolling Programme', code, feeAmount: 5000 });
 
       const enrollment = await assignCourse({
+        adultAttested: true,
         courseId: course.id,
         fullName: `Walk In ${stamp()}`,
         primaryPhone: `98${String(Date.now()).slice(-8)}`,
@@ -1476,6 +1465,7 @@ describe('a course can be assigned to a customer', () => {
       // A second walk-in joins the same rolling batch rather than producing a
       // second batch of one.
       const second = await assignCourse({
+        adultAttested: true,
         courseId: course.id,
         fullName: `Walk In Two ${stamp()}`,
         primaryPhone: `97${String(Date.now()).slice(-8)}`,
@@ -1489,7 +1479,7 @@ describe('a course can be assigned to a customer', () => {
       const cohort = await prisma.cohort.findFirstOrThrow({});
       const other = await prisma.course.findFirstOrThrow({ where: { id: { not: cohort.courseId }, active: true } });
       const err = await expectReject(() =>
-        assignCourse({ courseId: other.id, cohortId: cohort.id, fullName: 'Nobody' }),
+        assignCourse({ adultAttested: true, courseId: other.id, cohortId: cohort.id, fullName: 'Nobody' }),
       );
       expect(err.message).toMatch(/not a batch of the course/);
     });
@@ -1500,11 +1490,16 @@ describe('a course can be assigned to a customer', () => {
       const code = `TWICE-${stamp()}`.slice(0, 16);
       const course = await createCourse({ name: 'Twice', code, feeAmount: 100 });
       const phone = `96${String(Date.now()).slice(-8)}`;
-      const first = await assignCourse({ courseId: course.id, fullName: 'Repeat Student', primaryPhone: phone });
+      const first = await assignCourse({
+        adultAttested: true,
+        courseId: course.id,
+        fullName: 'Repeat Student',
+        primaryPhone: phone,
+      });
       expect(first.id).toBeTruthy();
 
       const err = await expectReject(() =>
-        assignCourse({ courseId: course.id, fullName: 'Repeat Student', primaryPhone: phone }),
+        assignCourse({ adultAttested: true, courseId: course.id, fullName: 'Repeat Student', primaryPhone: phone }),
       );
       expect(err.message).toMatch(/already on/);
     });
@@ -1622,8 +1617,10 @@ describe('a student’s timeline is one record made of four kinds of day', () =>
       // The same day again is a correction, not a second row.
       await recordDailyProgress(enrollmentId, { progressDate: day, score: 90 });
 
+      // A progress day is the IST day the score is for, starting at IST midnight. P1.
+      const [dy, dm, dd] = istDateKey(day).split('-').map(Number);
       const rows = await prisma.dailyProgress.findMany({
-        where: { enrollmentId, progressDate: new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate())) },
+        where: { enrollmentId, progressDate: istMidnight(dy, dm, dd) },
       });
       expect(rows).toHaveLength(1);
       expect(rows[0].score).toBe(90);
@@ -1765,10 +1762,29 @@ describe('computeGst, on the arithmetic this all rests on', () => {
 describe('the student register reads what a company already keeps', () => {
   /** The register's own headings, verbatim, including the American spelling. */
   const HEADER = [
-    'NAME', 'REGISTRATION NUMBER', 'CONTACT', 'MAIL-ID', 'COURSE', 'ACTUAL FEES', 'Excluding GST', 'GST',
-    'Discount of Rs', 'DISCOUNT', 'Including GST', 'REGISTRATION DATE', 'COURSE START DATE', 'COURSE END DATE',
-    'IST INSTALLMENT', 'DATE', 'Receipt NUMBER', '2ND INSTALLMENT', 'DATE', 'Receipt NUMBER',
-    '3RD  INSTALLMENT', 'DATE', 'Receipt NUMBER',
+    'NAME',
+    'REGISTRATION NUMBER',
+    'CONTACT',
+    'MAIL-ID',
+    'COURSE',
+    'ACTUAL FEES',
+    'Excluding GST',
+    'GST',
+    'Discount of Rs',
+    'DISCOUNT',
+    'Including GST',
+    'REGISTRATION DATE',
+    'COURSE START DATE',
+    'COURSE END DATE',
+    'IST INSTALLMENT',
+    'DATE',
+    'Receipt NUMBER',
+    '2ND INSTALLMENT',
+    'DATE',
+    'Receipt NUMBER',
+    '3RD  INSTALLMENT',
+    'DATE',
+    'Receipt NUMBER',
   ];
 
   function grid(...rows: string[][]) {
@@ -1778,7 +1794,31 @@ describe('the student register reads what a company already keeps', () => {
   it('recognises the register rather than reading it as a bank statement', async () => {
     const { detectGrid } = await import('../imports/detect.js');
     const detection = detectGrid(
-      grid(['Balaji', 'KI-2026/07-FS/1101', '6385469666', '', 'Full Stack Development', '24000', '15000', '2700', '6300', '26.25%', '17700', '7/8/26', '7/8/26', '9/9/26', '10000', '7/8/26', 'KIPL/R/2026-27/002', '', '', '', '', '', '']),
+      grid([
+        'Balaji',
+        'KI-2026/07-FS/1101',
+        '6385469666',
+        '',
+        'Full Stack Development',
+        '24000',
+        '15000',
+        '2700',
+        '6300',
+        '26.25%',
+        '17700',
+        '7/8/26',
+        '7/8/26',
+        '9/9/26',
+        '10000',
+        '7/8/26',
+        'KIPL/R/2026-27/002',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+      ]),
     );
     // A register carries a date column and an amount column, which is all the
     // bank sniffer needs — so it has to be recognised first.
@@ -1791,12 +1831,29 @@ describe('the student register reads what a company already keeps', () => {
     const out = extractStudentRegister(
       grid(
         [
-          'Balaji', 'KI-2026/07-FS/1101', '6385469666', '', 'Full Stack Development',
-          '24000', '15000', '2700', '6300', '26.25%', '17700',
-          '7/8/26', '7/8/26', '9/9/26',
-          '10000', '7/8/26', 'KIPL/R/2026-27/002',
-          '7700', '8/5/26', 'KIPL/R/2026-27/007',
-          '', '', '',
+          'Balaji',
+          'KI-2026/07-FS/1101',
+          '6385469666',
+          '',
+          'Full Stack Development',
+          '24000',
+          '15000',
+          '2700',
+          '6300',
+          '26.25%',
+          '17700',
+          '7/8/26',
+          '7/8/26',
+          '9/9/26',
+          '10000',
+          '7/8/26',
+          'KIPL/R/2026-27/002',
+          '7700',
+          '8/5/26',
+          'KIPL/R/2026-27/007',
+          '',
+          '',
+          '',
         ],
         // The second row is what settles how the first one reads: `6/29/26` can
         // only be a month followed by a day, so the whole file is month-first and
@@ -1804,11 +1861,29 @@ describe('the student register reads what a company already keeps', () => {
         // reason this register imports with the right dates, so the row that
         // makes it possible belongs in the test.
         [
-          'V.Swetha', 'KI-2026/07-FS/1102', '7305133996', '', 'C.C++ & Java',
-          '24000', '15000', '2700', '6300', '26.25%', '17700',
-          '7/13/26', '6/29/26', '10/31/26',
-          '2000', '7/13/26', 'KIPL/R/2026-27/001',
-          '', '', '', '', '', '',
+          'V.Swetha',
+          'KI-2026/07-FS/1102',
+          '7305133996',
+          '',
+          'C.C++ & Java',
+          '24000',
+          '15000',
+          '2700',
+          '6300',
+          '26.25%',
+          '17700',
+          '7/13/26',
+          '6/29/26',
+          '10/31/26',
+          '2000',
+          '7/13/26',
+          'KIPL/R/2026-27/001',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
         ],
       ),
       0,
@@ -1843,9 +1918,57 @@ describe('the student register reads what a company already keeps', () => {
       grid(
         // The taxable value plus GST does not come to the total: the GST was
         // struck on the gross figure and the "Excluding GST" cell holds it too.
-        ['Vaishnavi', 'KI-2026/09-SAP/1107', '8754238004', '', 'SAP-MM module', '32999', '38939', '7009.02', '0', '0.00%', '38939', '9/3/26', '9/3/26', '11/13/26', '38939', '9/7/26', 'KIPL/R/2026-27/013', '', '', '', '', '', ''],
+        [
+          'Vaishnavi',
+          'KI-2026/09-SAP/1107',
+          '8754238004',
+          '',
+          'SAP-MM module',
+          '32999',
+          '38939',
+          '7009.02',
+          '0',
+          '0.00%',
+          '38939',
+          '9/3/26',
+          '9/3/26',
+          '11/13/26',
+          '38939',
+          '9/7/26',
+          'KIPL/R/2026-27/013',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+        ],
         // The instalments come to a rupee more than is owed.
-        ['M.Ravichandran', 'KI-2026/08-TLY/1105', '9342462210', '', 'Basic Microsoft & Tally with Gst', '12999', '6779', '1220', '5000', '38.46%', '7999', '8/12/26', '8/12/26', '11/12/26', '3500', '8/12/26', 'KIPL/R/2026-27/004', '4500', '9/7/26', 'KIPL/R/2026-27/011', '', '', ''],
+        [
+          'M.Ravichandran',
+          'KI-2026/08-TLY/1105',
+          '9342462210',
+          '',
+          'Basic Microsoft & Tally with Gst',
+          '12999',
+          '6779',
+          '1220',
+          '5000',
+          '38.46%',
+          '7999',
+          '8/12/26',
+          '8/12/26',
+          '11/12/26',
+          '3500',
+          '8/12/26',
+          'KIPL/R/2026-27/004',
+          '4500',
+          '9/7/26',
+          'KIPL/R/2026-27/011',
+          '',
+          '',
+          '',
+        ],
       ),
       0,
     );
@@ -1887,8 +2010,29 @@ describe('the student register reads what a company already keeps', () => {
   it('dedupes on the registration number, so a corrected file does not import twice', async () => {
     const { extractStudentRegister } = await import('../imports/extract.js');
     const row = (fee: string) => [
-      'Balaji', 'KI-2026/07-FS/1101', '6385469666', '', 'Full Stack Development', '24000', '15000', '2700', '6300',
-      '26.25%', fee, '7/8/26', '7/8/26', '9/9/26', '10000', '7/8/26', 'KIPL/R/2026-27/002', '', '', '', '', '', '',
+      'Balaji',
+      'KI-2026/07-FS/1101',
+      '6385469666',
+      '',
+      'Full Stack Development',
+      '24000',
+      '15000',
+      '2700',
+      '6300',
+      '26.25%',
+      fee,
+      '7/8/26',
+      '7/8/26',
+      '9/9/26',
+      '10000',
+      '7/8/26',
+      'KIPL/R/2026-27/002',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
     ];
     const first = extractStudentRegister(grid(row('17700')), 0);
     const corrected = extractStudentRegister(grid(row('17701')), 0);
@@ -1903,10 +2047,65 @@ describe('the student register reads what a company already keeps', () => {
       const XLSX = await import('xlsx');
 
       const tag = stamp();
+      // The register has no date of birth, so each learner is attested as an
+      // adult here. This test is about the prices and the enrolments; the age
+      // rule has its own test in importEnrolmentAgeBasis.test.ts. FX-64.
+      const withAttestation = (rows: string[][]) =>
+        rows.map((r, i) => (i === 0 ? [...r, 'Adult (18 or over)'] : [...r, 'Yes']));
       const sheet = XLSX.utils.aoa_to_sheet(
-        grid(
-          ['Register Student One', `KI-TEST/${tag}/1`, `98${tag.slice(-8)}`, '', `Register Course ${tag}`, '24000', '15000', '2700', '6300', '26.25%', '17700', '7/8/26', '7/8/26', '9/9/26', '10000', '7/8/26', `KIPL/T/${tag}/1`, '', '', '', '', '', ''],
-          ['Register Student Two', `KI-TEST/${tag}/2`, `97${tag.slice(-8)}`, '', `Register Course ${tag}`, '24000', '15000', '2700', '6300', '26.25%', '17700', '7/9/26', '7/9/26', '9/9/26', '2000', '7/9/26', `KIPL/T/${tag}/2`, '', '', '', '', '', ''],
+        withAttestation(
+          grid(
+            [
+              'Register Student One',
+              `KI-TEST/${tag}/1`,
+              `98${tag.slice(-8)}`,
+              '',
+              `Register Course ${tag}`,
+              '24000',
+              '15000',
+              '2700',
+              '6300',
+              '26.25%',
+              '17700',
+              '7/8/26',
+              '7/8/26',
+              '9/9/26',
+              '10000',
+              '7/8/26',
+              `KIPL/T/${tag}/1`,
+              '',
+              '',
+              '',
+              '',
+              '',
+              '',
+            ],
+            [
+              'Register Student Two',
+              `KI-TEST/${tag}/2`,
+              `97${tag.slice(-8)}`,
+              '',
+              `Register Course ${tag}`,
+              '24000',
+              '15000',
+              '2700',
+              '6300',
+              '26.25%',
+              '17700',
+              '7/9/26',
+              '7/9/26',
+              '9/9/26',
+              '2000',
+              '7/9/26',
+              `KIPL/T/${tag}/2`,
+              '',
+              '',
+              '',
+              '',
+              '',
+              '',
+            ],
+          ),
         ),
       );
       const wb = XLSX.utils.book_new();
@@ -1935,10 +2134,7 @@ describe('the student register reads what a company already keeps', () => {
 
       const enrolments = await prisma.enrollment.findMany({ where: { cohortId: cohorts[0].id } });
       expect(enrolments).toHaveLength(2);
-      expect(enrolments.map((e) => e.legacyReference).sort()).toEqual([
-        `KI-TEST/${tag}/1`,
-        `KI-TEST/${tag}/2`,
-      ]);
+      expect(enrolments.map((e) => e.legacyReference).sort()).toEqual([`KI-TEST/${tag}/1`, `KI-TEST/${tag}/2`]);
       expect(enrolments.every((e) => e.status === 'active')).toBe(true);
       expect(enrolments.every((e) => e.enrolledAt !== null)).toBe(true);
 
@@ -1961,9 +2157,29 @@ describe('the student register reads what a company already keeps', () => {
 
       const sheet = XLSX.utils.aoa_to_sheet(
         grid([
-          'Register Student Three', `KI-TEST/${tag}/3`, `96${tag.slice(-8)}`, '', priced.name,
-          '99999', '11111', '2000', '0', '0%', '13111', '7/8/26', '7/8/26', '9/9/26',
-          '1000', '7/8/26', `KIPL/T/${tag}/3`, '', '', '', '', '', '',
+          'Register Student Three',
+          `KI-TEST/${tag}/3`,
+          `96${tag.slice(-8)}`,
+          '',
+          priced.name,
+          '99999',
+          '11111',
+          '2000',
+          '0',
+          '0%',
+          '13111',
+          '7/8/26',
+          '7/8/26',
+          '9/9/26',
+          '1000',
+          '7/8/26',
+          `KIPL/T/${tag}/3`,
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
         ]),
       );
       const wb = XLSX.utils.book_new();

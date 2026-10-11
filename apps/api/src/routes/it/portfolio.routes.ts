@@ -49,7 +49,10 @@ router.get(
   ),
 );
 
-router.get('/initiatives/summary', handler(async () => portfolioSummary()));
+router.get(
+  '/initiatives/summary',
+  handler(async () => portfolioSummary()),
+);
 
 router.post(
   '/initiatives',
@@ -72,7 +75,10 @@ router.post(
   }),
 );
 
-router.get('/initiatives/:id', handler(async (req) => initiativeDetail(req.params.id)));
+router.get(
+  '/initiatives/:id',
+  handler(async (req) => initiativeDetail(req.params.id)),
+);
 
 router.post(
   '/initiatives/:id/transition',
@@ -82,7 +88,10 @@ router.post(
   }),
 );
 
-router.get('/initiatives/:id/updates', handler(async (req) => listInitiativeUpdates(req.params.id)));
+router.get(
+  '/initiatives/:id/updates',
+  handler(async (req) => listInitiativeUpdates(req.params.id)),
+);
 
 router.post(
   '/initiatives/:id/updates',
@@ -118,7 +127,7 @@ router.post(
         dueAt: z.string().nullish(),
       })
       .parse(req.body);
-    return createRoadmapItem({ ...body, dueAt: body.dueAt ? date(body.dueAt) ?? null : null });
+    return createRoadmapItem({ ...body, dueAt: body.dueAt ? (date(body.dueAt) ?? null) : null });
   }),
 );
 
@@ -143,7 +152,10 @@ router.get(
   }),
 );
 
-router.get('/budget/summary', handler(async (req) => budgetSummary(str(req.query.fy))));
+router.get(
+  '/budget/summary',
+  handler(async (req) => budgetSummary(str(req.query.fy))),
+);
 
 router.post(
   '/budget/lines',
@@ -163,7 +175,10 @@ router.post(
   }),
 );
 
-router.get('/budget/lines/:id', handler(async (req) => budgetLineDetail(req.params.id)));
+router.get(
+  '/budget/lines/:id',
+  handler(async (req) => budgetLineDetail(req.params.id)),
+);
 
 router.patch(
   '/budget/lines/:id',
@@ -179,7 +194,10 @@ router.patch(
   }),
 );
 
-router.post('/budget/lines/:id/approve', handler(async (req) => approveBudgetLine(req.params.id)));
+router.post(
+  '/budget/lines/:id/approve',
+  handler(async (req) => approveBudgetLine(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Technical debt
@@ -188,11 +206,18 @@ router.post('/budget/lines/:id/approve', handler(async (req) => approveBudgetLin
 router.get(
   '/tech-debt',
   handler(async (req) =>
-    listTechDebt({ status: str(req.query.status), severity: str(req.query.severity), applicationId: str(req.query.applicationId) }),
+    listTechDebt({
+      status: str(req.query.status),
+      severity: str(req.query.severity),
+      applicationId: str(req.query.applicationId),
+    }),
   ),
 );
 
-router.get('/tech-debt/summary', handler(async () => techDebtSummary()));
+router.get(
+  '/tech-debt/summary',
+  handler(async () => techDebtSummary()),
+);
 
 router.post(
   '/tech-debt',
@@ -211,7 +236,10 @@ router.post(
   }),
 );
 
-router.get('/tech-debt/:id', handler(async (req) => techDebtDetail(req.params.id)));
+router.get(
+  '/tech-debt/:id',
+  handler(async (req) => techDebtDetail(req.params.id)),
+);
 
 router.post(
   '/tech-debt/:id/transition',

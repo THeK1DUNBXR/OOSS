@@ -9,13 +9,19 @@
  */
 
 import { z } from 'zod';
-import { EVENTS, JOURNEY_TRANSITIONS, type AudienceCondition, type JourneyStatus, type JourneyStep } from '@kaizen/shared';
+import {
+  EVENTS,
+  JOURNEY_TRANSITIONS,
+  type AudienceCondition,
+  type JourneyStatus,
+  type JourneyStep,
+} from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
-import { auditWrite } from '../../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { assertCan } from '../../platform/permissions.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { eligibleForChannel } from './preferences.js';
@@ -24,6 +30,8 @@ import { createSend, requestSend, dispatchSend } from './messaging.js';
 // ============================================================================
 // Types & schemas
 // ============================================================================
+
+registerGovernedEntities('mkt', ['marketing_journey']);
 
 export interface JourneyView {
   id: string;
@@ -139,13 +147,19 @@ async function requireJourney(id: string) {
  * `condition` is an AudienceRule: `{all: [...]}` (every condition must match)
  * or `{any: [...]}` (at least one must match).
  */
-function evaluateCondition(entity: Record<string, unknown>, rule: { all?: AudienceCondition[]; any?: AudienceCondition[] }): boolean {
+function evaluateCondition(
+  entity: Record<string, unknown>,
+  rule: { all?: AudienceCondition[]; any?: AudienceCondition[] },
+): boolean {
   if (rule.all && rule.all.length > 0) return rule.all.every((c) => evaluateOne(entity, c));
   if (rule.any && rule.any.length > 0) return rule.any.some((c) => evaluateOne(entity, c));
   return true;
 }
 
-function evaluateOne(entity: Record<string, unknown>, condition: { field: string; op: string; value?: unknown }): boolean {
+function evaluateOne(
+  entity: Record<string, unknown>,
+  condition: { field: string; op: string; value?: unknown },
+): boolean {
   const actual = entity[condition.field];
   switch (condition.op) {
     case 'eq':
@@ -190,21 +204,33 @@ export async function createJourney(data: JourneyInput): Promise<JourneyView> {
       createdById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'marketing_journey', subjectId: journey.id, after: { recordCode, triggerKind: parsed.triggerKind } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'marketing_journey',
+    subjectId: journey.id,
+    after: { recordCode, triggerKind: parsed.triggerKind },
+  });
   return toJourneyView(journey);
 }
 
 export async function listJourneys(): Promise<JourneyView[]> {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_journeys', verb: 'view' });
-  const rows = await prisma.marketingJourney.findMany({ where: { tenantId: auth.tenantId, deletedAt: null }, orderBy: { createdAt: 'desc' } });
+  const rows = await prisma.marketingJourney.findMany({
+    where: { tenantId: auth.tenantId, deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
   return rows.map(toJourneyView);
 }
 
 export async function loadJourney(id: string): Promise<JourneyView & { runCounts: Record<string, number> }> {
   await assertCan({ resource: 'marketing_journeys', verb: 'view' });
   const journey = await requireJourney(id);
-  const grouped = await prisma.marketingJourneyRun.groupBy({ by: ['status'], where: { journeyId: id, tenantId: journey.tenantId }, _count: { _all: true } });
+  const grouped = await prisma.marketingJourneyRun.groupBy({
+    by: ['status'],
+    where: { journeyId: id, tenantId: journey.tenantId },
+    _count: { _all: true },
+  });
   const runCounts: Record<string, number> = {};
   for (const g of grouped) runCounts[g.status] = g._count._all;
   return { ...toJourneyView(journey), runCounts };
@@ -236,7 +262,10 @@ async function transitionJourney(id: string, to: JourneyStatus, eventName: strin
   if (!JOURNEY_TRANSITIONS[journey.status as JourneyStatus]?.includes(to)) {
     throw ApiError.unprocessable(`Cannot move a journey from '${journey.status}' to '${to}'.`);
   }
-  const updated = await prisma.marketingJourney.update({ where: { id }, data: { status: to, updatedById: auth.partyId } });
+  const updated = await prisma.marketingJourney.update({
+    where: { id },
+    data: { status: to, updatedById: auth.partyId },
+  });
   await emit({
     name: eventName,
     subject: { entityType: 'marketing_journey', entityId: id, recordCode: journey.recordCode },
@@ -312,7 +341,10 @@ export async function enrolPerson(journeyId: string, personId: string): Promise<
   await emit({
     name: EVENTS.MKT_JOURNEY_RUN_STARTED,
     subject: { entityType: 'marketing_journey_run', entityId: run.id, recordCode },
-    related: [{ relation: 'journey', entityType: 'marketing_journey', entityId: journeyId }, { relation: 'person', entityType: 'person', entityId: personId }],
+    related: [
+      { relation: 'journey', entityType: 'marketing_journey', entityId: journeyId },
+      { relation: 'person', entityType: 'person', entityId: personId },
+    ],
     newState: { currentStep: 0, nextAt: nextAt?.toISOString() ?? null },
   });
   return toRunView(run);
@@ -357,18 +389,32 @@ export async function tick(): Promise<{ advanced: number; completed: number; exi
     const step = steps[run.currentStep];
     if (!step) {
       await prisma.marketingJourneyRun.update({ where: { id: run.id }, data: { status: 'completed', nextAt: null } });
-      await emit({ name: EVENTS.MKT_JOURNEY_RUN_COMPLETED, subject: { entityType: 'marketing_journey_run', entityId: run.id }, newState: { status: 'completed' } });
+      await emit({
+        name: EVENTS.MKT_JOURNEY_RUN_COMPLETED,
+        subject: { entityType: 'marketing_journey_run', entityId: run.id },
+        newState: { status: 'completed' },
+      });
       completed += 1;
       continue;
     }
 
     if (step.condition) {
       const person = await prisma.person.findFirst({ where: { id: run.personId, tenantId: auth.tenantId } });
-      const lead = await prisma.lead.findFirst({ where: { tenantId: auth.tenantId, personId: run.personId }, orderBy: { createdAt: 'desc' } });
+      const lead = await prisma.lead.findFirst({
+        where: { tenantId: auth.tenantId, personId: run.personId },
+        orderBy: { createdAt: 'desc' },
+      });
       const entity: Record<string, unknown> = { ...(person ?? {}), ...(lead ?? {}) };
       if (!evaluateCondition(entity, step.condition)) {
-        await prisma.marketingJourneyRun.update({ where: { id: run.id }, data: { status: 'exited', exitedReason: 'condition_not_met', nextAt: null } });
-        await emit({ name: EVENTS.MKT_JOURNEY_RUN_EXITED, subject: { entityType: 'marketing_journey_run', entityId: run.id }, newState: { status: 'exited', exitedReason: 'condition_not_met' } });
+        await prisma.marketingJourneyRun.update({
+          where: { id: run.id },
+          data: { status: 'exited', exitedReason: 'condition_not_met', nextAt: null },
+        });
+        await emit({
+          name: EVENTS.MKT_JOURNEY_RUN_EXITED,
+          subject: { entityType: 'marketing_journey_run', entityId: run.id },
+          newState: { status: 'exited', exitedReason: 'condition_not_met' },
+        });
         exited += 1;
         continue;
       }
@@ -376,14 +422,25 @@ export async function tick(): Promise<{ advanced: number; completed: number; exi
 
     const { eligible } = await eligibleForChannel([run.personId], step.channelKey);
     if (eligible.length === 0) {
-      await prisma.marketingJourneyRun.update({ where: { id: run.id }, data: { status: 'exited', exitedReason: 'no_consent', nextAt: null } });
-      await emit({ name: EVENTS.MKT_JOURNEY_RUN_EXITED, subject: { entityType: 'marketing_journey_run', entityId: run.id }, newState: { status: 'exited', exitedReason: 'no_consent' } });
+      await prisma.marketingJourneyRun.update({
+        where: { id: run.id },
+        data: { status: 'exited', exitedReason: 'no_consent', nextAt: null },
+      });
+      await emit({
+        name: EVENTS.MKT_JOURNEY_RUN_EXITED,
+        subject: { entityType: 'marketing_journey_run', entityId: run.id },
+        newState: { status: 'exited', exitedReason: 'no_consent' },
+      });
       exited += 1;
       continue;
     }
 
     try {
-      const send = await createSend({ templateId: step.templateId, channelKey: step.channelKey, personIds: [run.personId] });
+      const send = await createSend({
+        templateId: step.templateId,
+        channelKey: step.channelKey,
+        personIds: [run.personId],
+      });
       // A one-recipient journey step send skips the approval gate entirely
       // (it is never over the batch-approval threshold) — request then
       // dispatch it in the same tick, exactly like the scheduled job would.
@@ -396,8 +453,15 @@ export async function tick(): Promise<{ advanced: number; completed: number; exi
       // A blocked send (unapproved template, unconfigured adapter) exits the
       // run rather than crashing the whole tick batch — the underlying
       // exception (EX-MKT-009/EX-MKT-011) has already been raised by createSend/requestSend.
-      await prisma.marketingJourneyRun.update({ where: { id: run.id }, data: { status: 'exited', exitedReason: 'send_failed', nextAt: null } });
-      await emit({ name: EVENTS.MKT_JOURNEY_RUN_EXITED, subject: { entityType: 'marketing_journey_run', entityId: run.id }, newState: { status: 'exited', exitedReason: 'send_failed' } });
+      await prisma.marketingJourneyRun.update({
+        where: { id: run.id },
+        data: { status: 'exited', exitedReason: 'send_failed', nextAt: null },
+      });
+      await emit({
+        name: EVENTS.MKT_JOURNEY_RUN_EXITED,
+        subject: { entityType: 'marketing_journey_run', entityId: run.id },
+        newState: { status: 'exited', exitedReason: 'send_failed' },
+      });
       exited += 1;
       continue;
     }
@@ -451,7 +515,9 @@ export async function detectStuckRuns(): Promise<number> {
 
 async function enrolIntoTriggered(triggerKind: string, personId: string): Promise<void> {
   const auth = currentAuth();
-  const journeys = await prisma.marketingJourney.findMany({ where: { tenantId: auth.tenantId, triggerKind, status: 'active' } });
+  const journeys = await prisma.marketingJourney.findMany({
+    where: { tenantId: auth.tenantId, triggerKind, status: 'active' },
+  });
   for (const journey of journeys) {
     await enrolPerson(journey.id, personId);
   }

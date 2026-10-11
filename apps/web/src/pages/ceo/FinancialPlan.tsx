@@ -21,10 +21,27 @@ export function FinancialPlan() {
       <PageHeader title="Financial Plan" subtitle="Driver-based scenarios, runway and the 13-week cash flow." />
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Metric label="Cash position" value="₹8.2Cr" sub="Available working capital" drillTo="/ceo/financial-plan" tone="good" />
+        <Metric
+          label="Cash position"
+          value="₹8.2Cr"
+          sub="Available working capital"
+          drillTo="/ceo/financial-plan"
+          tone="good"
+        />
         <Metric label="Runway" value="18.4 mo" sub="At current run-rate" drillTo="/ceo/headcount-plan" tone="good" />
-        <Metric label="Headcount cost" value="₹31.5L" sub="Annualised plan" drillTo="/ceo/headcount-plan" tone="neutral" />
-        <Metric label="Budget ceiling" value="₹42.0L" sub="Allocated above plan" noActionReason="This is a management snapshot rather than a transaction drill" />
+        <Metric
+          label="Headcount cost"
+          value="₹31.5L"
+          sub="Annualised plan"
+          drillTo="/ceo/headcount-plan"
+          tone="neutral"
+        />
+        <Metric
+          label="Budget ceiling"
+          value="₹42.0L"
+          sub="Allocated above plan"
+          noActionReason="This is a management snapshot rather than a transaction drill"
+        />
       </div>
 
       <Card title="Scenario comparison" subtitle="Base, upside and downside planning cases.">
@@ -47,7 +64,10 @@ export function FinancialPlan() {
                   <td className="px-3 py-3 text-ink-300">{scenario.hiringPace}</td>
                   <td className="px-3 py-3 text-ink-300">{scenario.cash}</td>
                   <td className="px-3 py-3">
-                    <StatusChip status={scenario.status} tone={scenario.status === 'approved' ? 'good' : scenario.status === 'review' ? 'warn' : 'neutral'} />
+                    <StatusChip
+                      status={scenario.status}
+                      tone={scenario.status === 'approved' ? 'good' : scenario.status === 'review' ? 'warn' : 'neutral'}
+                    />
                   </td>
                 </tr>
               ))}

@@ -25,6 +25,8 @@ import {
   EVENTS,
   LEARNER_LOG_KINDS,
   LEARNER_LOG_KINDS_NEEDING_CLOSURE,
+  istDateKey,
+  istMidnight,
   type LearnerLogKind,
   type LearnerLogSeverity,
 } from '@kaizen/shared';
@@ -33,8 +35,12 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan } from '../platform/permissions.js';
-import { auditWrite } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { raiseException } from '../platform/exceptions.js';
+
+// daily_progress is written only here; registered at module load so this module
+// alone is enough for the write to be audited (see corporate/board.ts).
+registerGovernedEntities('edu', ['daily_progress']);
 
 /**
  * Loads the enrolment and applies the batch narrowing.
@@ -81,10 +87,14 @@ export async function recordLearnerLog(enrollmentId: string, input: LearnerLogIn
   const enrollment = await enrolmentFor(enrollmentId, 'create');
 
   if (!LEARNER_LOG_KINDS.includes(input.kind)) {
-    throw ApiError.badRequest(`'${input.kind}' is not a kind of timeline entry. It is a query, feedback, an issue or a note.`);
+    throw ApiError.badRequest(
+      `'${input.kind}' is not a kind of timeline entry. It is a query, feedback, an issue or a note.`,
+    );
   }
   if (!input.title.trim()) {
-    throw ApiError.badRequest('A timeline entry needs a one-line summary, so the timeline can be read without opening every row.');
+    throw ApiError.badRequest(
+      'A timeline entry needs a one-line summary, so the timeline can be read without opening every row.',
+    );
   }
   if (input.rating !== undefined && input.rating !== null) {
     if (input.kind !== 'feedback') {
@@ -255,6 +265,13 @@ export async function recordDailyProgress(
           recordedById: auth.partyId,
         },
       });
+  await auditWrite({
+    action: existing ? 'update' : 'create',
+    subjectType: 'daily_progress',
+    subjectId: row.id,
+    before: existing,
+    after: row,
+  });
 
   // The enrolment's headline progress is the mean of the scores recorded, never
   // a field somebody keeps up to date by hand — the same rule attendance already
@@ -266,13 +283,20 @@ export async function recordDailyProgress(
   if (scored.length) {
     const mean = Math.round(scored.reduce((s, r) => s + (r.score ?? 0), 0) / scored.length);
     await prisma.enrollment.update({ where: { id: enrollmentId }, data: { progressPct: mean } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'enrollment',
+      subjectId: enrollmentId,
+      before: { progressPct: enrollment.progressPct },
+      after: { progressPct: mean },
+    });
   }
 
   await emit({
     name: EVENTS.PROGRESS_RECORDED,
     subject: { entityType: 'daily_progress', entityId: row.id },
     related: [{ relation: 'for', entityType: 'enrollment', entityId: enrollmentId }],
-    newState: { score: row.score, progressDate: progressDate.toISOString().slice(0, 10) },
+    newState: { score: row.score, progressDate: istDateKey(progressDate) },
     owner: { partyId: enrollment.personId },
     impact: { domains: ['edu'] },
   });
@@ -280,8 +304,14 @@ export async function recordDailyProgress(
   return row;
 }
 
+/**
+ * The instant IST midnight starts the Indian calendar day `d` falls on. On the
+ * UTC calendar a score recorded at 01:30 IST on 10 May is filed under 9 May,
+ * the day the learner's teacher did not record it on. Rule 3, P1.
+ */
 function startOfDay(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const [year, month, day] = istDateKey(d).split('-').map(Number);
+  return istMidnight(year, month, day);
 }
 
 // ---------------------------------------------------------------------------
@@ -314,10 +344,7 @@ export interface TimelineEntry {
  * asked. The grouping by day is part of the answer rather than a rendering
  * choice — a student's record is read a day at a time.
  */
-export async function learnerTimeline(
-  enrollmentId: string,
-  options: { limit?: number; kinds?: string[] } = {},
-) {
+export async function learnerTimeline(enrollmentId: string, options: { limit?: number; kinds?: string[] } = {}) {
   const auth = currentAuth();
   const enrollment = await enrolmentFor(enrollmentId, 'view');
   const wanted = options.kinds?.length ? new Set(options.kinds) : null;
@@ -369,7 +396,14 @@ export async function learnerTimeline(
       kind: 'attendance',
       at: a.sessionDate.toISOString(),
       day: a.sessionDate.toISOString().slice(0, 10),
-      title: a.status === 'present' ? 'Present' : a.status === 'late' ? 'Late' : a.status === 'excused' ? 'Excused' : 'Absent',
+      title:
+        a.status === 'present'
+          ? 'Present'
+          : a.status === 'late'
+            ? 'Late'
+            : a.status === 'excused'
+              ? 'Excused'
+              : 'Absent',
       detail: a.note,
       status: a.status,
       severity: a.status === 'absent' ? 'medium' : null,
@@ -456,7 +490,13 @@ export async function learnerTimeline(
       courseCode: enrollment.cohort.course.code,
     },
     student: person
-      ? { id: person.id, name: person.fullName, recordCode: person.recordCode, phone: person.primaryPhone, email: person.primaryEmail }
+      ? {
+          id: person.id,
+          name: person.fullName,
+          recordCode: person.recordCode,
+          phone: person.primaryPhone,
+          email: person.primaryEmail,
+        }
       : null,
     counts: {
       entries: entries.length,

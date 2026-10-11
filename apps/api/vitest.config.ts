@@ -1,5 +1,7 @@
 import { defineConfig } from 'vitest/config';
 
+const ownerUrl = process.env.TEST_DATABASE_URL ?? 'postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public';
+
 /**
  * The acceptance suite runs against a real database inside real request
  * contexts — a mocked permission check proves nothing about the one that runs
@@ -20,9 +22,14 @@ export default defineConfig({
     fileParallelism: false,
     sequence: { concurrent: false },
     env: {
+      // The owner runs migrations, seeds and the unscoped jobs (BYPASSRLS).
+      // Requests and the scoped client connect as the application role, which
+      // row-level security binds, so the suite exercises the same restriction
+      // production does (FX-51). Provisioned by scripts/test-db.sh.
+      MIGRATION_DATABASE_URL: ownerUrl,
+      UNSCOPED_DATABASE_URL: ownerUrl,
       DATABASE_URL:
-        process.env.TEST_DATABASE_URL ??
-        'postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public',
+        process.env.TEST_APP_DATABASE_URL ?? ownerUrl.replace('//kaizen:kaizen@', '//kaizen_app:kaizen_app@'),
       NODE_ENV: 'test',
       // Not a fallback: the API has none any more, so the suite supplies its
       // own. Long enough to satisfy the same rule production is held to.

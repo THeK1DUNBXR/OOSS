@@ -116,7 +116,9 @@ export async function createProgram(input: {
   await assertCan({ resource: 'training_programs', verb: 'create' });
 
   if (!TRAINING_PROGRAM_KINDS.includes(input.kind)) {
-    throw ApiError.badRequest(`"${input.kind}" is not a training program kind. Expected one of: ${TRAINING_PROGRAM_KINDS.join(', ')}.`);
+    throw ApiError.badRequest(
+      `"${input.kind}" is not a training program kind. Expected one of: ${TRAINING_PROGRAM_KINDS.join(', ')}.`,
+    );
   }
 
   const program = await prisma.trainingProgram.create({
@@ -243,7 +245,9 @@ export async function listEnrollments(filter: { sessionId?: string; employmentRe
       ...(employmentFilter ? { employmentRelationshipId: { in: employmentFilter } } : {}),
     },
     include: {
-      session: { include: { program: { select: { title: true, kind: true, skillIds: true, validityMonths: true, cost: true } } } },
+      session: {
+        include: { program: { select: { title: true, kind: true, skillIds: true, validityMonths: true, cost: true } } },
+      },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -370,7 +374,11 @@ export async function rejectEnrollment(id: string, note?: string) {
 export async function markAttendance(id: string, attended: boolean) {
   const auth = currentAuth();
   await assertCan({ resource: 'training_enrollments', verb: 'edit' });
-  await requireAllScope('training_enrollments', 'edit', 'Recording someone else\'s attendance is not a self-service action.');
+  await requireAllScope(
+    'training_enrollments',
+    'edit',
+    "Recording someone else's attendance is not a self-service action.",
+  );
   const enrollment = await loadEnrollment(id);
   const target: TrainingEnrollmentStatus = attended ? 'attended' : 'no_show';
   try {
@@ -391,7 +399,11 @@ export async function markAttendance(id: string, attended: boolean) {
 export async function completeEnrollment(id: string, input: { score?: number | null; feedback?: string | null } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'training_enrollments', verb: 'edit' });
-  await requireAllScope('training_enrollments', 'edit', 'Completing someone else\'s enrollment is not a self-service action.');
+  await requireAllScope(
+    'training_enrollments',
+    'edit',
+    "Completing someone else's enrollment is not a self-service action.",
+  );
 
   const enrollment = await loadEnrollment(id);
   try {
@@ -459,7 +471,10 @@ export async function listCertifications(employmentRelationshipId?: string) {
   }
 
   return prisma.certification.findMany({
-    where: { tenantId: auth.tenantId, ...(employmentFilter ? { employmentRelationshipId: { in: employmentFilter } } : {}) },
+    where: {
+      tenantId: auth.tenantId,
+      ...(employmentFilter ? { employmentRelationshipId: { in: employmentFilter } } : {}),
+    },
     orderBy: { issuedOn: 'desc' },
   });
 }
@@ -508,7 +523,11 @@ export async function addCertification(input: {
   documentRef?: string | null;
 }) {
   const auth = currentAuth();
-  await assertCan({ resource: 'certifications', verb: 'create', record: { ownerPartyId: (await employmentOrThrow(input.employmentRelationshipId)).personId } });
+  await assertCan({
+    resource: 'certifications',
+    verb: 'create',
+    record: { ownerPartyId: (await employmentOrThrow(input.employmentRelationshipId)).personId },
+  });
 
   const cert = await prisma.certification.create({
     data: {
@@ -615,7 +634,7 @@ export async function runCertificationExpiryLadder(): Promise<JobResult> {
         subjectLabel: cert.recordCode,
         domain: 'hr',
         detail: `${cert.name} expired on ${cert.expiresOn.toISOString().slice(0, 10)} and has not been renewed.`,
-        ownerPartyId: (personIdByEmployment.get(cert.employmentRelationshipId) ?? null),
+        ownerPartyId: personIdByEmployment.get(cert.employmentRelationshipId) ?? null,
         triggerFingerprint: 'expired',
         ladderRung: 0,
       });
@@ -624,7 +643,7 @@ export async function runCertificationExpiryLadder(): Promise<JobResult> {
         name: EVENTS.CERTIFICATION_EXPIRED,
         subject: { entityType: 'certification', entityId: cert.id, recordCode: cert.recordCode },
         newState: { expiresOn: cert.expiresOn },
-        owner: { partyId: (personIdByEmployment.get(cert.employmentRelationshipId) ?? null) },
+        owner: { partyId: personIdByEmployment.get(cert.employmentRelationshipId) ?? null },
         impact: { domains: ['hr'] },
       });
       notified += 1;
@@ -647,7 +666,7 @@ export async function runCertificationExpiryLadder(): Promise<JobResult> {
       subjectLabel: cert.recordCode,
       domain: 'hr',
       detail: `${cert.name} expires on ${cert.expiresOn.toISOString().slice(0, 10)} (${rung.days} days or fewer out).`,
-      ownerPartyId: (personIdByEmployment.get(cert.employmentRelationshipId) ?? null),
+      ownerPartyId: personIdByEmployment.get(cert.employmentRelationshipId) ?? null,
       triggerFingerprint: 'expiring',
       ladderRung: rung.days,
     });
@@ -656,7 +675,7 @@ export async function runCertificationExpiryLadder(): Promise<JobResult> {
       name: EVENTS.CERTIFICATION_EXPIRING,
       subject: { entityType: 'certification', entityId: cert.id, recordCode: cert.recordCode },
       newState: { expiresOn: cert.expiresOn, rungDays: rung.days },
-      owner: { partyId: (personIdByEmployment.get(cert.employmentRelationshipId) ?? null) },
+      owner: { partyId: personIdByEmployment.get(cert.employmentRelationshipId) ?? null },
       impact: { domains: ['hr'] },
     });
     notified += 1;
@@ -817,7 +836,10 @@ export async function listIdps(employmentRelationshipId?: string) {
   }
 
   return prisma.individualDevelopmentPlan.findMany({
-    where: { tenantId: auth.tenantId, ...(employmentFilter ? { employmentRelationshipId: { in: employmentFilter } } : {}) },
+    where: {
+      tenantId: auth.tenantId,
+      ...(employmentFilter ? { employmentRelationshipId: { in: employmentFilter } } : {}),
+    },
     orderBy: { createdAt: 'desc' },
   });
 }
@@ -854,7 +876,10 @@ export async function createIdp(input: {
   return idp;
 }
 
-export async function updateIdp(id: string, input: { goals?: unknown; mentorId?: string | null; reviewDate?: Date | null; status?: 'active' | 'closed' }) {
+export async function updateIdp(
+  id: string,
+  input: { goals?: unknown; mentorId?: string | null; reviewDate?: Date | null; status?: 'active' | 'closed' },
+) {
   const auth = currentAuth();
   await assertCan({ resource: 'idps', verb: 'edit' });
   const idp = await prisma.individualDevelopmentPlan.findFirst({ where: { id, tenantId: auth.tenantId } });

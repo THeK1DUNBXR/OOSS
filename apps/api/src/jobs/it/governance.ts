@@ -23,17 +23,32 @@ import type { JobDefinition, JobResult } from '../scheduler.js';
 
 export async function runRiskReviewJob(): Promise<JobResult> {
   const result = await runRiskReviewLadder();
-  return { processed: result.checked, notified: result.notified, skippedIdempotent: result.skippedIdempotent, errors: [] };
+  return {
+    processed: result.checked,
+    notified: result.notified,
+    skippedIdempotent: result.skippedIdempotent,
+    errors: [],
+  };
 }
 
 export async function runFindingOverdueJob(): Promise<JobResult> {
   const result = await runFindingOverdueLadder();
-  return { processed: result.checked, notified: result.notified, skippedIdempotent: result.skippedIdempotent, errors: [] };
+  return {
+    processed: result.checked,
+    notified: result.notified,
+    skippedIdempotent: result.skippedIdempotent,
+    errors: [],
+  };
 }
 
 export async function runAccessReviewOverdueJob(): Promise<JobResult> {
   const result = await runCampaignOverdueDetector();
-  return { processed: result.checked, notified: result.notified, skippedIdempotent: result.skippedIdempotent, errors: [] };
+  return {
+    processed: result.checked,
+    notified: result.notified,
+    skippedIdempotent: result.skippedIdempotent,
+    errors: [],
+  };
 }
 
 /** A control is overdue for testing once `frequencyDays` has elapsed since
@@ -101,7 +116,13 @@ export async function runPolicyReacknowledgementJob(): Promise<JobResult> {
 
     const fingerprint = `it_policy_reack_${a.policy.id}_${windowStart.toISOString().slice(0, 7)}`;
     const already = await prisma.exceptionRecord.findFirst({
-      where: { tenantId: auth.tenantId, subjectType: 'it_policy_document', subjectId: a.policy.id, code: 'IT_POL_REACK_DUE', triggerFingerprint: fingerprint },
+      where: {
+        tenantId: auth.tenantId,
+        subjectType: 'it_policy_document',
+        subjectId: a.policy.id,
+        code: 'IT_POL_REACK_DUE',
+        triggerFingerprint: fingerprint,
+      },
     });
     if (already) {
       skippedIdempotent += 1;

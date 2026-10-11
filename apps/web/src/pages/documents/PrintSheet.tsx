@@ -15,7 +15,15 @@ import { KI_APP_CSS } from '../kaizenInvoice/style.js';
 import { PrintPortal } from '../kaizenInvoice/PrintPortal.js';
 
 /** The back-link + print button above the on-screen preview. Never printed. */
-export function DocumentToolbar({ backTo, backLabel, onPrint }: { backTo: string; backLabel: string; onPrint: () => void }) {
+export function DocumentToolbar({
+  backTo,
+  backLabel,
+  onPrint,
+}: {
+  backTo: string;
+  backLabel: string;
+  onPrint: () => void;
+}) {
   return (
     <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-3">
       <Link to={backTo} className="btn-ghost">
@@ -64,7 +72,9 @@ export function TwoCopyPrintPage({ render }: { render: (copy: 'CUSTOMER COPY' | 
           {render('CUSTOMER COPY')}
         </div>
       </div>
-      <div className="ki-fold-line">✂ - - - - - - - - - - - - - - - - fold &amp; cut here - - - - - - - - - - - - - - - - ✂</div>
+      <div className="ki-fold-line">
+        ✂ - - - - - - - - - - - - - - - - fold &amp; cut here - - - - - - - - - - - - - - - - ✂
+      </div>
       <div className="ki-print-half">
         <div className="ki-print-copy">
           <CopyLabel label="OFFICE COPY" />

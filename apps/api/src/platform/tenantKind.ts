@@ -90,7 +90,12 @@ export async function reconcileTenantKinds(): Promise<TenantKindChange[]> {
 
       await unscopedPrisma.tenant.update({
         where: { id: tenant.id },
-        data: { config: { ...((tenant.config as object) ?? {}), smallCompanyNoticeRaisedAt: new Date().toISOString() } as never },
+        data: {
+          config: {
+            ...((tenant.config as object) ?? {}),
+            smallCompanyNoticeRaisedAt: new Date().toISOString(),
+          } as never,
+        },
       });
     });
   }

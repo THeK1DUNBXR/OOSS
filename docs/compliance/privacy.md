@@ -77,7 +77,7 @@ that pins each requirement. Tests live in
 - **Audit spine.** `AuditRecord` carries the eight-year `audit_record`
   retention class and is database append-only: update/delete are rejected by a
   trigger except for the one-time null-hash backfill. `GET
-  /compliance/books/audit/verify?from=...&to=...` independently recomputes the
+/compliance/books/audit/verify?from=...&to=...` independently recomputes the
   tenant hash chain. Audit rows have no tenant foreign key, so tenant removal
   cannot cascade-delete statutory evidence.
 
@@ -100,7 +100,7 @@ that pins each requirement. Tests live in
   `platform/config.ts` — and outside production a named development fallback
   with a startup warning) and `readRegulated`, the
   read-side helper any write path should call. `POST
-  /compliance/privacy/encrypt-at-rest/backfill` (chairman only, via
+/compliance/privacy/encrypt-at-rest/backfill` (chairman only, via
   `security_settings:edit`) encrypts existing plaintext PAN, Aadhaar and bank
   values on `EmploymentRelationship` in place, prefixing `enc:v1:`; the
   fulfilled-access export decrypts through `readRegulated` so a data
@@ -121,16 +121,16 @@ through `readRegulated`, the same way this module's own write paths do.
 
 ## Requirement IDs and their tests
 
-| ID | What it pins | Test |
-|---|---|---|
-| CMP-DPD-001 | A regulated read via a purpose requiring consent fails without a matching `Consent` row, and passes with one — through `evaluate()` with `requiredConsent` set. | `CMP-DPD-001: a regulated read via a purpose that requires consent` |
-| CMP-DPD-002 | An erasure request inside the statutory retention floor is refused, naming the floor and the earliest erasable date. | `CMP-DPD-002: erasure inside the statutory retention floor` |
-| CMP-DPD-003 | A minor `StudentProfile` cannot be created without a linked guardian-consent record. | `CMP-DPD-003: a minor StudentProfile needs a guardian consent` |
-| CMP-DPD-004 | PAN/Aadhaar/bank values are encrypted at rest, verified by reading the raw column directly. | `CMP-DPD-004: PAN/Aadhaar/bank values encrypted at rest` |
-| — | The 72-hour breach ladder fires once per rung, not once per job run. | `Breach register: the 72-hour ladder > fires once per rung and does not duplicate on a second run` |
-| — | A data-principal request's `dueAt` is 30 days after receipt. | `Data-principal requests > dueAt is set 30 days...` |
-| — | Every active affiliation ends when offboarding reaches `ClosedArchived`, driven through `employment.ts`'s real state machine. | `Access revocation follows offboarding to its close` |
-| — | A stale affiliation (active, employment not Active) raises `CMP_DPD_STALE_ACCESS`. | `Access review: stale access flagged, CMP_DPD_STALE_ACCESS` |
+| ID          | What it pins                                                                                                                                                    | Test                                                                                               |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| CMP-DPD-001 | A regulated read via a purpose requiring consent fails without a matching `Consent` row, and passes with one — through `evaluate()` with `requiredConsent` set. | `CMP-DPD-001: a regulated read via a purpose that requires consent`                                |
+| CMP-DPD-002 | An erasure request inside the statutory retention floor is refused, naming the floor and the earliest erasable date.                                            | `CMP-DPD-002: erasure inside the statutory retention floor`                                        |
+| CMP-DPD-003 | A minor `StudentProfile` cannot be created without a linked guardian-consent record.                                                                            | `CMP-DPD-003: a minor StudentProfile needs a guardian consent`                                     |
+| CMP-DPD-004 | PAN/Aadhaar/bank values are encrypted at rest, verified by reading the raw column directly.                                                                     | `CMP-DPD-004: PAN/Aadhaar/bank values encrypted at rest`                                           |
+| —           | The 72-hour breach ladder fires once per rung, not once per job run.                                                                                            | `Breach register: the 72-hour ladder > fires once per rung and does not duplicate on a second run` |
+| —           | A data-principal request's `dueAt` is 30 days after receipt.                                                                                                    | `Data-principal requests > dueAt is set 30 days...`                                                |
+| —           | Every active affiliation ends when offboarding reaches `ClosedArchived`, driven through `employment.ts`'s real state machine.                                   | `Access revocation follows offboarding to its close`                                               |
+| —           | A stale affiliation (active, employment not Active) raises `CMP_DPD_STALE_ACCESS`.                                                                              | `Access review: stale access flagged, CMP_DPD_STALE_ACCESS`                                        |
 
 ## What this workstream did not do, and why
 

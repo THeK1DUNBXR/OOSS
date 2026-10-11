@@ -70,7 +70,7 @@ Registered on `payroll_run.before_approve` (`apps/api/src/domains/compliance/pay
   payroll: an employee with no salary structure at all is unmeasured, not
   blocking, per Principle 6 — otherwise this would freeze every existing
   payroll run company-wide the day this workstream ships.
-- **CMP-PAY-005** — refuses when a *computed* instruction's gross is below
+- **CMP-PAY-005** — refuses when a _computed_ instruction's gross is below
   the `MinimumWageTable` floor for the company's state/category, and
   raises a named exception per instruction, owned by the run's preparer.
 
@@ -155,13 +155,13 @@ computation).
 
 All in `apps/api/src/tests/compliance/payroll.test.ts` unless noted.
 
-| ID | What PASS means | Test |
-|---|---|---|
-| CMP-PAY-001 | PF computes the correct split for a wage at or below the ceiling, from the dated table | `PF splits 12% employee and 12% employer…` (pure) and the full-run test's instruction assertions |
-| CMP-PAY-002 | The payroll proposer cannot also approve the same run | `CMP-PAY-001 / CMP-PAY-002 / CMP-PAY-003…` — Finance both prepares and is refused approving; the chairman approves instead |
-| CMP-PAY-003 | An issued payslip cannot be edited; a correction is a new payslip referencing the original | same test — the original's snapshot is asserted unchanged after a correction row is written |
-| CMP-PAY-004 | A contractor-flagged engagement computes no statutory lines and carries the 194C/194J hint | `CMP-PAY-004: a contractor computes no PF/ESI/PT/LWF…` |
-| CMP-PAY-005 | An approval is refused when a computed instruction pays below the minimum wage floor | `CMP-PAY-005: a computed run paying below the minimum wage floor…` |
+| ID          | What PASS means                                                                            | Test                                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| CMP-PAY-001 | PF computes the correct split for a wage at or below the ceiling, from the dated table     | `PF splits 12% employee and 12% employer…` (pure) and the full-run test's instruction assertions                           |
+| CMP-PAY-002 | The payroll proposer cannot also approve the same run                                      | `CMP-PAY-001 / CMP-PAY-002 / CMP-PAY-003…` — Finance both prepares and is refused approving; the chairman approves instead |
+| CMP-PAY-003 | An issued payslip cannot be edited; a correction is a new payslip referencing the original | same test — the original's snapshot is asserted unchanged after a correction row is written                                |
+| CMP-PAY-004 | A contractor-flagged engagement computes no statutory lines and carries the 194C/194J hint | `CMP-PAY-004: a contractor computes no PF/ESI/PT/LWF…`                                                                     |
+| CMP-PAY-005 | An approval is refused when a computed instruction pays below the minimum wage floor       | `CMP-PAY-005: a computed run paying below the minimum wage floor…`                                                         |
 
 Also pinned: the ECR line format (11 `#~#`-delimited fields), the ESIC CSV
 header, rate-table arithmetic (PF split, ESI eligibility, PT slab lookup,

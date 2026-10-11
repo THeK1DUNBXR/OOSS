@@ -21,7 +21,12 @@ export async function runGratuityAccrual(): Promise<JobResult> {
   const asOfDate = new Date(Date.UTC(year, month - 1, 1));
 
   const employments = await prisma.employmentRelationship.findMany({
-    where: { tenantId: auth.tenantId, deletedAt: null, engagementType: 'employee', status: { in: ['Active', 'OnLeave', 'NoticePeriod'] } },
+    where: {
+      tenantId: auth.tenantId,
+      deletedAt: null,
+      engagementType: 'employee',
+      status: { in: ['Active', 'OnLeave', 'NoticePeriod'] },
+    },
   });
 
   let processed = 0;
@@ -30,22 +35,31 @@ export async function runGratuityAccrual(): Promise<JobResult> {
   for (const employment of employments) {
     try {
       const structure = await prisma.salaryStructure.findFirst({
-        where: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, status: 'Approved', effectiveFrom: { lte: now } },
+        where: {
+          tenantId: auth.tenantId,
+          employmentRelationshipId: employment.id,
+          status: 'Approved',
+          effectiveFrom: { lte: now },
+        },
         orderBy: { effectiveFrom: 'desc' },
       });
       const basicMonthly = structure
         ? num(structure.basic)!
-        : num(
-            (await prisma.compensationRecord.findFirst({
-              where: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, status: 'Effective' },
-              orderBy: { effectiveFrom: 'desc' },
-            }))?.basicPay,
-          ) ?? 0;
+        : (num(
+            (
+              await prisma.compensationRecord.findFirst({
+                where: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, status: 'Effective' },
+                orderBy: { effectiveFrom: 'desc' },
+              })
+            )?.basicPay,
+          ) ?? 0);
       if (basicMonthly <= 0) continue;
 
       const monthlyAccrual = round2(((15 / 26) * basicMonthly) / 12);
 
-      const existing = await prisma.gratuityAccrual.findFirst({ where: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, asOfDate } });
+      const existing = await prisma.gratuityAccrual.findFirst({
+        where: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, asOfDate },
+      });
       if (existing) continue; // idempotent: already accrued this month
 
       await prisma.gratuityAccrual.create({

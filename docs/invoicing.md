@@ -18,7 +18,7 @@ the whole obligation and what was handed over on the day.
 Tax is computed **per line**, because one invoice can carry an 18% service and a
 5% good and halving the total would misstate both. The split follows from where
 the supply was made — CGST and SGST within the state, a single IGST across a
-state line — and it is *stored*, not recomputed at render time: the invoice was
+state line — and it is _stored_, not recomputed at render time: the invoice was
 raised under one reading of the place of supply, and reprinting it must not
 silently restate the tax if that reading later changes.
 
@@ -27,8 +27,8 @@ The document prints two figures side by side, and both even when they are equal:
 - **Total payable** — the whole obligation.
 - **Amount payable now** — what is being collected as it is handed over.
 
-and says which of three things it is: *full payment*, *part payment* or *payable
-on credit*, with the mode of payment beside it. On a full payment the two figures
+and says which of three things it is: _full payment_, _part payment_ or _payable
+on credit_, with the mode of payment beside it. On a full payment the two figures
 are the same number and it is still printed twice, because a customer should not
 have to work out which of the two they are looking at.
 
@@ -72,8 +72,8 @@ they stand — it prints the balance rather than refusing to exist until the
 last rupee arrives.
 
 Neither the tax invoice nor any single receipt can answer the question a
-customer asks at the end — *what did I owe, what have I paid, and against
-which receipts* — because the invoice predates the payments and each receipt
+customer asks at the end — _what did I owe, what have I paid, and against
+which receipts_ — because the invoice predates the payments and each receipt
 only knows about itself. So this names them all: the total payable, every
 instalment with its receipt number, date, amount and mode, what has been
 received, and what is left. It restates what was billed so it stands on its
@@ -119,8 +119,8 @@ abandoned is a gap the return cannot explain.
 
 **It can start where the paper series stopped.** A company adopting the platform
 mid-year has already issued fifteen receipts by hand; starting again at 001 would
-put two documents into the world with one number. *Company details → Document
-numbering* shows the next number in each series and sets it forwards.
+put two documents into the world with one number. _Company details → Document
+numbering_ shows the next number in each series and sets it forwards.
 
 ### The sixteen-character limit
 
@@ -141,16 +141,16 @@ The two are one system. Every figure GSTR-1 reports comes from an invoice, and
 every check the return runs is about something the invoice screen could have got
 right:
 
-| The return needs | The invoice provides |
-|---|---|
-| A number, consecutive, ≤16 characters | The company series, allocated at issue |
-| A customer GSTIN that validates | Checked on the way in, on the account rather than retyped per sale |
-| B2B or B2C | Read from whether the registration is real, never a tick box |
-| A place of supply | From the customer's GSTIN, then the account, then our own state |
-| CGST+SGST or IGST, never both | Derived from the two state codes, stored on the invoice |
-| An HSN/SAC on every line | From the course or offering being billed |
-| A rate and a taxable value per line | Priced per line at creation |
-| The range issued and the count cancelled | Drafts take no number; a void invoice is reported as cancelled |
+| The return needs                         | The invoice provides                                               |
+| ---------------------------------------- | ------------------------------------------------------------------ |
+| A number, consecutive, ≤16 characters    | The company series, allocated at issue                             |
+| A customer GSTIN that validates          | Checked on the way in, on the account rather than retyped per sale |
+| B2B or B2C                               | Read from whether the registration is real, never a tick box       |
+| A place of supply                        | From the customer's GSTIN, then the account, then our own state    |
+| CGST+SGST or IGST, never both            | Derived from the two state codes, stored on the invoice            |
+| An HSN/SAC on every line                 | From the course or offering being billed                           |
+| A rate and a taxable value per line      | Priced per line at creation                                        |
+| The range issued and the count cancelled | Drafts take no number; a void invoice is reported as cancelled     |
 
 A line with no HSN is accepted by the books and rejected by the portal. The
 returns screen lists everything in that state **above the figures**, naming the
@@ -167,7 +167,7 @@ Three acts, deliberately separate.
 repeatable, and never written down.
 
 **Prepare.** Snapshots the figures as they stand, with its findings on it. A
-return that could not be filed *can* be prepared — preparing is arithmetic, and
+return that could not be filed _can_ be prepared — preparing is arithmetic, and
 seeing the blockers is the reason to do it. Preparing again supersedes the
 earlier preparation rather than overwriting it, so "what did we think the
 liability was last week" stays answerable.
@@ -197,11 +197,11 @@ the portal accepts, and `File` records what came back.
 
 Three parties can hold the customer role, and the document says which:
 
-| | Addressed as | Where the tax detail comes from |
-|---|---|---|
-| **Student** | their own name, with their registration number | their student record |
-| **Institution** | the school or college | its billing details |
-| **Organisation** | the trust, foundation or business | its billing details |
+|                  | Addressed as                                   | Where the tax detail comes from |
+| ---------------- | ---------------------------------------------- | ------------------------------- |
+| **Student**      | their own name, with their registration number | their student record            |
+| **Institution**  | the school or college                          | its billing details             |
+| **Organisation** | the trust, foundation or business              | its billing details             |
 
 "Customer" is that role and nothing else — it is not a kind of record, and there
 is no list of customers anywhere in the product. A student billed in their own
@@ -255,7 +255,7 @@ line-item invoice doesn't model:
   at `price / tenure` per "month" so the same quantity-based arithmetic
   produces the right subtotal regardless of the tenure chosen.
 - **One form, several invoices.** Entering more than one course for the
-  same student raises one invoice *per course* — its own number, its own
+  same student raises one invoice _per course_ — its own number, its own
   add-ons, its own tax split — rather than one invoice with several
   courses as lines. The screen calls `POST /finance/invoices` once per
   course entry.

@@ -174,7 +174,12 @@ export function registerSubscribers(): void {
   subscribe(EVENTS.INTERACTION_LOGGED, 'crm.interaction_index', async (event: EventEnvelope) => {
     const interaction = await prisma.interaction.findFirst({ where: { id: event.subject.entityId } });
     if (!interaction) return;
-    const refs = (interaction.relatedReferences as unknown as Array<{ contextCode: string; entityType: string; entityId: string }>) ?? [];
+    const refs =
+      (interaction.relatedReferences as unknown as Array<{
+        contextCode: string;
+        entityType: string;
+        entityId: string;
+      }>) ?? [];
     const { sensitivityClass } = await computeSensitivity(refs);
     if (sensitivityClass !== interaction.sensitivityClass) {
       await prisma.interaction.update({ where: { id: interaction.id }, data: { sensitivityClass } });

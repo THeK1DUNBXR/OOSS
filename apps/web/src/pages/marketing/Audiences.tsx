@@ -128,7 +128,11 @@ export function Audiences() {
                   <td className="text-xs text-ink-300">{titleCase(a.entityType)}</td>
                   <td className="text-right tabular-nums text-xs">{a.memberCount ?? '—'}</td>
                   <td className="text-2xs text-ink-500">
-                    {a.kind === 'static' ? 'not evaluated — manual list' : a.lastEvaluatedAt ? dateTime(a.lastEvaluatedAt) : 'never evaluated'}
+                    {a.kind === 'static'
+                      ? 'not evaluated — manual list'
+                      : a.lastEvaluatedAt
+                        ? dateTime(a.lastEvaluatedAt)
+                        : 'never evaluated'}
                   </td>
                 </tr>
               ))}
@@ -143,7 +147,15 @@ export function Audiences() {
   );
 }
 
-function NewAudience({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: string) => void }) {
+function NewAudience({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (id: string) => void;
+}) {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<AudienceKind | ''>('');
   const [entityType, setEntityType] = useState<AudienceEntityType | ''>('');
@@ -200,7 +212,12 @@ function NewAudience({ open, onClose, onCreated }: { open: boolean; onClose: () 
           options={AUDIENCE_ENTITY_TYPES.map((e) => ({ value: e, label: titleCase(e) }))}
         />
       </Row>
-      <TextArea label="Description" value={description} onChange={setDescription} placeholder="What this audience is for" />
+      <TextArea
+        label="Description"
+        value={description}
+        onChange={setDescription}
+        placeholder="What this audience is for"
+      />
       {kind === 'dynamic' && (
         <p className="text-2xs text-ink-500">The rule builder opens once this is created — it starts empty.</p>
       )}
@@ -216,7 +233,10 @@ function AudienceDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const { can } = useSession();
   const { data: audience, isLoading, error } = useAudience(id);
   const [rules, setRules] = useState<AudienceRule | null>(null);
-  const [previewResult, setPreviewResult] = useState<{ count: number; sample: Array<{ entityId: string; label: string }> } | null>(null);
+  const [previewResult, setPreviewResult] = useState<{
+    count: number;
+    sample: Array<{ entityId: string; label: string }>;
+  } | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
 
   const preview = usePreviewAudience();
@@ -290,7 +310,9 @@ function AudienceDrawer({ id, onClose }: { id: string; onClose: () => void }) {
     >
       <div className="space-y-4">
         {banner && (
-          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{banner}</p>
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {banner}
+          </p>
         )}
 
         <div className="flex flex-wrap items-center gap-2">
@@ -346,9 +368,7 @@ function AudienceDrawer({ id, onClose }: { id: string; onClose: () => void }) {
             />
             {previewResult && (
               <div className="mt-3 rounded-md border border-ink-800 bg-ink-850 p-3">
-                <p className="text-xs font-medium text-ink-100">
-                  {previewResult.count} would match right now
-                </p>
+                <p className="text-xs font-medium text-ink-100">{previewResult.count} would match right now</p>
                 {previewResult.sample.length > 0 && (
                   <ul className="mt-1.5 space-y-0.5 text-2xs text-ink-400">
                     {previewResult.sample.slice(0, 8).map((s) => (
@@ -360,8 +380,8 @@ function AudienceDrawer({ id, onClose }: { id: string; onClose: () => void }) {
             )}
             {evaluate.data && (
               <p className="mt-2 text-2xs text-ink-500">
-                Last evaluation: {evaluate.data.memberCount} members ({evaluate.data.addedCount} added, {evaluate.data.removedCount} removed),
-                at {dateTime(evaluate.data.evaluatedAt)}.
+                Last evaluation: {evaluate.data.memberCount} members ({evaluate.data.addedCount} added,{' '}
+                {evaluate.data.removedCount} removed), at {dateTime(evaluate.data.evaluatedAt)}.
               </p>
             )}
           </Card>
@@ -376,7 +396,11 @@ function AudienceDrawer({ id, onClose }: { id: string; onClose: () => void }) {
             <div className="p-4">
               <EmptyState
                 message="No members yet."
-                hint={audience.kind === 'dynamic' ? 'Run "Evaluate now" once the rules match what you want.' : 'Search below and add people to this list.'}
+                hint={
+                  audience.kind === 'dynamic'
+                    ? 'Run "Evaluate now" once the rules match what you want.'
+                    : 'Search below and add people to this list.'
+                }
               />
             </div>
           ) : (
@@ -396,7 +420,8 @@ function AudienceDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                         className="btn-ghost text-2xs"
                         onClick={() => {
                           const reason = prompt('Reason for suppressing this member?');
-                          if (reason) suppress.mutate({ memberId: m.id, reason }, { onError: (e) => setBanner(messageOf(e)) });
+                          if (reason)
+                            suppress.mutate({ memberId: m.id, reason }, { onError: (e) => setBanner(messageOf(e)) });
                         }}
                       >
                         Suppress
@@ -544,7 +569,11 @@ function ConditionRow({
         disabled={disabled}
         onChange={(e) => {
           const f = fields.find((x) => x.field === e.target.value);
-          onChange({ field: e.target.value, op: (f?.ops[0] as AudienceRuleOp) ?? condition.op, value: condition.value });
+          onChange({
+            field: e.target.value,
+            op: (f?.ops[0] as AudienceRuleOp) ?? condition.op,
+            value: condition.value,
+          });
         }}
       >
         {fields.map((f) => (
@@ -595,7 +624,15 @@ function ConditionRow({
           placeholder="comma-separated"
           disabled={disabled}
           value={Array.isArray(condition.value) ? condition.value.join(',') : String(condition.value ?? '')}
-          onChange={(e) => onChange({ ...condition, value: e.target.value.split(',').map((v) => v.trim()).filter(Boolean) })}
+          onChange={(e) =>
+            onChange({
+              ...condition,
+              value: e.target.value
+                .split(',')
+                .map((v) => v.trim())
+                .filter(Boolean),
+            })
+          }
         />
       ) : needsValue ? (
         <input
@@ -666,7 +703,12 @@ function StaticMemberAdd({
 
   return (
     <Card title="Add members" subtitle="This is a manual list — search and add one person (or record) at a time.">
-      <TextInput label={`Search ${titleCase(entityType)}`} value={q} onChange={setQ} placeholder="Name or record code…" />
+      <TextInput
+        label={`Search ${titleCase(entityType)}`}
+        value={q}
+        onChange={setQ}
+        placeholder="Name or record code…"
+      />
       {q.length >= 2 && (
         <div className="mt-2 space-y-1">
           {isFetching ? (
@@ -675,7 +717,10 @@ function StaticMemberAdd({
             <p className="text-2xs italic text-ink-500">Nothing matches.</p>
           ) : (
             results.map((r) => (
-              <div key={r.id} className="flex items-center justify-between gap-2 rounded border border-ink-800 px-2.5 py-1.5">
+              <div
+                key={r.id}
+                className="flex items-center justify-between gap-2 rounded border border-ink-800 px-2.5 py-1.5"
+              >
                 <div>
                   <p className="text-xs text-ink-100">{r.label}</p>
                   <p className="text-2xs text-ink-500 mono">{r.recordCode}</p>

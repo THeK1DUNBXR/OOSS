@@ -20,18 +20,18 @@ employee data. It carries almost nothing for income tax, payroll
 statutory deductions, labour law process, or a calendar that turns any
 of this into a job rather than a memory.
 
-| Area | Exists | Partial | Absent |
-|---|---|---|---|
-| GST core | GSTIN validation, place-of-supply/CGST-SGST-IGST split, HSN/SAC, GSTR-1 and GSTR-3B computation, offline-utility JSON export | Credit notes (generic sequence, no reason codes) | Reverse charge, e-invoicing, GSTR-2B/ITC reconciliation, exempt/composition/education exemption, debit notes, late fee/interest, e-way bill |
-| Income tax / TDS | — | — | TAN, TDS on vendor bills, TDS on salary, Form 16/16A, 26Q/24Q, advance tax, MSME 43B(h) |
-| Books and audit | Governed-entity diff audit (5 model types), gapless document numbering, FY Apr-Mar, FixedAsset register (SLM/WDV) | Period lock (GST only); depreciation (no Schedule II table) | Ledger entities in the audit registry, hash-chain on AuditRecord, 8-year retention enforcement, trial balance/GL export, bank-reconciliation matching |
-| Payroll statutory | Instruction/audit layer, structural exclusion of PAN/Aadhaar/UAN | CompensationRecord (amount + basic only) | PF, ESI, PT, TDS 192, LWF, gratuity, bonus, payslip document, ECR/ESIC export |
-| Labour law/conduct | Statutory leave types seeded, offboarding state machine, notice period | — | Paternity leave, carry-forward/encashment, holidays, hours caps, POSH model, structured disciplinary process, statutory registers |
-| Data protection (DPDP) | Classification/sensitivity registry, structural field exclusion, purpose-required WHY axis, retention floor | — | Consent model (plumbing present, always empty), data-principal rights, breach register, minor/guardian consent, cross-border control |
-| Corporate / security | GSTIN/PAN/CIN, expiry ladders on MoU/Contract, self-dealing bar | — | TAN, statutory registers, MCA filing reminders, e-sign/DSC, MFA, password policy, secrets management, backups |
-| Compliance calendar | — | — | Entirely absent: no obligation model, no deadline job, no screen |
+| Area                   | Exists                                                                                                                       | Partial                                                     | Absent                                                                                                                                                |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GST core               | GSTIN validation, place-of-supply/CGST-SGST-IGST split, HSN/SAC, GSTR-1 and GSTR-3B computation, offline-utility JSON export | Credit notes (generic sequence, no reason codes)            | Reverse charge, e-invoicing, GSTR-2B/ITC reconciliation, exempt/composition/education exemption, debit notes, late fee/interest, e-way bill           |
+| Income tax / TDS       | —                                                                                                                            | —                                                           | TAN, TDS on vendor bills, TDS on salary, Form 16/16A, 26Q/24Q, advance tax, MSME 43B(h)                                                               |
+| Books and audit        | Governed-entity diff audit (5 model types), gapless document numbering, FY Apr-Mar, FixedAsset register (SLM/WDV)            | Period lock (GST only); depreciation (no Schedule II table) | Ledger entities in the audit registry, hash-chain on AuditRecord, 8-year retention enforcement, trial balance/GL export, bank-reconciliation matching |
+| Payroll statutory      | Instruction/audit layer, structural exclusion of PAN/Aadhaar/UAN                                                             | CompensationRecord (amount + basic only)                    | PF, ESI, PT, TDS 192, LWF, gratuity, bonus, payslip document, ECR/ESIC export                                                                         |
+| Labour law/conduct     | Statutory leave types seeded, offboarding state machine, notice period                                                       | —                                                           | Paternity leave, carry-forward/encashment, holidays, hours caps, POSH model, structured disciplinary process, statutory registers                     |
+| Data protection (DPDP) | Classification/sensitivity registry, structural field exclusion, purpose-required WHY axis, retention floor                  | —                                                           | Consent model (plumbing present, always empty), data-principal rights, breach register, minor/guardian consent, cross-border control                  |
+| Corporate / security   | GSTIN/PAN/CIN, expiry ladders on MoU/Contract, self-dealing bar                                                              | —                                                           | TAN, statutory registers, MCA filing reminders, e-sign/DSC, MFA, password policy, secrets management, backups                                         |
+| Compliance calendar    | —                                                                                                                            | —                                                           | Entirely absent: no obligation model, no deadline job, no screen                                                                                      |
 
-The gap has a consistent shape: the platform has built the *structural*
+The gap has a consistent shape: the platform has built the _structural_
 primitives compliance work would reuse — audited governed writes,
 hash-chained events, idempotent ladder jobs, a classification/purpose
 axis, document finality — and has not pointed any of them at a statutory
@@ -96,6 +96,7 @@ Compliance screen listing obligations by status with a drill path, in the
 health-score idiom.
 
 **Acceptance.**
+
 - CMP-CAL-001: PASS when every obligation above has a
   `ComplianceObligation` row with a correct recurrence rule and owner.
 - CMP-CAL-002: PASS when marking an obligation filed requires a linked
@@ -139,6 +140,7 @@ GSTR-2B import for ITC reconciliation. Late fee/interest as a dated rate
 table. E-way bill fields, gated on goods vs service.
 
 **Acceptance.**
+
 - CMP-GST-001: PASS when a nil/exempt line reports as such with zero tax
   and does not add to taxable turnover.
 - CMP-GST-002: PASS when a reverse-charge vendor bill populates
@@ -183,6 +185,7 @@ and agreed-term field on Vendor with a 45-day ladder feeding a Sec
 43B(h) exception.
 
 **Acceptance.**
+
 - CMP-TDS-001: PASS when a bill above a section's threshold computes TDS
   from the dated table and blocks payment until deducted or waived with
   a certificate reference.
@@ -227,6 +230,7 @@ computation. Bank-reconciliation matching. Trial balance/GL/auditor
 exports; a Tally export to match the existing import.
 
 **Acceptance.**
+
 - CMP-AUD-001: PASS when a write to any of the five newly-governed
   models produces an `AuditRecord` with a field-level diff.
 - CMP-AUD-002: PASS when `verifyChain()` on `AuditRecord` detects
@@ -270,6 +274,7 @@ fields under the same exclusion-and-encryption discipline as PAN; an
 `engagementType` field (employee vs contractor) driving 192 vs 194C/194J.
 
 **Acceptance.**
+
 - CMP-PAY-001: PASS when PF computes the correct split for a wage at or
   below the ceiling, from the dated table, FAIL if from a code constant.
 - CMP-PAY-002: PASS when the payroll proposer cannot also approve the
@@ -321,6 +326,7 @@ with none, `hiring.ts:264-266`). FnF wired to E's accrual. Form
 as new `affiliationType` values.
 
 **Acceptance.**
+
 - CMP-LAB-001: PASS when a POSH complaint's inquiry deadline fires an
   exception at 90 days if unclosed.
 - CMP-LAB-002: PASS when weekly hours exceeding 48 raise an exception
@@ -367,6 +373,7 @@ access today is evaluated live with no automatic revocation on exit
 (`permissions.ts:12`).
 
 **Acceptance.**
+
 - CMP-DPD-001: PASS when a regulated-field access has a matching consent
   record, FAIL if permitted under `'operational'` with none.
 - CMP-DPD-002: PASS when an erasure request inside the retention floor
@@ -415,6 +422,7 @@ password policy, TOTP MFA for Finance Head and Chairman specifically,
 rate limiting, a backup job.
 
 **Acceptance.**
+
 - CMP-COR-001: PASS when the API refuses to start with `JWT_SECRET`
   unset or equal to the fallback value.
 - CMP-COR-002: PASS when Finance Head and Chairman logins require a
@@ -434,12 +442,12 @@ a written refund policy today?
 
 Four phases, ordered by legal exposure against build cost.
 
-| Phase | Workstreams | Why now | Rough size |
-|---|---|---|---|
+| Phase | Workstreams                                                                                                                                                                                                    | Why now                                                                                                                                                                                                                                                                            | Rough size                                      |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | **1** | A (calendar spine); D partial (audit-trail proviso: 5 models into the registry, hash chain); C core (TAN, vendor TDS, challan tracking); H security (JWT_SECRET, MFA for Finance Head/Chairman, rate limiting) | Highest exposure at lowest build cost — the audit-trail proviso is a registry addition, not new plumbing; a hard-coded JWT fallback and no MFA on the two money-approving roles is a standing exposure regardless of compliance framing; undeducted TDS compounds interest monthly | A: M · D-partial: S · C-core: M · H-security: S |
-| **2** | B (GST: RCM, exempt/education classification, debit notes); C completion (salary TDS, Form 16/16A, 26Q/24Q); E core (PF/ESI/PT, payslip) | GST and payroll are already in daily use; the current gaps (hard zero for exempt supplies, no PF/ESI at all) are producing wrong figures today, not just missing paperwork | B: L · C-rest: M · E-core: L |
-| **3** | F (labour law, POSH); G (DPDP consent and data-principal rights) | Lower immediate financial exposure than 1-2 but exposure that grows with headcount and any DPDP enforcement in the sector; POSH's inquiry timelines run whether or not the platform tracks them | F: L · G: L |
-| **4** | H remainder (registers, board minutes, e-sign, FEMA, Certificate/Refund); E remainder (accrual polish, ECR/ESIC automation); D remainder (Schedule III/II, trial balance/GL, bank reconciliation) | Lower frequency, lower exposure, or waiting on a provider decision (e-sign vendor, ECR format) phases 1-3 don't need settled | H-rest: M · E-rest: M · D-rest: M |
+| **2** | B (GST: RCM, exempt/education classification, debit notes); C completion (salary TDS, Form 16/16A, 26Q/24Q); E core (PF/ESI/PT, payslip)                                                                       | GST and payroll are already in daily use; the current gaps (hard zero for exempt supplies, no PF/ESI at all) are producing wrong figures today, not just missing paperwork                                                                                                         | B: L · C-rest: M · E-core: L                    |
+| **3** | F (labour law, POSH); G (DPDP consent and data-principal rights)                                                                                                                                               | Lower immediate financial exposure than 1-2 but exposure that grows with headcount and any DPDP enforcement in the sector; POSH's inquiry timelines run whether or not the platform tracks them                                                                                    | F: L · G: L                                     |
+| **4** | H remainder (registers, board minutes, e-sign, FEMA, Certificate/Refund); E remainder (accrual polish, ECR/ESIC automation); D remainder (Schedule III/II, trial balance/GL, bank reconciliation)              | Lower frequency, lower exposure, or waiting on a provider decision (e-sign vendor, ECR format) phases 1-3 don't need settled                                                                                                                                                       | H-rest: M · E-rest: M · D-rest: M               |
 
 ---
 

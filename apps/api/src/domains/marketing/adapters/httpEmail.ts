@@ -27,15 +27,23 @@
  *
  * Inbound webhook contract assumed by parseInboundWebhook (defensive — any
  * other shape returns []):
- *   { "events": [ { "id": "<provider message id>", "event": "delivered" | "opened" |
+ *   { "eventId": "<provider event id?>",
+ *     "events": [ { "id": "<provider message id>", "event": "sent" | "delivered" | "opened" |
  *       "clicked" | "bounced" | "unsubscribed" | "failed", "timestamp": "<ISO 8601>",
- *       "detail": "<string?>" } ] }
+ *       "detail": "<string?>", "eventId": "<provider event id?>" } ] }
+ *
+ * The provider event id is what makes a redelivered event count once. The
+ * envelope's eventId is the id the webhook route already requires (capture.ts),
+ * so it is carried onto each event unless the event names its own. Without
+ * one, the event is applied without a dedupe key, so it cannot be recognised
+ * on a second arrival.
  */
 
 import type { ChannelAdapter, InboundDeliveryEvent, OutboundMessage, RenderedMessage, SendResult } from './types.js';
 import { renderMergeFields } from './merge.js';
 
 const EVENT_KIND_MAP: Record<string, InboundDeliveryEvent['kind']> = {
+  sent: 'sent',
   delivered: 'delivered',
   opened: 'opened',
   clicked: 'clicked',
@@ -100,8 +108,11 @@ export class HttpEmailAdapter implements ChannelAdapter {
   parseInboundWebhook(payload: unknown): InboundDeliveryEvent[] {
     try {
       if (!payload || typeof payload !== 'object') return [];
-      const events = (payload as Record<string, unknown>).events;
+      const envelope = payload as Record<string, unknown>;
+      const events = envelope.events;
       if (!Array.isArray(events)) return [];
+      const envelopeEventId =
+        typeof envelope.eventId === 'string' && envelope.eventId.length > 0 ? envelope.eventId : undefined;
 
       const out: InboundDeliveryEvent[] = [];
       for (const raw of events) {
@@ -113,11 +124,13 @@ export class HttpEmailAdapter implements ChannelAdapter {
         const kind = EVENT_KIND_MAP[eventName];
         if (!kind) continue;
         const timestamp = typeof rec.timestamp === 'string' ? new Date(rec.timestamp) : new Date();
+        const ownEventId = typeof rec.eventId === 'string' && rec.eventId.length > 0 ? rec.eventId : undefined;
         out.push({
           providerMessageId: id,
           kind,
           at: Number.isNaN(timestamp.getTime()) ? new Date() : timestamp,
           detail: typeof rec.detail === 'string' ? rec.detail : undefined,
+          eventId: ownEventId ?? envelopeEventId,
         });
       }
       return out;

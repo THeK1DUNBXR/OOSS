@@ -76,9 +76,7 @@ export async function runComplianceCalendarJob(): Promise<JobResult> {
     try {
       await raiseException({
         code: overdue ? 'CMP_CAL_OVERDUE' : 'CMP_CAL_DUE',
-        label: overdue
-          ? `${row.type.label} overdue`
-          : `${row.type.label} due in ${rung} day${rung === 1 ? '' : 's'}`,
+        label: overdue ? `${row.type.label} overdue` : `${row.type.label} due in ${rung} day${rung === 1 ? '' : 's'}`,
         severity: severityFor(rung),
         subjectType: 'compliance_obligation',
         subjectId: row.id,

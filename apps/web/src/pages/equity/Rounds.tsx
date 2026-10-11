@@ -9,13 +9,21 @@
  */
 import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FUNDING_ROUND_KIND_LABELS, type FundingRoundKind, type FundingRoundView, type ShareTransactionView } from '@kaizen/shared';
+import {
+  FUNDING_ROUND_KIND_LABELS,
+  type FundingRoundKind,
+  type FundingRoundView,
+  type ShareTransactionView,
+} from '@kaizen/shared';
 import { api, date } from '../../lib/api.js';
 import { useSession } from '../../lib/session.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip } from '../../components/ui.js';
 import { CreateModal, NewButton, Row, SelectInput, TextInput, messageOf } from '../../components/forms.js';
 
-const KIND_OPTIONS = Object.entries(FUNDING_ROUND_KIND_LABELS).map(([value, label]) => ({ value: value as FundingRoundKind, label }));
+const KIND_OPTIONS = Object.entries(FUNDING_ROUND_KIND_LABELS).map(([value, label]) => ({
+  value: value as FundingRoundKind,
+  label,
+}));
 
 const STATUS_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad' | 'accent'> = {
   draft: 'neutral',
@@ -27,7 +35,8 @@ const STATUS_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad' | 'accent'
 function useValuations() {
   return useQuery({
     queryKey: ['equity-valuations', 'picker'],
-    queryFn: () => api.get<{ items: Array<{ id: string; recordCode: string; basis: string; asOf: string }> }>('/equity/valuations'),
+    queryFn: () =>
+      api.get<{ items: Array<{ id: string; recordCode: string; basis: string; asOf: string }> }>('/equity/valuations'),
   });
 }
 
@@ -35,11 +44,15 @@ function useValuations() {
 function Prerequisites({ kind }: { kind: FundingRoundKind | '' }) {
   const notes: Record<string, string> = {
     preferential: "Needs a registered valuer's report dated before opening (Rule 13).",
-    private_placement: "Needs a registered valuer's report dated before opening (Rule 13), a PAS-4 offer letter serial, a separate bank account, and the offeree count — capped at 200 persons a year across every private-placement round (s.42).",
-    bonus: 'Needs a named source — free reserves, securities premium, or the capital redemption reserve (s.63). A bonus from free reserves refuses to open unless they are measured and positive.',
+    private_placement:
+      "Needs a registered valuer's report dated before opening (Rule 13), a PAS-4 offer letter serial, a separate bank account, and the offeree count — capped at 200 persons a year across every private-placement round (s.42).",
+    bonus:
+      'Needs a named source — free reserves, securities premium, or the capital redemption reserve (s.63). A bonus from free reserves refuses to open unless they are measured and positive.',
     sweat_equity: 'Needs a valuation report reference (s.54).',
-    capital_reduction: 'Needs the tribunal order this reduction is recorded against (s.66) — the act itself is not workflowed, only recorded.',
-    buyback: 'Needs free reserves to be measurable before it may open; each buy-back proposed under it is checked against the 10%/25% and debt-equity (2:1) tests when it is proposed.',
+    capital_reduction:
+      'Needs the tribunal order this reduction is recorded against (s.66) — the act itself is not workflowed, only recorded.',
+    buyback:
+      'Needs free reserves to be measurable before it may open; each buy-back proposed under it is checked against the 10%/25% and debt-equity (2:1) tests when it is proposed.',
     rights_issue: 'Records whether an entitlement may be renounced to a named third party (s.62(1)(a)).',
   };
   if (!kind || !notes[kind]) return null;
@@ -96,7 +109,14 @@ function NewRound({ open, onClose }: { open: boolean; onClose: () => void }) {
     >
       <Row>
         <TextInput label="Name" required value={name} onChange={setName} />
-        <SelectInput label="Kind" required value={kind} onChange={(v) => setKind(v)} placeholder="Choose a kind" options={KIND_OPTIONS} />
+        <SelectInput
+          label="Kind"
+          required
+          value={kind}
+          onChange={(v) => setKind(v)}
+          placeholder="Choose a kind"
+          options={KIND_OPTIONS}
+        />
       </Row>
       <Prerequisites kind={kind} />
       <Row>
@@ -111,7 +131,10 @@ function NewRound({ open, onClose }: { open: boolean; onClose: () => void }) {
           value={valuationId}
           onChange={setValuationId}
           placeholder="Choose a recorded valuation"
-          options={(valuations.data?.items ?? []).map((v) => ({ value: v.id, label: `${v.recordCode} · ${v.basis} · ${date(v.asOf)}` }))}
+          options={(valuations.data?.items ?? []).map((v) => ({
+            value: v.id,
+            label: `${v.recordCode} · ${v.basis} · ${date(v.asOf)}`,
+          }))}
         />
       )}
 
@@ -122,8 +145,18 @@ function NewRound({ open, onClose }: { open: boolean; onClose: () => void }) {
             <TextInput label="Separate bank account ref." value={separateBankAccountRef} onChange={setBankRef} />
           </Row>
           <Row>
-            <TextInput label="Offeree count" type="number" hint="counted against the 200-person s.42 ceiling for the year" value={offereeCount} onChange={setOffereeCount} />
-            <TextInput label="Shareholder resolution ref." value={shareholderResolutionRef} onChange={setShareholderRef} />
+            <TextInput
+              label="Offeree count"
+              type="number"
+              hint="counted against the 200-person s.42 ceiling for the year"
+              value={offereeCount}
+              onChange={setOffereeCount}
+            />
+            <TextInput
+              label="Shareholder resolution ref."
+              value={shareholderResolutionRef}
+              onChange={setShareholderRef}
+            />
           </Row>
         </>
       )}
@@ -134,7 +167,10 @@ function NewRound({ open, onClose }: { open: boolean; onClose: () => void }) {
           value={renunciationAllowed}
           onChange={(v) => setRenunciation(v as 'yes' | 'no')}
           placeholder="Choose"
-          options={[{ value: 'yes', label: 'Yes — entitlements may be renounced to a named holder' }, { value: 'no', label: 'No' }]}
+          options={[
+            { value: 'yes', label: 'Yes — entitlements may be renounced to a named holder' },
+            { value: 'no', label: 'No' },
+          ]}
         />
       )}
 
@@ -152,10 +188,19 @@ function NewRound({ open, onClose }: { open: boolean; onClose: () => void }) {
         />
       )}
 
-      {isSweatEquity && <TextInput label="Valuation report ref." value={valuationReportRef} onChange={setValuationReportRef} />}
-      {isCapitalReduction && <TextInput label="Tribunal order ref." value={tribunalOrderRef} onChange={setTribunalRef} />}
+      {isSweatEquity && (
+        <TextInput label="Valuation report ref." value={valuationReportRef} onChange={setValuationReportRef} />
+      )}
+      {isCapitalReduction && (
+        <TextInput label="Tribunal order ref." value={tribunalOrderRef} onChange={setTribunalRef} />
+      )}
       {kind === 'buyback' && (
-        <TextInput label="Shareholder resolution ref." hint="needed above 10% of paid-up capital + free reserves" value={shareholderResolutionRef} onChange={setShareholderRef} />
+        <TextInput
+          label="Shareholder resolution ref."
+          hint="needed above 10% of paid-up capital + free reserves"
+          value={shareholderResolutionRef}
+          onChange={setShareholderRef}
+        />
       )}
     </CreateModal>
   );
@@ -168,19 +213,30 @@ export function Rounds() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { data, isLoading, error: loadError } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: loadError,
+  } = useQuery({
     queryKey: ['equity-rounds'],
     queryFn: () => api.get<{ items: FundingRoundView[] }>('/equity/rounds'),
   });
 
   const { data: detail } = useQuery({
     queryKey: ['equity-round', openId],
-    queryFn: () => api.get<{ round: FundingRoundView; transactions: ShareTransactionView[]; raised: number; postMoney: number | null }>(`/equity/rounds/${openId}`),
+    queryFn: () =>
+      api.get<{
+        round: FundingRoundView;
+        transactions: ShareTransactionView[];
+        raised: number;
+        postMoney: number | null;
+      }>(`/equity/rounds/${openId}`),
     enabled: Boolean(openId),
   });
 
   const act = useMutation({
-    mutationFn: (input: { id: string; path: 'open' | 'close' | 'cancel' }) => api.post(`/equity/rounds/${input.id}/${input.path}`),
+    mutationFn: (input: { id: string; path: 'open' | 'close' | 'cancel' }) =>
+      api.post(`/equity/rounds/${input.id}/${input.path}`),
     onSuccess: () => {
       setError(null);
       qc.invalidateQueries({ queryKey: ['equity-rounds'] });
@@ -202,14 +258,19 @@ export function Rounds() {
       />
 
       {error && (
-        <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>
+        <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
       )}
 
       {isLoading ? (
         <Loading />
       ) : (data?.items.length ?? 0) === 0 ? (
         <Card>
-          <EmptyState message="No rounds yet." hint="Create one to bring a preferential allotment, a bonus, or a buy-back onto the register." />
+          <EmptyState
+            message="No rounds yet."
+            hint="Create one to bring a preferential allotment, a bonus, or a buy-back onto the register."
+          />
         </Card>
       ) : (
         <Card bodyClassName="p-0">
@@ -234,7 +295,9 @@ export function Rounds() {
                         {r.recordCode}
                         <div className="text-xs text-ink-100">{r.name}</div>
                       </td>
-                      <td className="text-ink-300">{FUNDING_ROUND_KIND_LABELS[r.kind as FundingRoundKind] ?? r.kind}</td>
+                      <td className="text-ink-300">
+                        {FUNDING_ROUND_KIND_LABELS[r.kind as FundingRoundKind] ?? r.kind}
+                      </td>
                       <td>
                         <StatusChip status={r.status} tone={STATUS_TONE[r.status] ?? 'neutral'} />
                       </td>
@@ -244,17 +307,29 @@ export function Rounds() {
                       <td>
                         <div className="flex flex-wrap justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                           {r.status === 'draft' && can('rounds:approve') && (
-                            <button className="btn-ghost" onClick={() => act.mutate({ id: r.id, path: 'open' })} disabled={act.isPending}>
+                            <button
+                              className="btn-ghost"
+                              onClick={() => act.mutate({ id: r.id, path: 'open' })}
+                              disabled={act.isPending}
+                            >
                               Open
                             </button>
                           )}
                           {r.status === 'open' && can('rounds:approve') && (
-                            <button className="btn-primary btn-sm" onClick={() => act.mutate({ id: r.id, path: 'close' })} disabled={act.isPending}>
+                            <button
+                              className="btn-primary btn-sm"
+                              onClick={() => act.mutate({ id: r.id, path: 'close' })}
+                              disabled={act.isPending}
+                            >
                               Close
                             </button>
                           )}
                           {(r.status === 'draft' || r.status === 'open') && can('rounds:approve') && (
-                            <button className="btn-ghost" onClick={() => act.mutate({ id: r.id, path: 'cancel' })} disabled={act.isPending}>
+                            <button
+                              className="btn-ghost"
+                              onClick={() => act.mutate({ id: r.id, path: 'cancel' })}
+                              disabled={act.isPending}
+                            >
                               Cancel
                             </button>
                           )}
@@ -298,7 +373,9 @@ export function Rounds() {
                                     <td>
                                       <StatusChip status={t.status} tone="neutral" />
                                     </td>
-                                    <td className="text-2xs text-ink-400">{t.effectiveOn ? date(t.effectiveOn) : '—'}</td>
+                                    <td className="text-2xs text-ink-400">
+                                      {t.effectiveOn ? date(t.effectiveOn) : '—'}
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>

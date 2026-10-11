@@ -74,7 +74,8 @@ export class WhatsAppCloudAdapter implements ChannelAdapter {
     if (!msg.waTemplateName) {
       return {
         status: 'failed',
-        error: 'A registered WhatsApp template name (waTemplateName) is required to send outside the 24h session window',
+        error:
+          'A registered WhatsApp template name (waTemplateName) is required to send outside the 24h session window',
       };
     }
 
@@ -109,7 +110,9 @@ export class WhatsAppCloudAdapter implements ChannelAdapter {
 
       const data = (await response.json().catch(() => null)) as { messages?: Array<{ id?: unknown }> } | null;
       const providerMessageId =
-        Array.isArray(data?.messages) && typeof data.messages[0]?.id === 'string' ? (data.messages[0].id as string) : undefined;
+        Array.isArray(data?.messages) && typeof data.messages[0]?.id === 'string'
+          ? (data.messages[0].id as string)
+          : undefined;
       return { status: 'sent', providerMessageId };
     } catch (err) {
       return { status: 'failed', error: err instanceof Error ? err.message : 'Unknown WhatsApp Cloud API error' };
@@ -142,10 +145,7 @@ export class WhatsAppCloudAdapter implements ChannelAdapter {
             const kind = STATUS_MAP[statusRaw.toLowerCase()];
             if (!kind) continue;
             const ts = rec.timestamp;
-            const at =
-              typeof ts === 'string' || typeof ts === 'number'
-                ? new Date(Number(ts) * 1000)
-                : new Date();
+            const at = typeof ts === 'string' || typeof ts === 'number' ? new Date(Number(ts) * 1000) : new Date();
             out.push({ providerMessageId: id, kind, at: Number.isNaN(at.getTime()) ? new Date() : at });
           }
         }

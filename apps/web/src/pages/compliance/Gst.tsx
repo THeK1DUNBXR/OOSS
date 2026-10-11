@@ -11,7 +11,17 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NOTE_REASON_CODES, NOTE_REASON_LABELS, type NoteReasonCode } from '@kaizen/shared';
 import { api, money, date } from '../../lib/api.js';
-import { Card, EmptyState, ErrorBox, Loading, Metric, PageHeader, RecordCode, StatusChip, Tabs } from '../../components/ui.js';
+import {
+  Card,
+  EmptyState,
+  ErrorBox,
+  Loading,
+  Metric,
+  PageHeader,
+  RecordCode,
+  StatusChip,
+  Tabs,
+} from '../../components/ui.js';
 import { MoneyInput, SelectInput, TextArea, TextInput, messageOf } from '../../components/forms.js';
 
 type Tab = 'classification' | 'rcm' | 'notes' | 'einvoice' | 'gstr2b' | 'exposure';
@@ -64,7 +74,12 @@ function ClassificationTab() {
   });
 
   const classify = useMutation({
-    mutationFn: (input: { invoiceId: string; lineId: string; supplyType: string; exemptionNotification?: string | null }) =>
+    mutationFn: (input: {
+      invoiceId: string;
+      lineId: string;
+      supplyType: string;
+      exemptionNotification?: string | null;
+    }) =>
       api.patch(`/compliance/gst/invoices/${input.invoiceId}/lines/${input.lineId}/classify`, {
         supplyType: input.supplyType,
         exemptionNotification: input.exemptionNotification,
@@ -175,7 +190,9 @@ function RcmTab() {
               {flagged.data.map((b: any) => (
                 <tr key={b.id} className="border-t border-ink-800">
                   <td className="py-2">{b.vendorName}</td>
-                  <td className="py-2"><RecordCode code={b.recordCode} /></td>
+                  <td className="py-2">
+                    <RecordCode code={b.recordCode} />
+                  </td>
                   <td className="py-2 tabular-nums">{money(b.rcmTaxAmount)}</td>
                 </tr>
               ))}
@@ -259,12 +276,22 @@ function NotesTab() {
   const [reasonCode, setReasonCode] = useState<NoteReasonCode | ''>('');
   const [note, setNote] = useState('');
 
-  const debitNotes = useQuery({ queryKey: ['gst-debit-notes'], queryFn: () => api.get<any[]>('/compliance/gst/debit-notes') });
-  const creditNotes = useQuery({ queryKey: ['gst-credit-notes'], queryFn: () => api.get<any[]>('/compliance/gst/credit-notes') });
+  const debitNotes = useQuery({
+    queryKey: ['gst-debit-notes'],
+    queryFn: () => api.get<any[]>('/compliance/gst/debit-notes'),
+  });
+  const creditNotes = useQuery({
+    queryKey: ['gst-credit-notes'],
+    queryFn: () => api.get<any[]>('/compliance/gst/credit-notes'),
+  });
 
   const issue = useMutation({
     mutationFn: () =>
-      api.post(`/compliance/gst/invoices/${invoiceId}/debit-note`, { amount: Number(amount), reasonCode, note: note || undefined }),
+      api.post(`/compliance/gst/invoices/${invoiceId}/debit-note`, {
+        amount: Number(amount),
+        reasonCode,
+        note: note || undefined,
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['gst-debit-notes'] });
       setOpen(false);
@@ -301,7 +328,9 @@ function NotesTab() {
             <tbody>
               {debitNotes.data.map((n: any) => (
                 <tr key={n.id} className="border-t border-ink-800">
-                  <td className="py-2"><RecordCode code={n.recordCode} /></td>
+                  <td className="py-2">
+                    <RecordCode code={n.recordCode} />
+                  </td>
                   <td className="py-2 tabular-nums">{money(n.amount)}</td>
                   <td className="py-2">{NOTE_REASON_LABELS[n.reasonCode as NoteReasonCode] ?? n.reasonCode}</td>
                   <td className="py-2">{date(n.issuedAt)}</td>
@@ -329,10 +358,16 @@ function NotesTab() {
             <tbody>
               {creditNotes.data.map((n: any) => (
                 <tr key={n.id} className="border-t border-ink-800">
-                  <td className="py-2"><RecordCode code={n.recordCode} /></td>
+                  <td className="py-2">
+                    <RecordCode code={n.recordCode} />
+                  </td>
                   <td className="py-2 tabular-nums">{money(n.amount)}</td>
                   <td className="py-2">
-                    {n.reasonCode ? (NOTE_REASON_LABELS[n.reasonCode as NoteReasonCode] ?? n.reasonCode) : <StatusChip status="no reason code" tone="warn" />}
+                    {n.reasonCode ? (
+                      (NOTE_REASON_LABELS[n.reasonCode as NoteReasonCode] ?? n.reasonCode)
+                    ) : (
+                      <StatusChip status="no reason code" tone="warn" />
+                    )}
                   </td>
                   <td className="py-2">{date(n.issuedAt)}</td>
                 </tr>
@@ -359,7 +394,11 @@ function NotesTab() {
             <TextArea label="Note (optional)" value={note} onChange={setNote} />
           </div>
           <div className="mt-3 flex gap-2">
-            <button className="btn-primary" disabled={!invoiceId || !amount || !reasonCode} onClick={() => issue.mutate()}>
+            <button
+              className="btn-primary"
+              disabled={!invoiceId || !amount || !reasonCode}
+              onClick={() => issue.mutate()}
+            >
               Issue
             </button>
             <button className="btn-secondary" onClick={() => setOpen(false)}>
@@ -379,8 +418,14 @@ function NotesTab() {
 function EInvoiceTab() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
-  const config = useQuery({ queryKey: ['gst-einvoice-config'], queryFn: () => api.get<any>('/compliance/gst/einvoice/config') });
-  const statusList = useQuery({ queryKey: ['gst-einvoice-status'], queryFn: () => api.get<any[]>('/compliance/gst/einvoice/status') });
+  const config = useQuery({
+    queryKey: ['gst-einvoice-config'],
+    queryFn: () => api.get<any>('/compliance/gst/einvoice/config'),
+  });
+  const statusList = useQuery({
+    queryKey: ['gst-einvoice-status'],
+    queryFn: () => api.get<any[]>('/compliance/gst/einvoice/status'),
+  });
 
   const request = useMutation({
     mutationFn: (invoiceId: string) => api.post(`/compliance/gst/invoices/${invoiceId}/einvoice`),
@@ -422,12 +467,16 @@ function EInvoiceTab() {
             <tbody>
               {statusList.data.map((i: any) => (
                 <tr key={i.id} className="border-t border-ink-800">
-                  <td className="py-2"><RecordCode code={i.recordCode} /></td>
+                  <td className="py-2">
+                    <RecordCode code={i.recordCode} />
+                  </td>
                   <td className="py-2 tabular-nums">{money(i.grandTotal)}</td>
                   <td className="py-2">
                     <StatusChip
                       status={i.eInvoiceStatus}
-                      tone={i.eInvoiceStatus === 'registered' ? 'good' : i.eInvoiceStatus === 'failed' ? 'bad' : 'neutral'}
+                      tone={
+                        i.eInvoiceStatus === 'registered' ? 'good' : i.eInvoiceStatus === 'failed' ? 'bad' : 'neutral'
+                      }
                     />
                   </td>
                   <td className="py-2">{i.irn ?? '—'}</td>
@@ -530,7 +579,10 @@ function Gstr2bTab() {
                   <td className="py-2">{m.ctin ?? '—'}</td>
                   <td className="py-2">{m.inum ?? '—'}</td>
                   <td className="py-2">
-                    <StatusChip status={m.status.replace(/_/g, ' ')} tone={m.status === 'matched' ? 'good' : m.status === 'mismatch' ? 'warn' : 'bad'} />
+                    <StatusChip
+                      status={m.status.replace(/_/g, ' ')}
+                      tone={m.status === 'matched' ? 'good' : m.status === 'mismatch' ? 'warn' : 'bad'}
+                    />
                   </td>
                   <td className="py-2 tabular-nums">{money(m.difference)}</td>
                 </tr>

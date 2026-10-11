@@ -48,8 +48,22 @@ export const PIPELINE_SEEDS: PipelineSeed[] = [
     requiresAwardArtefact: 'contract',
     commitApprovalThreshold: 5_000_000,
     stages: [
-      { stageKey: 'discovered', label: 'Discovered', sequence: 1, defaultProbability: 5, pipelinePosition: 10, stageAgeBudgetDays: null },
-      { stageKey: 'engaged', label: 'Engaged', sequence: 2, defaultProbability: 15, pipelinePosition: 20, stageAgeBudgetDays: 14 },
+      {
+        stageKey: 'discovered',
+        label: 'Discovered',
+        sequence: 1,
+        defaultProbability: 5,
+        pipelinePosition: 10,
+        stageAgeBudgetDays: null,
+      },
+      {
+        stageKey: 'engaged',
+        label: 'Engaged',
+        sequence: 2,
+        defaultProbability: 15,
+        pipelinePosition: 20,
+        stageAgeBudgetDays: 14,
+      },
       {
         stageKey: 'qualified',
         label: 'Qualified',
@@ -61,11 +75,46 @@ export const PIPELINE_SEEDS: PipelineSeed[] = [
         // rather than asserted.
         requiredFields: ['expectedValue', 'expectedCloseDate'],
       },
-      { stageKey: 'solution_shaped', label: 'Solution Shaped', sequence: 4, defaultProbability: 45, pipelinePosition: 40, stageAgeBudgetDays: 21 },
-      { stageKey: 'proposed', label: 'Proposed', sequence: 5, defaultProbability: 60, pipelinePosition: 50, stageAgeBudgetDays: 10 },
-      { stageKey: 'negotiating', label: 'Negotiating', sequence: 6, defaultProbability: 80, pipelinePosition: 60, stageAgeBudgetDays: 14 },
-      { stageKey: 'won', label: 'Won', sequence: 7, defaultProbability: 100, pipelinePosition: 90, stageAgeBudgetDays: null },
-      { stageKey: 'lost', label: 'Lost', sequence: 8, defaultProbability: 0, pipelinePosition: 0, stageAgeBudgetDays: null },
+      {
+        stageKey: 'solution_shaped',
+        label: 'Solution Shaped',
+        sequence: 4,
+        defaultProbability: 45,
+        pipelinePosition: 40,
+        stageAgeBudgetDays: 21,
+      },
+      {
+        stageKey: 'proposed',
+        label: 'Proposed',
+        sequence: 5,
+        defaultProbability: 60,
+        pipelinePosition: 50,
+        stageAgeBudgetDays: 10,
+      },
+      {
+        stageKey: 'negotiating',
+        label: 'Negotiating',
+        sequence: 6,
+        defaultProbability: 80,
+        pipelinePosition: 60,
+        stageAgeBudgetDays: 14,
+      },
+      {
+        stageKey: 'won',
+        label: 'Won',
+        sequence: 7,
+        defaultProbability: 100,
+        pipelinePosition: 90,
+        stageAgeBudgetDays: null,
+      },
+      {
+        stageKey: 'lost',
+        label: 'Lost',
+        sequence: 8,
+        defaultProbability: 0,
+        pipelinePosition: 0,
+        stageAgeBudgetDays: null,
+      },
     ],
   },
   {
@@ -79,14 +128,71 @@ export const PIPELINE_SEEDS: PipelineSeed[] = [
     defaultForecastMethod: 'weighted_stage',
     requiresAwardArtefact: 'mou',
     stages: [
-      { stageKey: 'identified', label: 'Identified', sequence: 1, defaultProbability: 5, pipelinePosition: 10, stageAgeBudgetDays: null },
-      { stageKey: 'engaged', label: 'Engaged', sequence: 2, defaultProbability: 15, pipelinePosition: 20, stageAgeBudgetDays: 30 },
-      { stageKey: 'qualified', label: 'Qualified', sequence: 3, defaultProbability: 30, pipelinePosition: 30, stageAgeBudgetDays: 30, requiredFields: ['expectedCloseDate'] },
-      { stageKey: 'mou_drafted', label: 'MoU Drafted', sequence: 4, defaultProbability: 50, pipelinePosition: 40, stageAgeBudgetDays: 21 },
-      { stageKey: 'mou_offered', label: 'MoU Offered', sequence: 5, defaultProbability: 65, pipelinePosition: 50, stageAgeBudgetDays: 21 },
-      { stageKey: 'negotiating', label: 'Negotiating', sequence: 6, defaultProbability: 80, pipelinePosition: 60, stageAgeBudgetDays: 30 },
-      { stageKey: 'won', label: 'Signed', sequence: 7, defaultProbability: 100, pipelinePosition: 90, stageAgeBudgetDays: null },
-      { stageKey: 'lost', label: 'Lost', sequence: 8, defaultProbability: 0, pipelinePosition: 0, stageAgeBudgetDays: null },
+      {
+        stageKey: 'identified',
+        label: 'Identified',
+        sequence: 1,
+        defaultProbability: 5,
+        pipelinePosition: 10,
+        stageAgeBudgetDays: null,
+      },
+      {
+        stageKey: 'engaged',
+        label: 'Engaged',
+        sequence: 2,
+        defaultProbability: 15,
+        pipelinePosition: 20,
+        stageAgeBudgetDays: 30,
+      },
+      {
+        stageKey: 'qualified',
+        label: 'Qualified',
+        sequence: 3,
+        defaultProbability: 30,
+        pipelinePosition: 30,
+        stageAgeBudgetDays: 30,
+        requiredFields: ['expectedCloseDate'],
+      },
+      {
+        stageKey: 'mou_drafted',
+        label: 'MoU Drafted',
+        sequence: 4,
+        defaultProbability: 50,
+        pipelinePosition: 40,
+        stageAgeBudgetDays: 21,
+      },
+      {
+        stageKey: 'mou_offered',
+        label: 'MoU Offered',
+        sequence: 5,
+        defaultProbability: 65,
+        pipelinePosition: 50,
+        stageAgeBudgetDays: 21,
+      },
+      {
+        stageKey: 'negotiating',
+        label: 'Negotiating',
+        sequence: 6,
+        defaultProbability: 80,
+        pipelinePosition: 60,
+        stageAgeBudgetDays: 30,
+      },
+      {
+        stageKey: 'won',
+        label: 'Signed',
+        sequence: 7,
+        defaultProbability: 100,
+        pipelinePosition: 90,
+        stageAgeBudgetDays: null,
+      },
+      {
+        stageKey: 'lost',
+        label: 'Lost',
+        sequence: 8,
+        defaultProbability: 0,
+        pipelinePosition: 0,
+        stageAgeBudgetDays: null,
+      },
     ],
   },
   {
@@ -101,14 +207,70 @@ export const PIPELINE_SEEDS: PipelineSeed[] = [
     defaultForecastMethod: 'milestone_based',
     requiresAwardArtefact: 'enrollment',
     stages: [
-      { stageKey: 'new_enquiry', label: 'New Enquiry', sequence: 1, defaultProbability: 5, pipelinePosition: 10, stageAgeBudgetDays: 2 },
-      { stageKey: 'counselled', label: 'Counselled', sequence: 2, defaultProbability: 20, pipelinePosition: 20, stageAgeBudgetDays: 3 },
-      { stageKey: 'course_selected', label: 'Course Selected', sequence: 3, defaultProbability: 40, pipelinePosition: 30, stageAgeBudgetDays: 3 },
-      { stageKey: 'seat_reserved', label: 'Seat Reserved', sequence: 4, defaultProbability: 60, pipelinePosition: 40, stageAgeBudgetDays: 5 },
-      { stageKey: 'fee_offered', label: 'Fee Offered', sequence: 5, defaultProbability: 75, pipelinePosition: 50, stageAgeBudgetDays: 5 },
-      { stageKey: 'registration', label: 'Registration', sequence: 6, defaultProbability: 90, pipelinePosition: 60, stageAgeBudgetDays: 3 },
-      { stageKey: 'enrolled', label: 'Enrolled', sequence: 7, defaultProbability: 100, pipelinePosition: 90, stageAgeBudgetDays: null },
-      { stageKey: 'not_proceeding', label: 'Not Proceeding', sequence: 8, defaultProbability: 0, pipelinePosition: 0, stageAgeBudgetDays: null },
+      {
+        stageKey: 'new_enquiry',
+        label: 'New Enquiry',
+        sequence: 1,
+        defaultProbability: 5,
+        pipelinePosition: 10,
+        stageAgeBudgetDays: 2,
+      },
+      {
+        stageKey: 'counselled',
+        label: 'Counselled',
+        sequence: 2,
+        defaultProbability: 20,
+        pipelinePosition: 20,
+        stageAgeBudgetDays: 3,
+      },
+      {
+        stageKey: 'course_selected',
+        label: 'Course Selected',
+        sequence: 3,
+        defaultProbability: 40,
+        pipelinePosition: 30,
+        stageAgeBudgetDays: 3,
+      },
+      {
+        stageKey: 'seat_reserved',
+        label: 'Seat Reserved',
+        sequence: 4,
+        defaultProbability: 60,
+        pipelinePosition: 40,
+        stageAgeBudgetDays: 5,
+      },
+      {
+        stageKey: 'fee_offered',
+        label: 'Fee Offered',
+        sequence: 5,
+        defaultProbability: 75,
+        pipelinePosition: 50,
+        stageAgeBudgetDays: 5,
+      },
+      {
+        stageKey: 'registration',
+        label: 'Registration',
+        sequence: 6,
+        defaultProbability: 90,
+        pipelinePosition: 60,
+        stageAgeBudgetDays: 3,
+      },
+      {
+        stageKey: 'enrolled',
+        label: 'Enrolled',
+        sequence: 7,
+        defaultProbability: 100,
+        pipelinePosition: 90,
+        stageAgeBudgetDays: null,
+      },
+      {
+        stageKey: 'not_proceeding',
+        label: 'Not Proceeding',
+        sequence: 8,
+        defaultProbability: 0,
+        pipelinePosition: 0,
+        stageAgeBudgetDays: null,
+      },
     ],
   },
   {
@@ -125,8 +287,22 @@ export const PIPELINE_SEEDS: PipelineSeed[] = [
     defaultForecastMethod: 'manual_commit',
     requiresAwardArtefact: 'partner_agreement',
     stages: [
-      { stageKey: 'demand_identified', label: 'Demand Identified', sequence: 1, defaultProbability: 10, pipelinePosition: 10, stageAgeBudgetDays: 5 },
-      { stageKey: 'employer_engaged', label: 'Employer Engaged', sequence: 2, defaultProbability: 20, pipelinePosition: 20, stageAgeBudgetDays: 10 },
+      {
+        stageKey: 'demand_identified',
+        label: 'Demand Identified',
+        sequence: 1,
+        defaultProbability: 10,
+        pipelinePosition: 10,
+        stageAgeBudgetDays: 5,
+      },
+      {
+        stageKey: 'employer_engaged',
+        label: 'Employer Engaged',
+        sequence: 2,
+        defaultProbability: 20,
+        pipelinePosition: 20,
+        stageAgeBudgetDays: 10,
+      },
       {
         stageKey: 'requirement_qualified',
         label: 'Requirement Qualified',
@@ -136,11 +312,46 @@ export const PIPELINE_SEEDS: PipelineSeed[] = [
         stageAgeBudgetDays: 10,
         requiredFields: ['expectedValue'],
       },
-      { stageKey: 'candidates_shortlisted', label: 'Candidates Shortlisted', sequence: 4, defaultProbability: 55, pipelinePosition: 40, stageAgeBudgetDays: 14 },
-      { stageKey: 'terms_offered', label: 'Terms Offered', sequence: 5, defaultProbability: 70, pipelinePosition: 50, stageAgeBudgetDays: 7 },
-      { stageKey: 'agreement_negotiating', label: 'Agreement Negotiating', sequence: 6, defaultProbability: 85, pipelinePosition: 60, stageAgeBudgetDays: 10 },
-      { stageKey: 'placement_confirmed', label: 'Placement Confirmed', sequence: 7, defaultProbability: 100, pipelinePosition: 90, stageAgeBudgetDays: null },
-      { stageKey: 'lost', label: 'Lost', sequence: 8, defaultProbability: 0, pipelinePosition: 0, stageAgeBudgetDays: null },
+      {
+        stageKey: 'candidates_shortlisted',
+        label: 'Candidates Shortlisted',
+        sequence: 4,
+        defaultProbability: 55,
+        pipelinePosition: 40,
+        stageAgeBudgetDays: 14,
+      },
+      {
+        stageKey: 'terms_offered',
+        label: 'Terms Offered',
+        sequence: 5,
+        defaultProbability: 70,
+        pipelinePosition: 50,
+        stageAgeBudgetDays: 7,
+      },
+      {
+        stageKey: 'agreement_negotiating',
+        label: 'Agreement Negotiating',
+        sequence: 6,
+        defaultProbability: 85,
+        pipelinePosition: 60,
+        stageAgeBudgetDays: 10,
+      },
+      {
+        stageKey: 'placement_confirmed',
+        label: 'Placement Confirmed',
+        sequence: 7,
+        defaultProbability: 100,
+        pipelinePosition: 90,
+        stageAgeBudgetDays: null,
+      },
+      {
+        stageKey: 'lost',
+        label: 'Lost',
+        sequence: 8,
+        defaultProbability: 0,
+        pipelinePosition: 0,
+        stageAgeBudgetDays: null,
+      },
     ],
   },
   {
@@ -156,14 +367,70 @@ export const PIPELINE_SEEDS: PipelineSeed[] = [
     requiresAwardArtefact: 'contract',
     isDefault: true,
     stages: [
-      { stageKey: 'renewal_identified', label: 'Renewal Identified', sequence: 1, defaultProbability: 20, pipelinePosition: 10, stageAgeBudgetDays: 14 },
-      { stageKey: 'engaged', label: 'Engaged', sequence: 2, defaultProbability: 35, pipelinePosition: 20, stageAgeBudgetDays: 14 },
-      { stageKey: 'qualified', label: 'Qualified', sequence: 3, defaultProbability: 50, pipelinePosition: 30, stageAgeBudgetDays: 14 },
-      { stageKey: 'terms_shaped', label: 'Terms Shaped', sequence: 4, defaultProbability: 65, pipelinePosition: 40, stageAgeBudgetDays: 14 },
-      { stageKey: 'offer_sent', label: 'Offer Sent', sequence: 5, defaultProbability: 80, pipelinePosition: 50, stageAgeBudgetDays: 10 },
-      { stageKey: 'negotiating', label: 'Negotiating', sequence: 6, defaultProbability: 90, pipelinePosition: 60, stageAgeBudgetDays: 14 },
-      { stageKey: 'renewed_or_expanded', label: 'Renewed or Expanded', sequence: 7, defaultProbability: 100, pipelinePosition: 90, stageAgeBudgetDays: null },
-      { stageKey: 'churned', label: 'Churned', sequence: 8, defaultProbability: 0, pipelinePosition: 0, stageAgeBudgetDays: null },
+      {
+        stageKey: 'renewal_identified',
+        label: 'Renewal Identified',
+        sequence: 1,
+        defaultProbability: 20,
+        pipelinePosition: 10,
+        stageAgeBudgetDays: 14,
+      },
+      {
+        stageKey: 'engaged',
+        label: 'Engaged',
+        sequence: 2,
+        defaultProbability: 35,
+        pipelinePosition: 20,
+        stageAgeBudgetDays: 14,
+      },
+      {
+        stageKey: 'qualified',
+        label: 'Qualified',
+        sequence: 3,
+        defaultProbability: 50,
+        pipelinePosition: 30,
+        stageAgeBudgetDays: 14,
+      },
+      {
+        stageKey: 'terms_shaped',
+        label: 'Terms Shaped',
+        sequence: 4,
+        defaultProbability: 65,
+        pipelinePosition: 40,
+        stageAgeBudgetDays: 14,
+      },
+      {
+        stageKey: 'offer_sent',
+        label: 'Offer Sent',
+        sequence: 5,
+        defaultProbability: 80,
+        pipelinePosition: 50,
+        stageAgeBudgetDays: 10,
+      },
+      {
+        stageKey: 'negotiating',
+        label: 'Negotiating',
+        sequence: 6,
+        defaultProbability: 90,
+        pipelinePosition: 60,
+        stageAgeBudgetDays: 14,
+      },
+      {
+        stageKey: 'renewed_or_expanded',
+        label: 'Renewed or Expanded',
+        sequence: 7,
+        defaultProbability: 100,
+        pipelinePosition: 90,
+        stageAgeBudgetDays: null,
+      },
+      {
+        stageKey: 'churned',
+        label: 'Churned',
+        sequence: 8,
+        defaultProbability: 0,
+        pipelinePosition: 0,
+        stageAgeBudgetDays: null,
+      },
     ],
   },
 ];
@@ -180,30 +447,62 @@ export function transitionsFor(stages: StageSeed[]): Array<{
   requiresApproval: boolean;
   requiredPermission: string;
 }> {
-  const open = stages.filter((s) => s.pipelinePosition !== 0 && s.pipelinePosition !== 90).sort((a, b) => a.sequence - b.sequence);
+  const open = stages
+    .filter((s) => s.pipelinePosition !== 0 && s.pipelinePosition !== 90)
+    .sort((a, b) => a.sequence - b.sequence);
   const won = stages.find((s) => s.pipelinePosition === 90)!;
   const lost = stages.find((s) => s.pipelinePosition === 0)!;
 
-  const out: Array<{ fromStageKey: string | null; toStageKey: string; requiresApproval: boolean; requiredPermission: string }> = [];
+  const out: Array<{
+    fromStageKey: string | null;
+    toStageKey: string;
+    requiresApproval: boolean;
+    requiredPermission: string;
+  }> = [];
 
   // The initial creation transition.
-  out.push({ fromStageKey: null, toStageKey: open[0].stageKey, requiresApproval: false, requiredPermission: 'opportunities:create' });
+  out.push({
+    fromStageKey: null,
+    toStageKey: open[0].stageKey,
+    requiresApproval: false,
+    requiredPermission: 'opportunities:create',
+  });
 
   for (let i = 0; i < open.length; i += 1) {
     const stage = open[i];
     const next = open[i + 1];
     if (next) {
-      out.push({ fromStageKey: stage.stageKey, toStageKey: next.stageKey, requiresApproval: false, requiredPermission: 'opportunities:edit' });
+      out.push({
+        fromStageKey: stage.stageKey,
+        toStageKey: next.stageKey,
+        requiresApproval: false,
+        requiredPermission: 'opportunities:edit',
+      });
     }
     const prev = open[i - 1];
     if (prev) {
       // A deal can move backward on a re-scope.
-      out.push({ fromStageKey: stage.stageKey, toStageKey: prev.stageKey, requiresApproval: false, requiredPermission: 'opportunities:edit' });
+      out.push({
+        fromStageKey: stage.stageKey,
+        toStageKey: prev.stageKey,
+        requiresApproval: false,
+        requiredPermission: 'opportunities:edit',
+      });
     }
     // Every open stage can close, in either direction.
-    out.push({ fromStageKey: stage.stageKey, toStageKey: lost.stageKey, requiresApproval: false, requiredPermission: 'opportunities:edit' });
+    out.push({
+      fromStageKey: stage.stageKey,
+      toStageKey: lost.stageKey,
+      requiresApproval: false,
+      requiredPermission: 'opportunities:edit',
+    });
     if (stage.pipelinePosition >= 50) {
-      out.push({ fromStageKey: stage.stageKey, toStageKey: won.stageKey, requiresApproval: false, requiredPermission: 'opportunities:edit' });
+      out.push({
+        fromStageKey: stage.stageKey,
+        toStageKey: won.stageKey,
+        requiresApproval: false,
+        requiredPermission: 'opportunities:edit',
+      });
     }
   }
 
@@ -216,7 +515,31 @@ export function transitionsFor(stages: StageSeed[]): Array<{
  * targets them — the Kanban stops offering them as drop targets entirely.
  */
 export const RETIRED_POST_AWARD_STAGES: StageSeed[] = [
-  { stageKey: 'delivering', label: 'Delivering (retired)', sequence: 90, defaultProbability: 0, pipelinePosition: 90, stageAgeBudgetDays: null, postAward: true },
-  { stageKey: 'outcome', label: 'Outcome (retired)', sequence: 91, defaultProbability: 0, pipelinePosition: 90, stageAgeBudgetDays: null, postAward: true },
-  { stageKey: 'renew_expand_refer', label: 'Renew/Expand/Refer (retired)', sequence: 92, defaultProbability: 0, pipelinePosition: 60, stageAgeBudgetDays: null, postAward: true },
+  {
+    stageKey: 'delivering',
+    label: 'Delivering (retired)',
+    sequence: 90,
+    defaultProbability: 0,
+    pipelinePosition: 90,
+    stageAgeBudgetDays: null,
+    postAward: true,
+  },
+  {
+    stageKey: 'outcome',
+    label: 'Outcome (retired)',
+    sequence: 91,
+    defaultProbability: 0,
+    pipelinePosition: 90,
+    stageAgeBudgetDays: null,
+    postAward: true,
+  },
+  {
+    stageKey: 'renew_expand_refer',
+    label: 'Renew/Expand/Refer (retired)',
+    sequence: 92,
+    defaultProbability: 0,
+    pipelinePosition: 60,
+    stageAgeBudgetDays: null,
+    postAward: true,
+  },
 ];

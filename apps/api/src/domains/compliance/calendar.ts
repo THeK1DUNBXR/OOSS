@@ -17,7 +17,14 @@
  * the health score already tracks.
  */
 
-import { EVENTS, istFinancialYearStart, istMidnight, nextDueDates, type ComplianceDueRule, type ComplianceRecurrence } from '@kaizen/shared';
+import {
+  EVENTS,
+  istFinancialYearStart,
+  istMidnight,
+  nextDueDates,
+  type ComplianceDueRule,
+  type ComplianceRecurrence,
+} from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -48,7 +55,10 @@ export async function resolveOwnerPartyId(ownerRoleSlug: string): Promise<string
  * routing defect visible in `H_OPS`, never a row that quietly has nobody
  * behind it.
  */
-async function flagUnowned(obligation: { id: string; recordCode: string | null }, type: { code: string; label: string; domain: string; ownerRoleSlug: string }) {
+async function flagUnowned(
+  obligation: { id: string; recordCode: string | null },
+  type: { code: string; label: string; domain: string; ownerRoleSlug: string },
+) {
   await raiseException({
     code: 'CMP_CAL_UNOWNED',
     label: `No ${type.ownerRoleSlug} to own ${type.label}`,
@@ -96,7 +106,12 @@ export async function generateObligations(horizonMonths: number = DEFAULT_HORIZO
   let unowned = 0;
 
   for (const type of types) {
-    const occurrences = nextDueDates(type.dueRule as ComplianceDueRule, type.recurrence as ComplianceRecurrence, now, horizonMonths);
+    const occurrences = nextDueDates(
+      type.dueRule as ComplianceDueRule,
+      type.recurrence as ComplianceRecurrence,
+      now,
+      horizonMonths,
+    );
     for (const occ of occurrences) {
       const existing = await prisma.complianceObligation.findFirst({
         where: { tenantId: auth.tenantId, typeId: type.id, period: occ.period },
@@ -222,7 +237,9 @@ export async function markFiled(id: string, input: MarkFiledInput) {
     throw ApiError.conflict(`${obligation.recordCode ?? obligation.id} is already filed.`);
   }
   if (obligation.status === 'waived') {
-    throw ApiError.conflict(`${obligation.recordCode ?? obligation.id} was waived, not filed. Waiving is a deliberate decision not to file — it is not corrected by filing over it.`);
+    throw ApiError.conflict(
+      `${obligation.recordCode ?? obligation.id} was waived, not filed. Waiving is a deliberate decision not to file — it is not corrected by filing over it.`,
+    );
   }
 
   const reference = input.reference?.trim();
@@ -275,7 +292,10 @@ export async function waive(id: string, reason: string) {
   const trimmed = reason?.trim();
   if (!trimmed) throw ApiError.badRequest('A waiver needs a reason — it is a decision, not a shrug.');
 
-  const obligation = await prisma.complianceObligation.findFirst({ where: { id, tenantId: auth.tenantId }, include: { type: true } });
+  const obligation = await prisma.complianceObligation.findFirst({
+    where: { id, tenantId: auth.tenantId },
+    include: { type: true },
+  });
   if (!obligation) throw ApiError.notFound('Compliance obligation');
   if (obligation.status === 'filed') {
     throw ApiError.conflict(`${obligation.recordCode ?? obligation.id} is already filed and cannot be waived.`);
@@ -338,7 +358,9 @@ export async function summary() {
   const fyStartYear = istFinancialYearStart(now);
   const fyStart = istMidnight(fyStartYear, 4, 1);
   const fyEnd = istMidnight(fyStartYear + 1, 4, 1);
-  const filedThisFy = rows.filter((r) => r.status === 'filed' && r.filedAt && r.filedAt >= fyStart && r.filedAt < fyEnd).length;
+  const filedThisFy = rows.filter(
+    (r) => r.status === 'filed' && r.filedAt && r.filedAt >= fyStart && r.filedAt < fyEnd,
+  ).length;
 
   return { notYetMeasured: false, byStatus, byDomain, filedThisFy };
 }

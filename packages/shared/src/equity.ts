@@ -22,8 +22,18 @@ export const SHARE_CLASS_KINDS = ['equity', 'preference', 'debenture'] as const;
 export type ShareClassKind = (typeof SHARE_CLASS_KINDS)[number];
 
 export const SHARE_INSTRUMENTS = [
-  'equity', 'sweat_equity', 'ccps', 'ocps', 'rps', 'ccd', 'ocd', 'ncd',
-  'convertible_note', 'warrant', 'option', 'phantom',
+  'equity',
+  'sweat_equity',
+  'ccps',
+  'ocps',
+  'rps',
+  'ccd',
+  'ocd',
+  'ncd',
+  'convertible_note',
+  'warrant',
+  'option',
+  'phantom',
 ] as const;
 export type ShareInstrument = (typeof SHARE_INSTRUMENTS)[number];
 
@@ -44,7 +54,14 @@ export const SHARE_INSTRUMENT_LABELS: Record<ShareInstrument, string> = {
 
 /** Instruments counted at their share count toward fully-diluted, on top of issued. */
 export const DILUTIVE_INSTRUMENTS: ShareInstrument[] = [
-  'ccps', 'ocps', 'ccd', 'ocd', 'convertible_note', 'warrant', 'option', 'phantom',
+  'ccps',
+  'ocps',
+  'ccd',
+  'ocd',
+  'convertible_note',
+  'warrant',
+  'option',
+  'phantom',
 ];
 
 export const HOLDER_KINDS = ['person', 'organization', 'entity'] as const;
@@ -73,8 +90,16 @@ export const INVESTMENT_BASIS_LABELS: Record<InvestmentBasis, string> = {
 };
 
 export const SHARE_TRANSACTION_TYPES = [
-  'allotment', 'transfer', 'conversion', 'buyback', 'split', 'bonus',
-  'forfeiture', 'cancellation', 'redemption', 'reduction',
+  'allotment',
+  'transfer',
+  'conversion',
+  'buyback',
+  'split',
+  'bonus',
+  'forfeiture',
+  'cancellation',
+  'redemption',
+  'reduction',
 ] as const;
 export type ShareTransactionType = (typeof SHARE_TRANSACTION_TYPES)[number];
 
@@ -97,7 +122,13 @@ export type ShareTransactionStatus = (typeof SHARE_TRANSACTION_STATUSES)[number]
 export const CERTIFICATE_STATUSES = ['issued', 'surrendered', 'cancelled'] as const;
 export type CertificateStatus = (typeof CERTIFICATE_STATUSES)[number];
 
-export const VALUATION_BASES = ['registered_valuer', 'merchant_banker', 'ca_certificate', 'internal', 'round_price'] as const;
+export const VALUATION_BASES = [
+  'registered_valuer',
+  'merchant_banker',
+  'ca_certificate',
+  'internal',
+  'round_price',
+] as const;
 export type ValuationBasis = (typeof VALUATION_BASES)[number];
 
 export const VALUATION_BASIS_LABELS: Record<ValuationBasis, string> = {
@@ -117,7 +148,14 @@ export const DEMAT_STATUS_LABELS: Record<DematStatus, string> = {
   mixed: 'Mixed',
 };
 
-export const ENTITY_DOCUMENT_KINDS = ['certificate', 'resolution', 'valuation_report', 'agreement', 'filing', 'other'] as const;
+export const ENTITY_DOCUMENT_KINDS = [
+  'certificate',
+  'resolution',
+  'valuation_report',
+  'agreement',
+  'filing',
+  'other',
+] as const;
 export type EntityDocumentKind = (typeof ENTITY_DOCUMENT_KINDS)[number];
 
 export const ENTITY_DOCUMENT_AUDIENCES = ['shareholders', 'board', 'secretary'] as const;
@@ -128,8 +166,17 @@ export type EntityDocumentAudience = (typeof ENTITY_DOCUMENT_AUDIENCES)[number];
 // ---------------------------------------------------------------------------
 
 export const FUNDING_ROUND_KINDS = [
-  'seed', 'series', 'rights_issue', 'bonus', 'preferential', 'private_placement',
-  'sweat_equity', 'esop_top_up', 'buyback', 'capital_reduction', 'conversion',
+  'seed',
+  'series',
+  'rights_issue',
+  'bonus',
+  'preferential',
+  'private_placement',
+  'sweat_equity',
+  'esop_top_up',
+  'buyback',
+  'capital_reduction',
+  'conversion',
 ] as const;
 export type FundingRoundKind = (typeof FUNDING_ROUND_KINDS)[number];
 
@@ -354,7 +401,9 @@ export function waterfall(
   const participatingHolders = new Set(
     capTable.filter((r) => r.preference?.participating).map((r) => `${r.holderId}::${r.shareClassId}`),
   );
-  const commonHolders = capTable.filter((r) => !r.preference || participatingHolders.has(`${r.holderId}::${r.shareClassId}`));
+  const commonHolders = capTable.filter(
+    (r) => !r.preference || participatingHolders.has(`${r.holderId}::${r.shareClassId}`),
+  );
   const commonTotal = commonHolders.reduce((s, r) => s + r.count, 0);
 
   const commonPayout = new Map<string, number>();
@@ -695,7 +744,11 @@ export function computeCapTable(inputRows: CapTableInputRow[]): CapTableComputat
 
 /** s.2(87)/s.90 badges, plus the one status that is not yet a real tenant. */
 export const GROUP_ENTITY_BADGES = [
-  'wholly_owned', 'subsidiary', 'associate', 'investment', 'not_yet_incorporated',
+  'wholly_owned',
+  'subsidiary',
+  'associate',
+  'investment',
+  'not_yet_incorporated',
 ] as const;
 export type GroupEntityBadge = (typeof GROUP_ENTITY_BADGES)[number];
 
@@ -729,7 +782,10 @@ export const GROUP_LAYER_LIMIT = 2;
 export type LookThroughMatch = 'email' | 'pan' | 'unmatched';
 
 /** A folio's cross-tenant identity: lower-cased email when known, else `pan:<sha256>`, else unmatched. */
-export function holderKeyFor(input: { email?: string | null; panHash?: string | null }): { key: string | null; matchedBy: LookThroughMatch } {
+export function holderKeyFor(input: { email?: string | null; panHash?: string | null }): {
+  key: string | null;
+  matchedBy: LookThroughMatch;
+} {
   if (input.email) return { key: input.email.trim().toLowerCase(), matchedBy: 'email' };
   if (input.panHash) return { key: `pan:${input.panHash}`, matchedBy: 'pan' };
   return { key: null, matchedBy: 'unmatched' };
@@ -939,8 +995,23 @@ export interface GroupComplianceRowView {
 // ---------------------------------------------------------------------------
 
 export const FILING_FORMS = [
-  'MGT-1', 'MGT-2', 'PAS-3', 'SH-4', 'SH-7', 'MGT-14', 'MGT-7', 'MGT-7A',
-  'PAS-6', 'FC-GPR', 'FC-TRS', 'FLA', 'AOC-1', 'BEN-1', 'BEN-2', 'BEN-3', 'other',
+  'MGT-1',
+  'MGT-2',
+  'PAS-3',
+  'SH-4',
+  'SH-7',
+  'MGT-14',
+  'MGT-7',
+  'MGT-7A',
+  'PAS-6',
+  'FC-GPR',
+  'FC-TRS',
+  'FLA',
+  'AOC-1',
+  'BEN-1',
+  'BEN-2',
+  'BEN-3',
+  'other',
 ] as const;
 export type FilingForm = (typeof FILING_FORMS)[number];
 

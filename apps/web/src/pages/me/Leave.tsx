@@ -106,20 +106,30 @@ export function Leave() {
     enabled: Boolean(employmentId),
   });
 
-  const requests = useQuery({ queryKey: ['me-leave-requests'], queryFn: () => api.get<LeaveRequestRow[]>('/hr/leave-requests') });
+  const requests = useQuery({
+    queryKey: ['me-leave-requests'],
+    queryFn: () => api.get<LeaveRequestRow[]>('/hr/leave-requests'),
+  });
 
   const elections = useQuery({
     queryKey: ['me-leave-elections', employmentId],
-    queryFn: () => api.get<Election[]>(`/hcm/leavepolicy/restricted-holiday-elections?employmentRelationshipId=${employmentId}`),
+    queryFn: () =>
+      api.get<Election[]>(`/hcm/leavepolicy/restricted-holiday-elections?employmentRelationshipId=${employmentId}`),
     enabled: Boolean(employmentId),
   });
 
   const restrictedHolidays = useQuery({
     queryKey: ['me-leave-restricted-holidays'],
-    queryFn: () => api.get<Holiday[]>(`/compliance/labour/holidays?year=${new Date().getFullYear()}`).then((rows) => rows.filter((h) => h.kind === 'restricted')),
+    queryFn: () =>
+      api
+        .get<Holiday[]>(`/compliance/labour/holidays?year=${new Date().getFullYear()}`)
+        .then((rows) => rows.filter((h) => h.kind === 'restricted')),
   });
 
-  const inbox = useQuery({ queryKey: ['me-leave-inbox'], queryFn: () => api.get<InboxRow[]>('/hcm/leavepolicy/approvals/inbox') });
+  const inbox = useQuery({
+    queryKey: ['me-leave-inbox'],
+    queryFn: () => api.get<InboxRow[]>('/hcm/leavepolicy/approvals/inbox'),
+  });
 
   const decide = useMutation({
     mutationFn: ({ id, decision }: { id: string; decision: 'approved' | 'rejected' }) =>
@@ -128,7 +138,12 @@ export function Leave() {
   });
 
   const elect = useMutation({
-    mutationFn: () => api.post('/hcm/leavepolicy/restricted-holiday-elections', { employmentRelationshipId: employmentId, holidayId, fy: currentFy() }),
+    mutationFn: () =>
+      api.post('/hcm/leavepolicy/restricted-holiday-elections', {
+        employmentRelationshipId: employmentId,
+        holidayId,
+        fy: currentFy(),
+      }),
     onSuccess: () => {
       setElecting(false);
       setHolidayId('');
@@ -153,7 +168,13 @@ export function Leave() {
       });
       setValidation(result);
     } catch (e) {
-      setValidation({ ok: false, violations: [{ code: 'error', message: messageOf(e) }], effectiveDays: 0, documentRequired: false, policy: null });
+      setValidation({
+        ok: false,
+        violations: [{ code: 'error', message: messageOf(e) }],
+        effectiveDays: 0,
+        documentRequired: false,
+        policy: null,
+      });
     } finally {
       setValidating(false);
     }
@@ -161,19 +182,35 @@ export function Leave() {
 
   return (
     <div>
-      <PageHeader title="My leave" subtitle="Balances follow from holds, settlements and reversals. Apply for leave, elect a restricted holiday, or decide something resolved to you." />
+      <PageHeader
+        title="My leave"
+        subtitle="Balances follow from holds, settlements and reversals. Apply for leave, elect a restricted holiday, or decide something resolved to you."
+      />
 
       {inbox.data && inbox.data.length > 0 && (
         <Card title="Waiting for your decision" className="mb-4">
           <div className="space-y-2">
             {inbox.data.map((row) => (
-              <div key={row.id} className="flex items-center justify-between rounded border border-band-warn/30 bg-band-warn/5 p-2 text-2xs">
-                <span>Level {row.level} ({row.kind.replace('_', ' ')}) of a leave request</span>
+              <div
+                key={row.id}
+                className="flex items-center justify-between rounded border border-band-warn/30 bg-band-warn/5 p-2 text-2xs"
+              >
+                <span>
+                  Level {row.level} ({row.kind.replace('_', ' ')}) of a leave request
+                </span>
                 <div className="flex gap-2">
-                  <button className="btn text-2xs" onClick={() => decide.mutate({ id: row.id, decision: 'approved' })} disabled={decide.isPending}>
+                  <button
+                    className="btn text-2xs"
+                    onClick={() => decide.mutate({ id: row.id, decision: 'approved' })}
+                    disabled={decide.isPending}
+                  >
                     Approve
                   </button>
-                  <button className="btn text-2xs" onClick={() => decide.mutate({ id: row.id, decision: 'rejected' })} disabled={decide.isPending}>
+                  <button
+                    className="btn text-2xs"
+                    onClick={() => decide.mutate({ id: row.id, decision: 'rejected' })}
+                    disabled={decide.isPending}
+                  >
                     Reject
                   </button>
                 </div>
@@ -188,7 +225,9 @@ export function Leave() {
         {balances.data?.map((b) => (
           <Card key={b.id} title={b.leaveTypeName}>
             <div className="text-2xl font-semibold tabular-nums">{b.availableDays}</div>
-            <div className="text-2xs text-ink-300">available of {b.balanceDays ?? 0} ({b.heldDays ?? 0} held)</div>
+            <div className="text-2xs text-ink-300">
+              available of {b.balanceDays ?? 0} ({b.heldDays ?? 0} held)
+            </div>
           </Card>
         ))}
       </div>
@@ -197,7 +236,14 @@ export function Leave() {
         title="History"
         subtitle="Every request you have filed, oldest decision last."
         actions={
-          <button className="btn-primary text-2xs" onClick={() => { setApplying(true); setValidation(null); }} disabled={!employmentId}>
+          <button
+            className="btn-primary text-2xs"
+            onClick={() => {
+              setApplying(true);
+              setValidation(null);
+            }}
+            disabled={!employmentId}
+          >
             Apply for leave
           </button>
         }
@@ -240,14 +286,18 @@ export function Leave() {
       </Card>
 
       <Card title="Restricted holidays" subtitle="Elect up to two per financial year." className="mt-4">
-        {elections.data && elections.data.length === 0 && <EmptyState message="No restricted holiday elected this year." />}
+        {elections.data && elections.data.length === 0 && (
+          <EmptyState message="No restricted holiday elected this year." />
+        )}
         {elections.data && elections.data.length > 0 && (
           <ul className="space-y-1 text-sm">
             {elections.data.map((e) => {
               const h = restrictedHolidays.data?.find((rh) => rh.id === e.holidayId);
               return (
                 <li key={e.id} className="flex items-center justify-between">
-                  <span>{h ? `${h.name} — ${date(h.date)}` : e.holidayId} ({e.fy})</span>
+                  <span>
+                    {h ? `${h.name} — ${date(h.date)}` : e.holidayId} ({e.fy})
+                  </span>
                   <button className="btn text-2xs" onClick={() => withdrawElection.mutate(e.id)}>
                     Withdraw
                   </button>
@@ -284,19 +334,38 @@ export function Leave() {
           onChange={(v) => setForm({ ...form, leaveTypeId: v })}
           required
           placeholder="Select…"
-          options={(balances.data ?? []).map((b) => ({ value: b.leaveTypeId, label: `${b.leaveTypeName} (${b.availableDays} available)` }))}
+          options={(balances.data ?? []).map((b) => ({
+            value: b.leaveTypeId,
+            label: `${b.leaveTypeName} (${b.availableDays} available)`,
+          }))}
         />
         <Row>
-          <TextInput label="From" type="date" value={form.startDate} onChange={(v) => setForm({ ...form, startDate: v })} required />
-          <TextInput label="To" type="date" value={form.endDate} onChange={(v) => setForm({ ...form, endDate: v })} required />
+          <TextInput
+            label="From"
+            type="date"
+            value={form.startDate}
+            onChange={(v) => setForm({ ...form, startDate: v })}
+            required
+          />
+          <TextInput
+            label="To"
+            type="date"
+            value={form.endDate}
+            onChange={(v) => setForm({ ...form, endDate: v })}
+            required
+          />
         </Row>
         <TextArea label="Reason" value={form.reason} onChange={(v) => setForm({ ...form, reason: v })} />
         <button type="button" className="btn text-2xs" onClick={runValidation} disabled={validating}>
           {validating ? 'Checking…' : 'Check against policy'}
         </button>
         {validation && (
-          <div className={`rounded border-l-2 px-3 py-2 text-sm ${validation.ok ? 'border-band-good bg-band-good/10' : 'border-band-warn bg-band-warn/10'}`}>
-            {validation.policy && <p className="mb-1 text-2xs text-ink-300">Checked against {validation.policy.name}.</p>}
+          <div
+            className={`rounded border-l-2 px-3 py-2 text-sm ${validation.ok ? 'border-band-good bg-band-good/10' : 'border-band-warn bg-band-warn/10'}`}
+          >
+            {validation.policy && (
+              <p className="mb-1 text-2xs text-ink-300">Checked against {validation.policy.name}.</p>
+            )}
             {validation.ok ? (
               <p>This request meets its policy — {validation.effectiveDays} day(s) charged.</p>
             ) : (

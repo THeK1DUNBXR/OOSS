@@ -98,7 +98,12 @@ export async function openCampaign(input: OpenCampaignInput) {
     });
   }
 
-  await auditWrite({ action: 'create', subjectType: 'it_access_review', subjectId: campaign.id, after: { recordCode, scope: input.scope, items: affiliations.length } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_access_review',
+    subjectId: campaign.id,
+    after: { recordCode, scope: input.scope, items: affiliations.length },
+  });
   await emit({
     name: EVENTS.IT_ACCESS_REVIEW_OPENED,
     subject: { entityType: 'it_access_review', entityId: campaign.id, recordCode },
@@ -145,9 +150,17 @@ export async function campaignDetail(id: string) {
   if (!campaign) throw ApiError.notFound('Access review campaign');
   await assertCan({ resource: RESOURCE, verb: 'view' });
 
-  const items = await prisma.itAccessReviewItem.findMany({ where: { tenantId: auth.tenantId, reviewId: id }, orderBy: { createdAt: 'asc' } });
+  const items = await prisma.itAccessReviewItem.findMany({
+    where: { tenantId: auth.tenantId, reviewId: id },
+    orderBy: { createdAt: 'asc' },
+  });
   const partyIds = [...new Set(items.map((i) => i.partyId))];
-  const people = partyIds.length ? await prisma.person.findMany({ where: { tenantId: auth.tenantId, id: { in: partyIds } }, select: { id: true, fullName: true } }) : [];
+  const people = partyIds.length
+    ? await prisma.person.findMany({
+        where: { tenantId: auth.tenantId, id: { in: partyIds } },
+        select: { id: true, fullName: true },
+      })
+    : [];
   const nameOf = (partyId: string) => people.find((p) => p.id === partyId)?.fullName ?? partyId;
 
   return {
@@ -175,8 +188,12 @@ export async function decideItem(reviewId: string, itemId: string, input: Decide
   if (!campaign) throw ApiError.notFound('Access review campaign');
   await assertCan({ resource: RESOURCE, verb: 'edit' });
 
-  if (campaign.status === 'closed') throw ApiError.conflict(`${campaign.recordCode ?? reviewId} is closed. No further decisions can be recorded on it.`);
-  if (!DECISIONS.includes(input.decision)) throw ApiError.badRequest(`Decision must be one of: ${DECISIONS.join(', ')}.`);
+  if (campaign.status === 'closed')
+    throw ApiError.conflict(
+      `${campaign.recordCode ?? reviewId} is closed. No further decisions can be recorded on it.`,
+    );
+  if (!DECISIONS.includes(input.decision))
+    throw ApiError.badRequest(`Decision must be one of: ${DECISIONS.join(', ')}.`);
 
   const item = await prisma.itAccessReviewItem.findFirst({ where: { id: itemId, tenantId: auth.tenantId, reviewId } });
   if (!item) throw ApiError.notFound('Access review item');
@@ -184,7 +201,9 @@ export async function decideItem(reviewId: string, itemId: string, input: Decide
   // The self-review bar (IT-ACR-001): a reviewer may never decide their own
   // access, named explicitly rather than left to a generic permission denial.
   if (auth.partyId && item.partyId === auth.partyId) {
-    throw ApiError.forbidden('Self-review bar: a reviewer may never decide their own access. Someone else on the campaign must review this row.');
+    throw ApiError.forbidden(
+      'Self-review bar: a reviewer may never decide their own access. Someone else on the campaign must review this row.',
+    );
   }
 
   const decided = await prisma.itAccessReviewItem.update({
@@ -192,7 +211,13 @@ export async function decideItem(reviewId: string, itemId: string, input: Decide
     data: { decision: input.decision, decidedAt: new Date(), reviewerPartyId: auth.partyId, note: input.note ?? null },
   });
 
-  await auditWrite({ action: 'update', subjectType: 'it_access_review_item', subjectId: itemId, before: { decision: item.decision }, after: { decision: input.decision } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_access_review_item',
+    subjectId: itemId,
+    before: { decision: item.decision },
+    after: { decision: input.decision },
+  });
   await emit({
     name: EVENTS.IT_ACCESS_REVIEW_DECIDED,
     subject: { entityType: 'it_access_review_item', entityId: itemId },
@@ -205,7 +230,14 @@ export async function decideItem(reviewId: string, itemId: string, input: Decide
   if (campaign.status === 'open') {
     const to = accessReviewMachine.apply('open', 'START_PROGRESS');
     await prisma.itAccessReview.update({ where: { id: reviewId }, data: { status: to } });
-    await auditWrite({ action: 'update', subjectType: 'it_access_review', subjectId: reviewId, before: { status: 'open' }, after: { status: to }, meta: { transition: 'START_PROGRESS' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_access_review',
+      subjectId: reviewId,
+      before: { status: 'open' },
+      after: { status: to },
+      meta: { transition: 'START_PROGRESS' },
+    });
   }
 
   // A `revoke` decision is a finding for the desk to act on, not a write this
@@ -239,9 +271,13 @@ export async function closeCampaign(id: string) {
   if (!campaign) throw ApiError.notFound('Access review campaign');
   await assertCan({ resource: RESOURCE, verb: 'edit' });
 
-  const undecided = await prisma.itAccessReviewItem.count({ where: { tenantId: auth.tenantId, reviewId: id, decidedAt: null } });
+  const undecided = await prisma.itAccessReviewItem.count({
+    where: { tenantId: auth.tenantId, reviewId: id, decidedAt: null },
+  });
   if (undecided > 0) {
-    throw ApiError.unprocessable(`${undecided} item${undecided === 1 ? '' : 's'} on ${campaign.recordCode ?? id} still has no decision. Every item needs one before the campaign can close.`);
+    throw ApiError.unprocessable(
+      `${undecided} item${undecided === 1 ? '' : 's'} on ${campaign.recordCode ?? id} still has no decision. Every item needs one before the campaign can close.`,
+    );
   }
 
   const from = campaign.status as AccessReviewState;
@@ -253,7 +289,14 @@ export async function closeCampaign(id: string) {
   const to = accessReviewMachine.apply(from, 'CLOSE');
 
   const updated = await prisma.itAccessReview.update({ where: { id }, data: { status: to, closedAt: new Date() } });
-  await auditWrite({ action: 'update', subjectType: 'it_access_review', subjectId: id, before: { status: from }, after: { status: to }, meta: { transition: 'CLOSE' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_access_review',
+    subjectId: id,
+    before: { status: from },
+    after: { status: to },
+    meta: { transition: 'CLOSE' },
+  });
   await emit({
     name: EVENTS.IT_ACCESS_REVIEW_CLOSED,
     subject: { entityType: 'it_access_review', entityId: id, recordCode: campaign.recordCode },
@@ -286,7 +329,9 @@ export interface CampaignOverdueResult {
  */
 export async function runCampaignOverdueDetector(now: Date = new Date()): Promise<CampaignOverdueResult> {
   const auth = currentAuth();
-  const rows = await prisma.itAccessReview.findMany({ where: { tenantId: auth.tenantId, status: { in: ['open', 'in_progress'] } } });
+  const rows = await prisma.itAccessReview.findMany({
+    where: { tenantId: auth.tenantId, status: { in: ['open', 'in_progress'] } },
+  });
 
   let notified = 0;
   let skippedIdempotent = 0;

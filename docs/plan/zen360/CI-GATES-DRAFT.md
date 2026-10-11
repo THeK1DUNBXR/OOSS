@@ -73,7 +73,7 @@ What exists in the repository today is noted per gate, so the owner can see how 
 - **Checks:** for every pull request that cites one or more FX identifiers (FX-nn in `zen360/FIXES.md`):
   1. a test exists whose name contains the FX identifier;
   2. that test is run against the base commit, where it must fail, and against the head commit, where it must pass.
-  Design choice, for the owner: the base-commit run is done by CI, or the pull request records the failing run and CI checks only that the record is present (open question 3).
+     Design choice, for the owner: the base-commit run is done by CI, or the pull request records the failing run and CI checks only that the record is present (open question 3).
 - **Fails the build:** no FX-named test; the test passes on base; the test fails on head.
 - **Protects:** CLAUDE.md "Working" ("Before claiming a defect is fixed, write the test that fails on the old code"); docs/plan/archive/phase-0-stabilise.md, gate line ("every item below has a test that fails on the old code and passes on the new"); the "Test that must fail on old code" column in `zen360/FIXES.md`.
 - **Exists today:** no.
@@ -254,23 +254,23 @@ Runs in the concurrency suite, not the serial suite. Latency budget is an owner 
 
 "from A" means mandatory for pull requests merged in that wave. "carried" means it still applies. "n/a" means it does not apply in that wave. "exists" means already in `ci.yml` or the repository today.
 
-| Gate | Wave A (Phase 0 fix items) | Wave B (Phase 0 new or replace items) | Wave C (Phase 0 operations) | Phase 1 (owner's, developer work-from-home) |
-|---|---|---|---|---|
-| G1 Static checks | from A (exists) | carried | carried | carried |
-| G2 Map freshness | from A (exists) | carried | carried | carried |
-| G3 Schema and migration drift | from Wave 0 (baseline built; CI off `db push`) | carried | carried | carried |
-| G4 Real Postgres, no mocks | from A (test job exists; mock scan new) | carried | carried | carried |
-| G5 Boot refusal for secrets | from A (0.1, FX-60) | carried | carried; CI must supply `FIELD_ENCRYPTION_KEY` | carried |
-| G6 Failing-test-first for FX fixes | from A | carried | carried | carried |
-| G7 Tenant isolation and RLS | from A (RLS checks, FX-51) | from B (fuzzer) | needs non-owner app role for runtime checks | carried |
-| G8 Governed writes | from A (FX-01 to FX-05, FX-20 to FX-22) | carried | carried | carried; applies to approvals and expense posting |
-| G9 Money, period, ledger-write lint | from A (IST rule part 2) | from B (money part 1, ledger-write part 3, with 1.3 and 1.6) | carried | carried; expense claims post only via `post()` |
-| G10 Statutory rows only (structure only) | n/a | from B (with 3.1) | carried | carried |
-| G11 Log redaction | from A (phase-0 0.4) | carried | carried | carried |
-| G12 Accessibility (axe) | n/a | n/a | n/a | n/a until Phase 4 |
-| L1 Ten-thousand-operation property test | n/a | from B (with 1.1 to 1.4) | carried; needs app role for immutability cases | carried |
-| L2 Migration equivalence | n/a | from B, blocked until mapping is signed and Kaizen figures confirmed (1.5) | carried | required at the 1 April cutover (round 7) |
-| L3 200 concurrent allocations | from A (0.6 payment allocation fix) | carried | carried | carried |
+| Gate                                     | Wave A (Phase 0 fix items)                     | Wave B (Phase 0 new or replace items)                                      | Wave C (Phase 0 operations)                    | Phase 1 (owner's, developer work-from-home)       |
+| ---------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------- |
+| G1 Static checks                         | from A (exists)                                | carried                                                                    | carried                                        | carried                                           |
+| G2 Map freshness                         | from A (exists)                                | carried                                                                    | carried                                        | carried                                           |
+| G3 Schema and migration drift            | from Wave 0 (baseline built; CI off `db push`) | carried                                                                    | carried                                        | carried                                           |
+| G4 Real Postgres, no mocks               | from A (test job exists; mock scan new)        | carried                                                                    | carried                                        | carried                                           |
+| G5 Boot refusal for secrets              | from A (0.1, FX-60)                            | carried                                                                    | carried; CI must supply `FIELD_ENCRYPTION_KEY` | carried                                           |
+| G6 Failing-test-first for FX fixes       | from A                                         | carried                                                                    | carried                                        | carried                                           |
+| G7 Tenant isolation and RLS              | from A (RLS checks, FX-51)                     | from B (fuzzer)                                                            | needs non-owner app role for runtime checks    | carried                                           |
+| G8 Governed writes                       | from A (FX-01 to FX-05, FX-20 to FX-22)        | carried                                                                    | carried                                        | carried; applies to approvals and expense posting |
+| G9 Money, period, ledger-write lint      | from A (IST rule part 2)                       | from B (money part 1, ledger-write part 3, with 1.3 and 1.6)               | carried                                        | carried; expense claims post only via `post()`    |
+| G10 Statutory rows only (structure only) | n/a                                            | from B (with 3.1)                                                          | carried                                        | carried                                           |
+| G11 Log redaction                        | from A (phase-0 0.4)                           | carried                                                                    | carried                                        | carried                                           |
+| G12 Accessibility (axe)                  | n/a                                            | n/a                                                                        | n/a                                            | n/a until Phase 4                                 |
+| L1 Ten-thousand-operation property test  | n/a                                            | from B (with 1.1 to 1.4)                                                   | carried; needs app role for immutability cases | carried                                           |
+| L2 Migration equivalence                 | n/a                                            | from B, blocked until mapping is signed and Kaizen figures confirmed (1.5) | carried                                        | required at the 1 April cutover (round 7)         |
+| L3 200 concurrent allocations            | from A (0.6 payment allocation fix)            | carried                                                                    | carried                                        | carried                                           |
 
 Drift to note: `ci.yml` header says the suite is "382-test"; `docs/plan/archive/phase-8-proof.md` says "370"; `docs/plan/archive/phase-0-stabilise.md` says "372". The count needs one source of truth before any "all tests pass" gate can state a number.
 

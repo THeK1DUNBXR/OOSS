@@ -190,7 +190,7 @@ export async function evaluate(input: EvaluateInput): Promise<PermissionDecision
 
   // ---- WHAT ----------------------------------------------------------------
   const classification: SensitivityClass =
-    input.classification ?? ((input.record?.sensitivityClass as SensitivityClass | undefined) ?? 'internal');
+    input.classification ?? (input.record?.sensitivityClass as SensitivityClass | undefined) ?? 'internal';
   const ceilingOk = SENSITIVITY_RANK[auth.classificationCeiling] >= SENSITIVITY_RANK[classification];
   if (!ceilingOk) {
     axes.push({
@@ -230,7 +230,11 @@ export async function evaluate(input: EvaluateInput): Promise<PermissionDecision
 
   // ---- WHY -----------------------------------------------------------------
   if (input.requiredPurpose && auth.purpose !== input.requiredPurpose) {
-    axes.push({ axis: 'WHY', passed: false, reason: `Session purpose '${auth.purpose ?? 'none'}' is not bound to '${input.requiredPurpose}'` });
+    axes.push({
+      axis: 'WHY',
+      passed: false,
+      reason: `Session purpose '${auth.purpose ?? 'none'}' is not bound to '${input.requiredPurpose}'`,
+    });
     return deny(axes, 'WHY', 'purpose_unbound');
   }
   if (input.requiredConsent?.length) {
@@ -284,10 +288,12 @@ function checkScope(grant: ResolvedGrant, record: ScopedRecord, auth: AuthContex
   }
 
   // own_or_unowned: the requester's own records, or records with no assigned
-  // owner — with a same-branch check applied ONLY in the unowned case.
+  // owner within the requester's branch. This mirrors scopeWhere: the list
+  // filter and this check must give the same answer for the same row, so a
+  // null branch on either side matches nothing. The earlier "allow when either
+  // branch is null" let a row the list hides be read by id.
   if (owner === null) {
-    if (!record.branch || !auth.branch) return true;
-    return record.branch === auth.branch;
+    return !!auth.branch && record.branch === auth.branch;
   }
   return owner === auth.partyId;
 }
@@ -319,10 +325,7 @@ export async function assertCan(input: EvaluateInput): Promise<PermissionDecisio
   if (!decision.allowed) {
     // A denial that would otherwise have produced an event logs its policy
     // version via the event envelope's reason field.
-    throw ApiError.forbidden(
-      `Denied on ${decision.deniedBy} axis for ${input.resource}:${input.verb}`,
-      decision.axes,
-    );
+    throw ApiError.forbidden(`Denied on ${decision.deniedBy} axis for ${input.resource}:${input.verb}`, decision.axes);
   }
   return decision;
 }
@@ -363,20 +366,30 @@ export async function scopeFor(resource: string, verb: Verb, auth?: AuthContext)
 }
 
 /**
+ * A filter no row satisfies. Not a sentinel string: Postgres rejects a NUL byte
+ * in text (22021), so a `'\u0000…'` value turned an empty list into a 500.
+ */
+function matchNothing(ownerField: string): Record<string, unknown> {
+  return { [ownerField]: { in: [] } };
+}
+
+/**
  * Builds a Prisma `where` fragment implementing the WHERE axis for a list
  * query.
  */
 export function scopeWhere(scope: Scope, auth: AuthContext, ownerField = 'ownerPartyId'): Record<string, unknown> {
   if (scope === 'all') return {};
-  if (scope === 'own') return { [ownerField]: auth.partyId };
-  return {
-    OR: [
-      { [ownerField]: auth.partyId },
-      { [ownerField]: null, ...(auth.branch ? { branch: auth.branch } : {}) },
-    ],
-  };
+  // Fail closed. A principal with no party (an agent) owns nothing, and
+  // `{ owner: null }` is exactly the set of unowned rows, so it must not be
+  // built from a null partyId. Likewise an unowned row is reachable only
+  // within a branch: with no branch there is nothing to match it against.
+  const clauses: Record<string, unknown>[] = [
+    ...(auth.partyId ? [{ [ownerField]: auth.partyId }] : []),
+    ...(scope === 'own' || !auth.branch ? [] : [{ [ownerField]: null, branch: auth.branch }]),
+  ];
+  if (clauses.length === 0) return matchNothing(ownerField);
+  return clauses.length === 1 ? clauses[0] : { OR: clauses };
 }
-
 
 /**
  * Asserts a grant wide enough to answer a question about everybody.
@@ -430,7 +443,7 @@ export async function visibilityWhere(
   // No grant at all: the caller should have asserted first. Returning an
   // unsatisfiable filter rather than `{}` means a missing assertion degrades to
   // an empty list instead of to the whole table.
-  if (scope === null) return { [ownerField]: '\u0000no-grant' };
+  if (scope === null) return matchNothing(ownerField);
   return scopeWhere(scope, a, ownerField);
 }
 
@@ -450,6 +463,13 @@ export interface FilterOptions {
   ceiling: SensitivityClass;
   /** Field-level classifications, keyed by field name. */
   fieldClassifications?: Record<string, SensitivityClass>;
+  /**
+   * The class a field with no entry in `fieldClassifications` is treated as.
+   * Unset means `internal`: a field nobody classified is withheld from a public
+   * caller rather than passed to it. The model gateway sets `regulated`, so a
+   * field nobody has classified never reaches a model. FX-65.
+   */
+  unclassifiedAs?: SensitivityClass;
   /** Statutory/business purpose for each field, used by data maps and exports. */
   fieldPurposes?: Record<string, string>;
   /** Paths to withhold with a reason rather than null. */
@@ -509,7 +529,7 @@ function walk(
       }
     }
 
-    const fieldClass = options.fieldClassifications?.[key];
+    const fieldClass = options.fieldClassifications?.[key] ?? options.unclassifiedAs ?? 'internal';
     if (fieldClass && SENSITIVITY_RANK[options.ceiling] < SENSITIVITY_RANK[fieldClass]) {
       withheld.push({ path: childPath, reason: 'classification_ceiling' });
       out[key] = null;

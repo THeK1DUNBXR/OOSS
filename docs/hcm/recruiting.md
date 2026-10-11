@@ -24,7 +24,7 @@ plane every other intake surface uses.
 - `InterviewScorecard` — one row per interviewer per round; a panel round
   never averages its panellists into one number.
 - `OfferLetter` — `Draft → ApprovalPending → Approved → Sent → Accepted |
-  Declined`, or `Rescinded` from any pre-terminal state. `ctc` withheld
+Declined`, or `Rescinded` from any pre-terminal state. `ctc` withheld
   without the distinct `offers:financial` grant. Re-issuable: a rescinded
   offer's application can carry a second `OfferLetter` rather than
   resurrecting the first.
@@ -93,14 +93,14 @@ those stay in People → Hiring; this page reads `/hr/requisitions` and
   `prisma` from `platform/context.ts`; a wrong-tenant id is a 404
   (`ApiError.notFound`), never a 403.
 - **Grants**: every domain function opens with `assertCan({ resource, verb
-  })` against the exact resources the scaffold registered
+})` against the exact resources the scaffold registered
   (`job_postings`, `candidates`, `interviews`, `scorecards`, `offers`,
   `referrals`, `background_verifications`, `onboarding_tasks`); the funnel
   uses `assertScopeAll('applications')`.
 - **Self-Dealing Bar**: `transitionOffer`'s `APPROVE` branch refuses when
   `offer.proposedByPartyId === auth.partyId`, unconditionally, the same
   shape as `approveSalaryStructure` in `compliance/payroll.ts` — checked
-  *before* the state machine even runs, so a proposer who also holds
+  _before_ the state machine even runs, so a proposer who also holds
   `offers:approve` still cannot approve their own draft.
 - **Events**: `kz.hr.job_posting.*`, `kz.hr.offer.*`,
   `kz.hr.candidate.created`, `kz.hr.interview.*`,
@@ -120,7 +120,7 @@ those stay in People → Hiring; this page reads `/hr/requisitions` and
   requires the application to be `Selected`; sending an offer drives the
   application's own `EXTEND_OFFER` event, and accepting/declining/rescinding
   drive `ACCEPT_OFFER`/`DECLINE_OFFER`/`RESCIND_OFFER` — the offer and the
-  application move together as one fact, checked *before* the offer's own
+  application move together as one fact, checked _before_ the offer's own
   machine runs: if the application machine would refuse the paired event, the
   offer transition refuses with it rather than leaving an offer marked
   Sent/Accepted/Declined against an application that never followed. (RESCIND
@@ -157,21 +157,21 @@ those stay in People → Hiring; this page reads `/hr/requisitions` and
 
 ## Acceptance
 
-| ID | What PASS means | Test |
-| --- | --- | --- |
-| HCM-RECR-001 | A job posting follows Draft → Published → Closed and refuses to skip a state | `HCM-RECR-001` |
+| ID           | What PASS means                                                                                                                           | Test           |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| HCM-RECR-001 | A job posting follows Draft → Published → Closed and refuses to skip a state                                                              | `HCM-RECR-001` |
 | HCM-RECR-002 | A candidate resolves through `findOrCreatePerson` (no duplicate Person/CandidateProfile), and CTC is withheld without the financial grant | `HCM-RECR-002` |
-| HCM-RECR-003 | An interview round can only be scheduled while the application is Screening/Interviewing | `HCM-RECR-003` |
-| HCM-RECR-004 | Only a roster interviewer may score a round, and only once | `HCM-RECR-004` |
-| HCM-RECR-005 | An offer is approved by someone other than its proposer (finance_head) | `HCM-RECR-005` |
-| HCM-RECR-006 | The Self-Dealing Bar refuses a proposer approving their own offer, even a chairman | `HCM-RECR-006` |
-| HCM-RECR-007 | The offer machine refuses an out-of-order transition (Draft → Sent) | `HCM-RECR-007` |
-| HCM-RECR-008 | Accepting an offer advances the Application to OfferAccepted; joining instantiates onboarding tasks exactly once | `HCM-RECR-008` |
-| HCM-RECR-009 | A record id from another tenant is a 404 | `HCM-RECR-009` |
-| HCM-RECR-010 | A referral follows Submitted → Shortlisted → Hired → BonusPaid and refuses to skip | `HCM-RECR-010` |
-| HCM-RECR-011 | A background verification needs an application or employment, and records a Completed outcome | `HCM-RECR-011` |
-| HCM-RECR-012 | The recruiting funnel is an all-scope aggregate, refused at narrower scope | `HCM-RECR-012` |
-| HCM-RECR-013 | An own-scope grant (interviews/scorecards/referrals/onboarding_tasks) narrows to the caller's own record, never a colleague's | `HCM-RECR-013` |
+| HCM-RECR-003 | An interview round can only be scheduled while the application is Screening/Interviewing                                                  | `HCM-RECR-003` |
+| HCM-RECR-004 | Only a roster interviewer may score a round, and only once                                                                                | `HCM-RECR-004` |
+| HCM-RECR-005 | An offer is approved by someone other than its proposer (finance_head)                                                                    | `HCM-RECR-005` |
+| HCM-RECR-006 | The Self-Dealing Bar refuses a proposer approving their own offer, even a chairman                                                        | `HCM-RECR-006` |
+| HCM-RECR-007 | The offer machine refuses an out-of-order transition (Draft → Sent)                                                                       | `HCM-RECR-007` |
+| HCM-RECR-008 | Accepting an offer advances the Application to OfferAccepted; joining instantiates onboarding tasks exactly once                          | `HCM-RECR-008` |
+| HCM-RECR-009 | A record id from another tenant is a 404                                                                                                  | `HCM-RECR-009` |
+| HCM-RECR-010 | A referral follows Submitted → Shortlisted → Hired → BonusPaid and refuses to skip                                                        | `HCM-RECR-010` |
+| HCM-RECR-011 | A background verification needs an application or employment, and records a Completed outcome                                             | `HCM-RECR-011` |
+| HCM-RECR-012 | The recruiting funnel is an all-scope aggregate, refused at narrower scope                                                                | `HCM-RECR-012` |
+| HCM-RECR-013 | An own-scope grant (interviews/scorecards/referrals/onboarding_tasks) narrows to the caller's own record, never a colleague's             | `HCM-RECR-013` |
 
 Also covered without a dedicated ID (folded into the describe blocks above):
 an offer past `validUntil` cannot be accepted (HCM-RECR-007's suite), a
@@ -185,7 +185,7 @@ passing against `kaizen_test_recruiting`.
 ## What this does not do
 
 - Does not post a job to any external job board — `JobPosting.channel =
-  'external'` is a label recorded here, not an integration.
+'external'` is a label recorded here, not an integration.
 - Does not compute or pay a referral bonus itself — `Referral.bonusAmount`
   is tracked to `BonusPaid`; the actual payout is payroll's ad-hoc line
   (WS7/WS8), referenced by this workstream's id only.

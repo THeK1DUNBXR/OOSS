@@ -40,7 +40,10 @@ router.get(
   handler(async (req) => listIncidents({ status: str(req.query.status), severity: str(req.query.severity) })),
 );
 
-router.get('/incidents/summary', handler(async () => incidentSummary()));
+router.get(
+  '/incidents/summary',
+  handler(async () => incidentSummary()),
+);
 
 router.post(
   '/incidents',
@@ -60,12 +63,17 @@ router.post(
   }),
 );
 
-router.get('/incidents/:id', handler(async (req) => incidentDetail(req.params.id)));
+router.get(
+  '/incidents/:id',
+  handler(async (req) => incidentDetail(req.params.id)),
+);
 
 router.post(
   '/incidents/:id/transition',
   handler(async (req) => {
-    const body = z.object({ event: z.enum(['ACKNOWLEDGE', 'MITIGATE', 'RESOLVE', 'CLOSE']), note: z.string().optional() }).parse(req.body);
+    const body = z
+      .object({ event: z.enum(['ACKNOWLEDGE', 'MITIGATE', 'RESOLVE', 'CLOSE']), note: z.string().optional() })
+      .parse(req.body);
     return transitionIncident(req.params.id, body.event, body.note);
   }),
 );
@@ -90,7 +98,10 @@ router.post(
 // Problems
 // ---------------------------------------------------------------------------
 
-router.get('/problems', handler(async (req) => listProblems(str(req.query.status))));
+router.get(
+  '/problems',
+  handler(async (req) => listProblems(str(req.query.status))),
+);
 
 router.post(
   '/problems',
@@ -109,7 +120,10 @@ router.post(
   }),
 );
 
-router.get('/problems/:id', handler(async (req) => problemDetail(req.params.id)));
+router.get(
+  '/problems/:id',
+  handler(async (req) => problemDetail(req.params.id)),
+);
 
 router.patch(
   '/problems/:id',
@@ -129,7 +143,12 @@ router.patch(
 router.post(
   '/problems/:id/transition',
   handler(async (req) => {
-    const body = z.object({ event: z.enum(['ANALYSE', 'MARK_KNOWN_ERROR', 'RESOLVE', 'REOPEN', 'CLOSE']), note: z.string().optional() }).parse(req.body);
+    const body = z
+      .object({
+        event: z.enum(['ANALYSE', 'MARK_KNOWN_ERROR', 'RESOLVE', 'REOPEN', 'CLOSE']),
+        note: z.string().optional(),
+      })
+      .parse(req.body);
     return transitionProblem(req.params.id, body.event, body.note);
   }),
 );
@@ -143,9 +162,15 @@ router.get(
   handler(async (req) => listChanges({ status: str(req.query.status), mine: req.query.mine === 'true' })),
 );
 
-router.get('/changes/summary', handler(async () => changeSummary()));
+router.get(
+  '/changes/summary',
+  handler(async () => changeSummary()),
+);
 
-router.get('/changes/freezes', handler(async () => listFreezes()));
+router.get(
+  '/changes/freezes',
+  handler(async () => listFreezes()),
+);
 
 router.post(
   '/changes/freezes',
@@ -182,7 +207,10 @@ router.post(
   }),
 );
 
-router.get('/changes/:id', handler(async (req) => changeDetail(req.params.id)));
+router.get(
+  '/changes/:id',
+  handler(async (req) => changeDetail(req.params.id)),
+);
 
 router.post(
   '/changes/:id/transition',

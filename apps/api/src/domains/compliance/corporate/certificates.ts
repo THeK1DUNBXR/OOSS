@@ -17,9 +17,13 @@ import { prisma } from '../../../platform/db.js';
 import { currentAuth } from '../../../platform/context.js';
 import { ApiError } from '../../../platform/errors.js';
 import { assertCan } from '../../../platform/permissions.js';
-import { auditWrite } from '../../../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../../../platform/audit.js';
 import { documentPrefix } from '../../companyProfile.js';
 import { nextDocumentNumber, DOCUMENT_SERIES } from '../../../platform/documentNumber.js';
+
+// Issue, revoke and verify all turn on a certificate's status, so every change
+// to it is a governed write, and a revocation can be proved to have happened.
+registerGovernedEntities('cmp_corporate', ['certificate']);
 
 function verificationCode(): string {
   // Not the certificate number itself — a certificate number is sequential
@@ -44,6 +48,18 @@ export async function issueCertificate(input: {
 }) {
   await assertCan({ resource: 'certificates', verb: 'create' });
   const auth = currentAuth();
+
+  // A certificate says the holder completed something. Issuing one for an
+  // enrolment that has not completed is a false statement on a document that
+  // will be checked by someone outside the company.
+  const enrollment = await prisma.enrollment.findFirst({ where: { id: input.enrollmentId, tenantId: auth.tenantId } });
+  if (!enrollment) throw ApiError.notFound('Enrollment');
+  if (enrollment.status !== 'completed') {
+    throw ApiError.unprocessable(
+      `The enrolment is ${enrollment.status}. A certificate is issued once it is completed.`,
+    );
+  }
+
   const prefix = await documentPrefix();
   const number = await nextDocumentNumber(DOCUMENT_SERIES.certificate, prefix);
 
@@ -59,21 +75,74 @@ export async function issueCertificate(input: {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'certificate', subjectId: certificate.id, after: { number, enrollmentId: input.enrollmentId } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'certificate',
+    subjectId: certificate.id,
+    after: { number, enrollmentId: input.enrollmentId },
+  });
   return certificate;
 }
 
-/** What a verifier sees: enough to confirm authenticity, nothing that was not already on the certificate face. */
+/**
+ * What a verifier sees: enough to confirm authenticity, nothing that was not
+ * already on the certificate face.
+ *
+ * `valid` is true only while the certificate is unrevoked AND the enrolment it
+ * was issued for is still completed. The second check is there because an
+ * enrolment can be reversed after issue; a certificate for one that is no
+ * longer completed must not keep verifying as genuine.
+ */
 export async function verifyCertificate(code: string) {
   await assertCan({ resource: 'certificates', verb: 'view' });
   const auth = currentAuth();
-  const certificate = await prisma.certificate.findFirst({ where: { tenantId: auth.tenantId, verificationCode: code } });
+  const certificate = await prisma.certificate.findFirst({
+    where: { tenantId: auth.tenantId, verificationCode: code },
+  });
   if (!certificate) throw ApiError.notFound('Certificate');
+  const enrollment = await prisma.enrollment.findFirst({
+    where: { id: certificate.enrollmentId, tenantId: auth.tenantId },
+    select: { status: true },
+  });
+  const valid = certificate.status === 'valid' && enrollment?.status === 'completed';
   return {
     number: certificate.number,
     kind: certificate.kind,
     issuedAt: certificate.issuedAt,
+    status: certificate.status,
+    revokedAt: certificate.revokedAt,
+    revokedReason: certificate.revokedReason,
     snapshot: certificate.snapshot,
-    valid: true,
+    valid,
   };
+}
+
+/**
+ * Revocation changes the status and records why; the row stays, so a verifier
+ * who was shown the certificate can be told it was withdrawn and by what
+ * reason. A revoked certificate is never reissued in place. A correction is a
+ * new certificate.
+ */
+export async function revokeCertificate(id: string, reason: string) {
+  await assertCan({ resource: 'certificates', verb: 'edit' });
+  const auth = currentAuth();
+  const existing = await prisma.certificate.findFirst({ where: { id, tenantId: auth.tenantId } });
+  if (!existing) throw ApiError.notFound('Certificate');
+
+  const now = new Date();
+  const { count } = await prisma.certificate.updateMany({
+    where: { id, tenantId: auth.tenantId, status: 'valid' },
+    data: { status: 'revoked', revokedAt: now, revokedReason: reason },
+  });
+  if (count !== 1) throw ApiError.conflict(`Certificate is already ${existing.status}.`);
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'certificate',
+    subjectId: id,
+    before: { status: existing.status },
+    after: { status: 'revoked', revokedReason: reason },
+  });
+
+  return prisma.certificate.findFirstOrThrow({ where: { id, tenantId: auth.tenantId } });
 }

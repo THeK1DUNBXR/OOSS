@@ -94,29 +94,29 @@ role except where the self-dealing bar makes it safe (`it_changes` for the
 Operations Head: an engineer's change is theirs to approve, their own goes
 to the chairman).
 
-| Resource | Employee | Operations Head | Finance Head | Chairman |
-|---|---|---|---|---|
-| `it_assets` | `V@own` (what is assigned to me) | `VCEDAX` | `VF` | all |
-| `it_applications` | `V@all` (the catalogue) | `VCEDX` | `V` | all |
-| `it_licences` | – | `VCEX` | `VF,approve` | all |
-| `it_vendors` | – | `VCEX` | `V` | all |
-| `it_vendor_contracts` | – | `VCEX` | `VF,approve` | all |
-| `it_tickets` | `VC@own` | `VCEDAX` | `V` | all |
-| `it_sla_policies` | – | `VCE` | `V` | all |
-| `it_knowledge` | `V@all` | `VCEDX` | `V` | all |
-| `it_incidents` | – | `VCEDAX` | `V` | all |
-| `it_problems` | – | `VCEDAX` | `V` | all |
-| `it_changes` | `VC@own` (an engineer proposes) | `VCEX,approve` | `V` | all |
-| `it_risks` | – | `VCEX` | `V` | all |
-| `it_policies` | `V@all` (published policies) | `VCEX` | `V` | all (`approve` publishes) |
-| `it_policy_acknowledgements` | `VC@own` | `V` | `V` | all |
-| `it_controls` | – | `VCEX` | `V` | all |
-| `it_access_reviews` | – | `VCEA` | `V` | all |
-| `it_findings` | – | `VCEDX` | `V` | all |
-| `it_initiatives` | – | `VCEX` | `V,approve` | all |
-| `it_budgets` | – | `VCE` | `VCEDXF,approve` | all |
-| `it_tech_debt` | – | `VCEDX` | `V` | all |
-| `it_continuity` | – | `VCEDX` | `V` | all |
+| Resource                     | Employee                         | Operations Head | Finance Head     | Chairman                  |
+| ---------------------------- | -------------------------------- | --------------- | ---------------- | ------------------------- |
+| `it_assets`                  | `V@own` (what is assigned to me) | `VCEDAX`        | `VF`             | all                       |
+| `it_applications`            | `V@all` (the catalogue)          | `VCEDX`         | `V`              | all                       |
+| `it_licences`                | –                                | `VCEX`          | `VF,approve`     | all                       |
+| `it_vendors`                 | –                                | `VCEX`          | `V`              | all                       |
+| `it_vendor_contracts`        | –                                | `VCEX`          | `VF,approve`     | all                       |
+| `it_tickets`                 | `VC@own`                         | `VCEDAX`        | `V`              | all                       |
+| `it_sla_policies`            | –                                | `VCE`           | `V`              | all                       |
+| `it_knowledge`               | `V@all`                          | `VCEDX`         | `V`              | all                       |
+| `it_incidents`               | –                                | `VCEDAX`        | `V`              | all                       |
+| `it_problems`                | –                                | `VCEDAX`        | `V`              | all                       |
+| `it_changes`                 | `VC@own` (an engineer proposes)  | `VCEX,approve`  | `V`              | all                       |
+| `it_risks`                   | –                                | `VCEX`          | `V`              | all                       |
+| `it_policies`                | `V@all` (published policies)     | `VCEX`          | `V`              | all (`approve` publishes) |
+| `it_policy_acknowledgements` | `VC@own`                         | `V`             | `V`              | all                       |
+| `it_controls`                | –                                | `VCEX`          | `V`              | all                       |
+| `it_access_reviews`          | –                                | `VCEA`          | `V`              | all                       |
+| `it_findings`                | –                                | `VCEDX`         | `V`              | all                       |
+| `it_initiatives`             | –                                | `VCEX`          | `V,approve`      | all                       |
+| `it_budgets`                 | –                                | `VCE`           | `VCEDXF,approve` | all                       |
+| `it_tech_debt`               | –                                | `VCEDX`         | `V`              | all                       |
+| `it_continuity`              | –                                | `VCEDX`         | `V`              | all                       |
 
 ## The API
 

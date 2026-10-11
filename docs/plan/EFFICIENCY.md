@@ -76,7 +76,7 @@ The phase files give exact line numbers. An agent that re-audits the repository 
 
 **The rule:** confirm one line with a targeted `grep -n`, not a survey. If it does not match, `docs/plan/archive/README-old-index.md` has the known drift table — check there before concluding the plan is wrong about the file.
 
-The corollary matters more: when a claim about existing code *is* load-bearing, cite `file:line` and confirm it. Roughly one description in ten is of code that would be reasonable rather than code that is there — which is how the `Metric` error got into this plan in the first place. Confirming one line is cheap; building on a wrong one is not.
+The corollary matters more: when a claim about existing code _is_ load-bearing, cite `file:line` and confirm it. Roughly one description in ten is of code that would be reasonable rather than code that is there — which is how the `Metric` error got into this plan in the first place. Confirming one line is cheap; building on a wrong one is not.
 
 ---
 
@@ -84,7 +84,7 @@ The corollary matters more: when a claim about existing code *is* load-bearing, 
 
 A fan-out search — "find every call site of X", "which files do Y" — dumps file excerpts into the window and keeps them there for the rest of the session, even though only the conclusion mattered.
 
-**Fix: delegate it.** Send it to a subagent and ask for the conclusion, not the files. The excerpts die with the subagent; the answer comes back in a paragraph. Use this for anything that would touch more than three or four files, and say explicitly in the prompt: *return conclusions with `file:line`, not file contents.*
+**Fix: delegate it.** Send it to a subagent and ask for the conclusion, not the files. The excerpts die with the subagent; the answer comes back in a paragraph. Use this for anything that would touch more than three or four files, and say explicitly in the prompt: _return conclusions with `file:line`, not file contents._
 
 ---
 
@@ -108,14 +108,14 @@ Already in `CLAUDE.md`: say what changed at the end. The tool calls are visible;
 
 ## What this adds up to
 
-| Leak | Fix | Saves |
-|---|---|---|
-| `schema.prisma` read whole | Split to `prisma/schema/` | ~35k per read, many reads |
-| Exploratory search | `MAP.md` + `/where` | 5–20k per session |
-| Whole-file reads | MAP line numbers + `Read offset/limit` | 10–25k per edit |
-| Full suite, verbose | Scoped scripts + `--reporter=dot` | 2–8k per run, many runs |
-| Fan-out search in main thread | Subagent, conclusions only | 5–30k per search |
-| Carrying finished phases | `/handoff` + `/clear` | Compounds every turn |
+| Leak                          | Fix                                    | Saves                     |
+| ----------------------------- | -------------------------------------- | ------------------------- |
+| `schema.prisma` read whole    | Split to `prisma/schema/`              | ~35k per read, many reads |
+| Exploratory search            | `MAP.md` + `/where`                    | 5–20k per session         |
+| Whole-file reads              | MAP line numbers + `Read offset/limit` | 10–25k per edit           |
+| Full suite, verbose           | Scoped scripts + `--reporter=dot`      | 2–8k per run, many runs   |
+| Fan-out search in main thread | Subagent, conclusions only             | 5–30k per search          |
+| Carrying finished phases      | `/handoff` + `/clear`                  | Compounds every turn      |
 
 None of it is a trick. It is the same discipline as not `SELECT *`-ing a table to read one column.
 

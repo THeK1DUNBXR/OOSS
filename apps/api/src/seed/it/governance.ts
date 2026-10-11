@@ -38,19 +38,79 @@ interface ControlSeed {
 // ISO 27001 Annex A (2022), a representative starter set — one row per
 // control family the tenant is expected to keep evidence for.
 const CONTROLS: ControlSeed[] = [
-  { code: 'A.5.15', title: 'Access control policy', frameworkRefs: [{ framework: 'ISO27001', ref: 'A.5.15' }], frequencyDays: 365 },
-  { code: 'A.5.23', title: 'Information security for use of cloud services', frameworkRefs: [{ framework: 'ISO27001', ref: 'A.5.23' }], frequencyDays: 365 },
-  { code: 'A.5.30', title: 'ICT readiness for business continuity', frameworkRefs: [{ framework: 'ISO27001', ref: 'A.5.30' }], frequencyDays: 180 },
-  { code: 'A.8.1', title: 'User endpoint devices', frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.1' }], frequencyDays: 180 },
-  { code: 'A.8.2', title: 'Privileged access rights', frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.2' }], frequencyDays: 90 },
-  { code: 'A.8.7', title: 'Protection against malware', frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.7' }], frequencyDays: 90 },
-  { code: 'A.8.13', title: 'Information backup', frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.13' }], frequencyDays: 30 },
+  {
+    code: 'A.5.15',
+    title: 'Access control policy',
+    frameworkRefs: [{ framework: 'ISO27001', ref: 'A.5.15' }],
+    frequencyDays: 365,
+  },
+  {
+    code: 'A.5.23',
+    title: 'Information security for use of cloud services',
+    frameworkRefs: [{ framework: 'ISO27001', ref: 'A.5.23' }],
+    frequencyDays: 365,
+  },
+  {
+    code: 'A.5.30',
+    title: 'ICT readiness for business continuity',
+    frameworkRefs: [{ framework: 'ISO27001', ref: 'A.5.30' }],
+    frequencyDays: 180,
+  },
+  {
+    code: 'A.8.1',
+    title: 'User endpoint devices',
+    frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.1' }],
+    frequencyDays: 180,
+  },
+  {
+    code: 'A.8.2',
+    title: 'Privileged access rights',
+    frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.2' }],
+    frequencyDays: 90,
+  },
+  {
+    code: 'A.8.7',
+    title: 'Protection against malware',
+    frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.7' }],
+    frequencyDays: 90,
+  },
+  {
+    code: 'A.8.13',
+    title: 'Information backup',
+    frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.13' }],
+    frequencyDays: 30,
+  },
   { code: 'A.8.15', title: 'Logging', frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.15' }], frequencyDays: 90 },
-  { code: 'A.8.16', title: 'Monitoring activities', frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.16' }], frequencyDays: 90 },
-  { code: 'A.8.8', title: 'Management of technical vulnerabilities', frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.8' }], frequencyDays: 90 },
-  { code: 'A.5.19', title: 'Information security in supplier relationships', frameworkRefs: [{ framework: 'ISO27001', ref: 'A.5.19' }], frequencyDays: 365 },
-  { code: 'A.5.24', title: 'Information security incident management planning', frameworkRefs: [{ framework: 'ISO27001', ref: 'A.5.24' }], frequencyDays: 365 },
-  { code: 'A.8.25', title: 'Secure development life cycle', frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.25' }], frequencyDays: 180 },
+  {
+    code: 'A.8.16',
+    title: 'Monitoring activities',
+    frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.16' }],
+    frequencyDays: 90,
+  },
+  {
+    code: 'A.8.8',
+    title: 'Management of technical vulnerabilities',
+    frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.8' }],
+    frequencyDays: 90,
+  },
+  {
+    code: 'A.5.19',
+    title: 'Information security in supplier relationships',
+    frameworkRefs: [{ framework: 'ISO27001', ref: 'A.5.19' }],
+    frequencyDays: 365,
+  },
+  {
+    code: 'A.5.24',
+    title: 'Information security incident management planning',
+    frameworkRefs: [{ framework: 'ISO27001', ref: 'A.5.24' }],
+    frequencyDays: 365,
+  },
+  {
+    code: 'A.8.25',
+    title: 'Secure development life cycle',
+    frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.25' }],
+    frequencyDays: 180,
+  },
 ];
 
 interface PolicySeed {
@@ -66,7 +126,7 @@ const POLICIES: PolicySeed[] = [
     code: 'IT-POL-AUP',
     title: 'Acceptable use of technology',
     body:
-      'Company systems, accounts and devices are provided for Kaizen Infinities\' work and are to be used accordingly. ' +
+      "Company systems, accounts and devices are provided for Kaizen Infinities' work and are to be used accordingly. " +
       'Keep credentials to yourself, lock your screen when you step away, and report a lost device or a suspected compromise ' +
       'to the technology desk the same day rather than waiting to see if it matters. Personal use that is occasional and does ' +
       'not interfere with your work, cost the company money, or put company data at risk is fine; installing unapproved ' +
@@ -109,7 +169,10 @@ async function resolveDrafter(tenantId: string): Promise<string> {
     orderBy: [{ primaryFlag: 'desc' }, { createdAt: 'asc' }],
   });
   if (affiliation) return affiliation.partyId;
-  const any = await unscopedPrisma.affiliation.findFirst({ where: { tenantId, status: 'active' }, orderBy: { createdAt: 'asc' } });
+  const any = await unscopedPrisma.affiliation.findFirst({
+    where: { tenantId, status: 'active' },
+    orderBy: { createdAt: 'asc' },
+  });
   return any?.partyId ?? 'system';
 }
 

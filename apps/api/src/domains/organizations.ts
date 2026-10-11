@@ -25,12 +25,7 @@
  * and now govern two separated lists rather than two facets of one.
  */
 
-import {
-  EVENTS,
-  ORGANIZATION_ROLES,
-  type ComputedRelationshipStatus,
-  type OrganizationRole,
-} from '@kaizen/shared';
+import { EVENTS, ORGANIZATION_ROLES, type ComputedRelationshipStatus, type OrganizationRole } from '@kaizen/shared';
 import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -197,9 +192,7 @@ export async function setOrganizationRoles(id: string, roles: OrganizationRole[]
   await assertCan({ resource: resourceFor(org.kind), verb: 'edit' });
 
   if (org.kind === 'institution') {
-    throw ApiError.badRequest(
-      'A school or college is described by its engagements rather than by these.',
-    );
+    throw ApiError.badRequest('A school or college is described by its engagements rather than by these.');
   }
   const clean = [...new Set(roles.filter((r) => ORGANIZATION_ROLES.includes(r)))];
 
@@ -331,7 +324,11 @@ export async function updateAccount(organizationId: string, input: Partial<Accou
   const existing = await prisma.account.findFirst({ where: { organizationId } });
   if (!existing) throw ApiError.notFound('Billing details');
 
-  const before = { tier: existing.tier, billingEmail: existing.billingEmail, paymentTermsDays: existing.paymentTermsDays };
+  const before = {
+    tier: existing.tier,
+    billingEmail: existing.billingEmail,
+    paymentTermsDays: existing.paymentTermsDays,
+  };
 
   const updated = await prisma.account.update({
     where: { id: existing.id },
@@ -632,7 +629,12 @@ export async function computeRelationshipStatus(organizationId: string): Promise
 
   const [activeMou, openOpp, relationship, recentInteraction] = await Promise.all([
     prisma.mou.count({
-      where: { tenantId: auth.tenantId, organizationId, status: { in: ['signed', 'active', 'expiring'] }, deletedAt: null },
+      where: {
+        tenantId: auth.tenantId,
+        organizationId,
+        status: { in: ['signed', 'active', 'expiring'] },
+        deletedAt: null,
+      },
     }),
     prisma.opportunity.count({
       where: { tenantId: auth.tenantId, organizationId, outcome: null, deletedAt: null },

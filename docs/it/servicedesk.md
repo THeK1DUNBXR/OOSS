@@ -71,7 +71,7 @@ idempotently by `(priority, effectiveFrom)`.
 ## Domain (`apps/api/src/domains/it/servicedesk.ts`)
 
 - **`createTicket({category, subject, description, assetId?,
-  applicationId?, requesterPartyId?})`** — `requesterPartyId` defaults to
+applicationId?, requesterPartyId?})`** — `requesterPartyId` defaults to
   the caller; only a caller holding `all` scope on `it_tickets` may raise a
   ticket in someone else's name.
 - **`listTickets({tab, status, priority})`** — `tab` is `mine` | `unassigned`
@@ -127,25 +127,25 @@ up, never a role-slug branch in the logic that consumes it.
 
 ## Routes (`apps/api/src/routes/it/servicedesk.routes.ts`, mounted at `/api/it`)
 
-| Method | Path | |
-|---|---|---|
-| GET | `/sla-policies` | list |
-| POST | `/sla-policies` | new dated row |
-| GET | `/tickets` | `?tab=&status=&priority=` |
-| GET | `/tickets/summary` | see below |
-| GET | `/tickets/:id` | detail |
-| POST | `/tickets` | raise |
-| POST | `/tickets/:id/triage` | `{priority, category?}` |
-| POST | `/tickets/:id/assign` | `{assigneePartyId}` |
-| POST | `/tickets/:id/transition` | `{event, note?}` |
-| POST | `/tickets/:id/comments` | `{body, internal?}` |
-| POST | `/tickets/:id/rate` | `{satisfaction}` |
-| GET | `/knowledge` | `?status=&applicationId=` |
-| GET | `/knowledge/:id` | detail |
-| POST | `/knowledge` | `{title, body, applicationId?}` |
-| POST | `/knowledge/:id/publish` | |
-| POST | `/knowledge/:id/helpful` | |
-| GET | `/my` | the My IT composite |
+| Method | Path                      |                                 |
+| ------ | ------------------------- | ------------------------------- |
+| GET    | `/sla-policies`           | list                            |
+| POST   | `/sla-policies`           | new dated row                   |
+| GET    | `/tickets`                | `?tab=&status=&priority=`       |
+| GET    | `/tickets/summary`        | see below                       |
+| GET    | `/tickets/:id`            | detail                          |
+| POST   | `/tickets`                | raise                           |
+| POST   | `/tickets/:id/triage`     | `{priority, category?}`         |
+| POST   | `/tickets/:id/assign`     | `{assigneePartyId}`             |
+| POST   | `/tickets/:id/transition` | `{event, note?}`                |
+| POST   | `/tickets/:id/comments`   | `{body, internal?}`             |
+| POST   | `/tickets/:id/rate`       | `{satisfaction}`                |
+| GET    | `/knowledge`              | `?status=&applicationId=`       |
+| GET    | `/knowledge/:id`          | detail                          |
+| POST   | `/knowledge`              | `{title, body, applicationId?}` |
+| POST   | `/knowledge/:id/publish`  |                                 |
+| POST   | `/knowledge/:id/helpful`  |                                 |
+| GET    | `/my`                     | the My IT composite             |
 
 ### `GET /tickets/summary`
 
@@ -158,15 +158,15 @@ treats a refusal the same as nothing to show.
 
 ```jsonc
 {
-  "notYetMeasured": false,          // true only with zero tickets ever raised
+  "notYetMeasured": false, // true only with zero tickets ever raised
   "openByPriority": { "P1": 0, "P2": 1, "P3": 3, "P4": 2, "none": 0 },
   "unassigned": 2,
-  "breached": 1,                    // open tickets with a breached clock
-  "slaAttainment": { "response": 87.5, "resolution": null },  // this month's closed tickets; null = not yet measured
-  "medianResolveMinutes": 245,      // last 30 days; null = not yet measured
+  "breached": 1, // open tickets with a breached clock
+  "slaAttainment": { "response": 87.5, "resolution": null }, // this month's closed tickets; null = not yet measured
+  "medianResolveMinutes": 245, // last 30 days; null = not yet measured
   "backlogAge": { "d0_1": 2, "d2_7": 1, "d8_30": 0, "d30plus": 0 },
-  "satisfactionAverage": 4.2,       // null with no ratings
-  "knowledgePublished": 6
+  "satisfactionAverage": 4.2, // null with no ratings
+  "knowledgePublished": 6,
 }
 ```
 
@@ -217,11 +217,11 @@ disabled, for a viewer without the grant (`useSession().can(...)`).
 
 ## Grants
 
-| Resource | Employee | Operations Head | Finance Head | Chairman |
-|---|---|---|---|---|
-| `it_tickets` | `VC@own` | `VCEDAX` | `V` | all |
-| `it_sla_policies` | – | `VCE` | `V` | all |
-| `it_knowledge` | `V@all` | `VCEDX` | `V` | all |
+| Resource          | Employee | Operations Head | Finance Head | Chairman |
+| ----------------- | -------- | --------------- | ------------ | -------- |
+| `it_tickets`      | `VC@own` | `VCEDAX`        | `V`          | all      |
+| `it_sla_policies` | –        | `VCE`           | `V`          | all      |
+| `it_knowledge`    | `V@all`  | `VCEDX`         | `V`          | all      |
 
 An employee can raise and view their own tickets (and any assigned to them)
 but cannot triage, assign, transition, or leave an internal comment — those
@@ -230,18 +230,18 @@ requester can rate their own resolved ticket.
 
 ## Acceptance
 
-| ID | Test |
-|---|---|
-| IT-SLA-001 | `service desk — domain and wiring > IT-SLA-001: triage stamps due times from the policy in force on the ticket's creation date, not today's` |
-| IT-TKT-001 | `> IT-TKT-001: an employee sees only tickets they raised (or are assigned), can raise one, and cannot assign or triage` |
-| IT-TKT-002 | `> IT-TKT-002: the SLA breach job raises one exception per clock, and a re-run raises none new` |
-| IT-TKT-003 | `> IT-TKT-003: only the requester can rate a resolved ticket, and only once` |
-| IT-TKT-004 | `> IT-TKT-004: SLA attainment reports not yet measured with no closed tickets this month, never 100%` — a ticket resolved but deliberately backdated outside the current month proves it is excluded from the "this month" window, not merely that the field can be null in the abstract |
-| — (permission) | `> permission: an employee cannot see or act on another employee's ticket via comments` |
-| — (permission) | `> permission: the requester cannot leave an internal comment, but an assigned desk role can` |
-| — (permission) | `> permission: the Finance Head holds only view on tickets and cannot raise one` |
-| — (permission) | `> permission: an employee cannot read fleet-wide SLA figures — summary() needs \`all\` scope, not \`own\`` |
-| — (pure arithmetic) | `dueFrom / slaAttainment / medianMinutes (pure arithmetic, no DB) > IT-SLA-ARITH-001..008` |
+| ID                  | Test                                                                                                                                                                                                                                                                                     |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| IT-SLA-001          | `service desk — domain and wiring > IT-SLA-001: triage stamps due times from the policy in force on the ticket's creation date, not today's`                                                                                                                                             |
+| IT-TKT-001          | `> IT-TKT-001: an employee sees only tickets they raised (or are assigned), can raise one, and cannot assign or triage`                                                                                                                                                                  |
+| IT-TKT-002          | `> IT-TKT-002: the SLA breach job raises one exception per clock, and a re-run raises none new`                                                                                                                                                                                          |
+| IT-TKT-003          | `> IT-TKT-003: only the requester can rate a resolved ticket, and only once`                                                                                                                                                                                                             |
+| IT-TKT-004          | `> IT-TKT-004: SLA attainment reports not yet measured with no closed tickets this month, never 100%` — a ticket resolved but deliberately backdated outside the current month proves it is excluded from the "this month" window, not merely that the field can be null in the abstract |
+| — (permission)      | `> permission: an employee cannot see or act on another employee's ticket via comments`                                                                                                                                                                                                  |
+| — (permission)      | `> permission: the requester cannot leave an internal comment, but an assigned desk role can`                                                                                                                                                                                            |
+| — (permission)      | `> permission: the Finance Head holds only view on tickets and cannot raise one`                                                                                                                                                                                                         |
+| — (permission)      | `> permission: an employee cannot read fleet-wide SLA figures — summary() needs \`all\` scope, not \`own\``                                                                                                                                                                              |
+| — (pure arithmetic) | `dueFrom / slaAttainment / medianMinutes (pure arithmetic, no DB) > IT-SLA-ARITH-001..008`                                                                                                                                                                                               |
 
 Plus wiring coverage for the full lifecycle machine (`new` → … → `closed`,
 `REOPEN` from `resolved`, illegal jumps refused) and the knowledge base

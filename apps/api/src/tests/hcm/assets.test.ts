@@ -14,11 +14,24 @@ import { asPrincipal, asUser, expectReject, prisma, tenantId, unscopedPrisma, wi
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { hire, transitionEmployment } from '../../domains/employment.js';
 import {
-  listAssets, createAsset, transitionAsset,
-  listAssetAssignments, assignAsset, returnAsset,
-  listTravelRequests, createTravelRequest, decideTravelRequest, settleTravelRequest,
-  listLetterRequests, createLetterRequest, fulfilLetterRequest, rejectLetterRequest, listIssuedHrLetters,
-  listIdCards, issueIdCard, reportIdCardLost,
+  listAssets,
+  createAsset,
+  transitionAsset,
+  listAssetAssignments,
+  assignAsset,
+  returnAsset,
+  listTravelRequests,
+  createTravelRequest,
+  decideTravelRequest,
+  settleTravelRequest,
+  listLetterRequests,
+  createLetterRequest,
+  fulfilLetterRequest,
+  rejectLetterRequest,
+  listIssuedHrLetters,
+  listIdCards,
+  issueIdCard,
+  reportIdCardLost,
   assetsPendingForEmployment,
 } from '../../domains/hcm/assets.js';
 
@@ -92,7 +105,7 @@ async function makeAsset(cost = 45000) {
 // ===========================================================================
 
 describe('Asset inventory (HCM-ASSETS-001, 002)', () => {
-  it('HCM-ASSETS-001: an asset\'s cost is masked for a viewer with no financial verb, and visible to the chairman', async () => {
+  it("HCM-ASSETS-001: an asset's cost is masked for a viewer with no financial verb, and visible to the chairman", async () => {
     const created = await makeAsset(52000);
     expect(created.cost).toBeNull(); // hr_ops_manager holds no `financial` verb on hcm_assets
 
@@ -108,7 +121,9 @@ describe('Asset inventory (HCM-ASSETS-001, 002)', () => {
   it('HCM-ASSETS-002: an asset not in stock cannot be assigned again', async () => {
     const asset = await makeAsset();
     const { employment } = await makeEmployee('double-assign');
-    await asUser('operations@kaizen.co.in', () => assignAsset({ assetId: asset.id, employmentRelationshipId: employment.id }));
+    await asUser('operations@kaizen.co.in', () =>
+      assignAsset({ assetId: asset.id, employmentRelationshipId: employment.id }),
+    );
 
     const { employment: other } = await makeEmployee('double-assign-2');
     const err = await expectReject(() =>
@@ -125,14 +140,22 @@ describe('Asset assignment and return (HCM-ASSETS-003, 004)', () => {
     const { employment: e1 } = await makeEmployee('return-good');
     const { employment: e2 } = await makeEmployee('return-poor');
 
-    const a1 = await asUser('operations@kaizen.co.in', () => assignAsset({ assetId: assetGood.id, employmentRelationshipId: e1.id }));
-    const a2 = await asUser('operations@kaizen.co.in', () => assignAsset({ assetId: assetPoor.id, employmentRelationshipId: e2.id }));
+    const a1 = await asUser('operations@kaizen.co.in', () =>
+      assignAsset({ assetId: assetGood.id, employmentRelationshipId: e1.id }),
+    );
+    const a2 = await asUser('operations@kaizen.co.in', () =>
+      assignAsset({ assetId: assetPoor.id, employmentRelationshipId: e2.id }),
+    );
 
     await asUser('operations@kaizen.co.in', () => returnAsset(a1.id, { condition: 'good' }));
     await asUser('operations@kaizen.co.in', () => returnAsset(a2.id, { condition: 'poor' }));
 
-    const after1 = await asUser('operations@kaizen.co.in', () => prisma.asset.findUniqueOrThrow({ where: { id: assetGood.id } }));
-    const after2 = await asUser('operations@kaizen.co.in', () => prisma.asset.findUniqueOrThrow({ where: { id: assetPoor.id } }));
+    const after1 = await asUser('operations@kaizen.co.in', () =>
+      prisma.asset.findUniqueOrThrow({ where: { id: assetGood.id } }),
+    );
+    const after2 = await asUser('operations@kaizen.co.in', () =>
+      prisma.asset.findUniqueOrThrow({ where: { id: assetPoor.id } }),
+    );
     expect(after1.status).toBe('in_stock');
     expect(after2.status).toBe('repair');
   });
@@ -140,21 +163,27 @@ describe('Asset assignment and return (HCM-ASSETS-003, 004)', () => {
   it('HCM-ASSETS-004: a retired asset cannot be moved back to stock', async () => {
     const asset = await makeAsset();
     await asUser('operations@kaizen.co.in', () => transitionAsset(asset.id, 'retired'));
-    const err = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionAsset(asset.id, 'in_stock' as never)));
+    const err = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => transitionAsset(asset.id, 'in_stock' as never)),
+    );
     expect(err.status).toBe(422);
   });
 
   it('HCM-ASSETS-005: an employee sees only their own assignments (self scope)', async () => {
     const asset = await makeAsset();
     const { employment, person } = await makeEmployee('own-scope');
-    await asUser('operations@kaizen.co.in', () => assignAsset({ assetId: asset.id, employmentRelationshipId: employment.id }));
+    await asUser('operations@kaizen.co.in', () =>
+      assignAsset({ assetId: asset.id, employmentRelationshipId: employment.id }),
+    );
 
     const mine = await asEmployee(person.id, () => listAssetAssignments({}));
     expect(mine.some((a) => a.employmentRelationshipId === employment.id)).toBe(true);
 
     const { employment: colleague } = await makeEmployee('own-scope-colleague');
     const anotherAsset = await makeAsset();
-    await asUser('operations@kaizen.co.in', () => assignAsset({ assetId: anotherAsset.id, employmentRelationshipId: colleague.id }));
+    await asUser('operations@kaizen.co.in', () =>
+      assignAsset({ assetId: anotherAsset.id, employmentRelationshipId: colleague.id }),
+    );
     const mineAgain = await asEmployee(person.id, () => listAssetAssignments({}));
     expect(mineAgain.some((a) => a.employmentRelationshipId === colleague.id)).toBe(false);
   });
@@ -235,14 +264,20 @@ describe('Travel requests (HCM-ASSETS-006, 007, 008)', () => {
         estimatedCost: 4000,
       }),
     );
-    const approved = await asUser('operations@kaizen.co.in', () => decideTravelRequest(request.id, 'approved', 'Fine to travel'));
+    const approved = await asUser('operations@kaizen.co.in', () =>
+      decideTravelRequest(request.id, 'approved', 'Fine to travel'),
+    );
     expect(approved.status).toBe('approved');
 
-    const settled = await asUser('operations@kaizen.co.in', () => settleTravelRequest(request.id, 'expense-claim-fixture-id'));
+    const settled = await asUser('operations@kaizen.co.in', () =>
+      settleTravelRequest(request.id, 'expense-claim-fixture-id'),
+    );
     expect(settled.status).toBe('settled');
     expect(settled.expenseClaimId).toBe('expense-claim-fixture-id');
 
-    const err = await expectReject(() => asUser('operations@kaizen.co.in', () => settleTravelRequest(request.id, 'again')));
+    const err = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => settleTravelRequest(request.id, 'again')),
+    );
     expect(err.status).toBe(422);
   });
 
@@ -261,7 +296,9 @@ describe('Travel requests (HCM-ASSETS-006, 007, 008)', () => {
       }),
     );
     await asUser('operations@kaizen.co.in', () => decideTravelRequest(request.id, 'rejected', 'Not this quarter'));
-    const err = await expectReject(() => asUser('operations@kaizen.co.in', () => decideTravelRequest(request.id, 'approved')));
+    const err = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => decideTravelRequest(request.id, 'approved')),
+    );
     expect(err.status).toBe(422);
   });
 });
@@ -273,19 +310,25 @@ describe('Travel requests (HCM-ASSETS-006, 007, 008)', () => {
 describe('Letter requests (HCM-ASSETS-009, 010, 011)', () => {
   it('HCM-ASSETS-009: fulfilling an "experience" request issues a real HrLetter', async () => {
     const { employment, person } = await makeEmployee('letter-experience');
-    const request = await asEmployee(person.id, () => createLetterRequest({ employmentRelationshipId: employment.id, kind: 'experience' }));
+    const request = await asEmployee(person.id, () =>
+      createLetterRequest({ employmentRelationshipId: employment.id, kind: 'experience' }),
+    );
     const fulfilled = await asUser('operations@kaizen.co.in', () => fulfilLetterRequest(request.id));
     expect(fulfilled.status).toBe('fulfilled');
     expect(fulfilled.hrLetterId).not.toBeNull();
 
-    const letter = await asUser('operations@kaizen.co.in', () => prisma.hrLetter.findUniqueOrThrow({ where: { id: fulfilled.hrLetterId! } }));
+    const letter = await asUser('operations@kaizen.co.in', () =>
+      prisma.hrLetter.findUniqueOrThrow({ where: { id: fulfilled.hrLetterId! } }),
+    );
     expect(letter.kind).toBe('experience');
     expect(letter.employmentRelationshipId).toBe(employment.id);
   });
 
   it('HCM-ASSETS-010: fulfilling a "noc" request writes this workstream\'s own snapshot, not an HrLetter', async () => {
     const { employment, person } = await makeEmployee('letter-noc');
-    const request = await asEmployee(person.id, () => createLetterRequest({ employmentRelationshipId: employment.id, kind: 'noc' }));
+    const request = await asEmployee(person.id, () =>
+      createLetterRequest({ employmentRelationshipId: employment.id, kind: 'noc' }),
+    );
     const fulfilled = await asUser('operations@kaizen.co.in', () => fulfilLetterRequest(request.id));
     expect(fulfilled.status).toBe('fulfilled');
     expect(fulfilled.hrLetterId).toBeNull();
@@ -296,22 +339,28 @@ describe('Letter requests (HCM-ASSETS-009, 010, 011)', () => {
 
   it('HCM-ASSETS-011: a fulfilled letter request cannot be fulfilled again, and a rejected one cannot be fulfilled', async () => {
     const { employment, person } = await makeEmployee('letter-double');
-    const request = await asEmployee(person.id, () => createLetterRequest({ employmentRelationshipId: employment.id, kind: 'visa' }));
+    const request = await asEmployee(person.id, () =>
+      createLetterRequest({ employmentRelationshipId: employment.id, kind: 'visa' }),
+    );
     await asUser('operations@kaizen.co.in', () => fulfilLetterRequest(request.id));
     const err = await expectReject(() => asUser('operations@kaizen.co.in', () => fulfilLetterRequest(request.id)));
     expect(err.status).toBe(422);
 
     const { employment: e2, person: p2 } = await makeEmployee('letter-rejected');
-    const request2 = await asEmployee(p2.id, () => createLetterRequest({ employmentRelationshipId: e2.id, kind: 'address_proof' }));
+    const request2 = await asEmployee(p2.id, () =>
+      createLetterRequest({ employmentRelationshipId: e2.id, kind: 'address_proof' }),
+    );
     await asUser('operations@kaizen.co.in', () => rejectLetterRequest(request2.id, 'Not eligible yet'));
     const err2 = await expectReject(() => asUser('operations@kaizen.co.in', () => fulfilLetterRequest(request2.id)));
     expect(err2.status).toBe(422);
   });
 
-  it('an employee cannot see a colleague\'s letter requests', async () => {
+  it("an employee cannot see a colleague's letter requests", async () => {
     const { employment, person } = await makeEmployee('letter-scope-a');
     const { person: other } = await makeEmployee('letter-scope-b');
-    await asEmployee(person.id, () => createLetterRequest({ employmentRelationshipId: employment.id, kind: 'salary_certificate' }));
+    await asEmployee(person.id, () =>
+      createLetterRequest({ employmentRelationshipId: employment.id, kind: 'salary_certificate' }),
+    );
 
     const mine = await asEmployee(person.id, () => listLetterRequests({}));
     expect(mine.length).toBeGreaterThan(0);
@@ -319,10 +368,12 @@ describe('Letter requests (HCM-ASSETS-009, 010, 011)', () => {
     expect(others.every((r) => r.employmentRelationshipId !== employment.id)).toBe(true);
   });
 
-  it('WS5 scope-axis review: an employee cannot read a colleague\'s issued HrLetters by passing their employment id', async () => {
+  it("WS5 scope-axis review: an employee cannot read a colleague's issued HrLetters by passing their employment id", async () => {
     const { employment, person } = await makeEmployee('letter-hrletter-scope-a');
     const { person: other } = await makeEmployee('letter-hrletter-scope-b');
-    const request = await asEmployee(person.id, () => createLetterRequest({ employmentRelationshipId: employment.id, kind: 'experience' }));
+    const request = await asEmployee(person.id, () =>
+      createLetterRequest({ employmentRelationshipId: employment.id, kind: 'experience' }),
+    );
     await asUser('operations@kaizen.co.in', () => fulfilLetterRequest(request.id));
 
     // The subject may read their own.
@@ -349,7 +400,9 @@ describe('ID cards (HCM-ASSETS-012)', () => {
     expect(reissued.status).toBe('reissued');
     expect(reissued.cardNumber).not.toBe(card.cardNumber);
 
-    const cards = await asUser('operations@kaizen.co.in', () => listIdCards({ employmentRelationshipId: employment.id }));
+    const cards = await asUser('operations@kaizen.co.in', () =>
+      listIdCards({ employmentRelationshipId: employment.id }),
+    );
     expect(cards.length).toBe(2);
   });
 });
@@ -381,11 +434,13 @@ describe('Cross-tenant isolation (HCM-ASSETS-013)', () => {
 // ===========================================================================
 
 describe('WS5 scope-axis review: assetsPendingForEmployment', () => {
-  it('an employee may ask about their own pending returns, but not a colleague\'s', async () => {
+  it("an employee may ask about their own pending returns, but not a colleague's", async () => {
     const asset = await makeAsset();
     const { employment, person } = await makeEmployee('pending-scope-a');
     const { person: other } = await makeEmployee('pending-scope-b');
-    await asUser('operations@kaizen.co.in', () => assignAsset({ assetId: asset.id, employmentRelationshipId: employment.id }));
+    await asUser('operations@kaizen.co.in', () =>
+      assignAsset({ assetId: asset.id, employmentRelationshipId: employment.id }),
+    );
 
     const mine = await asEmployee(person.id, () => assetsPendingForEmployment(employment.id));
     expect(mine).toBe(1);

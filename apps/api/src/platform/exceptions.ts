@@ -17,10 +17,18 @@ import {
   type NotificationPriority,
   type SeverityCode,
 } from '@kaizen/shared';
+import { Prisma } from '@prisma/client';
 import { prisma } from './db.js';
 import { currentAuth } from './context.js';
 import { emit } from './eventBus.js';
 import { nextRecordCode } from './recordCode.js';
+import { ApiError } from './errors.js';
+import { assertCan } from './permissions.js';
+import { auditWrite, registerGovernedEntities } from './audit.js';
+
+// An exception's acknowledgement and resolution are governed writes: who closed
+// a problem, and when, is the thing an auditor asks about.
+registerGovernedEntities('gov', ['exception']);
 
 export interface RaiseExceptionInput {
   code: string;
@@ -146,32 +154,83 @@ export async function raiseException(input: RaiseExceptionInput) {
   return record;
 }
 
-export async function acknowledgeException(id: string, note?: string) {
-  const auth = currentAuth();
-  const record = await prisma.exceptionRecord.update({
-    where: { id },
-    data: { state: 'acknowledged', acknowledgedAt: new Date(), acknowledgedById: auth.partyId, resolutionNote: note },
+// Acknowledge and resolve are the two moves an owner makes on an exception.
+// Resolve is not allowed from `resolved` itself: a second resolve would
+// overwrite resolvedById and the note the first one left, so the record would
+// name a closer who did not close it.
+const ACKNOWLEDGE_FROM = ['open', 'escalated'] as const;
+const RESOLVE_FROM = ['open', 'acknowledged', 'escalated'] as const;
+
+/**
+ * Permission is checked against the record's owner, so an editor with `own`
+ * scope can only act on exceptions routed to them. The state guard is in the
+ * UPDATE's WHERE clause, not a read-then-write, so two concurrent resolves
+ * cannot both pass it.
+ */
+async function transitionException(
+  id: string,
+  from: readonly string[],
+  apply: { state: string; data: Prisma.ExceptionRecordUpdateManyMutationInput },
+  audit: { before: Record<string, unknown>; after: Record<string, unknown> },
+  event: { name: string; newState: Record<string, unknown> },
+) {
+  const existing = await prisma.exceptionRecord.findFirst({ where: { id } });
+  if (!existing) throw ApiError.notFound('Exception');
+  await assertCan({ resource: 'exceptions', verb: 'edit', record: { ownerPartyId: existing.ownerPartyId } });
+
+  const { count } = await prisma.exceptionRecord.updateMany({
+    where: { id, state: { in: [...from] } },
+    data: apply.data,
   });
+  if (count !== 1) {
+    throw ApiError.conflict(`Exception is ${existing.state}; it cannot move to ${apply.state} from there`);
+  }
+  const record = await prisma.exceptionRecord.findFirstOrThrow({ where: { id } });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'exception',
+    subjectId: id,
+    before: { state: existing.state, ...audit.before },
+    after: { state: apply.state, ...audit.after },
+  });
+
   await emit({
-    name: EVENTS.EXCEPTION_ACKNOWLEDGED,
+    name: event.name,
     subject: { entityType: 'exception', entityId: id, recordCode: record.recordCode },
-    newState: { state: 'acknowledged' },
+    newState: event.newState,
   });
   return record;
 }
 
+export async function acknowledgeException(id: string, note?: string) {
+  const auth = currentAuth();
+  const at = new Date();
+  return transitionException(
+    id,
+    ACKNOWLEDGE_FROM,
+    {
+      state: 'acknowledged',
+      data: { state: 'acknowledged', acknowledgedAt: at, acknowledgedById: auth.partyId, resolutionNote: note },
+    },
+    { before: {}, after: { acknowledgedById: auth.partyId, resolutionNote: note ?? null } },
+    { name: EVENTS.EXCEPTION_ACKNOWLEDGED, newState: { state: 'acknowledged' } },
+  );
+}
+
 export async function resolveException(id: string, note: string) {
   const auth = currentAuth();
-  const record = await prisma.exceptionRecord.update({
-    where: { id },
-    data: { state: 'resolved', resolvedAt: new Date(), resolvedById: auth.partyId, resolutionNote: note },
-  });
-  await emit({
-    name: EVENTS.EXCEPTION_RESOLVED,
-    subject: { entityType: 'exception', entityId: id, recordCode: record.recordCode },
-    newState: { state: 'resolved', note },
-  });
-  return record;
+  const at = new Date();
+  return transitionException(
+    id,
+    RESOLVE_FROM,
+    {
+      state: 'resolved',
+      data: { state: 'resolved', resolvedAt: at, resolvedById: auth.partyId, resolutionNote: note },
+    },
+    { before: {}, after: { resolvedById: auth.partyId, resolutionNote: note } },
+    { name: EVENTS.EXCEPTION_RESOLVED, newState: { state: 'resolved', note } },
+  );
 }
 
 /** Escalation is bounded to the four named triggers — nothing escalates by default outside them. */

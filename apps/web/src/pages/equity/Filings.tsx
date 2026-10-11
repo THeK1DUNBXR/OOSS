@@ -11,9 +11,18 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  DEMAT_STATUS_LABELS, FILING_FORMS, FILING_FORM_LABELS, FILING_STATUSES,
-  type FilingForm, type FilingStatus, type FilingView, type FundingRoundView,
-  type GroupBenCandidatesView, type Pas6View, type ShareClassView, type ShareTransactionView,
+  DEMAT_STATUS_LABELS,
+  FILING_FORMS,
+  FILING_FORM_LABELS,
+  FILING_STATUSES,
+  type FilingForm,
+  type FilingStatus,
+  type FilingView,
+  type FundingRoundView,
+  type GroupBenCandidatesView,
+  type Pas6View,
+  type ShareClassView,
+  type ShareTransactionView,
 } from '@kaizen/shared';
 import { api, date } from '../../lib/api.js';
 import { useSession } from '../../lib/session.js';
@@ -36,7 +45,10 @@ interface ExceptionLite {
 }
 
 function useCompanyProfile() {
-  return useQuery({ queryKey: ['company-profile'], queryFn: () => api.get<CompanyProfileLite>('/books/company-profile') });
+  return useQuery({
+    queryKey: ['company-profile'],
+    queryFn: () => api.get<CompanyProfileLite>('/books/company-profile'),
+  });
 }
 
 function useEqtExceptions() {
@@ -47,11 +59,17 @@ function useEqtExceptions() {
 }
 
 function useShareClasses() {
-  return useQuery({ queryKey: ['equity-share-classes'], queryFn: () => api.get<{ items: ShareClassView[] }>('/equity/share-classes') });
+  return useQuery({
+    queryKey: ['equity-share-classes'],
+    queryFn: () => api.get<{ items: ShareClassView[] }>('/equity/share-classes'),
+  });
 }
 
 function useRounds() {
-  return useQuery({ queryKey: ['equity-rounds', 'picker'], queryFn: () => api.get<{ items: FundingRoundView[] }>('/equity/rounds') });
+  return useQuery({
+    queryKey: ['equity-rounds', 'picker'],
+    queryFn: () => api.get<{ items: FundingRoundView[] }>('/equity/rounds'),
+  });
 }
 
 function useTransfers() {
@@ -63,13 +81,18 @@ function useTransfers() {
 }
 
 function useFilingLog() {
-  return useQuery({ queryKey: ['equity-filings-log'], queryFn: () => api.get<{ items: FilingView[] }>('/equity/filings/log') });
+  return useQuery({
+    queryKey: ['equity-filings-log'],
+    queryFn: () => api.get<{ items: FilingView[] }>('/equity/filings/log'),
+  });
 }
 
 function DematPanel() {
   const { data: profile, isLoading } = useCompanyProfile();
   const { data: exceptions } = useEqtExceptions();
-  const demat = exceptions?.filter((e) => ['EX-EQT-001', 'EX-EQT-004', 'EX-EQT-005'].includes(e.code) && e.state !== 'resolved') ?? [];
+  const demat =
+    exceptions?.filter((e) => ['EX-EQT-001', 'EX-EQT-004', 'EX-EQT-005'].includes(e.code) && e.state !== 'resolved') ??
+    [];
 
   return (
     <Card title="Demat" subtitle="Rule 9B: dematerialisation and the depository registration.">
@@ -94,7 +117,10 @@ function DematPanel() {
       {demat.length > 0 && (
         <div className="mt-3 flex flex-col gap-2">
           {demat.map((e) => (
-            <p key={e.id} className="rounded-md border border-band-watch/40 bg-band-watch/10 px-3 py-2 text-2xs text-ink-200">
+            <p
+              key={e.id}
+              className="rounded-md border border-band-watch/40 bg-band-watch/10 px-3 py-2 text-2xs text-ink-200"
+            >
               {e.detail ?? e.label}
             </p>
           ))}
@@ -143,10 +169,19 @@ function RecordFiling({ open, onClose }: { open: boolean; onClose: () => void })
           required
           value={status}
           onChange={(v) => setStatus(v as FilingStatus)}
-          options={FILING_STATUSES.map((s) => ({ value: s, label: s === 'due' ? 'Due' : s === 'filed' ? 'Filed' : 'Not required' }))}
+          options={FILING_STATUSES.map((s) => ({
+            value: s,
+            label: s === 'due' ? 'Due' : s === 'filed' ? 'Filed' : 'Not required',
+          }))}
         />
       </Row>
-      <TextInput label="Period or event" required value={periodOrEvent} onChange={setPeriodOrEvent} placeholder="H1 2026-27, or the round/transaction it was for" />
+      <TextInput
+        label="Period or event"
+        required
+        value={periodOrEvent}
+        onChange={setPeriodOrEvent}
+        placeholder="H1 2026-27, or the round/transaction it was for"
+      />
       <Row>
         <TextInput label="SRN" value={srn} onChange={setSrn} placeholder="Optional" />
         <TextInput label="Filed on" type="date" value={filedOn} onChange={setFiledOn} />
@@ -177,17 +212,28 @@ function StatutoryForms() {
     <Card title="Statutory forms" subtitle="Downloaded in the layout the form wants.">
       <div className="flex flex-col gap-4">
         <div>
-          <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-500">MGT-1 — register of members</p>
+          <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-500">
+            MGT-1 — register of members
+          </p>
           {equityClasses.length === 0 ? (
             <p className="text-2xs text-ink-500">No equity or preference class is set up yet.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {equityClasses.map((c) => (
-                <button key={c.id} className="btn-ghost" onClick={() => api.download(`/equity/filings/mgt-1.xlsx?shareClassId=${c.id}`, `mgt-1-${c.name}.xlsx`)}>
+                <button
+                  key={c.id}
+                  className="btn-ghost"
+                  onClick={() =>
+                    api.download(`/equity/filings/mgt-1.xlsx?shareClassId=${c.id}`, `mgt-1-${c.name}.xlsx`)
+                  }
+                >
                   {c.name}
                 </button>
               ))}
-              <button className="btn-ghost" onClick={() => api.download('/equity/filings/mgt-1.xlsx', 'mgt-1-register.xlsx')}>
+              <button
+                className="btn-ghost"
+                onClick={() => api.download('/equity/filings/mgt-1.xlsx', 'mgt-1-register.xlsx')}
+              >
                 All classes
               </button>
             </div>
@@ -195,24 +241,35 @@ function StatutoryForms() {
         </div>
 
         <div>
-          <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-500">MGT-2 — register of debenture holders</p>
+          <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-500">
+            MGT-2 — register of debenture holders
+          </p>
           {debentureClasses.length === 0 ? (
             <p className="text-2xs text-ink-500">No debenture class is set up yet.</p>
           ) : (
-            <button className="btn-ghost" onClick={() => api.download('/equity/filings/mgt-2.xlsx', 'mgt-2-register.xlsx')}>
+            <button
+              className="btn-ghost"
+              onClick={() => api.download('/equity/filings/mgt-2.xlsx', 'mgt-2-register.xlsx')}
+            >
               Download
             </button>
           )}
         </div>
 
         <div>
-          <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-500">PAS-3 — allottee list, per round</p>
+          <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-500">
+            PAS-3 — allottee list, per round
+          </p>
           {(rounds?.items ?? []).length === 0 ? (
             <p className="text-2xs text-ink-500">No round is on record yet.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {(rounds?.items ?? []).map((r) => (
-                <button key={r.id} className="btn-ghost" onClick={() => api.download(`/equity/filings/pas-3.xlsx?roundId=${r.id}`, `pas-3-${r.name}.xlsx`)}>
+                <button
+                  key={r.id}
+                  className="btn-ghost"
+                  onClick={() => api.download(`/equity/filings/pas-3.xlsx?roundId=${r.id}`, `pas-3-${r.name}.xlsx`)}
+                >
                   {r.name}
                 </button>
               ))}
@@ -231,7 +288,10 @@ function StatutoryForms() {
                 value={sh4Choice}
                 onChange={setSh4Choice}
                 placeholder="Choose a transfer"
-                options={(transfers?.items ?? []).map((t) => ({ value: t.id, label: `${t.recordCode} — ${t.count.toLocaleString('en-IN')} shares` }))}
+                options={(transfers?.items ?? []).map((t) => ({
+                  value: t.id,
+                  label: `${t.recordCode} — ${t.count.toLocaleString('en-IN')} shares`,
+                }))}
               />
               <a
                 className="btn-ghost self-end"
@@ -249,15 +309,22 @@ function StatutoryForms() {
         </div>
 
         <div>
-          <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-500">AOC-1 — statement of subsidiaries</p>
+          <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-500">
+            AOC-1 — statement of subsidiaries
+          </p>
           <button className="btn-ghost" onClick={() => api.download('/equity/filings/aoc-1.xlsx', 'aoc-1.xlsx')}>
             Download
           </button>
         </div>
 
         <div>
-          <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-500">BEN-2 — significant beneficial owner candidates</p>
-          <button className="btn-ghost" onClick={() => api.download('/equity/filings/ben-2.xlsx', 'ben-2-candidates.xlsx')}>
+          <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-500">
+            BEN-2 — significant beneficial owner candidates
+          </p>
+          <button
+            className="btn-ghost"
+            onClick={() => api.download('/equity/filings/ben-2.xlsx', 'ben-2-candidates.xlsx')}
+          >
             Download
           </button>
         </div>
@@ -288,10 +355,10 @@ function BenCandidatesPanel() {
       ) : data.mode === 'holding_reporting_company' ? (
         data.holdingReportingCompany ? (
           <p className="text-2xs text-ink-300">
-            This company is itself a subsidiary of a reporting company — {data.holdingReportingCompany.name} is named as the holding
-            reporting company under BEN-2 (
-            {data.holdingReportingCompany.directIssuedPct.toFixed(2)}% issued ·{' '}
-            {data.holdingReportingCompany.directFullyDilutedPct.toFixed(2)}% fully diluted); no individuals are listed here.
+            This company is itself a subsidiary of a reporting company — {data.holdingReportingCompany.name} is named as
+            the holding reporting company under BEN-2 ({data.holdingReportingCompany.directIssuedPct.toFixed(2)}% issued
+            · {data.holdingReportingCompany.directFullyDilutedPct.toFixed(2)}% fully diluted); no individuals are listed
+            here.
           </p>
         ) : null
       ) : data.individuals.length === 0 ? (
@@ -321,7 +388,12 @@ function BenCandidatesPanel() {
                   <td className="text-2xs text-ink-400">
                     {c.chain.length === 0
                       ? '—'
-                      : c.chain.map((l) => `${l.name} (${l.directPctInEntity.toFixed(1)}% × ${l.parentStakeInEntity.toFixed(1)}%)`).join('; ')}
+                      : c.chain
+                          .map(
+                            (l) =>
+                              `${l.name} (${l.directPctInEntity.toFixed(1)}% × ${l.parentStakeInEntity.toFixed(1)}%)`,
+                          )
+                          .join('; ')}
                   </td>
                   <td className="text-2xs text-ink-400">{c.thresholdCrossedOn}</td>
                 </tr>
@@ -370,7 +442,9 @@ function Pas6Panel() {
                   <td className="text-right tabular-nums">{c.issuedCount.toLocaleString('en-IN')}</td>
                   <td className="text-right tabular-nums">{c.dematCount.toLocaleString('en-IN')}</td>
                   <td className="text-right tabular-nums">{c.physicalCount.toLocaleString('en-IN')}</td>
-                  <td className="text-right tabular-nums">{c.difference === 0 ? '—' : c.difference.toLocaleString('en-IN')}</td>
+                  <td className="text-right tabular-nums">
+                    {c.difference === 0 ? '—' : c.difference.toLocaleString('en-IN')}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -420,7 +494,10 @@ function FilingLog() {
                   <td className="mono text-2xs">{f.srn || '—'}</td>
                   <td className="text-ink-300">{f.filedOn ? date(f.filedOn) : '—'}</td>
                   <td>
-                    <StatusChip status={f.status} tone={f.status === 'filed' ? 'good' : f.status === 'due' ? 'warn' : 'neutral'} />
+                    <StatusChip
+                      status={f.status}
+                      tone={f.status === 'filed' ? 'good' : f.status === 'due' ? 'warn' : 'neutral'}
+                    />
                   </td>
                 </tr>
               ))}
@@ -450,4 +527,3 @@ export function Filings() {
     </div>
   );
 }
-

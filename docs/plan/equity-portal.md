@@ -16,16 +16,16 @@ What this plan does with that: keeps the intent, changes three mechanisms
 (§3.1–§3.3), because as literally stated they break invariants the platform
 is built on or do not survive the first external investor.
 
-| | Section |
-|---|---|
-| §1 | The answers, and what each one decided |
-| §1a | Three consequences to confirm with the company secretary |
-| §2 | What the codebase is today, and what this touches |
-| §3 | Decisions, and the failures each one prevents |
-| §4 | What the market does, and what is deliberately not copied |
-| §5 | Data model |
-| §6 | Phases, each a brief for Sonnet |
-| §7 | Conventions the implementer must hold to |
+|     | Section                                                   |
+| --- | --------------------------------------------------------- |
+| §1  | The answers, and what each one decided                    |
+| §1a | Three consequences to confirm with the company secretary  |
+| §2  | What the codebase is today, and what this touches         |
+| §3  | Decisions, and the failures each one prevents             |
+| §4  | What the market does, and what is deliberately not copied |
+| §5  | Data model                                                |
+| §6  | Phases, each a brief for Sonnet                           |
+| §7  | Conventions the implementer must hold to                  |
 
 ---
 
@@ -36,21 +36,21 @@ Answered by the chairman on 14 Sep 2026.
 1. **The group.** KIPL is the holding. The three divisions — Software, Skill
    Development, Education — become subsidiaries in the near future; the
    platform must be ready for that. Shareholders are entered by the chairman.
-   *Decided:* the existing `kaizen` tenant is the holding tenant. Every
+   _Decided:_ the existing `kaizen` tenant is the holding tenant. Every
    subsidiary tenant records the division it grew out of
    (`Tenant.config.originDivision`), so the group structure chart can show
-   the three divisions today as *not yet incorporated* and the same nodes
+   the three divisions today as _not yet incorporated_ and the same nodes
    become real entities when the tenants exist. A later phase (6b) carries the
    division-tagged rows — transactions, employees, courses — into the new
    tenant; nothing in phases 0–5 assumes it has happened.
-2. **Hostname.** One portal host with an entity picker. *Decided:* §3.1 as
+2. **Hostname.** One portal host with an entity picker. _Decided:_ §3.1 as
    written; one `routes` entry on the Worker.
-3. **Emails.** Some corporate, some personal. *Decided:* §3.2 as written;
+3. **Emails.** Some corporate, some personal. _Decided:_ §3.2 as written;
    email domain is a hint only.
-4. **What a shareholder or director sees.** A holder or director *of the
-   holding* sees every entity's financial summary; one *of a subsidiary only*
+4. **What a shareholder or director sees.** A holder or director _of the
+   holding_ sees every entity's financial summary; one _of a subsidiary only_
    sees that subsidiary's; the same person can be both, or be on several
-   subsidiaries. *Decided:* the rule is exactly the affiliation model. A
+   subsidiaries. _Decided:_ the rule is exactly the affiliation model. A
    person's reach is the union of the entities they hold an affiliation in,
    and the holding tenant's snapshots carry every subsidiary's summary, so a
    holding-level portal user sees all of them without any cross-tenant read.
@@ -58,20 +58,20 @@ Answered by the chairman on 14 Sep 2026.
    (the earlier idea of the finance head choosing what goes up is dropped);
    what goes up is the same summary The Business shows: cash, P&L by
    division, headcount.
-5. **"Consolidated".** Explained: *aggregated* means adding each company's
-   figures together. *Consolidated* (the Companies Act meaning, s.129(3),
+5. **"Consolidated".** Explained: _aggregated_ means adding each company's
+   figures together. _Consolidated_ (the Companies Act meaning, s.129(3),
    Ind AS 110) means adding them and then removing money that only moved
    between group companies — KIPL invoicing the Education subsidiary for
    software, a subsidiary paying KIPL a dividend, KIPL's own investment in a
    subsidiary sitting as an asset. Without those removals the group looks
-   bigger than it is. *Decided:* the group screen shows each entity and a
+   bigger than it is. _Decided:_ the group screen shows each entity and a
    **group total before inter-company eliminations**, labelled in those
    words, and every transaction whose counterparty is another group entity
    is flagged `intercompany` so a chartered accountant can do the
    consolidation from a list rather than a hunt. Producing consolidated
    statements themselves is not built.
 6. **Instruments.** Everything the Companies Act allows a private limited
-   company. *Decided:* equity; preference (compulsorily or optionally
+   company. _Decided:_ equity; preference (compulsorily or optionally
    convertible, redeemable); debentures (compulsorily or optionally
    convertible, non-convertible); convertible notes (DPIIT start-ups only);
    warrants; ESOP options; sweat equity (s.54); bonus (s.63); rights issue
@@ -79,22 +79,22 @@ Answered by the chairman on 14 Sep 2026.
    buy-back (s.68); reduction of capital (s.66, recorded, not workflowed —
    it needs the tribunal). Phase 1 ships equity and preference classes and
    allotment/transfer; phase 4 the rest.
-7. **Register keepers.** Company secretary and finance. *Decided:* §3.4 as
+7. **Register keepers.** Company secretary and finance. _Decided:_ §3.4 as
    written; the chairman enters holders and their sign-ins directly (see 10).
 8. **Dematerialised.** Explained: shares held as electronic entries with a
    depository (NSDL or CDSL, through a registrar) instead of paper
    certificates, the way a bank account replaces cash. See §1a.1 for why it
    matters to this group specifically.
 9. **Board.** Full: meetings with notice, agenda, attendance, minutes and the
-   SS-1 timelines, plus circular resolutions. *Decided:* phase 3 as written.
+   SS-1 timelines, plus circular resolutions. _Decided:_ phase 3 as written.
 10. **Sign-in for outsiders.** No invite flow, no one-time code. The
-    chairman creates the account and sets the password. *Decided:* a
+    chairman creates the account and sets the password. _Decided:_ a
     "Create sign-in" action on a holder or board member (chairman or company
     secretary), which creates the principal and a per-entity user, with the
     password shown once, as the seed does today; the same action resets a
     password. No email is sent by the platform. The risk accepted: a
     certificate-bearing surface protected by a password alone.
-11. **Foreign shareholder.** One NRI. *Decided:* residency and investment
+11. **Foreign shareholder.** One NRI. _Decided:_ residency and investment
     basis are recorded on every holder (§5); FEMA reporting items are
     generated for repatriable holdings (§1a.3); phase 6 includes them.
 
@@ -123,8 +123,8 @@ them; a company secretary should confirm before the subsidiaries are formed.
    inter-company flag and the AOC-1 data; the consolidation is an accountant's
    act.
 3. **The NRI's holding decides the FEMA work.** An NRI investing on a
-   *non-repatriation* basis (Schedule IV of the NDI Rules) is treated as a
-   resident investment: no FC-GPR, no FC-TRS. On a *repatriation* basis every
+   _non-repatriation_ basis (Schedule IV of the NDI Rules) is treated as a
+   resident investment: no FC-GPR, no FC-TRS. On a _repatriation_ basis every
    allotment needs FC-GPR within 30 days, every transfer with a resident
    needs FC-TRS within 60 days, pricing must meet the FEMA fair-value floor,
    and the FLA return is due 15 July each year. The holder record carries
@@ -261,13 +261,13 @@ silently mixing ages.
 
 `packages/shared/src/permissions.ts`, `apps/api/src/seed/grants.ts`
 
-| Role | Archetype | Holds |
-|---|---|---|
-| `shareholder` | portal | `holdings:V@own`, `certificates:V@own`, `entity_documents:V@all` (portal class), `valuations:V@all`, `resolutions:V@own` (where they are a voter, e.g. shareholder resolutions) |
-| `director` | portal | everything a shareholder holds, plus `board_meetings:V@all`, `resolutions:V,approve@all` (votes), `board_documents:V@all`, `cap_table:V@all` |
-| `company_secretary` | workspace | `cap_table:VCEX`, `share_ledger:VC` (no edit — the ledger is append-only), `certificates:VC`, `board_meetings:VCE`, `resolutions:VCE`, `compliance:VCE`; **no `approve`** |
-| `finance_head` (existing) | | `+ share_ledger:approve`, `cap_table:V`, `valuations:VCE` |
-| `chairman` (existing) | | everything, as now; the bar still blocks approving an allotment or transfer they are a party to |
+| Role                      | Archetype | Holds                                                                                                                                                                           |
+| ------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shareholder`             | portal    | `holdings:V@own`, `certificates:V@own`, `entity_documents:V@all` (portal class), `valuations:V@all`, `resolutions:V@own` (where they are a voter, e.g. shareholder resolutions) |
+| `director`                | portal    | everything a shareholder holds, plus `board_meetings:V@all`, `resolutions:V,approve@all` (votes), `board_documents:V@all`, `cap_table:V@all`                                    |
+| `company_secretary`       | workspace | `cap_table:VCEX`, `share_ledger:VC` (no edit — the ledger is append-only), `certificates:VC`, `board_meetings:VCE`, `resolutions:VCE`, `compliance:VCE`; **no `approve`**       |
+| `finance_head` (existing) |           | `+ share_ledger:approve`, `cap_table:V`, `valuations:VCE`                                                                                                                       |
+| `chairman` (existing)     |           | everything, as now; the bar still blocks approving an allotment or transfer they are a party to                                                                                 |
 
 An allotment or transfer is proposed by the secretary and **approved** through
 `approvals.ts`, whose self-dealing bar already reroutes an approver who is the
@@ -296,14 +296,14 @@ posts and the register references. Module boundary written down:
 
 ### 3.7 Say what is known
 
-The cap table shows *issued* and *fully diluted* as two columns, because the
+The cap table shows _issued_ and _fully diluted_ as two columns, because the
 Companies Act uses "total share capital" for subsidiary status and FEMA uses
 fully diluted, and one number would be wrong for one of them. Valuation shows
 the date, the valuer and the basis, or "No valuation on record". Compliance
 counters (days since last board meeting against 120) count from recorded
 meetings only and say "No meeting recorded" rather than "overdue" when the
-register is empty. The group figure is headed *Group total before
-inter-company eliminations*, never *Consolidated*.
+register is empty. The group figure is headed _Group total before
+inter-company eliminations_, never _Consolidated_.
 
 ---
 
@@ -355,6 +355,7 @@ share counts and prices (fractional shares do not occur, but conversion
 ratios do).
 
 **Identity and group**
+
 - `Principal` — `email @unique`, `passwordHash`, `otpSecret?`, `status`,
   `lastLoginAt`. `User.principalId`.
 - `Tenant` + `parentTenantId?`, `kind`, `config.emailDomains: string[]`,
@@ -365,41 +366,43 @@ ratios do).
   `dpiitNumber?`, `dpiitRecognisedOn?`, `registeredOfficeAddress`.
 
 **Register**
+
 - `ShareClass` — `name`, `kind (equity | preference | debenture)`, `instrument
-  (equity | sweat_equity | ccps | ocps | rps | ccd | ocd | ncd |
-  convertible_note | warrant | option | phantom)`,
+(equity | sweat_equity | ccps | ocps | rps | ccd | ocd | ncd |
+convertible_note | warrant | option | phantom)`,
   `faceValue`, `votingRightsPerShare`, `rights Json` (liquidation preference
   multiple and participation, anti-dilution, pro-rata, board seat, information
   rights, dividend rate), `conversionTerms Json?`, `authorisedCount`.
 - `Holder` — the party that holds: `kind (person | organization | entity)`,
   `personId? | organizationId? | heldByTenantId?` (the last is the
   entity-as-stakeholder link), `folioNumber`, `residency (resident |
-  non_resident)`, `investmentBasis (repatriable | non_repatriable)?` (required
+non_resident)`, `investmentBasis (repatriable | non_repatriable)?` (required
   when non-resident; decides whether FEMA items are generated), `pan?`,
   `nomineeJson?`, `jointHolders Json?`.
 - `ShareTransaction` — append-only; `type (allotment | transfer | conversion |
-  buyback | split | bonus | forfeiture | cancellation | redemption |
-  reduction)`, `shareClassId`,
+buyback | split | bonus | forfeiture | cancellation | redemption |
+reduction)`, `shareClassId`,
   `fromHolderId?`, `toHolderId?`, `count`, `pricePerShare?`, `distinctiveFrom /
-  distinctiveTo`, `effectiveOn`, `roundId?`, `considerationTransactionId?`
+distinctiveTo`, `effectiveOn`, `roundId?`, `considerationTransactionId?`
   (→ `Transaction`), `approvalDecisionId?`, `status (proposed | approved |
-  effective | reversed)`, `reversalOfId?`, `boardResolutionId?`, `documents`.
+effective | reversed)`, `reversalOfId?`, `boardResolutionId?`, `documents`.
 - `ShareCertificate` — `certificateNumber` (document series `C`),
   `holderId`, `shareClassId`, `distinctiveFrom/To`, `count`, `issuedOn`,
   `status (issued | surrendered | cancelled)`, `supersededById?`, `signatories
-  Json` (snapshotted names), `stampDutyPaid?`.
+Json` (snapshotted names), `stampDutyPaid?`.
 - `FundingRound` — `name`, `kind (seed | series | rights_issue | bonus |
-  preferential | private_placement | sweat_equity | esop_top_up |
-  capital_reduction)`, `preMoneyValuation?`,
+preferential | private_placement | sweat_equity | esop_top_up |
+capital_reduction)`, `preMoneyValuation?`,
   `closedOn?`, `valuationReportId?`, `offerLetterRef?` (PAS-4 serial),
   `status`.
 - `Valuation` — `asOf`, `basis (registered_valuer | merchant_banker | ca_cert
-  | internal | round_price)`, `valuerName`, `perShareByClass Json`,
+| internal | round_price)`, `valuerName`, `perShareByClass Json`,
   `equityValue`, `reportDocumentId`, `validUntil?`.
 
 **Board and compliance** (phase 3)
+
 - `BoardMember` — `personId`, `role (director | independent | nominee |
-  observer | company_secretary)`, `din?`, `appointedOn`, `ceasedOn?`,
+observer | company_secretary)`, `din?`, `appointedOn`, `ceasedOn?`,
   `interestsDeclaredOn?` (MBP-1), `nominatedByHolderId?`.
 - `BoardMeeting` — `kind (board | agm | egm | committee)`, `noticeSentOn`,
   `heldOn`, `mode (physical | vc | hybrid)`, `quorumMet`, `attendees Json`,
@@ -407,7 +410,7 @@ ratios do).
   `minutesEnteredOn?`, `minutesDocumentId?`.
 - `Resolution` — `kind (board | shareholder_ordinary | shareholder_special)`,
   `passedBy (meeting | circulation)`, `meetingId?`, `text`, `subject
-  (allotment | transfer | esop_scheme | borrowing | ... )`, `requiresMeeting`
+(allotment | transfer | esop_scheme | borrowing | ... )`, `requiresMeeting`
   (true for s.179(3) subjects — validated), `votes[]`, `dispatchProof?`,
   `outcome`, `mgt14Srn?`, `signedDocumentId?`.
 - `Vote` — `resolutionId`, `boardMemberId | holderId`, `choice`, `castAt`,
@@ -463,13 +466,13 @@ Files: `schema.prisma`, `apps/api/src/lib/auth.ts`, `lib/http.ts`,
 1. `Principal` model; migration moves `User.passwordHash` into it keyed by
    lowercase email; `User.principalId` required; `User.passwordHash` dropped.
    `login()` verifies against the principal, returns `{ entities: [{tenantId,
-   slug, name, kind, affiliations}] }` when more than one, else a token as now.
+slug, name, kind, affiliations}] }` when more than one, else a token as now.
    `POST /auth/switch-entity { tenantId }` — allowed only if the principal has
    a `User` with an active affiliation there; issues a token for that user;
    audit-logged in both tenants. Token shape unchanged.
 2. `Tenant.parentTenantId`, `Tenant.kind`, `config.emailDomains`. Seed:
    `TENANT_KIND`, `PARENT_TENANT_SLUG` env; a `pnpm tenant:create --slug
-   --name --parent` script that runs the same bootstrap for a subsidiary
+--name --parent` script that runs the same bootstrap for a subsidiary
    (grants, nav, pipelines, leave types, founding accounts with their own
    `*_EMAIL` env). The existing tenant becomes `kind: holding` when
    `PARENT_TENANT_SLUG` is unset and any tenant names it as parent. The
@@ -496,7 +499,7 @@ Files: `schema.prisma`, `apps/api/src/lib/auth.ts`, `lib/http.ts`,
    or reset the sign-in.
 5. Portal surface. Worker var `PORTAL_HOSTS` (comma-separated) surfaced through
    `/api/meta/version` as `surfaceHosts.portal`; client sets `surface =
-   'portal'` when `location.hostname` matches, or when the active role's
+'portal'` when `location.hostname` matches, or when the active role's
    archetype is `portal`. `apps/web/src/portal/PortalShell.tsx`: masthead with
    the entity name and picker, three sections (Holdings, Board, Documents),
    footnote kept. `navigationFor()` already filters by archetype; add the
@@ -591,7 +594,7 @@ Files: `apps/api/src/domains/group.ts`, `jobs/scheduler.ts` (a
    granted/available, demat status, last valuation, next compliance due,
    snapshot age), consolidated holders table (direct and look-through per
    principal, SBO flag at ≥10%), aggregated financial block labelled
-   *Aggregated, not consolidated* with each entity's figure beside the sum.
+   _Aggregated, not consolidated_ with each entity's figure beside the sum.
 3. Isolated view: an entity tile opens `switch-entity` and lands on that
    tenant's own cap table. The group screen never reads a subsidiary table.
 4. The graph refuses an edge from a subsidiary into its holding (s.19) at
@@ -712,11 +715,11 @@ where the brief left a gap:
   appended to the published `CapTableView`, cross-referenced by `holderId`
   from `rows`/`holderTotals` rather than duplicated onto every row. A holder
   with no resolvable email or PAN gets `holderKey: null` and `matchedBy:
-  'unmatched'`, and is excluded from `computeLookThrough`'s input rather than
+'unmatched'`, and is excluded from `computeLookThrough`'s input rather than
   poisoning it with a `null` key.
 - **One layer of `layerDepth`, always.** A snapshot is one hop — a
   subsidiary's own summary, published once into its immediate parent. A
-  grandchild's stake in *its own* parent lives in a snapshot the grandchild
+  grandchild's stake in _its own_ parent lives in a snapshot the grandchild
   publishes into the middle tenant, which the top holding never receives
   (§3.3 holds: no cross-tenant read, ever). `groupStructure()` therefore
   reports every node it holds a snapshot for at `layerDepth: 1` and
@@ -751,6 +754,7 @@ where the brief left a gap:
   rather than `asUser`, because `asUser` resolves an email with no tenant
   filter and every founding account (`chairman@kaizen.co.in`, and so on) is
   reused verbatim across every tenant `seedBootstrap` creates.
+
 ## Phase 4 — as built
 
 Ships `FundingRound`, conversion/redemption/buy-back/bonus as `ShareTransaction`
@@ -763,7 +767,7 @@ renounce path, valuation-round linkage, and the pure scenario functions —
 
 - **One `count` column, two legs.** `ShareTransaction.count` already named
   the allotted (target) side for an ordinary row; a conversion at a ratio
-  other than 1:1 needs a *different* number for the side being retired. Two
+  other than 1:1 needs a _different_ number for the side being retired. Two
   new columns carry that rather than reshaping the ledger: `fromShareClassId`
   (the source class) and a `meta Json?` field carrying `{ sourceCount }`.
   Every place that sums a holder's balance or the cap table (`effectiveBalance`,
@@ -805,7 +809,7 @@ renounce path, valuation-round linkage, and the pure scenario functions —
   or the tenant's current gearing fails.
 - **`waterfall`'s as-converted comparison is exit-value-relative, not
   remainder-relative.** A non-participating class compares its preference
-  against what it would receive by converting and sharing the *whole* exit
+  against what it would receive by converting and sharing the _whole_ exit
   value as common from the start (the comparison a rational holder actually
   makes), not against a share of whatever happens to be left after the
   preference stack above it is paid — the two differ once more than one
@@ -818,6 +822,7 @@ Tests: `apps/api/src/tests/equityRounds.test.ts`, `EQT-RND-001` through
 this suite controls completely rather than whatever another suite left behind
 in the shared `kaizen` tenant (`vitest.config.ts` runs every file serially
 against one database).
+
 ## Phase 5 — as built
 
 Shipped as briefed in §6, with these choices made along the way:
@@ -879,6 +884,7 @@ Shipped as briefed in §6, with these choices made along the way:
   drift.
 
 Tests: `apps/api/src/tests/esop.test.ts`, `EQT-ESP-001` through `EQT-ESP-010`.
+
 ## Phase 3 — as built
 
 Board members, meetings and their minutes lifecycle, circular and
@@ -906,7 +912,7 @@ meeting resolutions, and the daily compliance calendar landed as designed in
   (`board_compliance`, daily) and is strictly a function of recorded facts:
   no board meeting and no `incorporatedOn` on file raises nothing at all —
   never a fabricated "overdue" — and the unique `(tenantId, kind,
-  relatedType, relatedId, dueOn)` key is what actually keeps a re-run from
+relatedType, relatedId, dueOn)` key is what actually keeps a re-run from
   duplicating a row; the job's own `raised` count is how many candidates it
   swept, not how many rows it wrote, so idempotence is proven against the
   table, not the return value (see `EQT-BRD-007`).
@@ -921,7 +927,7 @@ meeting resolutions, and the daily compliance calendar landed as designed in
   anything, since `holders`/`ShareTransaction` do not exist in this branch.
 - ERP nav: `eq_board`/`eq_resolutions`/`eq_compliance` under a new `equity`
   group (after `money`), each with explicit `archetypes: ['command',
-  'workspace', 'console']` — a node with no `archetypes` reaches the portal
+'workspace', 'console']` — a node with no `archetypes` reaches the portal
   shell too, which these three must not. The portal's `portal_board` node
   (phase 0) is unchanged; it is the same data, filtered by the viewer's own
   grants (`shareholder` sees resolutions only, `director` sees the board
@@ -975,7 +981,7 @@ demat fields on the holder form.
   separately once written.
 - **`assertFemaPricingFloor` and `assertDematCompliant` read `toHolderId`
   only.** FEMA's pricing floor and Rule 9B's demat guard both name the party
-  a holding is *landing with* — the receiving side of an allotment, or of a
+  a holding is _landing with_ — the receiving side of an allotment, or of a
   transfer — as the one the rule reaches; `assertDematCompliant` is still
   called with both legs of a transfer (`[fromHolderId, toHolderId]`) because
   a demat company cannot hand a paper-only holder anything to hold, on
@@ -986,7 +992,7 @@ demat fields on the holder form.
   a holder holds is treated as demat once `dematAccount` is set, and PAS-6's
   reconciliation partitions each class's issued count by that one field
   rather than walking certificates.
-- **The FLA sweep checks the most recently *completed* 31 March, not the
+- **The FLA sweep checks the most recently _completed_ 31 March, not the
   current financial year's.** Run on any day of the year, "at 31 March" has
   to mean a date already in the past — the job compares `now` against this
   year's 31 March and falls back to last year's when it has not arrived yet,
@@ -1065,7 +1071,7 @@ it differs from the brief, and why:
   else to say this, and the alternative (a note only in the CLI's console
   output) would not survive past the terminal session that ran the commit.
 - **The event name is `kz.sys.spin_out.<verb>`, not `kz.sys.tenant.spin_out.
-  <verb>`.** `EVENT_NAME_PATTERN` is `kz.<domain>.<entity>.<verb>` — four
+<verb>`.** `EVENT_NAME_PATTERN` is `kz.<domain>.<entity>.<verb>` — four
   segments — and the plan's own brief names five; `tenant` is dropped to fit
   the grammar every other event in the system is validated against.
 - **The web panel reads a shallow preview (`deep: false`).** The CLI's
@@ -1111,7 +1117,7 @@ closes it exactly the way it already closes PAS-3/FC-GPR/FC-TRS/FLA/PAS-6.
   snapshot JSON block is not a schema change; `compliance` already carries
   `dematStatus`/`isSmallCompany`/`kind` as a loosely-typed per-tenant bag,
   so `{ legalName, cin, financialYearEndMonth, incorporatedOn,
-  reportingCurrency: 'INR' }` joins it rather than opening a fifth JSON
+reportingCurrency: 'INR' }` joins it rather than opening a fifth JSON
   column on `EntitySnapshot`/`EntitySnapshotHistory`.
 - **Reserves and profit-after-tax are `not published` for every
   subsidiary, unconditionally — not sometimes.** The books carry no ledger
@@ -1130,7 +1136,7 @@ closes it exactly the way it already closes PAS-3/FC-GPR/FC-TRS/FLA/PAS-6.
 - **BEN candidates are computed per (entity, person), not per person.**
   The brief's own worked example (founder 60% of the holding × the
   holding's 70% of a subsidiary, plus 5% direct, = 47%) is a statement
-  about the person's stake *in the subsidiary*, not in the holding — s.90
+  about the person's stake _in the subsidiary_, not in the holding — s.90
   SBO is a per-company obligation, and a person can cross the threshold in
   the holding, in a subsidiary, in both, or in neither, independently. The
   holding tenant's own BEN export therefore lists one row per entity a
@@ -1149,7 +1155,7 @@ closes it exactly the way it already closes PAS-3/FC-GPR/FC-TRS/FLA/PAS-6.
   the research's own note ("subsidiaries of a holding reporting company
   report the holding"), and the only shape of BEN-2 a subsidiary can ever
   produce on its own, since it holds no snapshot of anything (snapshots
-  live in a *parent*, never in the child that published them) and so
+  live in a _parent_, never in the child that published them) and so
   cannot look through to the individuals above its own immediate holder.
 - **The threshold-crossed date is derived from real history, with an
   honest fallback, not computed as a fact the platform does not have.**
@@ -1168,7 +1174,7 @@ closes it exactly the way it already closes PAS-3/FC-GPR/FC-TRS/FLA/PAS-6.
   `EX-EQT-*` exception in phase 6a is either a write-time guard or a daily
   job; this one is neither, because the candidate set is a live
   recomputation over `groupHolders()` each time, cheap enough that the
-  compute path already *is* the correct trigger, and `raiseException`'s
+  compute path already _is_ the correct trigger, and `raiseException`'s
   own open-exception check on `(code, subjectId)` makes a repeated call
   idempotent rather than merely safe. The one honest gap this leaves: a
   candidate who crosses the threshold and is never looked at again (nobody
@@ -1190,5 +1196,5 @@ closes it exactly the way it already closes PAS-3/FC-GPR/FC-TRS/FLA/PAS-6.
 Tests: `apps/api/src/tests/equityGroupFilings.test.ts`, `EQT-FIL-011`
 through `EQT-FIL-015`, run inside a holding tenant this file creates for
 itself in `beforeAll` — never `kaizen`, since these tests mutate the
-holding's *own* cap table (to give a person a direct stake to look through
+holding's _own_ cap table (to give a person a direct stake to look through
 from), which no earlier phase's suite ever needed to do.

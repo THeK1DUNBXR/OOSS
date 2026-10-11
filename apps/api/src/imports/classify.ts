@@ -13,8 +13,7 @@
  */
 
 export type LedgerClass =
-  | { kind: 'account'; accountType: 'bank' | 'cash' | 'card' }
-  | { kind: 'category'; categoryKind: string };
+  { kind: 'account'; accountType: 'bank' | 'cash' | 'card' } | { kind: 'category'; categoryKind: string };
 
 export function classifyLedger(name: string, chart?: Record<string, string>): LedgerClass {
   const n = name.toLowerCase().trim();
@@ -47,7 +46,8 @@ export function classifyLedger(name: string, chart?: Record<string, string>): Le
   if (/credit card|corporate card/.test(n)) return { kind: 'account', accountType: 'card' };
 
   if (/^capital\b|capital account|share capital|drawings/.test(n)) return { kind: 'category', categoryKind: 'equity' };
-  if (/^income\b|^sales\b|revenue|fees received|receipts from/.test(n)) return { kind: 'category', categoryKind: 'income' };
+  if (/^income\b|^sales\b|revenue|fees received|receipts from/.test(n))
+    return { kind: 'category', categoryKind: 'income' };
   if (/duties & taxes|^gst|\btds\b|^tax\b/.test(n)) return { kind: 'category', categoryKind: 'tax' };
   if (/\bloan\b|borrowing|unsecured/.test(n)) return { kind: 'category', categoryKind: 'transfer' };
   if (/furniture|computer|air conditioner|cctv|interior|partition|equipment|fitting|vehicle|machinery/.test(n)) {
@@ -63,7 +63,11 @@ export function classifyLedger(name: string, chart?: Record<string, string>): Le
   // "Salary & Wages 480,557" and the vouchers carry a ledger per person, so
   // without this every salary ledger fell through to the default below and
   // ₹4.8 lakh of payroll dropped out of the cost base.
-  if (/salary|wages|payroll|\brent\b|electric|water charge|telephone|internet|conveyance|travel|stationary|stationery|maintenance|welfare|advertis|subscription|audit|consult|incorporat|installation|ceremony|domain|website|printing|registration/.test(n)) {
+  if (
+    /salary|wages|payroll|\brent\b|electric|water charge|telephone|internet|conveyance|travel|stationary|stationery|maintenance|welfare|advertis|subscription|audit|consult|incorporat|installation|ceremony|domain|website|printing|registration/.test(
+      n,
+    )
+  ) {
     return { kind: 'category', categoryKind: 'expense' };
   }
   if (/income$|\bincome\b/.test(n)) return { kind: 'category', categoryKind: 'income' };

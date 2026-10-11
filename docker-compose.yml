@@ -17,11 +17,13 @@ services:
     ports:
       # Published so host-side tooling — psql, Prisma Studio, the test suite —
       # can reach it too.
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - kaizen-pgdata:/var/lib/postgresql/data
+      # Creates the application role the API connects as (FX-51) on first start.
+      - ./scripts/app-role.sql:/docker-entrypoint-initdb.d/10-app-role.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kaizen -d kaizen"]
+      test: ['CMD-SHELL', 'pg_isready -U kaizen -d kaizen']
       interval: 3s
       timeout: 3s
       retries: 20
@@ -31,9 +33,9 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
       args:
-        BUILD_SEQUENCE: "1"
+        BUILD_SEQUENCE: '1'
         GIT_SHA: docker-local
-        BUILT_AT: "2026-09-20T00:00:00Z"
+        BUILT_AT: '2026-09-20T00:00:00Z'
     container_name: kaizen-api
     depends_on:
       postgres:
@@ -41,10 +43,13 @@ services:
     environment:
       # `postgres` is the compose service name; inside the network it resolves
       # to the database container, not to localhost.
-      DATABASE_URL: postgresql://kaizen:kaizen@postgres:5432/kaizen?schema=public
-      BUILD_SEQUENCE: "1"
+      # The application role: row-level security binds it (FX-51).
+      DATABASE_URL: postgresql://kaizen_app:kaizen_app@postgres:5432/kaizen?schema=public
+      MIGRATION_DATABASE_URL: postgresql://kaizen:kaizen@postgres:5432/kaizen?schema=public
+      UNSCOPED_DATABASE_URL: postgresql://kaizen:kaizen@postgres:5432/kaizen?schema=public
+      BUILD_SEQUENCE: '1'
       GIT_SHA: docker-local
-      BUILT_AT: "2026-09-20T00:00:00Z"
+      BUILT_AT: '2026-09-20T00:00:00Z'
       # Development only. A real deployment injects a secret rather than
       # carrying one in a file that lives in the repository.
       JWT_SECRET: kaizen-local-dev-secret-2026-do-not-use-in-prod
@@ -56,14 +61,18 @@ services:
       # Development only, for the same reason as the secret above.
       OWNER_EMAIL: chairman@kaizen.co.in
       OWNER_PASSWORD: kaizen2026
-      PORT: "4000"
+      PORT: '4000'
       NODE_ENV: development
-      JOBS_ENABLED: "true"
+      JOBS_ENABLED: 'true'
       TENANT_ENFORCE_MODE: enforce
     ports:
-      - "4000:4000"
+      - '4000:4000'
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(''http://localhost:4000/health'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -74,15 +83,15 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        BUILD_SEQUENCE: "1"
+        BUILD_SEQUENCE: '1'
         GIT_SHA: docker-local
-        BUILT_AT: "2026-09-20T00:00:00Z"
+        BUILT_AT: '2026-09-20T00:00:00Z'
     container_name: kaizen-web
     depends_on:
       api:
         condition: service_healthy
     ports:
-      - "8080:80"
+      - '8080:80'
 
   test:
     image: node:22-slim
@@ -96,7 +105,12 @@ services:
     volumes:
       - .:/workspace
     working_dir: /workspace
-    command: ["sh", "-c", "corepack enable; pnpm install --frozen-lockfile; pnpm --filter @kaizen/shared build; pnpm --filter @kaizen/semantic build; pnpm --filter @kaizen/api exec prisma generate; pnpm --filter @kaizen/api test:quick"]
+    command:
+      [
+        'sh',
+        '-c',
+        'corepack enable; pnpm install --frozen-lockfile; pnpm --filter @kaizen/shared build; pnpm --filter @kaizen/semantic build; pnpm --filter @kaizen/api exec prisma generate; pnpm --filter @kaizen/api test:quick',
+      ]
     profiles:
       - test
 

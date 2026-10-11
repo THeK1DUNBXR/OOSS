@@ -58,7 +58,11 @@ export function FinalInvoiceDocument() {
     name: 'Kaizen Infinities',
     tagline: 'Training & Education Services',
     legalName: d.supplier.legalName,
-    address: [d.supplier.addressLine1, d.supplier.addressLine2, d.supplier.city ? `${d.supplier.city}-${d.supplier.pincode ?? ''}` : null]
+    address: [
+      d.supplier.addressLine1,
+      d.supplier.addressLine2,
+      d.supplier.city ? `${d.supplier.city}-${d.supplier.pincode ?? ''}` : null,
+    ]
       .filter(Boolean)
       .join(', '),
     location: d.supplier.stateName ?? '—',
@@ -156,7 +160,13 @@ export function FinalInvoiceDocument() {
         </table>
       </div>
 
-      <TotalsStrip doc={{ amountInWords: amountInWords(d.totals.totalPayable), grandTotal: d.totals.totalPayable, label: 'Grand Total (total payable)' }} />
+      <TotalsStrip
+        doc={{
+          amountInWords: amountInWords(d.totals.totalPayable),
+          grandTotal: d.totals.totalPayable,
+          label: 'Grand Total (total payable)',
+        }}
+      />
 
       <NoteStrip>
         {d.isTaxInvoice
@@ -164,7 +174,9 @@ export function FinalInvoiceDocument() {
               d.totals.instalments > 0 ? '' : ' — none, in this case'
             }.`
           : `This statement restates tax invoice ${d.invoice.recordCode} and every receipt against it, as they stood on the day it was raised.`}
-        {d.totals.settled ? ' Settled in full — nothing further is due.' : ` Balance of ${money(d.totals.balance)} remains payable.`}
+        {d.totals.settled
+          ? ' Settled in full — nothing further is due.'
+          : ` Balance of ${money(d.totals.balance)} remains payable.`}
         {d.supersedes.length > 0 && ` Supersedes ${d.supersedes.join(', ')}.`}
         {d.note && ` ${d.note}`}
       </NoteStrip>
@@ -187,7 +199,11 @@ export function FinalInvoiceDocument() {
 }
 
 export function FinalInvoices() {
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['final-invoices'],
     queryFn: () => api.get<FinalInvoiceView[]>('/finance/final-invoices'),
   });
@@ -218,10 +234,7 @@ export function FinalInvoices() {
         <Loading />
       ) : data.length === 0 ? (
         <Card>
-          <EmptyState
-            message="None raised yet."
-            hint="Open a part-paid invoice and raise one from there."
-          />
+          <EmptyState message="None raised yet." hint="Open a part-paid invoice and raise one from there." />
         </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
@@ -250,7 +263,9 @@ export function FinalInvoices() {
                   <td className="mono text-2xs text-ink-500">{f.receiptCodes.join(', ')}</td>
                   <td className="text-right tabular-nums text-xs">{money(f.totalPayable)}</td>
                   <td className="text-right tabular-nums text-xs">{money(f.totalReceived)}</td>
-                  <td className={`text-right tabular-nums text-xs ${f.balance > 0 ? 'text-band-watch' : 'text-band-strong'}`}>
+                  <td
+                    className={`text-right tabular-nums text-xs ${f.balance > 0 ? 'text-band-watch' : 'text-band-strong'}`}
+                  >
                     {money(f.balance)}
                   </td>
                   <td>

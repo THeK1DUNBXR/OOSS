@@ -139,8 +139,10 @@ export async function createInitiative(input: CreateInitiativeInput) {
 
   if (!input.title.trim()) throw ApiError.badRequest('An initiative needs a title.');
   if (!(input.budget >= 0)) throw ApiError.badRequest('Budget cannot be negative.');
-  if (!input.sponsorPartyId) throw ApiError.badRequest('An initiative needs a sponsor — the person accountable for its funding.');
-  if (!input.ownerPartyId) throw ApiError.badRequest('An initiative needs an owner — the person accountable for delivering it.');
+  if (!input.sponsorPartyId)
+    throw ApiError.badRequest('An initiative needs a sponsor — the person accountable for its funding.');
+  if (!input.ownerPartyId)
+    throw ApiError.badRequest('An initiative needs an owner — the person accountable for delivering it.');
 
   const recordCode = await nextRecordCode('ITI');
   const initiative = await prisma.itInitiative.create({
@@ -165,7 +167,12 @@ export async function createInitiative(input: CreateInitiativeInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_initiative', subjectId: initiative.id, after: { recordCode, title: initiative.title } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_initiative',
+    subjectId: initiative.id,
+    after: { recordCode, title: initiative.title },
+  });
   await emit({
     name: EVENTS.IT_INITIATIVE_CREATED,
     subject: { entityType: 'it_initiative', entityId: initiative.id, recordCode },
@@ -252,7 +259,11 @@ export interface InitiativeTransitionResult {
  * gate opens an approval step and returns `{ applied: false, ... }` rather
  * than throwing. Every other transition is a plain governed edit.
  */
-export async function transitionInitiative(id: string, event: ItInitiativeEvent, note = ''): Promise<InitiativeTransitionResult> {
+export async function transitionInitiative(
+  id: string,
+  event: ItInitiativeEvent,
+  note = '',
+): Promise<InitiativeTransitionResult> {
   const auth = currentAuth();
   const initiative = await prisma.itInitiative.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!initiative) throw ApiError.notFound('Initiative');
@@ -346,7 +357,12 @@ export async function postInitiativeUpdate(initiativeId: string, input: PostUpda
     data: { rag: input.rag, ragReason: input.body.trim(), ragSetAt: update.at, staleNotifiedAt: null },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_initiative_update', subjectId: update.id, after: { initiativeId, rag: input.rag } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_initiative_update',
+    subjectId: update.id,
+    after: { initiativeId, rag: input.rag },
+  });
   await emit({
     name: EVENTS.IT_INITIATIVE_UPDATED,
     subject: { entityType: 'it_initiative', entityId: initiativeId, recordCode: initiative.recordCode },
@@ -361,14 +377,20 @@ export async function postInitiativeUpdate(initiativeId: string, input: PostUpda
 export async function listInitiativeUpdates(initiativeId: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'it_initiatives', verb: 'view' });
-  return prisma.itInitiativeUpdate.findMany({ where: { tenantId: auth.tenantId, initiativeId }, orderBy: { at: 'desc' } });
+  return prisma.itInitiativeUpdate.findMany({
+    where: { tenantId: auth.tenantId, initiativeId },
+    orderBy: { at: 'desc' },
+  });
 }
 
 export async function portfolioSummary(): Promise<ItPortfolioSummary> {
   const auth = currentAuth();
   await assertCan({ resource: 'it_initiatives', verb: 'view' });
 
-  const rows = await prisma.itInitiative.findMany({ where: { tenantId: auth.tenantId }, select: { stage: true, rag: true } });
+  const rows = await prisma.itInitiative.findMany({
+    where: { tenantId: auth.tenantId },
+    select: { stage: true, rag: true },
+  });
   if (rows.length === 0) {
     return {
       notYetMeasured: true,
@@ -419,7 +441,12 @@ export async function createRoadmapItem(input: CreateRoadmapItemInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_roadmap_item', subjectId: item.id, after: { quarter: item.quarter, theme: item.theme } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_roadmap_item',
+    subjectId: item.id,
+    after: { quarter: item.quarter, theme: item.theme },
+  });
   return item;
 }
 
@@ -447,7 +474,13 @@ export async function setRoadmapItemDone(id: string, done: boolean) {
   const item = await prisma.itRoadmapItem.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!item) throw ApiError.notFound('Roadmap item');
   const updated = await prisma.itRoadmapItem.update({ where: { id }, data: { done } });
-  await auditWrite({ action: 'update', subjectType: 'it_roadmap_item', subjectId: id, before: { done: item.done }, after: { done } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_roadmap_item',
+    subjectId: id,
+    before: { done: item.done },
+    after: { done },
+  });
   return updated;
 }
 
@@ -466,12 +499,15 @@ export interface CreateBudgetLineInput {
 }
 
 function assertFy(fy: string): void {
-  if (parseFy(fy) === null) throw ApiError.badRequest(`'${fy}' is not a financial year in the FYyyyy-yy shape, e.g. 'FY2026-27'.`);
+  if (parseFy(fy) === null)
+    throw ApiError.badRequest(`'${fy}' is not a financial year in the FYyyyy-yy shape, e.g. 'FY2026-27'.`);
 }
 
 function assertCategory(category: string): void {
   if (!(IT_BUDGET_CATEGORIES as readonly string[]).includes(category)) {
-    throw ApiError.badRequest(`'${category}' is not a budget category. Choose one of: ${IT_BUDGET_CATEGORIES.join(', ')}.`);
+    throw ApiError.badRequest(
+      `'${category}' is not a budget category. Choose one of: ${IT_BUDGET_CATEGORIES.join(', ')}.`,
+    );
   }
 }
 
@@ -504,7 +540,12 @@ export async function createBudgetLine(input: CreateBudgetLineInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_budget_line', subjectId: line.id, after: { fy: line.fy, category: line.category, planned: input.planned } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_budget_line',
+    subjectId: line.id,
+    after: { fy: line.fy, category: line.category, planned: input.planned },
+  });
   await emit({
     name: EVENTS.IT_BUDGET_LINE_SET,
     subject: { entityType: 'it_budget_line', entityId: line.id },
@@ -527,7 +568,8 @@ export async function updateBudgetLine(id: string, input: UpdateBudgetLineInput)
   if (!line) throw ApiError.notFound('Budget line');
   await assertCan({ resource: 'it_budgets', verb: 'edit' });
 
-  if (input.planned !== undefined && !(input.planned >= 0)) throw ApiError.badRequest('Planned amount cannot be negative.');
+  if (input.planned !== undefined && !(input.planned >= 0))
+    throw ApiError.badRequest('Planned amount cannot be negative.');
 
   const updated = await prisma.itBudgetLine.update({
     where: { id },
@@ -538,7 +580,13 @@ export async function updateBudgetLine(id: string, input: UpdateBudgetLineInput)
     },
   });
 
-  await auditWrite({ action: 'update', subjectType: 'it_budget_line', subjectId: id, before: { planned: num(line.planned) }, after: { planned: input.planned ?? num(line.planned) } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_budget_line',
+    subjectId: id,
+    before: { planned: num(line.planned) },
+    after: { planned: input.planned ?? num(line.planned) },
+  });
   return updated;
 }
 
@@ -556,9 +604,10 @@ export async function approveBudgetLine(id: string) {
   if (!line) throw ApiError.notFound('Budget line');
   if (line.status === 'approved') throw ApiError.conflict('This budget line is already approved.');
   if (line.createdById && line.createdById === auth.partyId) {
-    throw ApiError.forbidden('The proposer never approves: you proposed this budget line, so you cannot be the one who approves it.', [
-      { axis: 'WHO', passed: false, reason: 'self_dealing_bar' },
-    ]);
+    throw ApiError.forbidden(
+      'The proposer never approves: you proposed this budget line, so you cannot be the one who approves it.',
+      [{ axis: 'WHO', passed: false, reason: 'self_dealing_bar' }],
+    );
   }
 
   const updated = await prisma.itBudgetLine.update({
@@ -566,7 +615,13 @@ export async function approveBudgetLine(id: string) {
     data: { status: 'approved', approvedById: auth.partyId, approvedAt: new Date() },
   });
 
-  await auditWrite({ action: 'update', subjectType: 'it_budget_line', subjectId: id, before: { status: 'draft' }, after: { status: 'approved' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_budget_line',
+    subjectId: id,
+    before: { status: 'draft' },
+    after: { status: 'approved' },
+  });
   await emit({
     name: EVENTS.IT_BUDGET_LINE_SET,
     subject: { entityType: 'it_budget_line', entityId: id },
@@ -597,7 +652,11 @@ export async function budgetLineDetail(id: string) {
  * still spend, just settled). Never stored — a late bill moves this the
  * next time anyone asks (IT-BUD-001).
  */
-export async function computeBudgetActual(line: { fy: string; division: string | null; bookCategoryIds: string[] }): Promise<number> {
+export async function computeBudgetActual(line: {
+  fy: string;
+  division: string | null;
+  bookCategoryIds: string[];
+}): Promise<number> {
   if (line.bookCategoryIds.length === 0) return 0;
   const auth = currentAuth();
   const { start, end } = fyWindow(line.fy);
@@ -634,7 +693,16 @@ export async function computeBudgetActual(line: { fy: string; division: string |
 
 export interface BudgetForFy {
   fy: string;
-  lines: Array<{ id: string; category: string; division: string | null; kind: string; planned: number | null; actual: number | null; variance: number | null; status: string }>;
+  lines: Array<{
+    id: string;
+    category: string;
+    division: string | null;
+    kind: string;
+    planned: number | null;
+    actual: number | null;
+    variance: number | null;
+    status: string;
+  }>;
   plannedTotal: number | null;
   actualTotal: number | null;
 }
@@ -644,12 +712,24 @@ export async function budgetForFy(fy: string): Promise<BudgetForFy> {
   await assertCan({ resource: 'it_budgets', verb: 'view' });
   assertFy(fy);
 
-  const lines = await prisma.itBudgetLine.findMany({ where: { tenantId: auth.tenantId, fy }, orderBy: [{ category: 'asc' }, { division: 'asc' }] });
+  const lines = await prisma.itBudgetLine.findMany({
+    where: { tenantId: auth.tenantId, fy },
+    orderBy: [{ category: 'asc' }, { division: 'asc' }],
+  });
   const withActuals = await Promise.all(
     lines.map(async (l) => {
       const actual = await computeBudgetActual(l);
       const planned = num(l.planned) ?? 0;
-      return { id: l.id, category: l.category, division: l.division, kind: l.kind, planned, actual, variance: planned - actual, status: l.status };
+      return {
+        id: l.id,
+        category: l.category,
+        division: l.division,
+        kind: l.kind,
+        planned,
+        actual,
+        variance: planned - actual,
+        status: l.status,
+      };
     }),
   );
 
@@ -694,15 +774,32 @@ export async function budgetSummary(fy?: string): Promise<ItBudgetSummary> {
   // *response* may withhold money, not because the arithmetic building it
   // should ever carry a null through a running total. Masking happens once,
   // on the way out.
-  interface CategoryAcc { category: string; planned: number; actual: number; variance: number }
-  interface DivisionAcc { division: string; planned: number; actual: number; variance: number; run: number; grow: number }
+  interface CategoryAcc {
+    category: string;
+    planned: number;
+    actual: number;
+    variance: number;
+  }
+  interface DivisionAcc {
+    division: string;
+    planned: number;
+    actual: number;
+    variance: number;
+    run: number;
+    grow: number;
+  }
   const byCategoryMap = new Map<string, CategoryAcc>();
   const byDivisionMap = new Map<string, DivisionAcc>();
   let runTotal = 0;
   let growTotal = 0;
 
   for (const { line, planned, actual } of withActuals) {
-    const cat = byCategoryMap.get(line.category) ?? { category: line.category as never, planned: 0, actual: 0, variance: 0 };
+    const cat = byCategoryMap.get(line.category) ?? {
+      category: line.category as never,
+      planned: 0,
+      actual: 0,
+      variance: 0,
+    };
     cat.planned += planned;
     cat.actual += actual;
     cat.variance = cat.planned - cat.actual;
@@ -778,7 +875,12 @@ export async function createTechDebtItem(input: CreateTechDebtInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_tech_debt_item', subjectId: item.id, after: { recordCode, severity: item.severity } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_tech_debt_item',
+    subjectId: item.id,
+    after: { recordCode, severity: item.severity },
+  });
   await emit({
     name: EVENTS.IT_TECH_DEBT_CREATED,
     subject: { entityType: 'it_tech_debt_item', entityId: item.id, recordCode },
@@ -835,7 +937,14 @@ export async function transitionTechDebt(id: string, event: ItTechDebtEvent, not
 
   const updated = await prisma.itTechDebtItem.update({ where: { id }, data: { status: to } });
 
-  await auditWrite({ action: 'update', subjectType: 'it_tech_debt_item', subjectId: id, before: { status: from }, after: { status: to }, meta: { transition: event, note } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_tech_debt_item',
+    subjectId: id,
+    before: { status: from },
+    after: { status: to },
+    meta: { transition: event, note },
+  });
   await emit({
     name: EVENTS.IT_TECH_DEBT_TRANSITIONED,
     subject: { entityType: 'it_tech_debt_item', entityId: id, recordCode: item.recordCode },
@@ -852,7 +961,10 @@ export async function techDebtSummary(): Promise<ItTechDebtSummary> {
   const auth = currentAuth();
   await assertCan({ resource: 'it_tech_debt', verb: 'view' });
 
-  const rows = await prisma.itTechDebtItem.findMany({ where: { tenantId: auth.tenantId }, select: { severity: true, status: true } });
+  const rows = await prisma.itTechDebtItem.findMany({
+    where: { tenantId: auth.tenantId },
+    select: { severity: true, status: true },
+  });
   if (rows.length === 0) {
     return { notYetMeasured: true, bySeverity: { low: 0, medium: 0, high: 0, critical: 0 }, openCount: 0 };
   }

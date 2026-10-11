@@ -35,8 +35,7 @@ export function Leads() {
   const [tab, setTab] = useState<LeadTab>('all');
   const [createOpen, setCreateOpen] = useState(false);
 
-  const query =
-    tab === 'unrouted' ? '?unrouted=true' : tab === 'mine' && user ? `?ownerPartyId=${user.personId}` : '';
+  const query = tab === 'unrouted' ? '?unrouted=true' : tab === 'mine' && user ? `?ownerPartyId=${user.personId}` : '';
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['leads', tab],
@@ -201,7 +200,11 @@ function CreateLeadModal({ open, onClose }: { open: boolean; onClose: () => void
           <button className="btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn-primary" disabled={!title || !fullName || (!phone && !email) || create.isPending} onClick={() => create.mutate()}>
+          <button
+            className="btn-primary"
+            disabled={!title || !fullName || (!phone && !email) || create.isPending}
+            onClick={() => create.mutate()}
+          >
             {create.isPending ? 'Creating…' : 'Create and route'}
           </button>
         </>
@@ -210,7 +213,12 @@ function CreateLeadModal({ open, onClose }: { open: boolean; onClose: () => void
       <div className="space-y-3">
         <div>
           <label className="label">Lead title</label>
-          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What is this about?" />
+          <input
+            className="input"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="What is this about?"
+          />
         </div>
 
         <div className="rounded-lg border border-ink-800 bg-ink-950 p-3">
@@ -218,7 +226,12 @@ function CreateLeadModal({ open, onClose }: { open: boolean; onClose: () => void
             A phone or an email is needed, so an existing person is recognised.
           </p>
           <div className="space-y-2">
-            <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full name" />
+            <input
+              className="input"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="Full name"
+            />
             <div className="grid grid-cols-2 gap-2">
               <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" />
               <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
@@ -256,7 +269,13 @@ function CreateLeadModal({ open, onClose }: { open: boolean; onClose: () => void
           </div>
           <div>
             <label className="label">Estimated value</label>
-            <input className="input" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" type="number" />
+            <input
+              className="input"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="0"
+              type="number"
+            />
           </div>
         </div>
 
@@ -279,7 +298,10 @@ function CreateLeadModal({ open, onClose }: { open: boolean; onClose: () => void
                     · {String(c.maskedPhone ?? '')} {String(c.maskedEmail ?? '')}
                   </span>
                   {Boolean(c.statutoryRetentionFloor) && (
-                    <span className="ml-1 text-band-critical" title="Holds an active employee or student affiliation with a statutory retention floor.">
+                    <span
+                      className="ml-1 text-band-critical"
+                      title="Holds an active employee or student affiliation with a statutory retention floor."
+                    >
                       · never auto-merges
                     </span>
                   )}
@@ -367,12 +389,17 @@ export function LeadDetail() {
                         {c.candidateName}
                         {c.won && <span className="ml-2 chip border-accent/40 text-accent-soft">winner</span>}
                         {c.tieBreakApplied && (
-                          <span className="ml-1 chip border-ink-700 text-ink-400" title="Used only to break a tie between equally good matches.">
+                          <span
+                            className="ml-1 chip border-ink-700 text-ink-400"
+                            title="Used only to break a tie between equally good matches."
+                          >
                             tie-break
                           </span>
                         )}
                       </p>
-                      <span className="text-sm font-semibold tabular-nums text-ink-100">{c.total?.toFixed?.(1) ?? c.total}</span>
+                      <span className="text-sm font-semibold tabular-nums text-ink-100">
+                        {c.total?.toFixed?.(1) ?? c.total}
+                      </span>
                     </div>
 
                     {!c.passedHardFilters ? (
@@ -403,7 +430,10 @@ export function LeadDetail() {
 
           <Card title="Timeline" bodyClassName="p-0">
             {data.timeline.length === 0 ? (
-              <EmptyState message="Nobody has logged a call or meeting yet." hint="Untouched leads are flagged automatically." />
+              <EmptyState
+                message="Nobody has logged a call or meeting yet."
+                hint="Untouched leads are flagged automatically."
+              />
             ) : (
               <ul className="divide-y divide-ink-850">
                 {data.timeline.map((t: any) => (
@@ -427,11 +457,15 @@ export function LeadDetail() {
               <Field label="Status">
                 <StatusChip status={lead.leadStatus} tone={lead.leadStatus === 'converted' ? 'good' : 'neutral'} />
               </Field>
-              <Field label="Owner">{lead.ownerPartyId ? 'assigned' : <StatusChip status="unrouted" tone="warn" />}</Field>
+              <Field label="Owner">
+                {lead.ownerPartyId ? 'assigned' : <StatusChip status="unrouted" tone="warn" />}
+              </Field>
               <Field label="Territory">{lead.territory?.name ?? '—'}</Field>
               <Field label="Vertical">{titleCase(lead.vertical)}</Field>
               <Field label="Offering">{lead.offering?.name ?? '—'}</Field>
-              <Field label="Estimated value">{money(lead.estimatedValue ? Number(lead.estimatedValue) : null, lead.currency)}</Field>
+              <Field label="Estimated value">
+                {money(lead.estimatedValue ? Number(lead.estimatedValue) : null, lead.currency)}
+              </Field>
               <Field label="Source">{titleCase(lead.source)}</Field>
               <Field label="Created">{date(lead.createdAt)}</Field>
             </dl>

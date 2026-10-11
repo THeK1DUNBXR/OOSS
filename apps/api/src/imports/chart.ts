@@ -22,7 +22,10 @@ import { toAmount } from './parse.js';
 /** Ledger name (lowercased) to the category kind it belongs to. */
 export type LedgerChart = Record<string, string>;
 
-const clean = (s: unknown): string => String(s ?? '').replace(/\s+/g, ' ').trim();
+const clean = (s: unknown): string =>
+  String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 /**
  * Rows that are structure rather than ledgers: subtotals, carried-forward
@@ -30,16 +33,34 @@ const clean = (s: unknown): string => String(s ?? '').replace(/\s+/g, ' ').trim(
  * is a subtotal and "Total Quality Consulting" would be a real supplier.
  */
 const STRUCTURAL = new Set([
-  'total', 'gross profit c/o', 'gross profit b/f', 'gross loss c/o', 'gross loss b/f',
-  'nett profit', 'nett loss', 'net profit', 'net loss', 'opening balance',
-  'current period', 'profit & loss a/c', 'particulars', 'liabilities', 'assets',
+  'total',
+  'gross profit c/o',
+  'gross profit b/f',
+  'gross loss c/o',
+  'gross loss b/f',
+  'nett profit',
+  'nett loss',
+  'net profit',
+  'net loss',
+  'opening balance',
+  'current period',
+  'profit & loss a/c',
+  'particulars',
+  'liabilities',
+  'assets',
   'difference in opening balances',
 ]);
 
 /** Group headings, whose members follow them and carry their meaning. */
 const GROUPS: Array<{ match: RegExp; kind: string }> = [
-  { match: /^income \(direct\)|^income \(indirect\)|^direct incomes|^indirect incomes|^sales accounts/, kind: 'income' },
-  { match: /^expenses \(direct\)|^expenses \(indirect\)|^direct expenses|^indirect expenses|^purchase accounts/, kind: 'expense' },
+  {
+    match: /^income \(direct\)|^income \(indirect\)|^direct incomes|^indirect incomes|^sales accounts/,
+    kind: 'income',
+  },
+  {
+    match: /^expenses \(direct\)|^expenses \(indirect\)|^direct expenses|^indirect expenses|^purchase accounts/,
+    kind: 'expense',
+  },
   { match: /^fixed assets/, kind: 'asset_purchase' },
   { match: /^capital account|^reserves/, kind: 'equity' },
   { match: /^loans|^unsecured loans|^secured loans|^bank od/, kind: 'transfer' },
@@ -68,7 +89,10 @@ export function buildChart(sheets: SheetGrid[]): { chart: LedgerChart; sources: 
   const sources: string[] = [];
 
   for (const sheet of sheets) {
-    const title = sheet.grid.slice(0, 10).map((r) => clean(r[0]).toLowerCase()).join(' | ');
+    const title = sheet.grid
+      .slice(0, 10)
+      .map((r) => clean(r[0]).toLowerCase())
+      .join(' | ');
     const isPL = title.includes('profit & loss') || title.includes('profit and loss');
     const isBS = title.includes('balance sheet');
     if (!isPL && !isBS) continue;

@@ -7,12 +7,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import {
-  CHANNEL_KEYS,
-  CHANNEL_KEY_LABELS,
-  type ChannelKey,
-  type SocialPostView,
-} from '@kaizen/shared';
+import { CHANNEL_KEYS, CHANNEL_KEY_LABELS, type ChannelKey, type SocialPostView } from '@kaizen/shared';
 import { date, dateTime } from '../../lib/api.js';
 import {
   useSocialPosts,
@@ -70,17 +65,30 @@ export function Social() {
         actions={can('marketing_assets:C') && <NewButton label="Compose" onClick={() => setComposing(true)} />}
       />
 
-      {error && <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
 
       {items.length === 0 ? (
-        <Card><EmptyState message="Nothing scheduled." /></Card>
+        <Card>
+          <EmptyState message="Nothing scheduled." />
+        </Card>
       ) : (
         <div className="space-y-5">
           {weeks.map(([wk, posts]) => (
             <Card key={wk} title={`Week of ${date(wk)}`} bodyClassName="p-0">
               <table className="table">
                 <thead>
-                  <tr><th>When</th><th>Channel</th><th>Body</th><th>Campaign</th><th>Status</th><th /></tr>
+                  <tr>
+                    <th>When</th>
+                    <th>Channel</th>
+                    <th>Body</th>
+                    <th>Campaign</th>
+                    <th>Status</th>
+                    <th />
+                  </tr>
                 </thead>
                 <tbody>
                   {posts
@@ -91,17 +99,37 @@ export function Social() {
                         <td className="text-xs text-ink-300">{CHANNEL_KEY_LABELS[p.channelKey] ?? p.channelKey}</td>
                         <td className="max-w-sm truncate text-xs text-ink-200">{p.body}</td>
                         <td className="text-xs text-ink-300">{p.campaignName ?? '—'}</td>
-                        <td><StatusChip status={p.status} tone={p.status === 'published' ? 'good' : p.status === 'failed' || p.status === 'cancelled' ? 'bad' : 'neutral'} /></td>
+                        <td>
+                          <StatusChip
+                            status={p.status}
+                            tone={
+                              p.status === 'published'
+                                ? 'good'
+                                : p.status === 'failed' || p.status === 'cancelled'
+                                  ? 'bad'
+                                  : 'neutral'
+                            }
+                          />
+                        </td>
                         <td>
                           <div className="flex flex-wrap justify-end gap-1.5">
                             {can('marketing_assets:E') && (p.status === 'draft' || p.status === 'scheduled') && (
                               <>
-                                <button className="btn-quiet btn-sm" onClick={() => setPublishing(p)}>Publish</button>
-                                <button className="btn-quiet btn-sm" onClick={() => cancel.mutate(p.id, { onError: (e) => setError(messageOf(e)) })}>Cancel</button>
+                                <button className="btn-quiet btn-sm" onClick={() => setPublishing(p)}>
+                                  Publish
+                                </button>
+                                <button
+                                  className="btn-quiet btn-sm"
+                                  onClick={() => cancel.mutate(p.id, { onError: (e) => setError(messageOf(e)) })}
+                                >
+                                  Cancel
+                                </button>
                               </>
                             )}
                             {can('marketing_assets:E') && p.status === 'published' && (
-                              <button className="btn-quiet btn-sm" onClick={() => setMetricsFor(p)}>Metrics</button>
+                              <button className="btn-quiet btn-sm" onClick={() => setMetricsFor(p)}>
+                                Metrics
+                              </button>
                             )}
                           </div>
                         </td>
@@ -152,9 +180,18 @@ function ComposeModal({ open, onClose }: { open: boolean; onClose: () => void })
           label="Channel"
           value={channelKey}
           onChange={(v) => setChannelKey(v as ChannelKey)}
-          options={CHANNEL_KEYS.filter((c) => c.startsWith('social_')).map((c) => ({ value: c, label: CHANNEL_KEY_LABELS[c] }))}
+          options={CHANNEL_KEYS.filter((c) => c.startsWith('social_')).map((c) => ({
+            value: c,
+            label: CHANNEL_KEY_LABELS[c],
+          }))}
         />
-        <SelectInput label="Campaign" value={campaignId} onChange={setCampaignId} placeholder="No campaign" options={(campaigns.data?.items ?? []).map((c) => ({ value: c.id, label: c.name }))} />
+        <SelectInput
+          label="Campaign"
+          value={campaignId}
+          onChange={setCampaignId}
+          placeholder="No campaign"
+          options={(campaigns.data?.items ?? []).map((c) => ({ value: c.id, label: c.name }))}
+        />
       </Row>
       <TextArea label="Body" required value={body} onChange={setBody} rows={4} />
       <TextInput label="Scheduled for" type="date" required value={scheduledAt} onChange={setScheduledAt} />
@@ -166,7 +203,9 @@ function ComposeModal({ open, onClose }: { open: boolean; onClose: () => void })
             <button
               type="button"
               key={a.id}
-              onClick={() => setAssetIds((ids) => (ids.includes(a.id) ? ids.filter((i) => i !== a.id) : [...ids, a.id]))}
+              onClick={() =>
+                setAssetIds((ids) => (ids.includes(a.id) ? ids.filter((i) => i !== a.id) : [...ids, a.id]))
+              }
               className={`chip transition-colors ${assetIds.includes(a.id) ? 'border-accent/60 text-accent-soft' : 'border-ink-800 text-ink-500'}`}
             >
               {a.name}
@@ -194,10 +233,16 @@ function PublishModal({ post, onClose }: { post: SocialPostView; onClose: () => 
     >
       {error && <p className="text-2xs text-band-critical">{error}</p>}
       <p className="text-2xs text-ink-500">
-        No social adapter is configured for this channel — nothing is posted automatically. This records that the
-        post went out, with a link to where it actually is.
+        No social adapter is configured for this channel — nothing is posted automatically. This records that the post
+        went out, with a link to where it actually is.
       </p>
-      <TextInput label="External URL" value={externalUrl} onChange={setExternalUrl} placeholder="https://…" hint="optional, but worth having" />
+      <TextInput
+        label="External URL"
+        value={externalUrl}
+        onChange={setExternalUrl}
+        placeholder="https://…"
+        hint="optional, but worth having"
+      />
     </CreateModal>
   );
 }

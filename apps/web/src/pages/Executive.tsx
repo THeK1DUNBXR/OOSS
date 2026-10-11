@@ -417,13 +417,21 @@ export function Executive() {
               : 'Not enough complete months to judge'
           }
           tone={
-            !cash.data?.burning ? 'good' : (cash.data?.runwayMonths ?? 0) < 6 ? 'bad' : (cash.data?.runwayMonths ?? 0) < 12 ? 'warn' : 'neutral'
+            !cash.data?.burning
+              ? 'good'
+              : (cash.data?.runwayMonths ?? 0) < 6
+                ? 'bad'
+                : (cash.data?.runwayMonths ?? 0) < 12
+                  ? 'warn'
+                  : 'neutral'
           }
         />
         <Stat
           label={`Net, ${monthLabel(period)}`}
           value={pl.isError ? null : pl.data?.net}
-          sub={pl.data && moneyVisible ? `${money(pl.data.income ?? 0)} in, ${money(pl.data.expense ?? 0)} out` : undefined}
+          sub={
+            pl.data && moneyVisible ? `${money(pl.data.income ?? 0)} in, ${money(pl.data.expense ?? 0)} out` : undefined
+          }
           tone={(pl.data?.net ?? 0) >= 0 ? 'good' : 'bad'}
           drillTo="/finance/ledger"
         />
@@ -442,11 +450,7 @@ export function Executive() {
       </div>
 
       {/* --- income, cost and the line between them ----------------------- */}
-      <Card
-        title="Income against cost"
-        subtitle="Funding is excluded: money put in is not revenue."
-        className="mb-4"
-      >
+      <Card title="Income against cost" subtitle="Funding is excluded: money put in is not revenue." className="mb-4">
         {trend.isError ? (
           <EmptyState message="The ledger is not yours to see." />
         ) : trend.isLoading ? (
@@ -459,7 +463,12 @@ export function Executive() {
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={trendData} margin={{ top: 8, right: 8, bottom: 4, left: 8 }}>
                   <CartesianGrid stroke={GRID} vertical={false} />
-                  <XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 11 }} tickLine={false} axisLine={{ stroke: GRID }} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: MUTED, fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={{ stroke: GRID }}
+                  />
                   <YAxis
                     tickFormatter={compact}
                     tick={{ fill: MUTED, fontSize: 11 }}
@@ -493,8 +502,8 @@ export function Executive() {
 
             {/* The table view, so the figures are readable without the colour. */}
             <p className="mt-2 text-2xs text-ink-500">
-              Complete months only — {monthLabel(runningPeriod)} is still running and is left out rather than drawn
-              as a short bar, which would read as a fall rather than as an unfinished month.
+              Complete months only — {monthLabel(runningPeriod)} is still running and is left out rather than drawn as a
+              short bar, which would read as a fall rather than as an unfinished month.
             </p>
 
             <details className="mt-3">
@@ -532,16 +541,16 @@ export function Executive() {
 
       <div className="mb-4 grid gap-4 lg:grid-cols-2">
         {/* --- which business is carrying which --------------------------- */}
-        <Card
-          title={`By division — ${monthLabel(period)}`}
-          subtitle="The question a consolidated total cannot answer."
-        >
+        <Card title={`By division — ${monthLabel(period)}`} subtitle="The question a consolidated total cannot answer.">
           {pl.isError ? (
             <EmptyState message="Not yours to see." />
           ) : pl.isLoading ? (
             <Loading />
           ) : divisionData.length === 0 ? (
-            <EmptyState message="Nothing recorded for this month." hint="That is different from a zero — no entries have been made." />
+            <EmptyState
+              message="Nothing recorded for this month."
+              hint="That is different from a zero — no entries have been made."
+            />
           ) : (
             <>
               <div className="h-64 w-full">
@@ -611,7 +620,10 @@ export function Executive() {
         </Card>
 
         {/* --- where the money went -------------------------------------- */}
-        <Card title={`Where it went — ${monthLabel(period)}`} subtitle="The ten largest lines, and everything else together.">
+        <Card
+          title={`Where it went — ${monthLabel(period)}`}
+          subtitle="The ten largest lines, and everything else together."
+        >
           {pl.isError ? (
             <EmptyState message="Not yours to see." />
           ) : !pl.data?.byCategory.length ? (
@@ -637,15 +649,14 @@ export function Executive() {
                       {top.map((c) => (
                         <tr key={c.categoryId ?? c.categoryName}>
                           <td>
-                            <Link
-                              to={`/finance/ledger?categoryId=${c.categoryId ?? ''}`}
-                              className="hover:underline"
-                            >
+                            <Link to={`/finance/ledger?categoryId=${c.categoryId ?? ''}`} className="hover:underline">
                               {c.categoryName}
                             </Link>
                           </td>
                           <td className="num">{money(c.amount)}</td>
-                          <td className="num text-ink-500">{total ? `${Math.round((c.amount / total) * 100)}%` : '—'}</td>
+                          <td className="num text-ink-500">
+                            {total ? `${Math.round((c.amount / total) * 100)}%` : '—'}
+                          </td>
                         </tr>
                       ))}
                       {rest.length > 0 && (
@@ -653,7 +664,9 @@ export function Executive() {
                           {/* Never a ninth hue: the tail folds into one row. */}
                           <td className="text-ink-500">Everything else ({rest.length} lines)</td>
                           <td className="num">{money(restTotal)}</td>
-                          <td className="num text-ink-500">{total ? `${Math.round((restTotal / total) * 100)}%` : '—'}</td>
+                          <td className="num text-ink-500">
+                            {total ? `${Math.round((restTotal / total) * 100)}%` : '—'}
+                          </td>
                         </tr>
                       )}
                       <tr className="total-row">
@@ -679,20 +692,31 @@ export function Executive() {
           {budget.isError ? (
             <EmptyState message="Not yours to see." />
           ) : !budget.data?.rows.length ? (
-            <EmptyState message="No budget set for this month." hint="Without a plan there is nothing to be over or under." />
+            <EmptyState
+              message="No budget set for this month."
+              hint="Without a plan there is nothing to be over or under."
+            />
           ) : (
             <>
               <div className="mb-3 flex flex-wrap gap-4 text-sm">
                 <span>
                   <span className="text-2xs uppercase tracking-wide text-ink-500">Planned </span>
                   <span className="num font-semibold">
-                    {budget.data.budgetTotal === null ? <Withheld reason="no_permission" /> : money(budget.data.budgetTotal)}
+                    {budget.data.budgetTotal === null ? (
+                      <Withheld reason="no_permission" />
+                    ) : (
+                      money(budget.data.budgetTotal)
+                    )}
                   </span>
                 </span>
                 <span>
                   <span className="text-2xs uppercase tracking-wide text-ink-500">Spent </span>
                   <span className="num font-semibold">
-                    {budget.data.actualTotal === null ? <Withheld reason="no_permission" /> : money(budget.data.actualTotal)}
+                    {budget.data.actualTotal === null ? (
+                      <Withheld reason="no_permission" />
+                    ) : (
+                      money(budget.data.actualTotal)
+                    )}
                   </span>
                 </span>
                 <span>
@@ -766,7 +790,11 @@ export function Executive() {
                       <td>{label}</td>
                       <td
                         className={`num font-semibold ${
-                          value > 0 && tone === 'bad' ? 'text-band-critical' : value > 0 && tone === 'warn' ? 'text-band-watch' : ''
+                          value > 0 && tone === 'bad'
+                            ? 'text-band-critical'
+                            : value > 0 && tone === 'warn'
+                              ? 'text-band-watch'
+                              : ''
                         }`}
                       >
                         {money(value)}

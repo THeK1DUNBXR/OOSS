@@ -27,16 +27,11 @@ import { ApiError } from '../platform/errors.js';
 import { assertCan, scopeFor } from '../platform/permissions.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
-import { auditRegulatedRead } from '../platform/audit.js';
+import { auditRegulatedRead, auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { raiseException } from '../platform/exceptions.js';
 import { enrolStudent, setEnrollmentStatus, ENROLLMENT_STATUSES } from '../domains/education.js';
-import {
-  listCourses,
-  createCourse,
-  updateCourse,
-  retireCourse,
-  assignCourse,
-} from '../domains/courses.js';
+import { readRegulated } from '../domains/compliance/privacy.js';
+import { listCourses, createCourse, updateCourse, retireCourse, assignCourse } from '../domains/courses.js';
 import {
   recordLearnerLog,
   resolveLearnerLog,
@@ -44,6 +39,13 @@ import {
   learnerTimeline,
   openLearnerItems,
 } from '../domains/learnerTimeline.js';
+
+// The subjects this file writes that no domain module registers. Registered
+// here so that importing the routes is enough for their audit writes to be
+// accepted. `project` is also registered by domains/opportunities.ts, where
+// projects are created; the registry is a set, so the repeat is harmless.
+registerGovernedEntities('edu', ['attendance']);
+registerGovernedEntities('prj', ['project']);
 
 const router = Router();
 
@@ -97,7 +99,10 @@ router.get(
         ...scopeFilter,
         ...(str(req.query.status) ? { status: str(req.query.status) } : {}),
       },
-      include: { course: { select: { name: true, code: true } }, enrollments: { select: { id: true, status: true, atRisk: true } } },
+      include: {
+        course: { select: { name: true, code: true } },
+        enrollments: { select: { id: true, status: true, atRisk: true } },
+      },
       orderBy: { startDate: 'desc' },
     });
 
@@ -148,7 +153,10 @@ router.get(
 
     const personIds = [...new Set(enrollments.map((e) => e.personId))];
     const people = personIds.length
-      ? await prisma.person.findMany({ where: { id: { in: personIds } }, select: { id: true, fullName: true, recordCode: true } })
+      ? await prisma.person.findMany({
+          where: { id: { in: personIds } },
+          select: { id: true, fullName: true, recordCode: true },
+        })
       : [];
     const personMap = new Map(people.map((p) => [p.id, p]));
 
@@ -190,7 +198,12 @@ router.get(
       };
       // Structurally excluded from the response shape, not merely nulled.
       return canSeeRegulated
-        ? { ...base, guardianName: e.guardianName, guardianPhone: e.guardianPhone, guardianEmail: e.guardianEmail }
+        ? {
+            ...base,
+            guardianName: readRegulated(e.guardianName),
+            guardianPhone: readRegulated(e.guardianPhone),
+            guardianEmail: readRegulated(e.guardianEmail),
+          }
         : base;
     });
   }),
@@ -260,7 +273,10 @@ router.patch(
  * Stops a course being sold. Never a delete: students hold enrolments on courses
  * withdrawn years ago and their record has to keep reading correctly.
  */
-router.post('/courses/:id/retire', handler(async (req) => retireCourse(req.params.id)));
+router.post(
+  '/courses/:id/retire',
+  handler(async (req) => retireCourse(req.params.id)),
+);
 
 /**
  * Puts a customer on a course.
@@ -282,7 +298,10 @@ router.post(
         primaryPhone: z.string().nullish(),
         primaryEmail: z.string().nullish(),
         institutionId: z.string().nullish(),
-        isMinor: z.boolean().optional(),
+        // The age basis (FX-64): a stated date of birth decides the minor rule;
+        // with none, the rule holds unless the staff member attests adulthood.
+        dateOfBirth: z.string().nullish(),
+        adultAttested: z.boolean().optional(),
         guardianName: z.string().nullish(),
         guardianPhone: z.string().nullish(),
         guardianEmail: z.string().nullish(),
@@ -338,6 +357,13 @@ router.post(
         capacity: body.capacity ?? 30,
         status: 'planned',
       },
+    });
+    await auditWrite({ action: 'create', subjectType: 'cohort', subjectId: cohort.id, after: cohort });
+    await emit({
+      name: EVENTS.COHORT_CREATED,
+      subject: { entityType: 'cohort', entityId: cohort.id, recordCode: cohort.recordCode },
+      related: [{ relation: 'belongs_to', entityType: 'course', entityId: course.id }],
+      newState: { status: cohort.status, startDate: cohort.startDate, capacity: cohort.capacity },
     });
     res.status(201).json(cohort);
     return undefined;
@@ -399,6 +425,9 @@ router.post(
     });
 
     const sessionDate = new Date(input.sessionDate);
+    const priorAttendance = await prisma.attendance.findUnique({
+      where: { enrollmentId_sessionDate: { enrollmentId: req.params.id, sessionDate } },
+    });
     const record = await prisma.attendance.upsert({
       where: { enrollmentId_sessionDate: { enrollmentId: req.params.id, sessionDate } },
       create: {
@@ -411,6 +440,14 @@ router.post(
       },
       update: { status: input.status, note: input.note ?? null, recordedById: auth.partyId },
     });
+    // `upsert` does not say which branch ran, so the prior read decides the verb.
+    await auditWrite({
+      action: priorAttendance ? 'update' : 'create',
+      subjectType: 'attendance',
+      subjectId: record.id,
+      before: priorAttendance,
+      after: record,
+    });
 
     // Recompute attendance and the risk flag from live records, never a
     // hand-maintained field.
@@ -422,6 +459,13 @@ router.post(
     await prisma.enrollment.update({
       where: { id: req.params.id },
       data: { attendancePct: pct, atRisk, ...(atRisk ? {} : { atRiskNotifiedAt: null }) },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'enrollment',
+      subjectId: enrollment.id,
+      before: { attendancePct: enrollment.attendancePct, atRisk: enrollment.atRisk },
+      after: { attendancePct: pct, atRisk },
     });
 
     if (atRisk && !enrollment.atRiskNotifiedAt) {
@@ -438,7 +482,15 @@ router.post(
         triggerFingerprint: 'learner_at_risk',
         ladderRung: 1,
       });
-      await prisma.enrollment.update({ where: { id: req.params.id }, data: { atRiskNotifiedAt: new Date() } });
+      const notifiedAt = new Date();
+      await prisma.enrollment.update({ where: { id: req.params.id }, data: { atRiskNotifiedAt: notifiedAt } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'enrollment',
+        subjectId: enrollment.id,
+        before: { atRiskNotifiedAt: enrollment.atRiskNotifiedAt },
+        after: { atRiskNotifiedAt: notifiedAt },
+      });
       await emit({
         name: EVENTS.LEARNER_RISK_DETECTED,
         subject: { entityType: 'enrollment', entityId: enrollment.id, recordCode: enrollment.recordCode },
@@ -567,9 +619,7 @@ router.post(
  */
 router.get(
   '/learner-log/open',
-  handler(async (req) =>
-    openLearnerItems({ kind: str(req.query.kind), severity: str(req.query.severity) }),
-  ),
+  handler(async (req) => openLearnerItems({ kind: str(req.query.kind), severity: str(req.query.severity) })),
 );
 
 // ---------------------------------------------------------------------------
@@ -592,7 +642,9 @@ router.get(
     });
 
     const orgIds = [...new Set(projects.map((p) => p.organizationId).filter(Boolean) as string[])];
-    const orgs = orgIds.length ? await prisma.organization.findMany({ where: { id: { in: orgIds } }, select: { id: true, name: true } }) : [];
+    const orgs = orgIds.length
+      ? await prisma.organization.findMany({ where: { id: { in: orgIds } }, select: { id: true, name: true } })
+      : [];
     const orgMap = new Map(orgs.map((o) => [o.id, o.name]));
 
     return projects.map((p) => ({
@@ -608,10 +660,20 @@ router.post(
   handler(async (req) => {
     await assertCan({ resource: 'projects', verb: 'edit' });
     const auth = currentAuth();
-    return prisma.project.update({
+    const before = await prisma.project.findFirst({ where: { id: req.params.id } });
+    if (!before) throw ApiError.notFound('Project');
+    const after = await prisma.project.update({
       where: { id: req.params.id },
       data: { handoffAcceptedAt: new Date(), status: 'active', managerPartyId: auth.partyId },
     });
+    await auditWrite({ action: 'update', subjectType: 'project', subjectId: after.id, before, after });
+    await emit({
+      name: EVENTS.PROJECT_UPDATED,
+      subject: { entityType: 'project', entityId: after.id, recordCode: after.recordCode },
+      previousState: { status: before.status },
+      newState: { status: after.status, handoffAccepted: after.handoffAcceptedAt !== null },
+    });
+    return after;
   }),
 );
 
@@ -626,15 +688,29 @@ router.patch(
       targetEndDate: z.string().nullish(),
     });
     const input = schema.parse(req.body);
-    return prisma.project.update({
+    const before = await prisma.project.findFirst({ where: { id: req.params.id } });
+    if (!before) throw ApiError.notFound('Project');
+    const after = await prisma.project.update({
       where: { id: req.params.id },
       data: {
-        ...(input.status ? { status: input.status, ...(input.status === 'delivered' ? { actualEndDate: new Date() } : {}) } : {}),
+        ...(input.status
+          ? { status: input.status, ...(input.status === 'delivered' ? { actualEndDate: new Date() } : {}) }
+          : {}),
         ...(input.scheduleVariancePct !== undefined ? { scheduleVariancePct: input.scheduleVariancePct } : {}),
         ...(input.healthBand ? { healthBand: input.healthBand } : {}),
-        ...(input.targetEndDate !== undefined ? { targetEndDate: input.targetEndDate ? new Date(input.targetEndDate) : null } : {}),
+        ...(input.targetEndDate !== undefined
+          ? { targetEndDate: input.targetEndDate ? new Date(input.targetEndDate) : null }
+          : {}),
       },
     });
+    await auditWrite({ action: 'update', subjectType: 'project', subjectId: after.id, before, after });
+    await emit({
+      name: EVENTS.PROJECT_UPDATED,
+      subject: { entityType: 'project', entityId: after.id, recordCode: after.recordCode },
+      previousState: { status: before.status },
+      newState: { status: after.status, healthBand: after.healthBand, scheduleVariancePct: after.scheduleVariancePct },
+    });
+    return after;
   }),
 );
 

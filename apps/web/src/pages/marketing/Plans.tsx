@@ -3,7 +3,13 @@
  */
 
 import { useState } from 'react';
-import { DIVISIONS, DIVISION_LABELS, MARKETING_PLAN_STATUS_LABELS, MARKETING_PLAN_TRANSITIONS, type MarketingPlanStatus } from '@kaizen/shared';
+import {
+  DIVISIONS,
+  DIVISION_LABELS,
+  MARKETING_PLAN_STATUS_LABELS,
+  MARKETING_PLAN_TRANSITIONS,
+  type MarketingPlanStatus,
+} from '@kaizen/shared';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip } from '../../components/ui.js';
 import { CreateModal, NewButton, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
@@ -41,7 +47,10 @@ export function Plans() {
         <Loading />
       ) : !data || data.items.length === 0 ? (
         <Card>
-          <EmptyState message="No plan has been created yet." hint="A plan groups a quarter's campaigns under one theme and set of goals." />
+          <EmptyState
+            message="No plan has been created yet."
+            hint="A plan groups a quarter's campaigns under one theme and set of goals."
+          />
         </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
@@ -70,12 +79,18 @@ export function Plans() {
                     <td className="text-right tabular-nums text-xs">{p.campaignIds.length}</td>
                     <td className="text-right">
                       {canApprove && allowed.has('approved') && (
-                        <button className="text-2xs text-accent-soft hover:underline" onClick={() => approve.mutate(p.id)}>
+                        <button
+                          className="text-2xs text-accent-soft hover:underline"
+                          onClick={() => approve.mutate(p.id)}
+                        >
                           Approve
                         </button>
                       )}
                       {canWrite && allowed.has('closed') && (
-                        <button className="ml-2 text-2xs text-accent-soft hover:underline" onClick={() => close.mutate(p.id)}>
+                        <button
+                          className="ml-2 text-2xs text-accent-soft hover:underline"
+                          onClick={() => close.mutate(p.id)}
+                        >
                           Close
                         </button>
                       )}
@@ -110,7 +125,14 @@ function CreatePlanModal({ open, onClose }: { open: boolean; onClose: () => void
     >
       <Row>
         <TextInput label="Period" required value={period} onChange={setPeriod} hint="e.g. 2026-Q4" />
-        <SelectInput label="Division" required value={division} onChange={setDivision} placeholder="Choose a division" options={DIVISIONS.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))} />
+        <SelectInput
+          label="Division"
+          required
+          value={division}
+          onChange={setDivision}
+          placeholder="Choose a division"
+          options={DIVISIONS.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))}
+        />
       </Row>
       <TextInput label="Theme" required value={theme} onChange={setTheme} />
       <TextArea label="Goals" value={goals} onChange={setGoals} hint="optional, free text" />

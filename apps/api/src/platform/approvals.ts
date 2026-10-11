@@ -23,9 +23,15 @@ import { EVENTS, APPROVAL_EXCLUDED_ROLES, APPROVAL_LADDER, type SeverityCode } f
 import { prisma } from './db.js';
 import { currentAuth } from './context.js';
 import { emit } from './eventBus.js';
-import { evaluate, resolveAuthorityCeiling } from './permissions.js';
+import { assertCan, evaluate, resolveAuthorityCeiling } from './permissions.js';
 import { ApiError } from './errors.js';
 import { notify, raiseException } from './exceptions.js';
+import { auditWrite, registerGovernedEntities } from './audit.js';
+
+// Registered here, not in audit.ts, because the step is the record the gate
+// opens: auditWrite silently skips unregistered types, so a decision would
+// leave no trail without this line.
+registerGovernedEntities('gov', ['approval_step']);
 
 export interface ApprovalPolicyContent {
   requiredPermission: string;
@@ -59,11 +65,21 @@ export const DEFAULT_APPROVAL_POLICY: ApprovalPolicyContent = {
 export interface GateSubject {
   id: string;
   type:
-    | 'mou' | 'contract' | 'partner_agreement' | 'quote' | 'share_transaction' | 'option_grant' | 'option_exercise'
+    | 'mou'
+    | 'contract'
+    | 'partner_agreement'
+    | 'quote'
+    | 'share_transaction'
+    | 'option_grant'
+    | 'option_exercise'
     // Technology (docs/plan/cio.md): a licence renewal, a vendor contract, a
     // normal or emergency change, a policy publication and an initiative's
     // funding each run through this same gate.
-    | 'it_licence' | 'it_vendor_contract' | 'it_change' | 'it_policy' | 'it_initiative';
+    | 'it_licence'
+    | 'it_vendor_contract'
+    | 'it_change'
+    | 'it_policy'
+    | 'it_initiative';
   label: string;
   ownerPartyId: string | null;
   commercialValue: number | null;
@@ -90,7 +106,9 @@ export interface GateResult {
   reason: string;
 }
 
-async function loadPolicy(policyCode: string): Promise<{ id: string; version: number; content: ApprovalPolicyContent } | null> {
+async function loadPolicy(
+  policyCode: string,
+): Promise<{ id: string; version: number; content: ApprovalPolicyContent } | null> {
   const auth = currentAuth();
   const policy = await prisma.policy.findFirst({
     where: { tenantId: auth.tenantId, policyCode },
@@ -160,7 +178,8 @@ export async function evaluateApprovalGate(
   // a zero-value, high-strategic academic MoU escalates as readily as a
   // high-value commercial one.
   const forceTopTier =
-    (content.escalateToTopTierWhen.strategicValue && subject.strategicValue === content.escalateToTopTierWhen.strategicValue) ||
+    (content.escalateToTopTierWhen.strategicValue &&
+      subject.strategicValue === content.escalateToTopTierWhen.strategicValue) ||
     (content.escalateToTopTierWhen.termMonthsOver != null &&
       (subject.termMonths ?? 0) > content.escalateToTopTierWhen.termMonthsOver);
 
@@ -205,6 +224,7 @@ export async function evaluateApprovalGate(
       subjectId: subject.id,
       subjectLabel: subject.label,
       action,
+      resource,
       requestedById: auth.partyId ?? 'system',
       requestedValue: subject.commercialValue ?? undefined,
       currency: subject.currency,
@@ -310,8 +330,31 @@ export async function decideApprovalStep(stepId: string, approve: boolean, note:
   const auth = currentAuth();
   const step = await prisma.approvalStep.findFirst({ where: { id: stepId } });
   if (!step) throw ApiError.notFound('Approval step');
+
+  // Rows opened before `resource` was recorded have no grant to check against.
+  // Deriving one from subjectType checked the wrong grant for share_transaction
+  // (share_transactions, not share_ledger), so a null resource is refused rather
+  // than guessed. The backfill migration fills what it can; the rest need an
+  // operator to set the resource before anyone can decide them.
+  if (step.resource == null) {
+    throw ApiError.conflict(
+      'This approval step was opened before its permission resource was recorded, so no grant can be checked. It cannot be decided until the resource is set.',
+    );
+  }
+
+  // The same `approve` grant the gate required to open the step, on the same
+  // resource. Checked before the state, so an ungranted caller learns nothing
+  // about a step they may not decide.
+  await assertCan({ resource: step.resource, verb: 'approve' });
+
   if (step.state !== 'open' && step.state !== 'escalated') {
     throw ApiError.conflict(`Approval step is already ${step.state}.`);
+  }
+
+  // An AI principal may recommend but never decide an approval; the gate
+  // already refuses it on the way in, and the decision is the same act.
+  if (auth.principalType === 'agent') {
+    throw ApiError.forbidden('An AI principal may never decide an approval step.');
   }
 
   // Approval routes to whoever holds authority at decision time, not at block
@@ -323,14 +366,44 @@ export async function decideApprovalStep(stepId: string, approve: boolean, note:
     throw ApiError.forbidden('The Self-Dealing Bar is unconditional: a requester may never approve their own step.');
   }
 
-  const updated = await prisma.approvalStep.update({
-    where: { id: stepId },
+  // The grant says who may decide in principle; the resolution says who was
+  // asked. Without this, any holder of approve on the resource can take a step
+  // that was routed to someone else, which is how a Finance Head's sign-off
+  // becomes a peer's. A step whose resolution found nobody (resolvedApproverId
+  // null, EX-GOV-001) is decided by no one here, deliberately.
+  if (
+    !step.resolvedApproverId ||
+    step.resolvedApproverId !== auth.partyId ||
+    auth.roleSlug !== step.resolvedApproverRole
+  ) {
+    throw ApiError.forbidden(
+      `This step was resolved to ${step.resolvedApproverRole ?? 'no role'}; only that approver of record may decide it.`,
+    );
+  }
+
+  // The state check above reads the row; two approvers can both pass it. The
+  // guard lives in the UPDATE's WHERE, so only one transition can land, and the
+  // loser is refused before it writes an audit row or emits an event.
+  const { count } = await prisma.approvalStep.updateMany({
+    where: { id: stepId, state: { in: ['open', 'escalated'] } },
     data: {
       state: approve ? 'approved' : 'declined',
       decidedById: auth.partyId,
       decidedAt: new Date(),
       decisionNote: note,
     },
+  });
+  if (count !== 1) {
+    throw ApiError.conflict('Approval step was decided by someone else while you were deciding it.');
+  }
+  const updated = await prisma.approvalStep.findFirstOrThrow({ where: { id: stepId } });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'approval_step',
+    subjectId: stepId,
+    before: { state: step.state },
+    after: { state: updated.state, decidedById: updated.decidedById, decisionNote: note },
   });
 
   await emit({
@@ -339,7 +412,11 @@ export async function decideApprovalStep(stepId: string, approve: boolean, note:
     related: [{ relation: 'gates', entityType: step.subjectType, entityId: step.subjectId }],
     previousState: { state: step.state },
     newState: { state: updated.state, note },
-    reason: { reasonCode: approve ? 'approved' : 'declined', policyId: step.policyId, policyVersion: step.policyVersion },
+    reason: {
+      reasonCode: approve ? 'approved' : 'declined',
+      policyId: step.policyId,
+      policyVersion: step.policyVersion,
+    },
     confidentiality: 'confidential',
   });
 

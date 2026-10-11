@@ -155,7 +155,10 @@ function StepEditor({
           <div className="mb-1 flex items-center justify-between">
             <p className="text-2xs font-semibold uppercase tracking-wide text-ink-500">Step {i + 1}</p>
             {!disabled && (
-              <button className="text-2xs text-band-critical" onClick={() => onChange(steps.filter((_, idx) => idx !== i))}>
+              <button
+                className="text-2xs text-band-critical"
+                onClick={() => onChange(steps.filter((_, idx) => idx !== i))}
+              >
                 Remove
               </button>
             )}
@@ -278,7 +281,9 @@ function StepConditionEditor({
         className="input w-28"
         disabled={disabled}
         value={first?.op ?? 'eq'}
-        onChange={(e) => onChange({ all: [{ field: first?.field ?? '', op: e.target.value as AudienceRuleOp, value: first?.value }] })}
+        onChange={(e) =>
+          onChange({ all: [{ field: first?.field ?? '', op: e.target.value as AudienceRuleOp, value: first?.value }] })
+        }
       >
         {AUDIENCE_RULE_OPS.map((op) => (
           <option key={op} value={op}>
@@ -291,7 +296,9 @@ function StepConditionEditor({
         placeholder="value"
         disabled={disabled}
         value={String(first?.value ?? '')}
-        onChange={(e) => onChange({ all: [{ field: first?.field ?? '', op: first?.op ?? 'eq', value: e.target.value }] })}
+        onChange={(e) =>
+          onChange({ all: [{ field: first?.field ?? '', op: first?.op ?? 'eq', value: e.target.value }] })
+        }
       />
       {!disabled && (
         <button className="text-2xs text-band-critical" onClick={() => onChange(null)}>
@@ -302,7 +309,15 @@ function StepConditionEditor({
   );
 }
 
-function NewJourney({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: string) => void }) {
+function NewJourney({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (id: string) => void;
+}) {
   const [name, setName] = useState('');
   const [triggerKind, setTriggerKind] = useState<JourneyTriggerKind | ''>('');
   const [audienceId, setAudienceId] = useState('');
@@ -387,7 +402,10 @@ function JourneyDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 
   const { data: personSearch, isFetching: searchingPeople } = useQuery({
     queryKey: ['mkt', 'journey-enrol-search', enrolQuery],
-    queryFn: () => api.get<{ items: Array<{ id: string; recordCode: string; fullName: string }> }>(`/crm/people?q=${encodeURIComponent(enrolQuery)}&pageSize=10`),
+    queryFn: () =>
+      api.get<{ items: Array<{ id: string; recordCode: string; fullName: string }> }>(
+        `/crm/people?q=${encodeURIComponent(enrolQuery)}&pageSize=10`,
+      ),
     enabled: enrolQuery.length >= 2,
   });
 
@@ -413,7 +431,9 @@ function JourneyDrawer({ id, onClose }: { id: string; onClose: () => void }) {
     <Modal open title={journey.name} onClose={onClose} width="max-w-3xl">
       <div className="space-y-4">
         {banner && (
-          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{banner}</p>
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {banner}
+          </p>
         )}
 
         <div className="flex flex-wrap items-center gap-2">
@@ -433,22 +453,38 @@ function JourneyDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 
         <div className="flex flex-wrap gap-2 border-t border-ink-800 pt-3">
           {journey.status === 'draft' && nextStates.includes('active') && canEdit && (
-            <button className="btn-primary" disabled={activate.isPending} onClick={() => activate.mutate(journey.id, { onError: (e) => setBanner(messageOf(e)) })}>
+            <button
+              className="btn-primary"
+              disabled={activate.isPending}
+              onClick={() => activate.mutate(journey.id, { onError: (e) => setBanner(messageOf(e)) })}
+            >
               Activate
             </button>
           )}
           {journey.status === 'active' && nextStates.includes('paused') && canEdit && (
-            <button className="btn-ghost" disabled={pause.isPending} onClick={() => pause.mutate(journey.id, { onError: (e) => setBanner(messageOf(e)) })}>
+            <button
+              className="btn-ghost"
+              disabled={pause.isPending}
+              onClick={() => pause.mutate(journey.id, { onError: (e) => setBanner(messageOf(e)) })}
+            >
               Pause
             </button>
           )}
           {journey.status === 'paused' && nextStates.includes('active') && canEdit && (
-            <button className="btn-primary" disabled={activate.isPending} onClick={() => activate.mutate(journey.id, { onError: (e) => setBanner(messageOf(e)) })}>
+            <button
+              className="btn-primary"
+              disabled={activate.isPending}
+              onClick={() => activate.mutate(journey.id, { onError: (e) => setBanner(messageOf(e)) })}
+            >
               Resume
             </button>
           )}
           {nextStates.includes('retired') && canEdit && (
-            <button className="btn-ghost text-band-critical" disabled={retire.isPending} onClick={() => retire.mutate(journey.id, { onError: (e) => setBanner(messageOf(e)) })}>
+            <button
+              className="btn-ghost text-band-critical"
+              disabled={retire.isPending}
+              onClick={() => retire.mutate(journey.id, { onError: (e) => setBanner(messageOf(e)) })}
+            >
               Retire
             </button>
           )}
@@ -456,7 +492,12 @@ function JourneyDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 
         {canEdit && journey.status !== 'retired' && (
           <Card title="Enrol a person" subtitle="Manually enrols one person, regardless of the trigger.">
-            <TextInput label="Search people" value={enrolQuery} onChange={setEnrolQuery} placeholder="Name or record code…" />
+            <TextInput
+              label="Search people"
+              value={enrolQuery}
+              onChange={setEnrolQuery}
+              placeholder="Name or record code…"
+            />
             {enrolQuery.length >= 2 && (
               <div className="mt-2 space-y-1">
                 {searchingPeople ? (
@@ -465,7 +506,10 @@ function JourneyDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                   <p className="text-2xs italic text-ink-500">Nobody matches.</p>
                 ) : (
                   personSearch.items.map((p) => (
-                    <div key={p.id} className="flex items-center justify-between rounded border border-ink-800 px-2.5 py-1.5">
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between rounded border border-ink-800 px-2.5 py-1.5"
+                    >
                       <div>
                         <p className="text-xs text-ink-100">{p.fullName}</p>
                         <p className="text-2xs text-ink-500 mono">{p.recordCode}</p>
@@ -488,7 +532,11 @@ function JourneyDrawer({ id, onClose }: { id: string; onClose: () => void }) {
         <Card
           title="Runs"
           actions={
-            <select className="input max-w-xs" value={runStatus} onChange={(e) => setRunStatus(e.target.value as JourneyRunStatus | '')}>
+            <select
+              className="input max-w-xs"
+              value={runStatus}
+              onChange={(e) => setRunStatus(e.target.value as JourneyRunStatus | '')}
+            >
               <option value="">Every status</option>
               {JOURNEY_RUN_STATUSES.map((s) => (
                 <option key={s} value={s}>
@@ -503,7 +551,10 @@ function JourneyDrawer({ id, onClose }: { id: string; onClose: () => void }) {
             <Loading />
           ) : !runs.data?.items.length ? (
             <div className="p-4">
-              <EmptyState message="No runs match." hint="A run starts when the trigger fires, or when someone is enrolled manually." />
+              <EmptyState
+                message="No runs match."
+                hint="A run starts when the trigger fires, or when someone is enrolled manually."
+              />
             </div>
           ) : (
             <ul className="divide-y divide-ink-850">
@@ -516,14 +567,18 @@ function JourneyDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <StatusChip status={JOURNEY_RUN_STATUS_LABELS[r.status as JourneyRunStatus] ?? r.status} tone={RUN_TONE[r.status as JourneyRunStatus]} />
+                    <StatusChip
+                      status={JOURNEY_RUN_STATUS_LABELS[r.status as JourneyRunStatus] ?? r.status}
+                      tone={RUN_TONE[r.status as JourneyRunStatus]}
+                    />
                     {r.status === 'active' && canEdit && (
                       <button
                         className="btn-ghost text-2xs text-band-critical"
                         disabled={exitRun.isPending}
                         onClick={() => {
                           const reason = prompt('Reason for exiting this run?');
-                          if (reason) exitRun.mutate({ runId: r.id, reason }, { onError: (e) => setBanner(messageOf(e)) });
+                          if (reason)
+                            exitRun.mutate({ runId: r.id, reason }, { onError: (e) => setBanner(messageOf(e)) });
                         }}
                       >
                         Exit

@@ -19,7 +19,17 @@ import {
   type ChannelKey,
   type ChannelKind,
 } from '@kaizen/shared';
-import { Card, EmptyState, ErrorBox, Field, Loading, Modal, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
+import {
+  Card,
+  EmptyState,
+  ErrorBox,
+  Field,
+  Loading,
+  Modal,
+  PageHeader,
+  StatusChip,
+  Tabs,
+} from '../../components/ui.js';
 import { CreateModal, NewButton, Row, SelectInput, TextArea, TextInput, messageOf } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
 import { dateTime, titleCase } from '../../lib/api.js';
@@ -76,7 +86,10 @@ export function MarketingSettings() {
 
   return (
     <div>
-      <PageHeader title="Marketing settings" subtitle="Channels, policy thresholds, adapter status, inbound webhooks and the AI touchpoints working in this module." />
+      <PageHeader
+        title="Marketing settings"
+        subtitle="Channels, policy thresholds, adapter status, inbound webhooks and the AI touchpoints working in this module."
+      />
 
       <Tabs
         tabs={[
@@ -144,7 +157,9 @@ function ChannelsTab({ canEdit }: { canEdit: boolean }) {
                     <p className="text-xs font-medium text-ink-100">{c.label}</p>
                     <p className="mono">{c.key}</p>
                   </td>
-                  <td className="text-2xs text-ink-400">{CHANNEL_KIND_LABELS[c.kind as ChannelKind] ?? titleCase(c.kind)}</td>
+                  <td className="text-2xs text-ink-400">
+                    {CHANNEL_KIND_LABELS[c.kind as ChannelKind] ?? titleCase(c.kind)}
+                  </td>
                   <td>
                     {c.configured ? (
                       <StatusChip status={c.providerAdapter ?? 'configured'} tone="good" />
@@ -209,7 +224,12 @@ function CreateChannelModal({ open, onClose }: { open: boolean; onClose: () => v
         options={CHANNEL_KEYS.map((k) => ({ value: k, label: CHANNEL_KEY_LABELS[k] }))}
       />
       <TextInput label="Label" required value={label} onChange={setLabel} placeholder="e.g. Marketing email" />
-      <SelectInput label="Kind" value={kind} onChange={(v) => setKind(v as ChannelKind)} options={CHANNEL_KINDS.map((k) => ({ value: k, label: CHANNEL_KIND_LABELS[k] }))} />
+      <SelectInput
+        label="Kind"
+        value={kind}
+        onChange={(v) => setKind(v as ChannelKind)}
+        options={CHANNEL_KINDS.map((k) => ({ value: k, label: CHANNEL_KIND_LABELS[k] }))}
+      />
     </CreateModal>
   );
 }
@@ -229,7 +249,10 @@ function EditChannelModal({ channel, onClose }: { channel: ChannelView; onClose:
       {
         label,
         active,
-        senderIds: senderIds.split(',').map((s) => s.trim()).filter(Boolean),
+        senderIds: senderIds
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
         dltEntityId: dltEntityId.trim() || null,
       },
       { onSuccess: onClose, onError: (e) => setError(messageOf(e)) },
@@ -253,14 +276,34 @@ function EditChannelModal({ channel, onClose }: { channel: ChannelView; onClose:
       }
     >
       <div className="flex flex-col gap-3">
-        {error && <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+        {error && (
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
+        )}
         <TextInput label="Label" value={label} onChange={setLabel} required />
         <label className="flex items-center gap-2 text-sm text-ink-200">
-          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="h-4 w-4 rounded border-ink-700 bg-ink-900" />
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(e) => setActive(e.target.checked)}
+            className="h-4 w-4 rounded border-ink-700 bg-ink-900"
+          />
           Active
         </label>
-        <TextInput label="Sender IDs" value={senderIds} onChange={setSenderIds} hint="Comma-separated" placeholder="e.g. KAIZEN, KZERP" />
-        <TextInput label="DLT entity ID" value={dltEntityId} onChange={setDltEntityId} hint="For SMS/WhatsApp registered senders in India" />
+        <TextInput
+          label="Sender IDs"
+          value={senderIds}
+          onChange={setSenderIds}
+          hint="Comma-separated"
+          placeholder="e.g. KAIZEN, KZERP"
+        />
+        <TextInput
+          label="DLT entity ID"
+          value={dltEntityId}
+          onChange={setDltEntityId}
+          hint="For SMS/WhatsApp registered senders in India"
+        />
         {!channel.configured && (
           <p className="text-2xs text-ink-500">
             This channel has no adapter configured — sends on it will stay in draft until{' '}
@@ -276,13 +319,48 @@ function EditChannelModal({ channel, onClose }: { channel: ChannelView; onClose:
 // Policy
 // ---------------------------------------------------------------------------
 
-const POLICY_FIELDS: Array<{ key: keyof MarketingPolicy; label: string; hint: string; kind: 'money' | 'rate' | 'days' | 'hours' }> = [
-  { key: 'campaignApprovalThreshold', label: 'Campaign approval threshold', hint: 'A campaign budgeted above this needs approval before it can be scheduled.', kind: 'money' },
-  { key: 'sendApprovalThreshold', label: 'Send approval threshold', hint: 'A send to more recipients than this needs approval before it can go out.', kind: 'days' },
-  { key: 'bounceAlertRate', label: 'Bounce alert rate', hint: 'A send bouncing above this rate raises EX-MKT-005. Enter as a fraction, e.g. 0.05 for 5%.', kind: 'rate' },
-  { key: 'unsubscribeAlertRate', label: 'Unsubscribe alert rate', hint: 'A send with unsubscribes above this rate raises EX-MKT-006. Enter as a fraction, e.g. 0.02 for 2%.', kind: 'rate' },
-  { key: 'staleCampaignDays', label: 'Stale campaign days', hint: 'A live campaign with no touchpoints for this many days raises EX-MKT-004.', kind: 'days' },
-  { key: 'formConvertSlaHours', label: 'Form conversion SLA (hours)', hint: 'A form submission left unconverted past this many hours raises EX-MKT-007.', kind: 'hours' },
+const POLICY_FIELDS: Array<{
+  key: keyof MarketingPolicy;
+  label: string;
+  hint: string;
+  kind: 'money' | 'rate' | 'days' | 'hours';
+}> = [
+  {
+    key: 'campaignApprovalThreshold',
+    label: 'Campaign approval threshold',
+    hint: 'A campaign budgeted above this needs approval before it can be scheduled.',
+    kind: 'money',
+  },
+  {
+    key: 'sendApprovalThreshold',
+    label: 'Send approval threshold',
+    hint: 'A send to more recipients than this needs approval before it can go out.',
+    kind: 'days',
+  },
+  {
+    key: 'bounceAlertRate',
+    label: 'Bounce alert rate',
+    hint: 'A send bouncing above this rate raises EX-MKT-005. Enter as a fraction, e.g. 0.05 for 5%.',
+    kind: 'rate',
+  },
+  {
+    key: 'unsubscribeAlertRate',
+    label: 'Unsubscribe alert rate',
+    hint: 'A send with unsubscribes above this rate raises EX-MKT-006. Enter as a fraction, e.g. 0.02 for 2%.',
+    kind: 'rate',
+  },
+  {
+    key: 'staleCampaignDays',
+    label: 'Stale campaign days',
+    hint: 'A live campaign with no touchpoints for this many days raises EX-MKT-004.',
+    kind: 'days',
+  },
+  {
+    key: 'formConvertSlaHours',
+    label: 'Form conversion SLA (hours)',
+    hint: 'A form submission left unconverted past this many hours raises EX-MKT-007.',
+    kind: 'hours',
+  },
 ];
 
 function PolicyTab({ canEdit }: { canEdit: boolean }) {
@@ -305,8 +383,15 @@ function PolicyTab({ canEdit }: { canEdit: boolean }) {
   };
 
   return (
-    <Card title="Policy thresholds" subtitle="Six numbers that decide when a campaign or send needs a human, and when an exception fires.">
-      {saveError && <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{saveError}</p>}
+    <Card
+      title="Policy thresholds"
+      subtitle="Six numbers that decide when a campaign or send needs a human, and when an exception fires."
+    >
+      {saveError && (
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {saveError}
+        </p>
+      )}
       <Row>
         {POLICY_FIELDS.slice(0, 2).map((f) => (
           <TextInput
@@ -372,7 +457,11 @@ function AdaptersTab() {
   const rows = data as AdapterStatusRow[];
 
   return (
-    <Card title="Adapter status" subtitle="Which provider is wired up behind each channel, right now." bodyClassName="p-0 overflow-x-auto">
+    <Card
+      title="Adapter status"
+      subtitle="Which provider is wired up behind each channel, right now."
+      bodyClassName="p-0 overflow-x-auto"
+    >
       {isLoading ? (
         <Loading />
       ) : rows.length === 0 ? (
@@ -448,7 +537,10 @@ function WebhooksTab() {
                   <td className="text-2xs text-ink-400">{dateTime(w.receivedAt)}</td>
                   <td className="text-2xs text-ink-400">{w.processedAt ? dateTime(w.processedAt) : '—'}</td>
                   <td>
-                    <StatusChip status={w.status} tone={w.status === 'failed' || w.error ? 'bad' : w.status === 'processed' ? 'good' : 'neutral'} />
+                    <StatusChip
+                      status={w.status}
+                      tone={w.status === 'failed' || w.error ? 'bad' : w.status === 'processed' ? 'good' : 'neutral'}
+                    />
                   </td>
                   <td>
                     <button className="btn-ghost btn-sm" onClick={() => setViewing(w)}>
@@ -480,7 +572,10 @@ function WebhooksTab() {
 // AI
 // ---------------------------------------------------------------------------
 
-const DRAFT_KINDS: Array<{ value: 'campaign_brief' | 'copy' | 'subject_lines' | 'segment' | 'next_best_action'; label: string }> = [
+const DRAFT_KINDS: Array<{
+  value: 'campaign_brief' | 'copy' | 'subject_lines' | 'segment' | 'next_best_action';
+  label: string;
+}> = [
   { value: 'campaign_brief', label: 'Campaign brief' },
   { value: 'copy', label: 'Message copy' },
   { value: 'subject_lines', label: 'Subject lines' },
@@ -493,7 +588,11 @@ function AiTab({ canDraft }: { canDraft: boolean }) {
 
   return (
     <div className="space-y-4">
-      <Card title="AI touchpoints in Marketing" subtitle="Every place AI touches this module, and how much it is trusted to do on its own." bodyClassName="p-0 overflow-x-auto">
+      <Card
+        title="AI touchpoints in Marketing"
+        subtitle="Every place AI touches this module, and how much it is trusted to do on its own."
+        bodyClassName="p-0 overflow-x-auto"
+      >
         {error ? (
           <ErrorBox error={error} />
         ) : isLoading ? (
@@ -515,10 +614,7 @@ function AiTab({ canDraft }: { canDraft: boolean }) {
                     {t.label}
                   </td>
                   <td>
-                    <span
-                      className="chip border-ink-700 bg-ink-850 text-ink-300"
-                      title={t.code}
-                    >
+                    <span className="chip border-ink-700 bg-ink-850 text-ink-300" title={t.code}>
                       {AI_TIER_BY_CODE[t.tier as keyof typeof AI_TIER_BY_CODE]?.label ?? titleCase(t.tier)}
                     </span>
                   </td>
@@ -530,7 +626,10 @@ function AiTab({ canDraft }: { canDraft: boolean }) {
       </Card>
 
       <p className="text-2xs text-ink-500">
-        Lead score rules are configured under <a href="/marketing/forms" className="text-accent-soft hover:underline">Forms →</a>
+        Lead score rules are configured under{' '}
+        <a href="/marketing/forms" className="text-accent-soft hover:underline">
+          Forms →
+        </a>
       </p>
 
       {canDraft && <AiDraftPanel />}
@@ -548,18 +647,28 @@ function AiDraftPanel() {
 
   const submit = () => {
     setResult(null);
-    const context: Record<string, unknown> = { notes: notes || undefined, division: division || undefined, channelKey: channelKey || undefined };
-    draft.mutate(
-      { kind, context },
-      { onSuccess: (res) => setResult(res) },
-    );
+    const context: Record<string, unknown> = {
+      notes: notes || undefined,
+      division: division || undefined,
+      channelKey: channelKey || undefined,
+    };
+    draft.mutate({ kind, context }, { onSuccess: (res) => setResult(res) });
   };
 
   return (
-    <Card title="AI draft" subtitle="Ask for a draft. Nothing is sent, changed, or scheduled — a human decides what happens to it next.">
+    <Card
+      title="AI draft"
+      subtitle="Ask for a draft. Nothing is sent, changed, or scheduled — a human decides what happens to it next."
+    >
       <div className="grid gap-3 sm:grid-cols-2">
         <SelectInput label="Kind" value={kind} onChange={(v) => setKind(v as typeof kind)} options={DRAFT_KINDS} />
-        <TextInput label="Division" value={division} onChange={setDivision} placeholder="e.g. education" hint="Optional" />
+        <TextInput
+          label="Division"
+          value={division}
+          onChange={setDivision}
+          placeholder="e.g. education"
+          hint="Optional"
+        />
         <SelectInput
           label="Channel"
           value={channelKey}
@@ -569,7 +678,14 @@ function AiDraftPanel() {
         />
       </div>
       <div className="mt-3">
-        <TextArea label="Context" value={notes} onChange={setNotes} rows={3} placeholder="Objective, target audience, key points to include…" hint="Optional — a template heuristic fills in the rest" />
+        <TextArea
+          label="Context"
+          value={notes}
+          onChange={setNotes}
+          rows={3}
+          placeholder="Objective, target audience, key points to include…"
+          hint="Optional — a template heuristic fills in the rest"
+        />
       </div>
 
       {draft.isError && <p className="mt-2 text-sm text-band-critical">{messageOf(draft.error)}</p>}
@@ -583,7 +699,9 @@ function AiDraftPanel() {
       {result && (
         <div className="mt-4 rounded-md border border-accent/40 bg-accent/5 p-4">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-accent-soft">Draft — nothing is sent or changed</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-accent-soft">
+              Draft — nothing is sent or changed
+            </p>
             <span className="chip border-ink-700 bg-ink-850 text-ink-400" title={`Action ${result.actionId}`}>
               {AI_TIER_BY_CODE[result.tier as keyof typeof AI_TIER_BY_CODE]?.label ?? titleCase(result.tier)}
             </span>

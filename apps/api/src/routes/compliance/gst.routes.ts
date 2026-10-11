@@ -69,7 +69,9 @@ router.post(
 router.post(
   '/vendor-bills/:id/rcm',
   handler(async (req) => {
-    const body = z.object({ ratePct: z.number().positive().max(100), taxableValue: z.number().positive().nullish() }).parse(req.body);
+    const body = z
+      .object({ ratePct: z.number().positive().max(100), taxableValue: z.number().positive().nullish() })
+      .parse(req.body);
     return applyReverseCharge(req.params.id, { ratePct: body.ratePct, taxableValue: body.taxableValue ?? undefined });
   }),
 );
@@ -91,7 +93,9 @@ router.get(
 router.post(
   '/invoices/:id/debit-note',
   handler(async (req) => {
-    const body = z.object({ amount: z.number().positive(), reasonCode: reasonCodeEnum, note: z.string().nullish() }).parse(req.body);
+    const body = z
+      .object({ amount: z.number().positive(), reasonCode: reasonCodeEnum, note: z.string().nullish() })
+      .parse(req.body);
     return issueDebitNote(req.params.id, body as never);
   }),
 );
@@ -150,7 +154,14 @@ const gstr2bRowSchema = z.object({
   inum: z.string(),
   idt: z.string(),
   val: z.number(),
-  itms: z.array(z.object({ txval: z.number().optional(), camt: z.number().optional(), samt: z.number().optional(), iamt: z.number().optional() })),
+  itms: z.array(
+    z.object({
+      txval: z.number().optional(),
+      camt: z.number().optional(),
+      samt: z.number().optional(),
+      iamt: z.number().optional(),
+    }),
+  ),
 });
 
 router.post(

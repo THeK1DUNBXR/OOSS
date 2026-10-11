@@ -14,8 +14,13 @@ import { z } from 'zod';
 import { handler } from '../lib/http.js';
 import { ApiError } from '../platform/errors.js';
 import {
-  MAX_UPLOAD_BYTES, getImport, importRows, listImports,
-  setImportOptions, setRowStatus, stageImport,
+  MAX_UPLOAD_BYTES,
+  getImport,
+  importRows,
+  listImports,
+  setImportOptions,
+  setRowStatus,
+  stageImport,
 } from '../imports/service.js';
 import { commitImport, revertImport } from '../imports/commit.js';
 import type { ImportKind } from '../imports/detect.js';
@@ -24,11 +29,24 @@ import { TEMPLATES, buildTemplateWorkbook, listTemplates, templateBySlug } from 
 export const importsRouter = Router();
 
 const KINDS: ImportKind[] = [
-  'tally_ledger', 'bank_statement', 'employees', 'salary',
-  'attendance', 'transactions', 'chart_of_accounts',
-  'template_courses', 'template_batches', 'template_colleges', 'template_clients',
-  'template_students', 'template_contacts', 'template_staff', 'template_opening_register',
-  'template_ledger_accounts', 'template_ledger_categories', 'template_vendor_bills',
+  'tally_ledger',
+  'bank_statement',
+  'employees',
+  'salary',
+  'attendance',
+  'transactions',
+  'chart_of_accounts',
+  'template_courses',
+  'template_batches',
+  'template_colleges',
+  'template_clients',
+  'template_students',
+  'template_contacts',
+  'template_staff',
+  'template_opening_register',
+  'template_ledger_accounts',
+  'template_ledger_categories',
+  'template_vendor_bills',
 ];
 
 /**
@@ -98,9 +116,15 @@ importsRouter.post(
   }),
 );
 
-importsRouter.get('/', handler(async () => listImports()));
+importsRouter.get(
+  '/',
+  handler(async () => listImports()),
+);
 
-importsRouter.get('/:id', handler(async (req) => getImport(req.params.id)));
+importsRouter.get(
+  '/:id',
+  handler(async (req) => getImport(req.params.id)),
+);
 
 importsRouter.get(
   '/:id/rows',
@@ -132,6 +156,12 @@ importsRouter.patch(
   }),
 );
 
-importsRouter.post('/:id/commit', handler(async (req) => commitImport(req.params.id)));
+importsRouter.post(
+  '/:id/commit',
+  handler(async (req) => commitImport(req.params.id)),
+);
 
-importsRouter.post('/:id/revert', handler(async (req) => revertImport(req.params.id)));
+importsRouter.post(
+  '/:id/revert',
+  handler(async (req) => revertImport(req.params.id)),
+);
