@@ -31,6 +31,7 @@ import {
 } from '../../components/ui.js';
 import { NewButton, Row, SelectInput, TextArea, TextInput, messageOf } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
+import { DataTable } from '../../components/DataTable.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -261,47 +262,73 @@ export function ItContinuity() {
             <div key={t}>
               <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-ink-400">{tierLabel(t)}</h3>
               <Card>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-ink-800 text-2xs uppercase tracking-wide text-ink-500">
-                        <th className="py-2 pr-3">Application</th>
-                        <th className="py-2 pr-3">RTO / RPO</th>
-                        <th className="py-2 pr-3">Backup</th>
-                        <th className="py-2 pr-3">Last tested</th>
-                        <th className="py-2 pr-3">Status</th>
-                        <th className="py-2 pr-3"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((p) => (
-                        <tr
-                          key={p.id}
-                          className="cursor-pointer border-b border-ink-850/60 hover:bg-ink-850/40"
-                          onClick={() => setDetailId(p.id)}
-                        >
-                          <td className="py-2 pr-3">
-                            <div className="text-ink-100">{p.applicationName}</div>
-                            <div className="text-2xs text-ink-500">
-                              <RecordCode code={p.recordCode} />
-                            </div>
-                          </td>
-                          <td className="py-2 pr-3 text-ink-300">
-                            {p.rtoMinutes}m / {p.rpoMinutes}m
-                          </td>
-                          <td className="py-2 pr-3 text-ink-300">
-                            {p.backupMethod} · {p.backupFrequency}
-                          </td>
-                          <td className="py-2 pr-3 text-ink-300">{p.lastTestedAt ? date(p.lastTestedAt) : 'Never'}</td>
-                          <td className="py-2 pr-3">
-                            <StatusChip status={p.status} tone={STATUS_TONE[p.status]} />
-                          </td>
-                          <td className="py-2 pr-3 text-right text-2xs text-ink-500">Cadence {p.testCadenceDays}d</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable
+                  caption="Recovery plans"
+                  rows={rows}
+                  rowKey={(p) => p.id}
+                  emptyMessage="No recovery plans yet."
+                  columns={[
+                    {
+                      id: 'application',
+                      header: 'Application',
+                      sortValue: (p) => p.applicationName,
+                      cell: (p) => (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setDetailId(p.id)}
+                            className="text-ink-100 hover:text-accent"
+                          >
+                            {p.applicationName}
+                          </button>
+                          <div className="text-2xs text-ink-500">
+                            <RecordCode code={p.recordCode} />
+                          </div>
+                        </>
+                      ),
+                    },
+                    {
+                      id: 'rto',
+                      header: 'RTO / RPO',
+                      sortValue: (p) => p.rtoMinutes,
+                      cell: (p) => (
+                        <span className="text-ink-300">
+                          {p.rtoMinutes}m / {p.rpoMinutes}m
+                        </span>
+                      ),
+                    },
+                    {
+                      id: 'backup',
+                      header: 'Backup',
+                      sortValue: (p) => p.backupMethod,
+                      cell: (p) => (
+                        <span className="text-ink-300">
+                          {p.backupMethod} · {p.backupFrequency}
+                        </span>
+                      ),
+                    },
+                    {
+                      id: 'lastTested',
+                      header: 'Last tested',
+                      sortValue: (p) => p.lastTestedAt,
+                      cell: (p) => (
+                        <span className="text-ink-300">{p.lastTestedAt ? date(p.lastTestedAt) : 'Never'}</span>
+                      ),
+                    },
+                    {
+                      id: 'status',
+                      header: 'Status',
+                      sortValue: (p) => p.status,
+                      cell: (p) => <StatusChip status={p.status} tone={STATUS_TONE[p.status]} />,
+                    },
+                    {
+                      id: 'cadence',
+                      header: <span className="sr-only">Test cadence</span>,
+                      align: 'right',
+                      cell: (p) => <span className="text-2xs text-ink-500">Cadence {p.testCadenceDays}d</span>,
+                    },
+                  ]}
+                />
               </Card>
             </div>
           ))}
@@ -504,42 +531,58 @@ function PlanDetailModal({ id, onClose, onChanged }: { id: string; onClose: () =
                 hint="A restore, failover or tabletop test proves the plan — or doesn't."
               />
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-ink-800 text-2xs uppercase tracking-wide text-ink-500">
-                      <th className="py-2 pr-3">Tested</th>
-                      <th className="py-2 pr-3">Kind</th>
-                      <th className="py-2 pr-3">Outcome</th>
-                      <th className="py-2 pr-3">Recovery / data loss</th>
-                      <th className="py-2 pr-3">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {p.tests.map((t) => (
-                      <tr key={t.id} className="border-b border-ink-850/60">
-                        <td className="py-2 pr-3 text-ink-300">{dateTime(t.testedAt)}</td>
-                        <td className="py-2 pr-3 text-ink-300">{t.kind}</td>
-                        <td className="py-2 pr-3">
-                          <StatusChip
-                            status={t.outcome}
-                            tone={t.outcome === 'pass' ? 'good' : t.outcome === 'fail' ? 'bad' : 'warn'}
-                          />
-                        </td>
-                        <td className="py-2 pr-3 text-ink-300">
-                          {t.actualRecoveryMinutes ?? '—'}m / {t.actualDataLossMinutes ?? '—'}m
-                          {t.actualRecoveryMinutes != null && t.actualRecoveryMinutes > p.rtoMinutes && (
-                            <span className="ml-2 chip border-band-critical/40 bg-band-critical/10 text-band-critical">
-                              RTO exceeded
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2 pr-3 text-ink-500">{t.notes ?? '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable
+                caption="Restore tests"
+                rows={p.tests}
+                rowKey={(t) => t.id}
+                emptyMessage="No restore tests recorded."
+                columns={[
+                  {
+                    id: 'tested',
+                    header: 'Tested',
+                    sortValue: (t) => t.testedAt,
+                    cell: (t) => <span className="text-ink-300">{dateTime(t.testedAt)}</span>,
+                  },
+                  {
+                    id: 'kind',
+                    header: 'Kind',
+                    sortValue: (t) => t.kind,
+                    cell: (t) => <span className="text-ink-300">{t.kind}</span>,
+                  },
+                  {
+                    id: 'outcome',
+                    header: 'Outcome',
+                    sortValue: (t) => t.outcome,
+                    cell: (t) => (
+                      <StatusChip
+                        status={t.outcome}
+                        tone={t.outcome === 'pass' ? 'good' : t.outcome === 'fail' ? 'bad' : 'warn'}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'recovery',
+                    header: 'Recovery / data loss',
+                    sortValue: (t) => t.actualRecoveryMinutes,
+                    cell: (t) => (
+                      <span className="text-ink-300">
+                        {t.actualRecoveryMinutes ?? '—'}m / {t.actualDataLossMinutes ?? '—'}m
+                        {t.actualRecoveryMinutes != null && t.actualRecoveryMinutes > p.rtoMinutes && (
+                          <span className="ml-2 chip border-band-critical/40 bg-band-critical/10 text-band-critical">
+                            RTO exceeded
+                          </span>
+                        )}
+                      </span>
+                    ),
+                  },
+                  {
+                    id: 'notes',
+                    header: 'Notes',
+                    sortValue: (t) => t.notes,
+                    cell: (t) => <span className="text-ink-500">{t.notes ?? '—'}</span>,
+                  },
+                ]}
+              />
             )}
           </div>
         </div>
@@ -730,44 +773,65 @@ export function ItAvailability() {
             hint="No reading has been recorded for any application this month — this is unmeasured, not 100% uptime."
           />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-ink-800 text-2xs uppercase tracking-wide text-ink-500">
-                  <th className="py-2 pr-3">Application</th>
-                  <th className="py-2 pr-3">Uptime</th>
-                  <th className="py-2 pr-3">Minutes down</th>
-                  <th className="py-2 pr-3">Incidents</th>
-                  <th className="py-2 pr-3">Source</th>
-                  <th className="py-2 pr-3">Note</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id} className="border-b border-ink-850/60">
-                    <td className="py-2 pr-3 text-ink-100">{r.applicationName}</td>
-                    <td className="py-2 pr-3 tabular-nums">
-                      <span
-                        className={
-                          r.uptimePercent < 99
-                            ? 'text-band-critical'
-                            : r.uptimePercent < 99.9
-                              ? 'text-band-watch'
-                              : 'text-band-strong'
-                        }
-                      >
-                        {r.uptimePercent}%
-                      </span>
-                    </td>
-                    <td className="py-2 pr-3 text-ink-300">{r.minutesDown}</td>
-                    <td className="py-2 pr-3 text-ink-300">{r.incidentCount}</td>
-                    <td className="py-2 pr-3 text-ink-500">{r.source}</td>
-                    <td className="py-2 pr-3 text-ink-500">{r.note ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption="Uptime by application"
+            rows={rows}
+            rowKey={(r) => r.id}
+            emptyMessage="No uptime recorded for this period."
+            columns={[
+              {
+                id: 'application',
+                header: 'Application',
+                sortValue: (r) => r.applicationName,
+                cell: (r) => <span className="text-ink-100">{r.applicationName}</span>,
+              },
+              {
+                id: 'uptime',
+                header: 'Uptime',
+                align: 'right',
+                sortValue: (r) => r.uptimePercent,
+                cell: (r) => (
+                  <span
+                    className={
+                      r.uptimePercent < 99
+                        ? 'text-band-critical'
+                        : r.uptimePercent < 99.9
+                          ? 'text-band-watch'
+                          : 'text-band-strong'
+                    }
+                  >
+                    {r.uptimePercent}%
+                  </span>
+                ),
+              },
+              {
+                id: 'minutesDown',
+                header: 'Minutes down',
+                align: 'right',
+                sortValue: (r) => r.minutesDown,
+                cell: (r) => <span className="text-ink-300">{r.minutesDown}</span>,
+              },
+              {
+                id: 'incidents',
+                header: 'Incidents',
+                align: 'right',
+                sortValue: (r) => r.incidentCount,
+                cell: (r) => <span className="text-ink-300">{r.incidentCount}</span>,
+              },
+              {
+                id: 'source',
+                header: 'Source',
+                sortValue: (r) => r.source,
+                cell: (r) => <span className="text-ink-500">{r.source}</span>,
+              },
+              {
+                id: 'note',
+                header: 'Note',
+                sortValue: (r) => r.note,
+                cell: (r) => <span className="text-ink-500">{r.note ?? '—'}</span>,
+              },
+            ]}
+          />
         )}
       </Card>
 
@@ -916,47 +980,66 @@ export function ItMaintenance() {
             hint="A window is a planned, declared outage — not a detected one."
           />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-ink-800 text-2xs uppercase tracking-wide text-ink-500">
-                  <th className="py-2 pr-3">Application</th>
-                  <th className="py-2 pr-3">Window</th>
-                  <th className="py-2 pr-3">Reason</th>
-                  <th className="py-2 pr-3">Status</th>
-                  <th className="py-2 pr-3">Notified</th>
-                  <th className="py-2 pr-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((w) => (
-                  <tr key={w.id} className="border-b border-ink-850/60">
-                    <td className="py-2 pr-3">
-                      <div className="text-ink-100">{w.applicationName}</div>
-                      <div className="text-2xs text-ink-500">
-                        <RecordCode code={w.recordCode} />
-                      </div>
-                    </td>
-                    <td className="py-2 pr-3 text-ink-300">
-                      {dateTime(w.startsAt)} → {dateTime(w.endsAt)}
-                    </td>
-                    <td className="py-2 pr-3 text-ink-300">{w.reason}</td>
-                    <td className="py-2 pr-3">
-                      <StatusChip status={w.status} tone={WINDOW_TONE[w.status]} />
-                    </td>
-                    <td className="py-2 pr-3 text-ink-500">{w.notifiedAt ? dateTime(w.notifiedAt) : '—'}</td>
-                    <td className="py-2 pr-3 text-right">
-                      {can('it_continuity:E') && (w.status === 'planned' || w.status === 'in_progress') && (
-                        <button className="btn-sm" onClick={() => setCancelTarget(w)}>
-                          Cancel
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption="Maintenance windows"
+            rows={rows}
+            rowKey={(w) => w.id}
+            emptyMessage="No maintenance windows in this view."
+            columns={[
+              {
+                id: 'application',
+                header: 'Application',
+                sortValue: (w) => w.applicationName,
+                cell: (w) => (
+                  <>
+                    <div className="text-ink-100">{w.applicationName}</div>
+                    <div className="text-2xs text-ink-500">
+                      <RecordCode code={w.recordCode} />
+                    </div>
+                  </>
+                ),
+              },
+              {
+                id: 'window',
+                header: 'Window',
+                sortValue: (w) => w.startsAt,
+                cell: (w) => (
+                  <span className="text-ink-300">
+                    {dateTime(w.startsAt)} → {dateTime(w.endsAt)}
+                  </span>
+                ),
+              },
+              {
+                id: 'reason',
+                header: 'Reason',
+                sortValue: (w) => w.reason,
+                cell: (w) => <span className="text-ink-300">{w.reason}</span>,
+              },
+              {
+                id: 'status',
+                header: 'Status',
+                sortValue: (w) => w.status,
+                cell: (w) => <StatusChip status={w.status} tone={WINDOW_TONE[w.status]} />,
+              },
+              {
+                id: 'notified',
+                header: 'Notified',
+                sortValue: (w) => w.notifiedAt,
+                cell: (w) => <span className="text-ink-500">{w.notifiedAt ? dateTime(w.notifiedAt) : '—'}</span>,
+              },
+              {
+                id: 'actions',
+                header: <span className="sr-only">Actions</span>,
+                align: 'right',
+                cell: (w) =>
+                  can('it_continuity:E') && (w.status === 'planned' || w.status === 'in_progress') ? (
+                    <button className="btn-sm" onClick={() => setCancelTarget(w)}>
+                      Cancel
+                    </button>
+                  ) : null,
+              },
+            ]}
+          />
         )}
       </Card>
 

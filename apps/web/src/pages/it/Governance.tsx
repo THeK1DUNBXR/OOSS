@@ -14,6 +14,7 @@ import { useState, Fragment } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, date, dateTime, relative, titleCase } from '../../lib/api.js';
+import { DataTable } from '../../components/DataTable.js';
 import { useSession } from '../../lib/session.js';
 import {
   Card,
@@ -220,49 +221,69 @@ export function ItRisks() {
         ) : rows.length === 0 ? (
           <EmptyState message="Nothing matches." hint="Widen the filter, or add a new risk." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-ink-800 text-2xs uppercase tracking-wide text-ink-500">
-                  <th className="px-4 py-2">Risk</th>
-                  <th className="px-4 py-2">Category</th>
-                  <th className="px-4 py-2">Band</th>
-                  <th className="px-4 py-2">Treatment</th>
-                  <th className="px-4 py-2">Review due</th>
-                  <th className="px-4 py-2">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id} className="border-b border-ink-850/60">
-                    <td className="px-4 py-2">
-                      <Link to={`/it/risks/${r.id}`} className="font-medium text-ink-100 hover:text-accent">
-                        {r.title}
-                      </Link>
-                      <div className="text-2xs text-ink-500">
-                        <RecordCode code={r.recordCode} />
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-ink-300">{titleCase(r.category)}</td>
-                    <td className="px-4 py-2">
-                      <StatusChip
-                        status={r.bandResidual ?? r.bandInherent}
-                        tone={BAND_TONE[r.bandResidual ?? r.bandInherent]}
-                      />
-                    </td>
-                    <td className="px-4 py-2 text-ink-300">{titleCase(r.treatment)}</td>
-                    <td className="px-4 py-2 text-ink-300">{r.reviewDueAt ? date(r.reviewDueAt) : '—'}</td>
-                    <td className="px-4 py-2">
-                      <StatusChip
-                        status={r.status}
-                        tone={r.status === 'closed' ? 'neutral' : r.status === 'accepted' ? 'good' : 'warn'}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption="Risk register"
+            rows={rows}
+            rowKey={(r) => r.id}
+            emptyMessage="No risks in this view."
+            columns={[
+              {
+                id: 'risk',
+                header: 'Risk',
+                sortValue: (r) => r.title,
+                cell: (r) => (
+                  <>
+                    <Link to={`/it/risks/${r.id}`} className="font-medium text-ink-100 hover:text-accent">
+                      {r.title}
+                    </Link>
+                    <div className="text-2xs text-ink-500">
+                      <RecordCode code={r.recordCode} />
+                    </div>
+                  </>
+                ),
+              },
+              {
+                id: 'category',
+                header: 'Category',
+                sortValue: (r) => r.category,
+                cell: (r) => <span className="text-ink-300">{titleCase(r.category)}</span>,
+              },
+              {
+                id: 'band',
+                header: 'Band',
+                sortValue: (r) => r.bandResidual ?? r.bandInherent,
+                cell: (r) => (
+                  <StatusChip
+                    status={r.bandResidual ?? r.bandInherent}
+                    tone={BAND_TONE[r.bandResidual ?? r.bandInherent]}
+                  />
+                ),
+              },
+              {
+                id: 'treatment',
+                header: 'Treatment',
+                sortValue: (r) => r.treatment,
+                cell: (r) => <span className="text-ink-300">{titleCase(r.treatment)}</span>,
+              },
+              {
+                id: 'reviewDue',
+                header: 'Review due',
+                sortValue: (r) => r.reviewDueAt,
+                cell: (r) => <span className="text-ink-300">{r.reviewDueAt ? date(r.reviewDueAt) : '—'}</span>,
+              },
+              {
+                id: 'status',
+                header: 'Status',
+                sortValue: (r) => r.status,
+                cell: (r) => (
+                  <StatusChip
+                    status={r.status}
+                    tone={r.status === 'closed' ? 'neutral' : r.status === 'accepted' ? 'good' : 'warn'}
+                  />
+                ),
+              },
+            ]}
+          />
         )}
       </Card>
 
@@ -653,39 +674,53 @@ export function ItPolicies() {
         ) : rows.length === 0 ? (
           <EmptyState message="Nothing matches." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-ink-800 text-2xs uppercase tracking-wide text-ink-500">
-                  <th className="px-4 py-2">Policy</th>
-                  <th className="px-4 py-2">Code</th>
-                  <th className="px-4 py-2">Version</th>
-                  <th className="px-4 py-2">Published</th>
-                  <th className="px-4 py-2">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((p) => (
-                  <tr key={p.id} className="border-b border-ink-850/60">
-                    <td className="px-4 py-2">
-                      <Link to={`/it/policies/${p.id}`} className="font-medium text-ink-100 hover:text-accent">
-                        {p.title}
-                      </Link>
-                      <div className="text-2xs text-ink-500">
-                        <RecordCode code={p.recordCode} />
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-ink-300">{p.code}</td>
-                    <td className="px-4 py-2 text-ink-300">v{p.version}</td>
-                    <td className="px-4 py-2 text-ink-300">{p.publishedAt ? date(p.publishedAt) : '—'}</td>
-                    <td className="px-4 py-2">
-                      <StatusChip status={p.status} tone={POLICY_TONE[p.status]} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption="Policies"
+            rows={rows}
+            rowKey={(p) => p.id}
+            emptyMessage="No policies in this view."
+            columns={[
+              {
+                id: 'policy',
+                header: 'Policy',
+                sortValue: (p) => p.title,
+                cell: (p) => (
+                  <>
+                    <Link to={`/it/policies/${p.id}`} className="font-medium text-ink-100 hover:text-accent">
+                      {p.title}
+                    </Link>
+                    <div className="text-2xs text-ink-500">
+                      <RecordCode code={p.recordCode} />
+                    </div>
+                  </>
+                ),
+              },
+              {
+                id: 'code',
+                header: 'Code',
+                sortValue: (p) => p.code,
+                cell: (p) => <span className="text-ink-300">{p.code}</span>,
+              },
+              {
+                id: 'version',
+                header: 'Version',
+                sortValue: (p) => p.version,
+                cell: (p) => <span className="text-ink-300">v{p.version}</span>,
+              },
+              {
+                id: 'published',
+                header: 'Published',
+                sortValue: (p) => p.publishedAt,
+                cell: (p) => <span className="text-ink-300">{p.publishedAt ? date(p.publishedAt) : '—'}</span>,
+              },
+              {
+                id: 'status',
+                header: 'Status',
+                sortValue: (p) => p.status,
+                cell: (p) => <StatusChip status={p.status} tone={POLICY_TONE[p.status]} />,
+              },
+            ]}
+          />
         )}
       </Card>
 
@@ -1006,47 +1041,66 @@ export function ItControls() {
         ) : rows.length === 0 ? (
           <EmptyState message="No controls yet." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-ink-800 text-2xs uppercase tracking-wide text-ink-500">
-                  <th className="px-4 py-2">Control</th>
-                  <th className="px-4 py-2">Frameworks</th>
-                  <th className="px-4 py-2">Frequency</th>
-                  <th className="px-4 py-2">Last tested</th>
-                  <th className="px-4 py-2">Result</th>
-                  <th className="px-4 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((c) => (
-                  <tr key={c.id} className="border-b border-ink-850/60">
-                    <td className="px-4 py-2">
-                      <p className="font-medium text-ink-100">{c.title}</p>
-                      <div className="text-2xs text-ink-500">
-                        <RecordCode code={c.recordCode} /> · {c.code}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-ink-300">
-                      {c.frameworkRefs.map((f) => `${f.framework} ${f.ref}`).join(', ') || '—'}
-                    </td>
-                    <td className="px-4 py-2 text-ink-300">every {c.frequencyDays}d</td>
-                    <td className="px-4 py-2 text-ink-300">{c.lastTestedAt ? date(c.lastTestedAt) : 'Never'}</td>
-                    <td className="px-4 py-2">
-                      {c.lastResult ? <StatusChip status={c.lastResult} tone={RESULT_TONE[c.lastResult]} /> : '—'}
-                    </td>
-                    <td className="px-4 py-2">
-                      {can('it_controls:E') && (
-                        <button className="btn-ghost btn-sm" onClick={() => setTesting(c)}>
-                          Record a test
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption="Controls"
+            rows={rows}
+            rowKey={(c) => c.id}
+            emptyMessage="No controls in this view."
+            columns={[
+              {
+                id: 'control',
+                header: 'Control',
+                sortValue: (c) => c.title,
+                cell: (c) => (
+                  <>
+                    <p className="font-medium text-ink-100">{c.title}</p>
+                    <div className="text-2xs text-ink-500">
+                      <RecordCode code={c.recordCode} /> · {c.code}
+                    </div>
+                  </>
+                ),
+              },
+              {
+                id: 'frameworks',
+                header: 'Frameworks',
+                cell: (c) => (
+                  <span className="text-ink-300">
+                    {c.frameworkRefs.map((f) => `${f.framework} ${f.ref}`).join(', ') || '—'}
+                  </span>
+                ),
+              },
+              {
+                id: 'frequency',
+                header: 'Frequency',
+                sortValue: (c) => c.frequencyDays,
+                cell: (c) => <span className="text-ink-300">every {c.frequencyDays}d</span>,
+              },
+              {
+                id: 'lastTested',
+                header: 'Last tested',
+                sortValue: (c) => c.lastTestedAt,
+                cell: (c) => <span className="text-ink-300">{c.lastTestedAt ? date(c.lastTestedAt) : 'Never'}</span>,
+              },
+              {
+                id: 'result',
+                header: 'Result',
+                sortValue: (c) => c.lastResult,
+                cell: (c) =>
+                  c.lastResult ? <StatusChip status={c.lastResult} tone={RESULT_TONE[c.lastResult]} /> : '—',
+              },
+              {
+                id: 'actions',
+                header: <span className="sr-only">Actions</span>,
+                align: 'right',
+                cell: (c) =>
+                  can('it_controls:E') ? (
+                    <button className="btn-ghost btn-sm" onClick={() => setTesting(c)}>
+                      Record a test
+                    </button>
+                  ) : null,
+              },
+            ]}
+          />
         )}
       </Card>
 
@@ -1231,44 +1285,62 @@ export function ItAccessReviews() {
         ) : rows.length === 0 ? (
           <EmptyState message="No campaigns yet." hint="Open one to start a sweep." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-ink-800 text-2xs uppercase tracking-wide text-ink-500">
-                  <th className="px-4 py-2">Campaign</th>
-                  <th className="px-4 py-2">Scope</th>
-                  <th className="px-4 py-2">Due</th>
-                  <th className="px-4 py-2">Progress</th>
-                  <th className="px-4 py-2">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((c) => (
-                  <tr key={c.id} className="border-b border-ink-850/60">
-                    <td className="px-4 py-2">
-                      <Link to={`/it/access-reviews/${c.id}`} className="font-medium text-ink-100 hover:text-accent">
-                        {c.name}
-                      </Link>
-                      <div className="text-2xs text-ink-500">
-                        <RecordCode code={c.recordCode} />
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-ink-300">
-                      {titleCase(c.scope)}
-                      {c.scopeRef ? ` (${c.scopeRef})` : ''}
-                    </td>
-                    <td className="px-4 py-2 text-ink-300">{date(c.dueAt)}</td>
-                    <td className="px-4 py-2 text-ink-300">
-                      {c.decidedCount ?? 0} / {c.itemCount}
-                    </td>
-                    <td className="px-4 py-2">
-                      <StatusChip status={c.status} tone={CAMPAIGN_TONE[c.status] ?? 'neutral'} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption="Access reviews"
+            rows={rows}
+            rowKey={(c) => c.id}
+            emptyMessage="No access reviews in this view."
+            columns={[
+              {
+                id: 'campaign',
+                header: 'Campaign',
+                sortValue: (c) => c.name,
+                cell: (c) => (
+                  <>
+                    <Link to={`/it/access-reviews/${c.id}`} className="font-medium text-ink-100 hover:text-accent">
+                      {c.name}
+                    </Link>
+                    <div className="text-2xs text-ink-500">
+                      <RecordCode code={c.recordCode} />
+                    </div>
+                  </>
+                ),
+              },
+              {
+                id: 'scope',
+                header: 'Scope',
+                sortValue: (c) => c.scope,
+                cell: (c) => (
+                  <span className="text-ink-300">
+                    {titleCase(c.scope)}
+                    {c.scopeRef ? ` (${c.scopeRef})` : ''}
+                  </span>
+                ),
+              },
+              {
+                id: 'due',
+                header: 'Due',
+                sortValue: (c) => c.dueAt,
+                cell: (c) => <span className="text-ink-300">{date(c.dueAt)}</span>,
+              },
+              {
+                id: 'progress',
+                header: 'Progress',
+                sortValue: (c) => c.decidedCount ?? 0,
+                cell: (c) => (
+                  <span className="text-ink-300">
+                    {c.decidedCount ?? 0} / {c.itemCount}
+                  </span>
+                ),
+              },
+              {
+                id: 'status',
+                header: 'Status',
+                sortValue: (c) => c.status,
+                cell: (c) => <StatusChip status={c.status} tone={CAMPAIGN_TONE[c.status] ?? 'neutral'} />,
+              },
+            ]}
+          />
         )}
       </Card>
 
@@ -1400,50 +1472,61 @@ export function ItAccessReviewDetail() {
       )}
 
       <Card bodyClassName="p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-ink-800 text-2xs uppercase tracking-wide text-ink-500">
-                <th className="px-4 py-2">Party</th>
-                <th className="px-4 py-2">Role</th>
-                <th className="px-4 py-2">Decision</th>
-                <th className="px-4 py-2">Decided</th>
-                <th className="px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {c.items.map((i) => (
-                <tr key={i.id} className="border-b border-ink-850/60">
-                  <td className="px-4 py-2 text-ink-200">{i.partyName}</td>
-                  <td className="px-4 py-2 text-ink-300">{i.roleSlug ?? '—'}</td>
-                  <td className="px-4 py-2">
-                    {i.decision ? (
-                      <StatusChip
-                        status={i.decision}
-                        tone={i.decision === 'revoke' ? 'bad' : i.decision === 'modify' ? 'warn' : 'good'}
-                      />
-                    ) : (
-                      <span className="text-2xs text-ink-500">Pending</span>
-                    )}
-                  </td>
-                  <td
-                    className="px-4 py-2 text-2xs text-ink-500"
-                    title={i.decidedAt ? dateTime(i.decidedAt) : undefined}
-                  >
-                    {i.decidedAt ? relative(i.decidedAt) : '—'}
-                  </td>
-                  <td className="px-4 py-2">
-                    {c.status !== 'closed' && !i.decidedAt && canEdit && (
-                      <button className="btn-ghost btn-sm" onClick={() => setDeciding(i)}>
-                        Decide
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          caption="Review items"
+          rows={c.items}
+          rowKey={(i) => i.id}
+          emptyMessage="No items in this campaign."
+          columns={[
+            {
+              id: 'party',
+              header: 'Party',
+              sortValue: (i) => i.partyName,
+              cell: (i) => <span className="text-ink-200">{i.partyName}</span>,
+            },
+            {
+              id: 'role',
+              header: 'Role',
+              sortValue: (i) => i.roleSlug,
+              cell: (i) => <span className="text-ink-300">{i.roleSlug ?? '—'}</span>,
+            },
+            {
+              id: 'decision',
+              header: 'Decision',
+              sortValue: (i) => i.decision,
+              cell: (i) =>
+                i.decision ? (
+                  <StatusChip
+                    status={i.decision}
+                    tone={i.decision === 'revoke' ? 'bad' : i.decision === 'modify' ? 'warn' : 'good'}
+                  />
+                ) : (
+                  <span className="text-2xs text-ink-500">Pending</span>
+                ),
+            },
+            {
+              id: 'decided',
+              header: 'Decided',
+              sortValue: (i) => i.decidedAt,
+              cell: (i) => (
+                <span className="text-2xs text-ink-500" title={i.decidedAt ? dateTime(i.decidedAt) : undefined}>
+                  {i.decidedAt ? relative(i.decidedAt) : '—'}
+                </span>
+              ),
+            },
+            {
+              id: 'actions',
+              header: <span className="sr-only">Actions</span>,
+              align: 'right',
+              cell: (i) =>
+                c.status !== 'closed' && !i.decidedAt && canEdit ? (
+                  <button className="btn-ghost btn-sm" onClick={() => setDeciding(i)}>
+                    Decide
+                  </button>
+                ) : null,
+            },
+          ]}
+        />
       </Card>
 
       {deciding && (
@@ -1654,56 +1737,71 @@ export function ItFindings() {
         ) : rows.length === 0 ? (
           <EmptyState message="Nothing matches." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-ink-800 text-2xs uppercase tracking-wide text-ink-500">
-                  <th className="px-4 py-2">Finding</th>
-                  <th className="px-4 py-2">Source</th>
-                  <th className="px-4 py-2">Severity</th>
-                  <th className="px-4 py-2">Due</th>
-                  <th className="px-4 py-2">Status</th>
-                  <th className="px-4 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((f) => (
-                  <tr key={f.id} className="border-b border-ink-850/60">
-                    <td className="px-4 py-2">
-                      <p className="font-medium text-ink-100">{f.title}</p>
-                      <div className="text-2xs text-ink-500">
-                        <RecordCode code={f.recordCode} />
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-ink-300">{titleCase(f.source)}</td>
-                    <td className="px-4 py-2">
-                      <StatusChip status={f.severity} tone={SEVERITY_TONE[f.severity]} />
-                    </td>
-                    <td className="px-4 py-2 text-ink-300">{date(f.dueAt)}</td>
-                    <td className="px-4 py-2">
-                      <StatusChip status={f.status} tone={FINDING_STATUS_TONE[f.status]} />
-                    </td>
-                    <td className="px-4 py-2">
-                      {can('it_findings:E') && (
-                        <div className="flex flex-wrap justify-end gap-1">
-                          {f.availableTransitions.map((event) => (
-                            <button
-                              key={event}
-                              className="btn-ghost btn-sm"
-                              disabled={transition.isPending}
-                              onClick={() => transition.mutate({ id: f.id, event })}
-                            >
-                              {titleCase(event.replace('_', ' '))}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption="Findings"
+            rows={rows}
+            rowKey={(f) => f.id}
+            emptyMessage="No findings in this view."
+            columns={[
+              {
+                id: 'finding',
+                header: 'Finding',
+                sortValue: (f) => f.title,
+                cell: (f) => (
+                  <>
+                    <p className="font-medium text-ink-100">{f.title}</p>
+                    <div className="text-2xs text-ink-500">
+                      <RecordCode code={f.recordCode} />
+                    </div>
+                  </>
+                ),
+              },
+              {
+                id: 'source',
+                header: 'Source',
+                sortValue: (f) => f.source,
+                cell: (f) => <span className="text-ink-300">{titleCase(f.source)}</span>,
+              },
+              {
+                id: 'severity',
+                header: 'Severity',
+                sortValue: (f) => f.severity,
+                cell: (f) => <StatusChip status={f.severity} tone={SEVERITY_TONE[f.severity]} />,
+              },
+              {
+                id: 'due',
+                header: 'Due',
+                sortValue: (f) => f.dueAt,
+                cell: (f) => <span className="text-ink-300">{date(f.dueAt)}</span>,
+              },
+              {
+                id: 'status',
+                header: 'Status',
+                sortValue: (f) => f.status,
+                cell: (f) => <StatusChip status={f.status} tone={FINDING_STATUS_TONE[f.status]} />,
+              },
+              {
+                id: 'actions',
+                header: <span className="sr-only">Actions</span>,
+                align: 'right',
+                cell: (f) =>
+                  can('it_findings:E') ? (
+                    <div className="flex flex-wrap justify-end gap-1">
+                      {f.availableTransitions.map((event) => (
+                        <button
+                          key={event}
+                          className="btn-ghost btn-sm"
+                          disabled={transition.isPending}
+                          onClick={() => transition.mutate({ id: f.id, event })}
+                        >
+                          {titleCase(event.replace('_', ' '))}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null,
+              },
+            ]}
+          />
         )}
       </Card>
 

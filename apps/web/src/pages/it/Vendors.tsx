@@ -25,6 +25,7 @@ import {
 import { NewButton, SelectInput, TextArea, TextInput, MoneyInput, Row, messageOf } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
 import { itVendorApi } from '../../lib/itApi.js';
+import { DataTable } from '../../components/DataTable.js';
 import type {
   ItVendorContractTransitionResult,
   ItVendorContractView,
@@ -628,57 +629,73 @@ export function ItVendorContracts() {
         onChange={setTab as (k: string) => void}
       />
 
-      {isLoading ? (
-        <Loading />
-      ) : filtered.length === 0 ? (
-        <Card>
-          <EmptyState message="No contracts in this view." />
-        </Card>
-      ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Contract</th>
-                <th>Vendor</th>
-                {showValue && <th className="text-right">Value</th>}
-                <th>End date</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    <RecordCode code={c.recordCode} to={`/it/contracts/${c.id}`} />
-                  </td>
-                  <td className="text-xs text-ink-100">{c.title}</td>
-                  <td className="text-2xs text-ink-400">{c.vendorName ?? '—'}</td>
-                  {showValue && (
-                    <td className="text-right tabular-nums text-xs">{money(c.value, c.currency ?? undefined)}</td>
-                  )}
-                  <td className="text-2xs text-ink-400">{c.endDate ? date(c.endDate) : '—'}</td>
-                  <td>
-                    <StatusChip
-                      status={c.status}
-                      tone={
-                        ['active', 'approved'].includes(c.status)
-                          ? 'good'
-                          : c.status === 'expiring'
-                            ? 'warn'
-                            : c.status === 'terminated' || c.status === 'expired'
-                              ? 'bad'
-                              : 'neutral'
-                      }
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      <Card bodyClassName="p-0">
+        <DataTable
+          caption="Contracts"
+          rows={filtered}
+          rowKey={(c) => c.id}
+          loading={isLoading}
+          emptyMessage="No contracts in this view."
+          columns={[
+            {
+              id: 'code',
+              header: 'Code',
+              sortValue: (c) => c.recordCode,
+              cell: (c) => <RecordCode code={c.recordCode} to={`/it/contracts/${c.id}`} />,
+            },
+            {
+              id: 'title',
+              header: 'Contract',
+              sortValue: (c) => c.title,
+              cell: (c) => <span className="text-xs text-ink-100">{c.title}</span>,
+            },
+            {
+              id: 'vendor',
+              header: 'Vendor',
+              sortValue: (c) => c.vendorName,
+              cell: (c) => <span className="text-2xs text-ink-400">{c.vendorName ?? '—'}</span>,
+            },
+            ...(showValue
+              ? [
+                  {
+                    id: 'value',
+                    header: 'Value',
+                    align: 'right' as const,
+                    sortValue: (c: ItVendorContractView) => c.value,
+                    cell: (c: ItVendorContractView) => (
+                      <span className="text-xs">{money(c.value, c.currency ?? undefined)}</span>
+                    ),
+                  },
+                ]
+              : []),
+            {
+              id: 'endDate',
+              header: 'End date',
+              sortValue: (c) => c.endDate,
+              cell: (c) => <span className="text-2xs text-ink-400">{c.endDate ? date(c.endDate) : '—'}</span>,
+            },
+            {
+              id: 'status',
+              header: 'Status',
+              sortValue: (c) => c.status,
+              cell: (c) => (
+                <StatusChip
+                  status={c.status}
+                  tone={
+                    ['active', 'approved'].includes(c.status)
+                      ? 'good'
+                      : c.status === 'expiring'
+                        ? 'warn'
+                        : c.status === 'terminated' || c.status === 'expired'
+                          ? 'bad'
+                          : 'neutral'
+                  }
+                />
+              ),
+            },
+          ]}
+        />
+      </Card>
 
       <NewContractModal vendors={vendors} open={creating} onClose={() => setCreating(false)} />
     </div>

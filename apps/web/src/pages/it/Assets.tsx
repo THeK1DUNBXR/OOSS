@@ -29,6 +29,7 @@ import {
   Tabs,
 } from '../../components/ui.js';
 import { NewButton, SelectInput, TextArea, TextInput, messageOf } from '../../components/forms.js';
+import { DataTable } from '../../components/DataTable.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -248,41 +249,59 @@ export function ItAssets() {
         ) : rows.length === 0 ? (
           <EmptyState message="Nothing matches." hint="Widen the tab or filter, or add a new asset." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-ink-800 text-2xs uppercase tracking-wide text-ink-500">
-                  <th className="px-4 py-2">Tag</th>
-                  <th className="px-4 py-2">Kind</th>
-                  <th className="px-4 py-2">Make / model</th>
-                  <th className="px-4 py-2">Holder</th>
-                  <th className="px-4 py-2">Warranty</th>
-                  <th className="px-4 py-2">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((a) => (
-                  <tr key={a.id} className="border-b border-ink-850/60">
-                    <td className="px-4 py-2">
-                      <Link to={`/it/assets/${a.id}`} className="font-medium text-ink-100 hover:text-accent">
-                        {a.tag}
-                      </Link>
-                      <div className="text-2xs text-ink-500">
-                        <RecordCode code={a.recordCode} />
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-ink-300">{titleCase(a.kind)}</td>
-                    <td className="px-4 py-2 text-ink-300">{[a.make, a.model].filter(Boolean).join(' ') || '—'}</td>
-                    <td className="px-4 py-2 text-ink-300">{a.holderName ?? '—'}</td>
-                    <td className="px-4 py-2 text-ink-300">{a.warrantyEnd ? date(a.warrantyEnd) : '—'}</td>
-                    <td className="px-4 py-2">
-                      <StatusChip status={a.status} tone={STATUS_TONE[a.status]} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption="IT assets"
+            rows={rows}
+            rowKey={(a) => a.id}
+            emptyMessage="Nothing matches."
+            columns={[
+              {
+                id: 'tag',
+                header: 'Tag',
+                sortValue: (a) => a.tag,
+                cell: (a) => (
+                  <>
+                    <Link to={`/it/assets/${a.id}`} className="font-medium text-ink-100 hover:text-accent">
+                      {a.tag}
+                    </Link>
+                    <div className="text-2xs text-ink-500">
+                      <RecordCode code={a.recordCode} />
+                    </div>
+                  </>
+                ),
+              },
+              {
+                id: 'kind',
+                header: 'Kind',
+                sortValue: (a) => a.kind,
+                cell: (a) => <span className="text-ink-300">{titleCase(a.kind)}</span>,
+              },
+              {
+                id: 'model',
+                header: 'Make / model',
+                sortValue: (a) => [a.make, a.model].filter(Boolean).join(' '),
+                cell: (a) => <span className="text-ink-300">{[a.make, a.model].filter(Boolean).join(' ') || '—'}</span>,
+              },
+              {
+                id: 'holder',
+                header: 'Holder',
+                sortValue: (a) => a.holderName,
+                cell: (a) => <span className="text-ink-300">{a.holderName ?? '—'}</span>,
+              },
+              {
+                id: 'warranty',
+                header: 'Warranty',
+                sortValue: (a) => a.warrantyEnd,
+                cell: (a) => <span className="text-ink-300">{a.warrantyEnd ? date(a.warrantyEnd) : '—'}</span>,
+              },
+              {
+                id: 'status',
+                header: 'Status',
+                sortValue: (a) => a.status,
+                cell: (a) => <StatusChip status={a.status} tone={STATUS_TONE[a.status]} />,
+              },
+            ]}
+          />
         )}
       </Card>
 
