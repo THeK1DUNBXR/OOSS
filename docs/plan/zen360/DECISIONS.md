@@ -676,3 +676,26 @@ Still open after round 20 (recorded 2026-10-11, supersedes the round 19b list):
 - Statutory sign-off holder and IT owner (tbd during onboard).
 - D-11 numbers.
 - Resend data-hosting and chat-retention legal checks.
+
+## Owner answers, round 21 (recorded 2026-10-11)
+
+Owner answers given after round 20 (recorded 2026-10-11). Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged. This round supersedes the round 20 "Still open" list. Where no answer is recorded here, the earlier rounds and the drafts stand.
+
+1. **The customer Case record stays in Phase 0 Wave 6 (owner answer, item 1).** This resolves the conflict between the Wave 6 list in `docs/plan/zen360/ORDERED-PLAN.md`, which names the Case record, and the ROADMAP row "Customer Case model (Z2)", which said out of Phase 0. The "Z2: customer case out" entry in the "Phase 0, out or undecided" list under "Owner phase definitions and scope" (recorded 2026-10-10) is superseded by this item and kept as history.
+2. **Delegation and the 24-hour absence test are owned by Phase 1A approvals (owner answer, item 2).** They are not Phase 0 Wave 6 items. The 1A item in ORDERED-PLAN.md holds the delegation record with its expiry, the named alternate and the escalation after 24 hours of absence. ROADMAP.md no longer lists the 24-hour founder-absence scenario in the Wave 6 exit.
+3. **Onboarding and level mapping stay in Phase 0 (owner answer, item 3).** The P7 onboarding state machine, the per-state packs and the guided level-mapping flow stay in Phase 0 Wave 6. This closes round 18b implication (d), which was OPEN.
+4. **Item 3.1 sign-off is not a blocker for the P7 onboarding state machine (owner answer, item 4).** This matches round 19a (c). The "BLOCKED-BY 3.1 sign-off" lines in ORDERED-PLAN.md Wave 6 are struck, and the related note in ROADMAP.md Wave 1 is marked.
+
+Implications (label):
+
+- (a) Phase 0 scope does not grow. The Case record was already in the ORDERED-PLAN Wave 6 list, so the change is to the ROADMAP row and the Wave 6 summary wording.
+- (b) Item 2 says who owns the 24-hour absence test, not what its rule is. The D-09 open item for the 24-hour absence test stays open until the Phase 1A design settles it.
+- (c) Item 4 removes a build-order block only. It does not unlock any statutory-dependent feature. Those stay gated until the accountant approves the rules (round 19a (c)), and the values stay DRAFT (round 10).
+
+Still open after round 21 (recorded 2026-10-11, supersedes the round 20 list):
+
+- Hosting, caching and routing (after Phase 1).
+- Questionnaire approval.
+- Statutory sign-off holder and IT owner (tbd during onboard).
+- D-11 numbers.
+- Resend data-hosting and chat-retention legal checks.
