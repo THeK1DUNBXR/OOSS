@@ -12,6 +12,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   computeEnps,
+  istYearMonth,
   inAudience,
   isHrCaseSlaBreached,
   SURVEY_MIN_SAMPLE,
@@ -51,7 +52,7 @@ async function hrOpsOwnerId(tenantId: string): Promise<string | null> {
 /** `ENG:<entity>` sequence — a plain, human-referenced number for the entities that hold no RECORD_TYPE_CODES prefix of their own. */
 async function nextEngagementNumber(entity: string): Promise<string> {
   const auth = currentAuth();
-  const year = new Date().getUTCFullYear();
+  const year = istYearMonth(new Date()).year;
   const row = await prisma.recordSequence.upsert({
     where: { tenantId_entityType_year: { tenantId: auth.tenantId, entityType: `ENG:${entity}`, year } },
     create: { tenantId: auth.tenantId, entityType: `ENG:${entity}`, year, nextSequence: 2 },

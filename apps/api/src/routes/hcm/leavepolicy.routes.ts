@@ -2,6 +2,7 @@
  * HCM — leavepolicy (docs/hcm/leavepolicy.md). Mounted at /api/hcm/leavepolicy.
  */
 import { Router } from 'express';
+import { istMonthKey } from '@kaizen/shared';
 import { z } from 'zod';
 import { handler, str } from '../../lib/http.js';
 import {
@@ -280,7 +281,7 @@ router.delete(
 router.get(
   '/team-calendar',
   handler(async (req) => {
-    const month = str(req.query.month) ?? new Date().toISOString().slice(0, 7);
+    const month = str(req.query.month) ?? istMonthKey(new Date());
     return teamCalendar(month, str(req.query.orgUnitId));
   }),
 );

@@ -42,6 +42,17 @@ export function istDateKey(date: Date): string {
 }
 
 /**
+ * Minutes since IST midnight for an instant: the wall-clock reading a punch
+ * or a shift's HH:MM is compared against. IST has no DST, so a fixed offset
+ * is exact; the double modulo keeps pre-epoch instants in range.
+ */
+export function istMinuteOfDay(date: Date): number {
+  const dayMs = 86_400_000;
+  const msIntoIstDay = (((date.getTime() + IST_OFFSET_MS) % dayMs) + dayMs) % dayMs;
+  return Math.floor(msIntoIstDay / 60_000);
+}
+
+/**
  * The calendar year a financial year starts in: 2026 for FY2026-27. Starts on
  * 1 April IST, so 00:30 IST on 1 April is already the new year.
  */

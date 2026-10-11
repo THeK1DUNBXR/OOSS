@@ -174,12 +174,13 @@ describe('HCM-TIME-003 — nightly attendance derivation from clock events', () 
       await recordClockEvent({
         employmentRelationshipId: divya.employmentRelationshipId,
         kind: 'in',
-        occurredAt: new Date(day.getTime() + 9 * 3_600_000),
+        // 09:00 and 17:00 IST, which is 03:30Z and 11:30Z on the day (IST is UTC+5:30).
+        occurredAt: new Date(day.getTime() + 3.5 * 3_600_000),
       });
       await recordClockEvent({
         employmentRelationshipId: divya.employmentRelationshipId,
         kind: 'out',
-        occurredAt: new Date(day.getTime() + 17 * 3_600_000),
+        occurredAt: new Date(day.getTime() + 11.5 * 3_600_000),
       });
     });
 
@@ -508,16 +509,21 @@ describe('HCM-TIME-013 — the attendance deriver reads punches on the IST wall 
 
     const row = await asUser('hr@kaizen.co.in', () =>
       prisma.workAttendance.findUnique({
-        where: { employmentRelationshipId_workDate: { employmentRelationshipId: divya.employmentRelationshipId, workDate: day } },
+        where: {
+          employmentRelationshipId_workDate: {
+            employmentRelationshipId: divya.employmentRelationshipId,
+            workDate: day,
+          },
+        },
       }),
     );
     expect(row?.note).toBe('Derived from clock events: late.');
     expect(row?.workedMinutes).toBe(525);
   });
 
-  // 00:30 IST on the 42nd is 19:00Z on the 41st. Under a UTC day window that
-  // punch belongs to the 41st and is dropped, leaving the 42nd with a lone
-  // clock-out and marked absent.
+  // 00:30 IST on the day under test is 19:00Z the day before. A UTC day window
+  // files that punch under the previous day and drops it, leaving this day
+  // with a lone clock-out and marked absent.
   it('HCM-TIME-013b: a clock-in at 00:30 IST belongs to that IST day, not to the UTC day before', async () => {
     const divya = await employmentFor('divya@kaizen.co.in');
     const day = fixtureDay(41);
@@ -541,7 +547,12 @@ describe('HCM-TIME-013 — the attendance deriver reads punches on the IST wall 
 
     const row = await asUser('hr@kaizen.co.in', () =>
       prisma.workAttendance.findUnique({
-        where: { employmentRelationshipId_workDate: { employmentRelationshipId: divya.employmentRelationshipId, workDate: day } },
+        where: {
+          employmentRelationshipId_workDate: {
+            employmentRelationshipId: divya.employmentRelationshipId,
+            workDate: day,
+          },
+        },
       }),
     );
     expect(row?.missingPunch).toBe(false);

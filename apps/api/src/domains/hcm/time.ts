@@ -12,6 +12,9 @@ import {
   compOffDaysForHours,
   compOffExpiryDate,
   EVENTS,
+  istDateKey,
+  istMidnight,
+  istMinuteOfDay,
   parseHHMM,
   weekStartMonday,
   weeklyHoursTotal,
@@ -41,12 +44,37 @@ registerGovernedEntities('hcm_time', [
   'attendance_regularisation',
 ]);
 
+/**
+ * The IST civil date of an instant as YYYY-MM-DD. Date-only columns hold
+ * UTC midnight of that date (see `dayStart`), so reading one back through
+ * this is exact; reading an instant through it gives the IST day, not the UTC day.
+ */
 function ymd(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return istDateKey(d);
 }
 
+/**
+ * UTC midnight of the IST civil date of `d` — the storage form of a
+ * date-only value. A date-only input parsed as UTC midnight is 05:30 IST on
+ * the same date, so re-deriving it here is a no-op for those.
+ */
 function dayStart(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  return new Date(`${istDateKey(d)}T00:00:00.000Z`);
+}
+
+/**
+ * The IST day before the one `now` falls in, in storage form. IST has no DST,
+ * so stepping back 24 hours from IST midnight is exact. Stepping back 24 hours
+ * from `now` itself lands on the wrong day between 00:00 and 05:30 IST.
+ */
+export function yesterdayIst(now: Date): Date {
+  return new Date(dayStart(now).getTime() - 86_400_000);
+}
+
+/** The instants an IST civil day runs between, for instant-valued columns. */
+function istDayBounds(day: Date): { start: Date; end: Date } {
+  const [y, m, d] = ymd(day).split('-').map(Number);
+  return { start: istMidnight(y!, m!, d!), end: istMidnight(y!, m!, d! + 1) };
 }
 
 /** The active employment behind the calling user's own account — what every `/me` endpoint resolves against. */
@@ -356,9 +384,7 @@ export async function recordClockEvent(input: {
  * (nothing to classify against) rather than guessed at. Idempotent: it
  * upserts, so a second run on the same day recomputes rather than duplicates.
  */
-export async function deriveAttendanceFromClockEvents(
-  forDate: Date = new Date(Date.now() - 86_400_000),
-): Promise<JobResult> {
+export async function deriveAttendanceFromClockEvents(forDate: Date = yesterdayIst(new Date())): Promise<JobResult> {
   const auth = currentAuth();
   // A tenant-wide recompute, reachable directly via `/jobs/derive-attendance`
   // as well as the nightly scheduler (which runs it as the system principal,
@@ -367,10 +393,12 @@ export async function deriveAttendanceFromClockEvents(
   // `clock_events:view`, which an own-scoped employee also holds.
   await assertScopeAll('attendance', 'edit');
   const day = dayStart(forDate);
-  const dayEnd = new Date(day.getTime() + 86_400_000);
+  // The punches of an IST civil day, not a UTC one: a 00:30 IST clock-in is
+  // 19:00Z the previous day and would otherwise be dropped from this day.
+  const { start, end } = istDayBounds(day);
 
   const events = await prisma.clockEvent.findMany({
-    where: { tenantId: auth.tenantId, occurredAt: { gte: day, lt: dayEnd } },
+    where: { tenantId: auth.tenantId, occurredAt: { gte: start, lt: end } },
     orderBy: { occurredAt: 'asc' },
   });
 
@@ -392,8 +420,10 @@ export async function deriveAttendanceFromClockEvents(
 
       const firstIn = list.find((e) => e.kind === 'in');
       const lastOut = [...list].reverse().find((e) => e.kind === 'out');
-      const inMinutes = firstIn ? firstIn.occurredAt.getUTCHours() * 60 + firstIn.occurredAt.getUTCMinutes() : null;
-      const outMinutes = lastOut ? lastOut.occurredAt.getUTCHours() * 60 + lastOut.occurredAt.getUTCMinutes() : null;
+      // Roster HH:MM is IST wall-clock (no zone on `Shift`; the platform is
+      // India-only), so a punch is read in IST before it is compared with it.
+      const inMinutes = firstIn ? istMinuteOfDay(firstIn.occurredAt) : null;
+      const outMinutes = lastOut ? istMinuteOfDay(lastOut.occurredAt) : null;
 
       const result = classifyPunch(shiftDef(shift), inMinutes, outMinutes);
 

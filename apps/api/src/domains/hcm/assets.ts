@@ -27,7 +27,7 @@ import {
   type TravelMode,
   type TravelRequestStatus,
 } from '@kaizen/shared';
-import { HR_LETTER_KINDS, type HrLetterKind } from '@kaizen/shared';
+import { HR_LETTER_KINDS, istDateKey, istYearMonth, type HrLetterKind } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -436,7 +436,7 @@ export async function settleTravelRequest(id: string, expenseClaimId: string) {
 
 async function nextLetterRequestNumber(): Promise<string> {
   const auth = currentAuth();
-  const year = new Date().getUTCFullYear();
+  const year = istYearMonth(new Date()).year;
   const row = await prisma.recordSequence.upsert({
     where: { tenantId_entityType_year: { tenantId: auth.tenantId, entityType: 'HCM:LREQ', year } },
     create: { tenantId: auth.tenantId, entityType: 'HCM:LREQ', year, nextSequence: 2 },
@@ -536,7 +536,7 @@ export async function fulfilLetterRequest(id: string) {
   const kind = request.kind as LetterRequestKind;
   const employeeName = employment.person.fullName;
   const designation = employment.assignments[0]?.position.job.title ?? null;
-  const issuedOn = new Date().toISOString().slice(0, 10);
+  const issuedOn = istDateKey(new Date());
 
   let updated;
   if (fulfilsViaHrLetter(kind)) {
@@ -647,7 +647,7 @@ export async function listIssuedHrLetters(employmentRelationshipId: string) {
 
 async function nextIdCardNumber(): Promise<string> {
   const auth = currentAuth();
-  const year = new Date().getUTCFullYear();
+  const year = istYearMonth(new Date()).year;
   const row = await prisma.recordSequence.upsert({
     where: { tenantId_entityType_year: { tenantId: auth.tenantId, entityType: 'HCM:IDC', year } },
     create: { tenantId: auth.tenantId, entityType: 'HCM:IDC', year, nextSequence: 2 },

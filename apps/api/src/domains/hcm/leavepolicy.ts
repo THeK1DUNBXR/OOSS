@@ -18,6 +18,7 @@
 
 import {
   EVENTS,
+  istMonthKey,
   RESTRICTED_HOLIDAY_ANNUAL_LIMIT,
   creditableWithinCap,
   parseAccrualPeriod,
@@ -544,8 +545,16 @@ export async function runAccrualForRule(
   return { run, idempotent: false };
 }
 
+/**
+ * The monthly accrual period an instant falls in, as YYYY-MM in IST. The job
+ * fires at 02:00 IST on the 1st, when UTC still shows the previous month.
+ */
+export function currentAccrualPeriod(now: Date): string {
+  return istMonthKey(now);
+}
+
 /** Runs every accruing rule of every active policy for `period` (monthly key `YYYY-MM`) — what the scheduled job calls. */
-export async function runMonthlyAccrual(period: string = new Date().toISOString().slice(0, 7)): Promise<JobResult> {
+export async function runMonthlyAccrual(period: string = currentAccrualPeriod(new Date())): Promise<JobResult> {
   const auth = currentAuth();
   const rules = await prisma.leavePolicyRule.findMany({
     where: { tenantId: auth.tenantId, accrualFrequency: 'monthly', leavePolicy: { status: 'active' } },
