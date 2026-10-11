@@ -254,6 +254,7 @@ export async function computeAttribution(from: Date, to: Date): Promise<number> 
   });
 
   let processed = 0;
+  const pendingEvents: Parameters<typeof emit>[0][] = [];
   for (const lead of leads) {
     const touches: Touch[] = lead.personId ? await touchesForPerson(lead.personId, lead.createdAt) : [];
     if (lead.campaignId || lead.channelKey) {
@@ -275,7 +276,9 @@ export async function computeAttribution(from: Date, to: Date): Promise<number> 
       if (enrollment) rowsForEnrollment = await writeAttributionRows('enrollmentId', enrollment.id, touches);
     }
 
-    await emit({
+    // Held until the run audit is written, so the order is write → audit → emit
+    // (CLAUDE.md rule 5) rather than emitting per lead inside the loop.
+    pendingEvents.push({
       name: EVENTS.MKT_ATTRIBUTION_COMPUTED,
       subject: { entityType: 'lead', entityId: lead.id },
       newState: { touchCount: touches.length, rowsForLead, rowsForOpportunity, rowsForEnrollment },
@@ -291,6 +294,11 @@ export async function computeAttribution(from: Date, to: Date): Promise<number> 
     windowTo: to.toISOString(),
     leadsProcessed: processed,
   });
+
+  // No subscriber consumes kz.mkt.attribution.computed (grep of apps/ and
+  // packages/ at this commit finds only this emit and the EVENTS entry), so
+  // the per-lead events are kept as they were, only moved after the audit.
+  for (const event of pendingEvents) await emit(event);
 
   return processed;
 }
