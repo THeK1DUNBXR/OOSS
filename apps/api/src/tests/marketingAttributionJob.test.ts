@@ -142,6 +142,43 @@ describe('marketing.attribution.recompute', () => {
     expect(rows.filter((r) => r.startsWith('first_touch|'))).toHaveLength(1);
   });
 
+  it('the recompute writes one bulk audit record for the run', async () => {
+    const before = await unscopedPrisma.auditRecord.count({
+      where: { tenantId: TENANT_ID, subjectType: 'marketing_attribution', subjectId: 'bulk:recompute' },
+    });
+    const results = await runJobsForTenant(TENANT_ID, { jobNames: [JOB] });
+    expect(results[JOB].errors).toEqual([]);
+    const after = await unscopedPrisma.auditRecord.count({
+      where: { tenantId: TENANT_ID, subjectType: 'marketing_attribution', subjectId: 'bulk:recompute' },
+    });
+    expect(after - before).toBe(1);
+  });
+
+  it('the run audits before it emits: no per-lead event is recorded ahead of the run audit', async () => {
+    const start = new Date();
+    const results = await runJobsForTenant(TENANT_ID, { jobNames: [JOB] });
+    expect(results[JOB].errors).toEqual([]);
+
+    const audit = await unscopedPrisma.auditRecord.findFirst({
+      where: {
+        tenantId: TENANT_ID,
+        subjectType: 'marketing_attribution',
+        subjectId: 'bulk:recompute',
+        timestamp: { gte: start },
+      },
+      orderBy: { timestamp: 'desc' },
+    });
+    expect(audit).not.toBeNull();
+
+    const events = await unscopedPrisma.eventRecord.findMany({
+      where: { tenantId: TENANT_ID, eventName: 'kz.mkt.attribution.computed', recordedAt: { gte: start } },
+    });
+    expect(events.length).toBeGreaterThan(0);
+    for (const e of events) {
+      expect(e.recordedAt.getTime()).toBeGreaterThanOrEqual(audit!.timestamp.getTime());
+    }
+  });
+
   it('a rerun reproduces identical rows and counts', async () => {
     const before = await leadRows();
     const results = await runJobsForTenant(TENANT_ID, { jobNames: [JOB] });
