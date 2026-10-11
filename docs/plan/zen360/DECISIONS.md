@@ -710,3 +710,59 @@ Still open after round 21 (recorded 2026-10-11, supersedes the round 20 list for
 - Statutory sign-off holder and IT owner (tbd during onboard).
 - D-11 numbers.
 - Resend data-hosting and chat-retention legal checks.
+
+## Owner answers, round 22 (recorded 2026-10-11)
+
+Owner answers given after round 21 (recorded 2026-10-11). Items a to f are owner answers. The caveats and the feature list in the mail items are Claude's research notes, not decisions, unless marked as the owner's.
+
+a. **Customer case record stays in Phase 0 Wave 6 (owner answer, item a).** ROADMAP.md previously said it was out of Phase 0. Fixed in round 22.
+
+b. **Delegation and the 24-hour absence test are owned by Phase 1A (owner answer, item b).** Removed from the Phase 0 Wave 6 exit in ROADMAP.md. Listed as an exit test for 1A in ORDERED-PLAN.md and ROADMAP.md.
+
+c. **Onboarding and level mapping stay in Phase 0 Wave 6 (owner answer, item c).** They do not wait for commercialisation. This answers the open question "whether onboarding and level mapping stay in Phase 0" (round 18b implication (d)), which is closed.
+
+d. **Statutory sign-off is not an onboarding blocker (owner answer, item d).** Round 19a(c) lifted it. Reconciliation applied in round 22: the BLOCKED-BY on P7 onboarding was removed, and the BLOCKED-BY on item 3.1 itself was removed too, because 3.1 is the DRAFT table that onboarding depends on (see ACCESS-MODEL-PLAN.md section on 3.1). Statutory-dependent features stay gated until the accountant approves the rule. Statutory values stay DRAFT.
+
+e. **Account recovery goes through the founder or the IT admin (owner answer, item e).** SMS to employees' phones is NOT a recovery method. The owner chose this over SMS. Reason noted by the owner: SIM-swap risk on a finance system. Implication, not an owner statement: the IT admin is a level assignment (round 10), so the recovery path depends on that assignment being made at onboarding.
+
+f. **Mail server: the owner decided to FORK Stalwart Mail Server and adapt it to Zen 360 (owner decision, item f).** The owner said commercialisation is not a concern now ("our team will take care of it later"). Recorded as the owner's decision. The points below are unresearched caveats, not decisions. Each needs checking before any code is taken.
+
+Caveats (UNVERIFIED unless stated):
+
+- Stalwart is AGPL-3.0. A modified version used over a network means offering its source to its users. Changing the licence later is not possible without the paid Enterprise Licence v2. The terms of that licence have not been read.
+- Enterprise-licensed features may not be in the forked code. Not verified.
+- Version 0.16 replaced the REST API with JMAP. The 0.15 to 0.16 migration is irreversible without a backup.
+- Releases are weekly. Upstream security fixes must be merged by us.
+- Not verified: JMAP authentication and impersonation, webhook event names, DNS requirements, backup and restore, resource needs, export format.
+- Hosting still conflicts with "hosting after Phase 1" (round 18b, 19b): MX, SPF, DKIM, DMARC, PTR, port 25 and a static IP. The domain and DNS owner is still open.
+- Conflict with the ORDERED-PLAN "read and learn only" rule (open-source use). Recorded in ORDERED-PLAN.md as an exception needing review.
+
+Survey notes (Claude's research summary, not decisions):
+
+- Mailflare is ruled out: Cloudflare lock-in, and no IMAP.
+- Mailcow was the runner-up.
+- Open-source features and the public feature lists of paid products were surveyed.
+- Reverse engineering of proprietary software is NOT part of the plan. Only public documentation is used.
+
+Phased inbox feature list (proposal for the owner to confirm; not estimated):
+
+- MVP: mailboxes; send and read; threading; customer linking; founder or IT-admin access, with every access logged; an approval queue for agent-drafted mail (CLAUDE.md rule 5 and the rule that no agent emails a customer without approval); audit via assertCan, then write, then auditWrite, then emit.
+- v2: shared inboxes; assignment; internal comments; undo send; rules; out-of-office; search.
+- Later: legal hold; retention per tenant; DLP; scheduled send.
+
+DPDP duties for employee mail (personal data in mail, retention, access, erasure against the 8-year retention in D-14): UNVERIFIED. Needs counsel. Not checked here.
+
+Still open after round 22 (recorded 2026-10-11, supersedes the round 21 list for the items below):
+
+- Mail: build versus fork. The owner has decided to fork Stalwart. The caveats above are open. Whether the fork is compatible with the "read and learn only" open-source rule is open.
+- Mail: email hosting versus the "hosting after Phase 1" deferral. Still open.
+- Mail: domain name and DNS owner for company email. Still open.
+- Mail: mailbox limits and retention. Still open.
+- Mail: access rules for reading other people's mail. Still open.
+- Mail: whether it is sequenced late in Phase 1. Still open.
+- Mail: DPDP duties. Unverified, needs counsel.
+- Hosting, caching and routing (after Phase 1).
+- Questionnaire approval.
+- Statutory sign-off holder and IT owner (tbd during onboard).
+- D-11 numbers.
+- Resend data-hosting and chat-retention legal checks.

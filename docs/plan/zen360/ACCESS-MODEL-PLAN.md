@@ -284,7 +284,7 @@ Owner: statutory sign-off happens after the application is set up; the accountan
 
 No figure is entered in this document or in code. OPEN 10: where DRAFT rows come from (the 3.1 pack states figures are not reproduced in the repository) and who enters them.
 
-**Effect on the plan.** OP:125 makes the P7 onboarding state machine BLOCKED-BY 3.1 sign-off, and 3.1 itself is BLOCKED-BY statutory sign-off (OP:63). Reverse it: 3.1 (the table, the `btree_gist` exclusion, the statuses) lands with DRAFT rows; onboarding and access mapping do not wait; only statutory-dependent features gate on approval. OPEN 11 whether approving a rule collides with founder-only "statutory filings" (D:278). Reading: approving a rule is not filing; confirm.
+**Effect on the plan.** OP:125 makes the P7 onboarding state machine BLOCKED-BY 3.1 sign-off, and 3.1 itself is BLOCKED-BY statutory sign-off (OP:63). Reverse it: 3.1 (the table, the `btree_gist` exclusion, the statuses) lands with DRAFT rows; onboarding and access mapping do not wait; only statutory-dependent features gate on approval. Applied in round 22 (item d): ORDERED-PLAN and ROADMAP no longer list 3.1 sign-off as a blocker. OPEN 11 whether approving a rule collides with founder-only "statutory filings" (D:278). Reading: approving a rule is not filing; confirm.
 
 ## 10. Phasing against ORDERED-PLAN
 
@@ -352,15 +352,15 @@ Ordered by what blocks design first.
 
 ### Contradictions from R3 section H that touch access
 
-| Contradiction                                            | Resolution                                    |
-| -------------------------------------------------------- | --------------------------------------------- |
-| Prompt recipient D:428 vs D:552                          | HR (owner correction)                         |
-| Statutory pair D:460 vs D:490                            | D:490 (later)                                 |
-| Statutory assigner Q:107 "founder only" vs D:401         | D:401, now the accountant's setup             |
-| Sessions end on leave vs code revoking affiliations only | Code gap (CAP:396); fix in leaver work        |
-| IT owner Wave 4 vs level system Wave 6                   | Tagged stopgap data grant                     |
-| Template ships (D:355-361) vs no hardcode                | OPEN 2                                        |
-| P7 label retired but used (OP:125)                       | Reword; remove BLOCKED-BY 3.1 from onboarding |
+| Contradiction                                            | Resolution                                                      |
+| -------------------------------------------------------- | --------------------------------------------------------------- |
+| Prompt recipient D:428 vs D:552                          | HR (owner correction)                                           |
+| Statutory pair D:460 vs D:490                            | D:490 (later)                                                   |
+| Statutory assigner Q:107 "founder only" vs D:401         | D:401, now the accountant's setup                               |
+| Sessions end on leave vs code revoking affiliations only | Code gap (CAP:396); fix in leaver work                          |
+| IT owner Wave 4 vs level system Wave 6                   | Tagged stopgap data grant                                       |
+| Template ships (D:355-361) vs no hardcode                | OPEN 2                                                          |
+| P7 label retired but used (OP:125)                       | Done (round 22, item d): BLOCKED-BY 3.1 removed from onboarding |
 
 ## Could not resolve
 
