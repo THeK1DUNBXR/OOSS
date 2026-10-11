@@ -170,12 +170,17 @@ async function historyOf(tenantId: string) {
   return unscopedPrisma.onboardingTransition.findMany({ where: { tenantId }, orderBy: { at: 'asc' } });
 }
 
-/** Runs the backfill statement exactly as the migration carries it. */
-async function runBackfill(): Promise<void> {
+/** The statement between the BACKFILL markers, exactly as the migration carries it. */
+function backfillStatement(): string {
   const sql = readFileSync(MIGRATION, 'utf8');
   const block = /-- BACKFILL-BEGIN[\s\S]*?\n([\s\S]*?)-- BACKFILL-END/.exec(sql);
   if (!block) throw new Error('the migration carries no BACKFILL block');
-  await unscopedPrisma.$executeRawUnsafe(block[1]!);
+  return block[1]!;
+}
+
+/** Runs the backfill as the owner, which is how a migration runs. */
+async function runBackfill(): Promise<void> {
+  await unscopedPrisma.$executeRawUnsafe(backfillStatement());
 }
 
 describe('the vocabulary and the transition table', () => {
@@ -373,6 +378,59 @@ describe('the backfill', () => {
     await runBackfill();
     expect(await runRow(t.tenantId)).toEqual(first);
     expect(await unscopedPrisma.tenantOnboardingRun.count({ where: { tenantId: t.tenantId } })).toBe(1);
+  });
+});
+
+/**
+ * The backfill runs as the migration does, under the application role, which row-level
+ * security binds. The owner in CI is a superuser, and a superuser is not bound by FORCE
+ * RLS, so a backfill that only works for the owner would pass there and abort
+ * `prisma migrate deploy` on a server whose owner is not one. The backfill sets the
+ * tenant per pass, as 20261013130000_task_source_kind does; this test is what makes
+ * dropping that loop fail.
+ */
+describe('the backfill under the application role', () => {
+  it('writes one run per tenant, with the mapped state, when row-level security binds it', async () => {
+    const seeded = [
+      { label: 'verified', config: { onboarding: { status: 'verified' } }, expected: 'verified' },
+      { label: 'blocked', config: { onboarding: { status: 'blocked' } }, expected: 'blocked' },
+      { label: 'no status', config: {}, expected: 'draft' },
+    ] as const;
+    const made: Array<{ id: string; expected: string; label: string }> = [];
+    for (const c of seeded) {
+      const t = await fixtureTenant(c.config as Record<string, unknown>);
+      made.push({ id: t.tenantId, expected: c.expected, label: c.label });
+    }
+
+    class Rollback extends Error {}
+    const block = backfillStatement();
+    const app = new PrismaClient({ datasourceUrl: APP_URL });
+    let observed: Array<{ label: string; rows: Array<{ state: string }> }> = [];
+    try {
+      const failure = await app
+        .$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(block);
+          const seen: typeof observed = [];
+          for (const m of made) {
+            await tx.$executeRaw`SELECT set_config('app.tenant_id', ${m.id}, true)`;
+            const rows = await tx.$queryRaw<Array<{ state: string }>>`
+              SELECT "state" FROM "tenant_onboarding_runs" WHERE "tenantId" = ${m.id}`;
+            seen.push({ label: m.label, rows });
+          }
+          observed = seen;
+          throw new Rollback();
+        })
+        .catch((e: unknown) => e);
+      if (!(failure instanceof Rollback)) throw failure;
+    } finally {
+      await app.$disconnect();
+    }
+
+    for (const [i, m] of made.entries()) {
+      const rows = observed[i]!.rows;
+      expect(rows, m.label).toHaveLength(1);
+      expect(rows[0]!.state, m.label).toBe(m.expected);
+    }
   });
 });
 
