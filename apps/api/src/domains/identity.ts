@@ -244,7 +244,10 @@ export async function findOrCreatePerson(
 
 /** Creates without a dedup check. Reachable only through findOrCreatePerson. */
 async function createPerson(input: PersonInput, overrideReason?: string) {
-  const { person, recordCode } = await insertPersonRow(prisma, input);
+  // The scoped client is a superset of a transaction client, so this is the
+  // same object. The cast skips a structural comparison of two extension types
+  // that TS cannot finish within its instantiation depth (TS2589 / TS2321).
+  const { person, recordCode } = await insertPersonRow(prisma as unknown as DbTx, input);
 
   await auditWrite({
     action: 'create',

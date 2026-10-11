@@ -273,8 +273,14 @@ export type Db = typeof prisma;
  * match what `$transaction` yields here — the tenant-scope guard is an
  * extension, and it is precisely the thing a transaction must not lose. Any
  * helper that takes a `tx` parameter should take this.
+ *
+ * Derived from the callback parameter itself, not re-spelled as Omit<Db, ...>.
+ * The two are the same shape but different types to TypeScript, so every
+ * `prisma.$transaction((tx) => helper(tx))` made it compare them structurally,
+ * and that comparison overflowed the instantiation depth (TS2589) at whichever
+ * call site was checked first. Identical types need no comparison.
  */
-export type DbTx = Omit<Db, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
+export type DbTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 /**
  * A raw, unscoped client. Reachable only from the seed script and the
