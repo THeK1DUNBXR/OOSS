@@ -25,6 +25,7 @@ import { createPartnerAgreement } from '../domains/agreements.js';
 import { createApplication, createLicence, proposeRenewal } from '../domains/it/software.js';
 import { createPlan, recordTest, transitionPlan } from '../domains/it/continuity.js';
 import { campaignDetail, decideItem, openCampaign } from '../domains/it/governance.js';
+import { rejectRegularisation, submitRegularisation } from '../domains/hcm/time.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { requestClosePeriod, closePeriod } from '../domains/compliance/books.js';
 
@@ -311,6 +312,36 @@ describe('a revoke decision in an access review raises IT_ACR_REVOKE_REQUESTED i
     expect(
       await unscopedPrisma.exceptionRecord.count({
         where: { tenantId: TENANT, code: 'IT_ACR_REVOKE_REQUESTED', subjectId: item!.id },
+      }),
+    ).toBe(0);
+  });
+});
+
+describe('declining an attendance regularisation raises EX-HR-006 in the same transaction', () => {
+  it('when the raise cannot be recorded, the request stays submitted', async () => {
+    const DIVYA = 'divya@kaizen.co.in';
+    const user = await unscopedPrisma.user.findFirstOrThrow({ where: { email: DIVYA, tenant: { slug: 'kaizen' } } });
+    const employment = await unscopedPrisma.employmentRelationship.findFirstOrThrow({
+      where: { tenantId: TENANT, personId: user.personId },
+    });
+    // A far-off day, each run, so a rerun does not meet the day an earlier run left disputed.
+    const d = new Date();
+    d.setUTCFullYear(d.getUTCFullYear() + 20 + Math.floor(Math.random() * 20));
+    const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    const request = await asUser(DIVYA, () =>
+      submitRegularisation({ employmentRelationshipId: employment.id, date, reason: 'Atomicity probe.' }),
+    );
+    const before = await unscopedPrisma.attendanceRegularisation.findUniqueOrThrow({ where: { id: request.id } });
+
+    await refuseExceptionAudit();
+    await expectReject(() => asUser('hr@kaizen.co.in', () => rejectRegularisation(request.id, 'Not on the log.')));
+
+    const after = await unscopedPrisma.attendanceRegularisation.findUniqueOrThrow({ where: { id: request.id } });
+    expect(after.status).toBe(before.status);
+    expect(after.decidedAt).toBeNull();
+    expect(
+      await unscopedPrisma.exceptionRecord.count({
+        where: { tenantId: TENANT, code: 'EX-HR-006', subjectId: before.workAttendanceId },
       }),
     ).toBe(0);
   });
