@@ -16,10 +16,12 @@
  * not a mock: the insert really is refused by the database.
  */
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { asUser, expectReject, tenantId, unscopedPrisma } from './helpers.js';
+import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from './helpers.js';
 import { markChallanPaid } from '../domains/compliance/tax.js';
 import { closeRound, createRound } from '../domains/rounds.js';
-import { createLeaveRequest, transitionLeaveRequest, leaveBalances } from '../domains/leave.js';
+import { accrueEntitlement, createLeaveRequest, transitionLeaveRequest, leaveBalances } from '../domains/leave.js';
+import { hire, transitionEmployment } from '../domains/employment.js';
+import { nextRecordCode } from '../platform/recordCode.js';
 import { requestClosePeriod, closePeriod } from '../domains/compliance/books.js';
 
 const CLOSED = '2017-10';
@@ -118,13 +120,36 @@ describe('closing a funding round raises the PAS-3 return exception in the same 
 describe('approving leave taken beyond entitlement raises EX-HR-004 in the same transaction', () => {
   it('when the raise cannot be recorded, the request is not approved and no hold is posted', async () => {
     const HR = 'hr@kaizen.co.in';
-    const user = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'kavitha@kaizen.co.in' } });
-    const employment = await unscopedPrisma.employmentRelationship.findFirstOrThrow({
-      where: { personId: user.personId },
+    // A throwaway employee: a request approved here would leave a hold on a seeded
+    // person that the other leave tests read.
+    const stamp = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const { employment, leaveType } = await asUser(HR, async () => {
+      const position = await prisma.position.create({
+        data: {
+          tenantId: TENANT,
+          recordCode: await nextRecordCode('POS'),
+          jobId: (await prisma.job.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
+          orgUnitId: (await prisma.orgUnit.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
+          status: 'Open',
+        },
+      });
+      const person = await prisma.person.create({
+        data: {
+          tenantId: TENANT,
+          recordCode: await nextRecordCode('PER'),
+          fullName: `Atomicity leave ${stamp}`,
+          primaryEmail: `atomic.leave.${stamp}@example.com`,
+          source: 'test',
+        },
+      });
+      const hired = await hire({ personId: person.id, positionId: position.id, hireEffectiveDate: new Date() });
+      await transitionEmployment(hired.id, 'ACTIVATE');
+      const type = await prisma.leaveType.findFirstOrThrow({ where: { tenantId: TENANT, code: 'CL' } });
+      await accrueEntitlement({ employmentRelationshipId: hired.id, leaveTypeId: type.id, days: 2 });
+      return { employment: hired, leaveType: type };
     });
-    const leaveType = await unscopedPrisma.leaveType.findFirstOrThrow({ where: { tenantId: TENANT, code: 'CL' } });
 
-    // Far more days than any balance, so the approval's hold takes the balance negative.
+    // Far more days than the two accrued, so the approval's hold takes the balance negative.
     const request = await asUser(HR, () =>
       createLeaveRequest({
         employmentRelationshipId: employment.id,
