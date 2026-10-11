@@ -79,12 +79,17 @@ afterEach(() => {
 afterAll(async () => {
   // Nothing here is hard-deleted from the audit or event tables; the registry
   // rows are removed only because the fixture tenant is shared by the suite.
-  await unscopedPrisma.lineDistributionLine.deleteMany({
-    where: { lineId: { in: createdLineIds } },
-  });
-  await unscopedPrisma.lineDistribution.deleteMany({
+  // A distribution goes with its shares in one transaction: the database refuses
+  // a line removed while its header stays, and allows the pair to go together.
+  const headers = await unscopedPrisma.lineDistribution.findMany({
     where: { costCentreId: { in: createdCostCentreIds } },
+    select: { id: true },
   });
+  const headerIds = headers.map((h) => h.id);
+  await unscopedPrisma.$transaction([
+    unscopedPrisma.lineDistributionLine.deleteMany({ where: { distributionId: { in: headerIds } } }),
+    unscopedPrisma.lineDistribution.deleteMany({ where: { id: { in: headerIds } } }),
+  ]);
   await unscopedPrisma.businessLineSuccessor.deleteMany({
     where: { OR: [{ fromLineId: { in: createdLineIds } }, { toLineId: { in: createdLineIds } }] },
   });
@@ -519,6 +524,29 @@ describe('BusinessLine: distributions (dated, basis points)', () => {
     });
   });
 
+  it('refuses removing one share from a committed distribution, since the total would no longer be 10,000', async () => {
+    const a = await line();
+    const b = await line();
+    const cc = await costCentre();
+    const header = await unscopedPrisma.$transaction(async (tx) => {
+      const h = await tx.lineDistribution.create({
+        data: { tenantId: tid, costCentreId: cc.id, effectiveFrom: day('2030-07-01'), recordedById: 'test' },
+      });
+      await tx.lineDistributionLine.create({
+        data: { tenantId: tid, distributionId: h.id, lineId: a.id, basisPoints: 6000 },
+      });
+      await tx.lineDistributionLine.create({
+        data: { tenantId: tid, distributionId: h.id, lineId: b.id, basisPoints: 4000 },
+      });
+      return h;
+    });
+    await expect(
+      unscopedPrisma.$transaction(async (tx) => {
+        await tx.lineDistributionLine.deleteMany({ where: { distributionId: header.id, lineId: b.id } });
+      }),
+    ).rejects.toThrow(/basis points/);
+  });
+
   it('refuses a row that names no subject, or more than one, at the database', async () => {
     const cc = await costCentre();
     const category = await unscopedPrisma.ledgerCategory.create({
@@ -651,7 +679,7 @@ describe('BusinessLine: RLS and tenant scope', () => {
           recordedById: 'test',
         },
       }),
-    ).rejects.toThrow(/foreign key/);
+    ).rejects.toThrow(/[Ff]oreign key/);
     await unscopedPrisma.businessLine.deleteMany({ where: { id: theirs.id } });
   });
 });

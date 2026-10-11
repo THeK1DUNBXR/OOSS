@@ -4267,6 +4267,13 @@ model OrgUnit {
 
   headPositionId String?
 
+  /// A line unit delivers one business line; a function unit delivers none.
+  /// Null `kind` is a unit not yet classified, which is neither. The CHECK in
+  /// the business-lines migration holds the three cases apart (Opus decision E/H).
+  kind           String?
+  businessLineId String?
+  businessLine   BusinessLine? @relation(fields: [tenantId, businessLineId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -4274,6 +4281,7 @@ model OrgUnit {
   positions Position[]
 
   @@index([tenantId, parentId])
+  @@index([tenantId, businessLineId])
   @@map("org_units")
 }
 
@@ -5007,15 +5015,18 @@ model LedgerCategory {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  transactions   Transaction[]
-  budgetLines    BudgetLine[]
-  recurringRules RecurringRule[]
+  transactions      Transaction[]
+  budgetLines       BudgetLine[]
+  recurringRules    RecurringRule[]
+  lineDistributions LineDistribution[]
 
   /// Names the spin-out batch that created this category in a subsidiary
   /// (equity-portal plan §6b), for `--revert`.
   spinOutBatchId String?
 
   @@unique([tenantId, name])
+  /// Target of the composite key from LineDistribution (business-lines.prisma).
+  @@unique([tenantId, id])
   @@index([tenantId, kind])
   @@map("ledger_categories")
 }
@@ -5083,7 +5094,11 @@ model Transaction {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
+  lineDistributions LineDistribution[]
+
   @@unique([tenantId, recordCode])
+  /// Target of the composite key from LineDistribution (business-lines.prisma).
+  @@unique([tenantId, id])
   @@index([tenantId, txnDate])
   @@index([tenantId, categoryId, txnDate])
   @@index([tenantId, division, txnDate])

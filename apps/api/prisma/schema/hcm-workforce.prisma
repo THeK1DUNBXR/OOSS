@@ -116,7 +116,12 @@ model CostCentre {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
+  lineDistributions LineDistribution[]
+
   @@unique([tenantId, code])
+  /// Target of the composite key from LineDistribution. Carries no line of its own:
+  /// a cost centre's line comes from its dated distribution.
+  @@unique([tenantId, id])
   @@map("hcm_workforce_cost_centres")
 }
 

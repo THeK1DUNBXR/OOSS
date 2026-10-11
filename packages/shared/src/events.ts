@@ -872,6 +872,15 @@ export const EVENTS = {
   CEO_SEAT_REASSIGNED: 'kz.ceo.seat.reassigned',
   CEO_SUCCESSION_REVIEWED: 'kz.ceo.succession.reviewed',
   CEO_ONE_ON_ONE_LOGGED: 'kz.ceo.one_on_one.logged',
+
+  // --- Organisation: business-line registry (VERTICAL-TAXONOMY s.6-7). Emitted
+  // by apps/api/src/domains/businessLines.ts, one per governed write.
+  BUSINESS_LINE_CREATED: 'kz.org.business_line.created',
+  BUSINESS_LINE_RENAMED: 'kz.org.business_line.renamed',
+  BUSINESS_LINE_RETIRED: 'kz.org.business_line.retired',
+  BUSINESS_LINE_SUCCESSOR_RECORDED: 'kz.org.business_line_successor.recorded',
+  LINE_DISTRIBUTION_RECORDED: 'kz.org.line_distribution.recorded',
+  LINE_DISTRIBUTION_SUPERSEDED: 'kz.org.line_distribution.superseded',
 } as const;
 
 /**
