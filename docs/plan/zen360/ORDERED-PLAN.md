@@ -22,7 +22,7 @@ Markers: `BLOCKED-BY` marks a work item that cannot start until the named condit
 6. Every stop-ship fix starts with a failing test on the old code, in a separate first commit.
 7. Statutory values are date-effective `StatutoryRule` rows, seeded DRAFT until sign-off. The interim sign-off holder is the internal finance head.
 8. Statutory uncertainty means stop and flag it. Do not guess.
-9. Open source is learned from by reading and rewriting, never by copying (owner method).
+9. Open source is learned from by reading and rewriting, never by copying (owner method). Exception for the mail component only: copy code from open-source mail projects where relevant and log provenance (round 22 clarification, DECISIONS.md, 2026-10-12).
 
 ---
 
@@ -63,7 +63,7 @@ Stop rule for each wave: the wave's listed items are merged, and the gates named
 - **3.1 Statutory master pack.** The owner overrides the "do not reorder" rule for this item.
   - Contents: an EXCLUDE constraint on the date range via `btree_gist`, written as hand-written SQL. Status values DRAFT, APPROVED and HOLD. A citation on every row. Good and bad fixtures.
   - Figures are NOT reproduced in the repository.
-  - BLOCKED-BY statutory sign-off.
+  - Not BLOCKED-BY statutory sign-off (round 22, item d; round 19a(c)). Rows stay DRAFT until the accountant approves them in the guided setup.
 
 ### Wave 2: scheduler and audit correctness
 
@@ -113,16 +113,20 @@ Moved to "After Phase 1: hosting and operations (deferred)" below. The non-owner
 ### Wave 6: spine and onboarding
 
 - Commitment record.
-- Case record.
+- Case record (stays in Phase 0 Wave 6, round 22 item a).
+- Case record. **Clarified by round 21b, item 1 (round 22 item a repeats it):** the customer Case record stays in this wave. The ROADMAP row that put it out of Phase 0 is superseded.
 - One document store.
 - Typed task source.
 - Decision foreign keys.
 - Founder exception view.
 - Z3 continuity and handover gate.
-- **P7 onboarding state machine** and per-state packs.
-  - BLOCKED-BY 3.1 sign-off.
-- Level-based access system, assigned at onboarding.
+- **P7 onboarding state machine** and per-state packs. Stays in Phase 0 Wave 6 (round 22 item c). Not BLOCKED-BY 3.1 sign-off (round 22 item d).
+  - ~~BLOCKED-BY 3.1 sign-off.~~ **Superseded by round 21b, item 4 (round 22 item d repeats it):** 3.1 sign-off is not a blocker for the onboarding state machine, matching round 19a (c). Statutory rules stay gated until the accountant approves them.
+- Level-based access system, assigned at onboarding. Stays in Phase 0 Wave 6 (round 22 item c).
+- Level mapping (questionnaire, suggestion until confirmed) stays in Phase 0 Wave 6 (round 22 item c).
 - Thresholds, reserved matters and alternates are entered as data during onboarding ("tbd during onboard").
+- Account recovery goes through the founder or the IT admin. SMS to employees' phones is NOT a recovery method (round 22 item e: owner chose this over SMS; reason noted: SIM-swap risk on a finance system).
+- Delegation and the 24-hour absence test are owned by Phase 1A, not this wave (round 22 item b).
 - ~~A static public IP exists.~~ **DEFERRED (superseded by round 18b, item 3):** hosting.
 
 ### Wave 7: proof
@@ -142,7 +146,8 @@ Stop rule for each sub-phase: its items are merged and its listed tests pass. Te
 - Definition rows.
 - A pure transition function, persisted with the decision row and an audit row.
 - Requester exclusion. The founder is exempt (DECISIONS.md, round 10). The draft test "maker equals checker is refused" must exempt the founder level.
-- Delegation with an expiry and a named alternate. Escalate after 24 hours of absence.
+- Delegation with an expiry and a named alternate. Escalate after 24 hours of absence. **Owned here (round 21b, item 2):** delegation and the 24-hour absence test are Phase 1A items. The 24-hour founder-absence scenario is no longer a Phase 0 Wave 6 exit criterion.
+- The 24-hour absence test is an exit test for this sub-phase (round 22 item b). It moved here from Phase 0 Wave 6. Owner-confirmed as 1A scope; ROADMAP follows.
 - Typed thresholds, stored as data.
 - Prerequisites: FX-01, FX-32.
 
@@ -176,6 +181,7 @@ Stop rule for each sub-phase: its items are merged and its listed tests pass. Te
 - COM-15: notifications in-app and by email via Resend.
   - BLOCKED-BY the Resend data-hosting check, before the first outside user.
 - COM-02: internal-only shared inbox.
+- Employee company mailboxes and in-app inbox (round 21, OPEN, new large scope, not estimated). Owner answers: the app creates and hosts each employee's mailbox; the inbox sends and reads mail and links it to customers (Z3 capture pulled in for employee mail only). Round 22 owner decision, clarified 2026-10-12: copy code from open-source mail projects where relevant (Stalwart and others) into our own mail component, and log provenance in `docs/plan/zen360/MAIL-PROVENANCE.md`. This is not a literal fork. Unresearched caveats (Enterprise features, JMAP, release cadence, hosting conflict) are listed in DECISIONS.md round 22. Still OPEN and not estimated. No CAP row or spec yet. MVP, v2 and later feature phasing is in DECISIONS.md round 22. See DECISIONS.md round 21 and round 22.
 - COM-11: meetings and minutes, typed by people. No recordings.
 - Standups are dropped.
 
@@ -223,6 +229,7 @@ Not moved: the non-owner database role stays in item 1.2 as a dev and CI setting
 ## Open-source use
 
 - Read and learn only. No third-party code is copied, whatever its licence (owner method).
+  - Exception on record (round 22 clarification, 2026-10-12): for the mail component only, copy code from open-source mail projects where relevant and log provenance. Licence questions are out of scope for now (second clarification, DECISIONS.md, 2026-10-12). Each copied file goes in MAIL-PROVENANCE.md.
 - Dependencies allowed: pino, express-rate-limit, fast-check (test-only), the LiveKit SDK and server as a service, React Aria, TanStack Table, hey-api, Playwright, schemathesis (dev).
 - Licences to verify before use: helmet, croner.
 - Ideas studied: pg_ledger, pgledger, Formance, pg-boss, xstate, OpenFGA, Zulip, Taiga, Vikunja, Plane, Kimai, frappe hrms, ERPNext, OpenProject, OpenFisca, Catala.
@@ -251,7 +258,8 @@ The level template ships with the app. ~~Editable per tenant at onboarding.~~ **
   - Expense receipt storage location.
   - D-11 numbers after the one-month measurement.
   - Legal checks before the first outside user: Resend data hosting, and chat retention (D-14).
-- Still open after round 18b (DECISIONS.md, 2026-10-11): hosting, caching and routing (after Phase 1); whether onboarding and level mapping stay in Phase 0; questionnaire approval; statutory sign-off holder and IT owner (tbd during onboard); D-11 numbers; Resend data-hosting and chat-retention legal checks.
+- Still open after round 22 (DECISIONS.md, 2026-10-11): hosting, caching and routing (after Phase 1); mail hosting exception and domain/DNS owner (round 22); questionnaire approval; statutory sign-off holder and IT owner (tbd during onboard); D-11 numbers; Resend data-hosting and chat-retention legal checks.
+- Earlier list, as on origin/main, kept for history: Still open after round 18b (DECISIONS.md, 2026-10-11): hosting, caching and routing (after Phase 1); ~~whether onboarding and level mapping stay in Phase 0~~ **closed by round 21b, item 3:** they stay in Phase 0; questionnaire approval; statutory sign-off holder and IT owner (tbd during onboard); D-11 numbers; Resend data-hosting and chat-retention legal checks.
 - Phase 0 is mostly new build, with no effort estimates.
 - Item 3.1 (statutory master pack, Wave 1) is pulled early by the owner, overriding the "do not reorder" rule.
 - The founder's exemption from maker-checker is a segregation-of-duties risk for founder-only classes (payroll run, large payments, statutory filings).
