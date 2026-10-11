@@ -253,17 +253,13 @@ describe('0.2 fix round 1: cookie, grace and step-up', () => {
     expect((await refreshWithCookie(second)).status).toBe(200);
   });
 
-  it('the same replay after the grace window is reuse, and revokes the session', async () => {
+  it('an older secret presented after the newer one was used revokes the session, whatever the timing', async () => {
     const first = await signInCookie();
-    const rotated = await refreshWithCookie(first);
-    const second = cookieValueOf(setCookieOf(rotated)!);
-    await unscopedPrisma.$executeRawUnsafe(
-      `UPDATE sessions SET "rotatedAt" = now() - interval '11 seconds' WHERE id = $1`,
-      sessionIdOf(first),
-    );
+    const second = cookieValueOf(setCookieOf(await refreshWithCookie(first))!);
+    const third = cookieValueOf(setCookieOf(await refreshWithCookie(second))!);
 
     expect((await refreshWithCookie(first)).status).toBe(401);
-    expect((await refreshWithCookie(second)).status).toBe(401);
+    expect((await refreshWithCookie(third)).status).toBe(401);
   });
 
   it('step-up survives a refresh while its window is open', async () => {
