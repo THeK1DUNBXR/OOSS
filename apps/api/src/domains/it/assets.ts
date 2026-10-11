@@ -39,7 +39,7 @@ import { emit } from '../../platform/eventBus.js';
 import { availableTransitions } from '../../platform/lifecycle.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
-import { assertCan, assertScopeAll, visibilityWhere } from '../../platform/permissions.js';
+import { assertCan, assertScopeAll, matchNothing, visibilityWhere } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
 
@@ -804,7 +804,7 @@ export async function summary() {
   }
 
   const where = ownOnly
-    ? { tenantId: auth.tenantId, holderPartyId: auth.partyId ?? ' no-party' }
+    ? { tenantId: auth.tenantId, ...(auth.partyId ? { holderPartyId: auth.partyId } : matchNothing('holderPartyId')) }
     : { tenantId: auth.tenantId };
 
   const total = await prisma.itAsset.count({ where });
