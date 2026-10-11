@@ -17,7 +17,8 @@ import { asSystem } from '../platform/context.js';
 import { publishEntitySnapshot } from '../domains/group.js';
 import { computeDailyMetrics } from '../jobs/scheduler.js';
 import { healthAsOfDay } from '../domains/health.js';
-import { runBackup } from '../domains/compliance/corporate/security.js';
+import { runBackup, runManualBackup, listBackups } from '../domains/compliance/corporate/security.js';
+import { asPrincipal, authFor, expectReject, withFixtureRole } from './helpers.js';
 import { JOBS as CORPORATE_JOBS } from '../jobs/compliance/corporate.js';
 import { istDayStart } from '@kaizen/shared';
 import { tenantId, unscopedPrisma } from './helpers.js';
@@ -146,6 +147,57 @@ describe('#18 / #19 publish_entity_snapshots — a publish with nothing new adds
 
     const count = await unscopedPrisma.entitySnapshotHistory.count({ where: { sourceTenantId: subId } });
     expect(count).toBe(1);
+  });
+
+  it('two publishes racing each other, with the same content, leave one history row', async () => {
+    const subId = await freshSubsidiary('idem-snap-race');
+    await Promise.all([publishEntitySnapshot(subId), publishEntitySnapshot(subId)]);
+
+    const count = await unscopedPrisma.entitySnapshotHistory.count({ where: { sourceTenantId: subId } });
+    expect(count).toBe(1);
+  });
+
+  it('the database refuses a second history row with the same source and content hash', async () => {
+    const subId = await freshSubsidiary('idem-snap-key');
+    await publishEntitySnapshot(subId);
+    const row = await unscopedPrisma.entitySnapshotHistory.findFirstOrThrow({ where: { sourceTenantId: subId } });
+    const { id: _id, createdAt: _createdAt, ...rest } = row;
+    await expect(
+      unscopedPrisma.entitySnapshotHistory.create({ data: { ...rest, recordCode: `${rest.recordCode}-dup` } }),
+    ).rejects.toThrow();
+  });
+});
+
+describe('#29 manual backup and backup listing are admin actions, not tenant-wide', () => {
+  it('a user without security_settings edit cannot start a platform dump, and no run is recorded', async () => {
+    const saved = process.env.BACKUP_DIR;
+    process.env.BACKUP_DIR = mkdtempSync(join(tmpdir(), 'kz-backup-perm-'));
+    try {
+      const before = await unscopedPrisma.backupRun.count({ where: { tenantId: KAIZEN } });
+      await withFixtureRole(
+        { slug: 'backup_viewer', grants: [{ resource: 'security_settings', verbs: ['view'] }] },
+        (p) =>
+          asPrincipal(authFor(p), async () => {
+            const err = await expectReject(() => runManualBackup(KAIZEN));
+            expect(err.status).toBe(403);
+          }),
+      );
+      expect(await unscopedPrisma.backupRun.count({ where: { tenantId: KAIZEN } })).toBe(before);
+    } finally {
+      if (saved === undefined) delete process.env.BACKUP_DIR;
+      else process.env.BACKUP_DIR = saved;
+    }
+  });
+
+  it('a view-only user cannot list the platform backup log', async () => {
+    await withFixtureRole(
+      { slug: 'backup_lister', grants: [{ resource: 'security_settings', verbs: ['view'] }] },
+      (p) =>
+        asPrincipal(authFor(p), async () => {
+          const err = await expectReject(() => listBackups());
+          expect(err.status).toBe(403);
+        }),
+    );
   });
 });
 
