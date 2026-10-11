@@ -30,6 +30,7 @@ import {
   isEncryptedFieldValue,
   type NeftBeneficiary,
 } from '@kaizen/shared';
+import { Prisma } from '@prisma/client';
 import { prisma, unscopedPrisma, num } from '../../platform/db.js';
 import { governedWrite } from '../../platform/governedWrite.js';
 import { currentAuth } from '../../platform/context.js';
@@ -675,6 +676,18 @@ export async function generateBankAdvice(payrollRunId: string) {
     );
   }
 
+  // One advice per run. A bank may already have acted on the first file, and a
+  // second NEFT file for the same pay is how a payment goes out twice (FX-35).
+  const existing = await prisma.bankAdvice.findFirst({
+    where: { tenantId: auth.tenantId, payrollRunId },
+    select: { id: true, version: true },
+  });
+  if (existing) {
+    throw ApiError.conflict(
+      `A bank advice (version ${existing.version}) already exists for this run. A bank may have acted on it; a replacement needs a supersede, not a second generate.`,
+    );
+  }
+
   const instructions = await prisma.payrollInstruction.findMany({ where: { tenantId: auth.tenantId, payrollRunId } });
   const rows: NeftBeneficiary[] = [];
   for (const instr of instructions) {
@@ -717,19 +730,28 @@ export async function generateBankAdvice(payrollRunId: string) {
   // The file and the rows are both sealed: a stored advice is a record of bank
   // details, readable only through `downloadBankAdvice` and the masked view.
 
-  const row = await prisma.bankAdvice.create({
-    data: {
-      tenantId: auth.tenantId,
-      payrollRunId,
-      payPeriod: run.payPeriod,
-      format: 'NEFT_CSV',
-      fileText: encryptField(fileText),
-      rows: sealBeneficiaries(rows) as never,
-      count: rows.length,
-      total,
-      generatedById: auth.partyId,
-    },
-  });
+  // Two generates that both passed the check above meet the unique index on
+  // (tenant, run, version); the loser is refused the same way, not left to 500.
+  const row = await prisma.bankAdvice
+    .create({
+      data: {
+        tenantId: auth.tenantId,
+        payrollRunId,
+        payPeriod: run.payPeriod,
+        format: 'NEFT_CSV',
+        fileText: encryptField(fileText),
+        rows: sealBeneficiaries(rows) as never,
+        count: rows.length,
+        total,
+        generatedById: auth.partyId,
+      },
+    })
+    .catch((err: unknown) => {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw ApiError.conflict('A bank advice already exists for this run.');
+      }
+      throw err;
+    });
   await auditWrite({
     action: 'create',
     subjectType: 'bank_advice',

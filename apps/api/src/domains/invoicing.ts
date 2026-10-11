@@ -74,6 +74,7 @@ import {
   type PaymentMode,
   type RevenueTreatment,
 } from '@kaizen/shared';
+import { istDateKey } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -1208,20 +1209,24 @@ export async function collectInvoicePayment(
 
   const receivedAt = input.receivedAt ?? new Date();
   await runHooks('accounting_document.before_write', { date: receivedAt, what: 'This payment' });
-  // A counter payment has no gateway behind it, so the reference is the
-  // invoice and the moment: unique per tenant, which is what makes the
-  // idempotency constraint on PAYMENT mean something for cash as well as for
-  // a webhook.
+  // A counter payment has no gateway behind it, so without a reference the key is
+  // the invoice, the mode, the IST day and the amount. The moment it was taken is
+  // not in the key: two identical cash receipts a few milliseconds apart are the
+  // same cash taken twice (FX-34). A second genuine payment of the same amount on
+  // the same day says so with its own reference.
   const gatewayReference =
-    input.reference?.trim() || `${invoiceLabel(invoice)}/${input.mode}/${receivedAt.toISOString()}`;
+    input.reference?.trim() || `${invoiceLabel(invoice)}/${input.mode}/${istDateKey(receivedAt)}/${amount.toFixed(2)}`;
 
   const clash = await prisma.payment.findFirst({
     where: { tenantId: auth.tenantId, gatewayReference },
   });
   if (clash) {
     throw ApiError.conflict(
-      `A payment with the reference ${gatewayReference} is already on file as ${clash.recordCode}. ` +
-        'Two payments with one reference cannot both be reconciled later, so this one is refused rather than accepted and left ambiguous.',
+      input.reference?.trim()
+        ? `A payment with the reference ${gatewayReference} is already on file as ${clash.recordCode}. ` +
+            'Two payments with one reference cannot both be reconciled later, so this one is refused rather than accepted and left ambiguous.'
+        : `A payment of the same amount for ${invoiceLabel(invoice)} on this day is already on file as ${clash.recordCode}. ` +
+            'If this is a second payment, give it its own reference.',
       { existing: clash.recordCode },
     );
   }
