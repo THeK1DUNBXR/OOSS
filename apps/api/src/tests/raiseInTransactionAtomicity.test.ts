@@ -18,6 +18,7 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { asUser, expectReject, tenantId, unscopedPrisma } from './helpers.js';
 import { markChallanPaid } from '../domains/compliance/tax.js';
+import { closeRound, createRound } from '../domains/rounds.js';
 import { requestClosePeriod, closePeriod } from '../domains/compliance/books.js';
 
 const CLOSED = '2017-10';
@@ -89,6 +90,25 @@ describe('a challan paid in a closed period raises EX-FIN-008 in the same transa
     expect(
       await unscopedPrisma.exceptionRecord.count({
         where: { tenantId: TENANT, code: 'EX-FIN-008', subjectId: challan.id },
+      }),
+    ).toBe(0);
+  });
+});
+
+describe('closing a funding round raises the PAS-3 return exception in the same transaction', () => {
+  it('when the raise cannot be recorded, the round stays open and the call rejects', async () => {
+    const round = await asUser(CHAIRMAN, () => createRound({ name: unique('W2-ATOMIC-ROUND'), kind: 'rights_issue' }));
+    await unscopedPrisma.fundingRound.update({ where: { id: round.id }, data: { status: 'open' } });
+
+    await refuseExceptionAudit();
+    await expectReject(() => asUser(CHAIRMAN, () => closeRound(round.id)));
+
+    const after = await unscopedPrisma.fundingRound.findUniqueOrThrow({ where: { id: round.id } });
+    expect(after.status).toBe('open');
+    expect(after.closedOn).toBeNull();
+    expect(
+      await unscopedPrisma.exceptionRecord.count({
+        where: { tenantId: TENANT, code: 'EX-EQT-003', subjectId: round.id },
       }),
     ).toBe(0);
   });
