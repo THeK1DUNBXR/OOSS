@@ -132,7 +132,9 @@ async function main() {
     });
     console.log('\nReverted. Reversed, cancelled or marked (none deleted):');
     for (const [k, v] of Object.entries(result.removed)) console.log(`  ${k}: ${v}`);
-    console.log(`  holding pointers cleared: ${result.clearedOnHolding}`);
+    console.log(
+      `  holding pointers cleared: ${result.clearedOnHolding}${result.resumed ? ' (resumed an interrupted revert)' : ''}`,
+    );
     console.log('');
     process.exit(0);
   }
