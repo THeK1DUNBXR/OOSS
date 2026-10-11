@@ -642,24 +642,27 @@ export async function markChallanPaid(id: string, input: MarkChallanPaidInput) {
       impact: { domains: ['fin'] },
       tx,
     });
+    // The exception is the consequence of this payment, so it commits or rolls back
+    // with it. Raised after the commit, a failed raise left a paid challan with no
+    // EX-FIN-008 to act on.
+    if (paidInClosedPeriod) {
+      await raiseException(
+        {
+          code: 'EX-FIN-008',
+          label: 'Payment made for a closed period',
+          severity: 'S2_WARNING',
+          subjectType: 'tds_challan',
+          subjectId: challan.id,
+          subjectLabel: challan.recordCode,
+          detail: `The deposit was made on ${input.paidOn.toISOString().slice(0, 10)}, in a closed period. It is booked from ${bookedOn?.toISOString().slice(0, 10)}; the paid date is kept. Confirm the treatment with the accountant.`,
+          triggerFingerprint: `challan_paid_closed:${challan.id}`,
+          ladderRung: 1,
+        },
+        tx,
+      );
+    }
     return paid;
   });
-  // Outside the transaction: raiseException reads and writes through the scoped
-  // client, which refuses to run inside a transaction (db.ts refuseOuterClientInTransaction).
-  // It is idempotent on triggerFingerprint, so a retry does not raise it twice.
-  if (paidInClosedPeriod) {
-    await raiseException({
-      code: 'EX-FIN-008',
-      label: 'Payment made for a closed period',
-      severity: 'S2_WARNING',
-      subjectType: 'tds_challan',
-      subjectId: challan.id,
-      subjectLabel: challan.recordCode,
-      detail: `The deposit was made on ${input.paidOn.toISOString().slice(0, 10)}, in a closed period. It is booked from ${bookedOn?.toISOString().slice(0, 10)}; the paid date is kept. Confirm the treatment with the accountant.`,
-      triggerFingerprint: `challan_paid_closed:${challan.id}`,
-      ladderRung: 1,
-    });
-  }
   return settled;
 }
 
