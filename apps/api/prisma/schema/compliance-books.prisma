@@ -293,8 +293,14 @@ model BankStatementLine {
   matchedTransactionId String?
   matchedAt            DateTime?
 
+  /// Identifies the line across re-imports of the same statement (books.ts
+  /// statementLineKey). Null on lines imported before it existed, which the
+  /// unique index allows to repeat.
+  fingerprint String?
+
   createdAt DateTime @default(now())
 
+  @@unique([tenantId, accountId, fingerprint])
   @@index([tenantId, accountId, date])
   @@index([tenantId, matchedAt])
   @@map("cmp_bank_statement_lines")
