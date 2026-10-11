@@ -525,6 +525,29 @@ describe('account recovery: a recovered sign-in must change its password first',
     expect((await post('/auth/logout', {}, token)).status).toBe(200);
     expect((await me(token)).status).toBe(401);
   });
+
+  // The web cannot learn of the gate from /auth/me, which the gate itself refuses.
+  // The sign-in response is the first place it can be told, so it carries the flag.
+  it('the sign-in response says a change is owed, and says it is not once the password has changed', async () => {
+    const target = await makeAccount('flagged', 'employee');
+    const res = await recover(founder.token, { userId: target.userId, reason: GOOD_REASON });
+    const { password: oneTime } = (await res.json()) as { password: string };
+
+    const signed = await login(target.email, oneTime);
+    expect(signed.status).toBe(200);
+    expect((signed.body.user as { mustChangePassword: boolean }).mustChangePassword).toBe(true);
+
+    const newPassword = 'Flagged-Chosen-9w!pass';
+    const changed = await post(
+      '/auth/change-password',
+      { currentPassword: oneTime, newPassword },
+      signed.body.token as string,
+    );
+    expect(changed.status).toBe(200);
+
+    const after = await login(target.email, newPassword);
+    expect((after.body.user as { mustChangePassword: boolean }).mustChangePassword).toBe(false);
+  });
 });
 
 describe('account recovery: an MFA-enabled recoverer must confirm with a current code', () => {
