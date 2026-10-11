@@ -106,6 +106,11 @@ async function unmarkedRegisterRowCounts(tid: string, batchId: string): Promise<
   };
 }
 
+/** Holding rows still pointing at the subsidiary (migratedToTenantId). */
+async function holdingPointerCount(p: Pair): Promise<number> {
+  return unscopedPrisma.transaction.count({ where: { tenantId: p.hold, migratedToTenantId: p.sub } });
+}
+
 async function assertJournalBalances(tid: string): Promise<void> {
   assertTrialBalance(await asSystem(tid, () => journalTrialBalance(ALL_TIME)));
 }
@@ -327,21 +332,80 @@ describe('FX-71b — two reverts racing for one batch produce exactly one revers
     R = await spinOutPair('c');
   }, 120_000);
 
-  it('lets one revert through and refuses the other with a 409', async () => {
+  it('reverses everything once: a loser is refused with a 409, or finishes the holding side', async () => {
     const results = await Promise.allSettled([
       revertSpinOut(revertInput(R, 'first of two')),
       revertSpinOut(revertInput(R, 'second of two')),
     ]);
     const fulfilled = results.filter((r) => r.status === 'fulfilled');
     const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
-    expect(fulfilled).toHaveLength(1);
-    expect(rejected).toHaveLength(1);
-    expect((rejected[0]!.reason as { status?: number }).status).toBe(409);
+    expect(fulfilled.length).toBeGreaterThanOrEqual(1);
+    for (const r of rejected) expect((r.reason as { status?: number }).status).toBe(409);
 
     const reversals = await unscopedPrisma.transaction.count({
       where: { tenantId: R.sub, spinOutBatchId: R.batchId, reversalOfId: { not: null } },
     });
     expect(reversals).toBe(2);
+    expect(await holdingPointerCount(R)).toBe(0);
+    const tombstones = await unscopedPrisma.$queryRaw<Array<{ n: bigint }>>`
+      SELECT COUNT(*)::bigint AS n FROM "spinout_tombstones" WHERE "tenantId" = ${R.sub} AND "batchId" = ${R.batchId}`;
+    expect(Number(tombstones[0]!.n)).toBe(1);
     await assertJournalBalances(R.sub);
+  });
+});
+
+describe('FX-71b — a failure between the two transactions is completed by the next revert', () => {
+  let E: Pair;
+  let originalCount = 0;
+  let pointersBefore = 0;
+
+  beforeAll(async () => {
+    E = await spinOutPair('d');
+    originalCount = await unscopedPrisma.transaction.count({
+      where: { tenantId: E.sub, spinOutBatchId: E.batchId },
+    });
+    pointersBefore = await holdingPointerCount(E);
+  }, 120_000);
+
+  it('leaves the subsidiary reversed and the holding pointers set when the second transaction is interrupted', async () => {
+    expect(pointersBefore).toBeGreaterThan(0);
+    const rejection = await expectReject(() =>
+      revertSpinOut({
+        ...revertInput(E, 'interrupted revert'),
+        afterSubsidiaryCommit: async () => {
+          throw new Error('injected failure between the two transactions');
+        },
+      }),
+    );
+    expect(rejection.message).toMatch(/injected failure/);
+    expect(await holdingPointerCount(E)).toBe(pointersBefore);
+    const tombstones = await unscopedPrisma.$queryRaw<Array<{ n: bigint }>>`
+      SELECT COUNT(*)::bigint AS n FROM "spinout_tombstones" WHERE "tenantId" = ${E.sub} AND "batchId" = ${E.batchId}`;
+    expect(Number(tombstones[0]!.n)).toBe(1);
+    const reversed = await unscopedPrisma.transaction.count({
+      where: { tenantId: E.sub, spinOutBatchId: E.batchId, reversedById: { not: null } },
+    });
+    expect(reversed).toBe(originalCount);
+  });
+
+  it('lets the next call finish the holding side, with no reversal written twice', async () => {
+    const result = await revertSpinOut(revertInput(E, 'retry after interruption'));
+    expect(result.resumed).toBe(true);
+    expect(result.clearedOnHolding).toBe(pointersBefore);
+    expect(await holdingPointerCount(E)).toBe(0);
+
+    const reversals = await unscopedPrisma.transaction.count({
+      where: { tenantId: E.sub, reversalOfId: { not: null } },
+    });
+    expect(reversals).toBe(originalCount);
+    expect(await legacyNet(E.sub)).toBe(E.legacyNetBeforeCommit);
+    await assertJournalBalances(E.hold);
+    await assertJournalBalances(E.sub);
+  });
+
+  it('refuses a further call with a 409, now that both transactions have committed', async () => {
+    const rejection = await expectReject(() => revertSpinOut(revertInput(E, 'third attempt')));
+    expect(rejection.status).toBe(409);
+    expect(await holdingPointerCount(E)).toBe(0);
   });
 });
