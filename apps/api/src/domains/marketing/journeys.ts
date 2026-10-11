@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import {
   EVENTS,
   JOURNEY_TRANSITIONS,
@@ -31,7 +32,7 @@ import { createSend, requestSend, dispatchSend } from './messaging.js';
 // Types & schemas
 // ============================================================================
 
-registerGovernedEntities('mkt', ['marketing_journey']);
+registerGovernedEntities('mkt', ['marketing_journey', 'marketing_journey_run']);
 
 export interface JourneyView {
   id: string;
@@ -262,15 +263,27 @@ async function transitionJourney(id: string, to: JourneyStatus, eventName: strin
   if (!JOURNEY_TRANSITIONS[journey.status as JourneyStatus]?.includes(to)) {
     throw ApiError.unprocessable(`Cannot move a journey from '${journey.status}' to '${to}'.`);
   }
-  const updated = await prisma.marketingJourney.update({
-    where: { id },
-    data: { status: to, updatedById: auth.partyId },
-  });
-  await emit({
-    name: eventName,
-    subject: { entityType: 'marketing_journey', entityId: id, recordCode: journey.recordCode },
-    previousState: { status: journey.status },
-    newState: { status: to },
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.marketingJourney.update({
+      where: { id },
+      data: { status: to, updatedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_journey',
+      subjectId: id,
+      before: { status: journey.status },
+      after: { status: to },
+      tx,
+    });
+    await emit({
+      name: eventName,
+      subject: { entityType: 'marketing_journey', entityId: id, recordCode: journey.recordCode },
+      previousState: { status: journey.status },
+      newState: { status: to },
+      tx,
+    });
+    return row;
   });
   return toJourneyView(updated);
 }
@@ -325,29 +338,70 @@ export async function enrolPerson(journeyId: string, personId: string): Promise<
   const steps = (journey.steps as unknown as JourneyStep[]) ?? [];
   const step0 = steps[0];
   const nextAt = step0 ? new Date(Date.now() + step0.delayDays * 86_400_000) : null;
-  const recordCode = await nextRecordCode('JRN');
-
-  const run = await prisma.marketingJourneyRun.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      journeyId,
-      personId,
-      currentStep: 0,
-      status: 'active',
-      nextAt,
-    },
-  });
-  await emit({
-    name: EVENTS.MKT_JOURNEY_RUN_STARTED,
-    subject: { entityType: 'marketing_journey_run', entityId: run.id, recordCode },
-    related: [
-      { relation: 'journey', entityType: 'marketing_journey', entityId: journeyId },
-      { relation: 'person', entityType: 'person', entityId: personId },
-    ],
-    newState: { currentStep: 0, nextAt: nextAt?.toISOString() ?? null },
+  const run = await prisma.$transaction(async (tx) => {
+    const recordCode = await nextRecordCode('JRN', new Date(), tx);
+    const created = await tx.marketingJourneyRun.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        journeyId,
+        personId,
+        currentStep: 0,
+        status: 'active',
+        nextAt,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'marketing_journey_run',
+      subjectId: created.id,
+      after: { journeyId, personId, currentStep: 0, status: 'active' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_JOURNEY_RUN_STARTED,
+      subject: { entityType: 'marketing_journey_run', entityId: created.id, recordCode },
+      related: [
+        { relation: 'journey', entityType: 'marketing_journey', entityId: journeyId },
+        { relation: 'person', entityType: 'person', entityId: personId },
+      ],
+      newState: { currentStep: 0, nextAt: nextAt?.toISOString() ?? null },
+      tx,
+    });
+    return created;
   });
   return toRunView(run);
+}
+
+/**
+ * A run's state change, its audit row and its event, committed together, so a
+ * run never moves without the event that says it moved. Each call is its own
+ * transaction: a tick over many due runs must not hold one lock across all of them.
+ */
+async function commitRunChange(change: {
+  runId: string;
+  before: Record<string, unknown>;
+  data: Prisma.MarketingJourneyRunUncheckedUpdateInput;
+  eventName: string;
+  newState: Record<string, unknown>;
+}): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await tx.marketingJourneyRun.update({ where: { id: change.runId }, data: change.data });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_journey_run',
+      subjectId: change.runId,
+      before: change.before,
+      after: change.newState,
+      tx,
+    });
+    await emit({
+      name: change.eventName,
+      subject: { entityType: 'marketing_journey_run', entityId: change.runId },
+      newState: change.newState,
+      tx,
+    });
+  });
 }
 
 export async function exitRun(runId: string, reason: string): Promise<JourneyRunView> {
@@ -355,14 +409,26 @@ export async function exitRun(runId: string, reason: string): Promise<JourneyRun
   await assertCan({ resource: 'marketing_journeys', verb: 'edit' });
   const run = await prisma.marketingJourneyRun.findFirst({ where: { id: runId, tenantId: auth.tenantId } });
   if (!run) throw ApiError.notFound('Journey run');
-  const updated = await prisma.marketingJourneyRun.update({
-    where: { id: runId },
-    data: { status: 'exited', exitedReason: reason },
-  });
-  await emit({
-    name: EVENTS.MKT_JOURNEY_RUN_EXITED,
-    subject: { entityType: 'marketing_journey_run', entityId: runId },
-    newState: { status: 'exited', exitedReason: reason },
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.marketingJourneyRun.update({
+      where: { id: runId },
+      data: { status: 'exited', exitedReason: reason },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_journey_run',
+      subjectId: runId,
+      before: { status: run.status },
+      after: { status: 'exited', exitedReason: reason },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_JOURNEY_RUN_EXITED,
+      subject: { entityType: 'marketing_journey_run', entityId: runId },
+      newState: { status: 'exited', exitedReason: reason },
+      tx,
+    });
+    return row;
   });
   return toRunView(updated);
 }
@@ -388,10 +454,11 @@ export async function tick(): Promise<{ advanced: number; completed: number; exi
     const steps = (journey.steps as unknown as JourneyStep[]) ?? [];
     const step = steps[run.currentStep];
     if (!step) {
-      await prisma.marketingJourneyRun.update({ where: { id: run.id }, data: { status: 'completed', nextAt: null } });
-      await emit({
-        name: EVENTS.MKT_JOURNEY_RUN_COMPLETED,
-        subject: { entityType: 'marketing_journey_run', entityId: run.id },
+      await commitRunChange({
+        runId: run.id,
+        before: { status: run.status },
+        data: { status: 'completed', nextAt: null },
+        eventName: EVENTS.MKT_JOURNEY_RUN_COMPLETED,
         newState: { status: 'completed' },
       });
       completed += 1;
@@ -406,13 +473,11 @@ export async function tick(): Promise<{ advanced: number; completed: number; exi
       });
       const entity: Record<string, unknown> = { ...(person ?? {}), ...(lead ?? {}) };
       if (!evaluateCondition(entity, step.condition)) {
-        await prisma.marketingJourneyRun.update({
-          where: { id: run.id },
+        await commitRunChange({
+          runId: run.id,
+          before: { status: run.status },
           data: { status: 'exited', exitedReason: 'condition_not_met', nextAt: null },
-        });
-        await emit({
-          name: EVENTS.MKT_JOURNEY_RUN_EXITED,
-          subject: { entityType: 'marketing_journey_run', entityId: run.id },
+          eventName: EVENTS.MKT_JOURNEY_RUN_EXITED,
           newState: { status: 'exited', exitedReason: 'condition_not_met' },
         });
         exited += 1;
@@ -422,13 +487,11 @@ export async function tick(): Promise<{ advanced: number; completed: number; exi
 
     const { eligible } = await eligibleForChannel([run.personId], step.channelKey);
     if (eligible.length === 0) {
-      await prisma.marketingJourneyRun.update({
-        where: { id: run.id },
+      await commitRunChange({
+        runId: run.id,
+        before: { status: run.status },
         data: { status: 'exited', exitedReason: 'no_consent', nextAt: null },
-      });
-      await emit({
-        name: EVENTS.MKT_JOURNEY_RUN_EXITED,
-        subject: { entityType: 'marketing_journey_run', entityId: run.id },
+        eventName: EVENTS.MKT_JOURNEY_RUN_EXITED,
         newState: { status: 'exited', exitedReason: 'no_consent' },
       });
       exited += 1;
@@ -453,13 +516,11 @@ export async function tick(): Promise<{ advanced: number; completed: number; exi
       // A blocked send (unapproved template, unconfigured adapter) exits the
       // run rather than crashing the whole tick batch — the underlying
       // exception (EX-MKT-009/EX-MKT-011) has already been raised by createSend/requestSend.
-      await prisma.marketingJourneyRun.update({
-        where: { id: run.id },
+      await commitRunChange({
+        runId: run.id,
+        before: { status: run.status },
         data: { status: 'exited', exitedReason: 'send_failed', nextAt: null },
-      });
-      await emit({
-        name: EVENTS.MKT_JOURNEY_RUN_EXITED,
-        subject: { entityType: 'marketing_journey_run', entityId: run.id },
+        eventName: EVENTS.MKT_JOURNEY_RUN_EXITED,
         newState: { status: 'exited', exitedReason: 'send_failed' },
       });
       exited += 1;
@@ -470,13 +531,11 @@ export async function tick(): Promise<{ advanced: number; completed: number; exi
     const nextAt = nextStep ? new Date(Date.now() + nextStep.delayDays * 86_400_000) : null;
     const nextStatus = nextStep ? 'active' : 'completed';
 
-    await prisma.marketingJourneyRun.update({
-      where: { id: run.id },
+    await commitRunChange({
+      runId: run.id,
+      before: { status: run.status, currentStep: run.currentStep },
       data: { currentStep: run.currentStep + 1, nextAt, status: nextStatus },
-    });
-    await emit({
-      name: nextStep ? EVENTS.MKT_JOURNEY_RUN_ADVANCED : EVENTS.MKT_JOURNEY_RUN_COMPLETED,
-      subject: { entityType: 'marketing_journey_run', entityId: run.id },
+      eventName: nextStep ? EVENTS.MKT_JOURNEY_RUN_ADVANCED : EVENTS.MKT_JOURNEY_RUN_COMPLETED,
       newState: { currentStep: run.currentStep + 1, nextAt: nextAt?.toISOString() ?? null, status: nextStatus },
     });
     if (nextStep) advanced += 1;

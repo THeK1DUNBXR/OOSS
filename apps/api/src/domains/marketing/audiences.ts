@@ -315,34 +315,38 @@ export async function createAudience(input: AudienceInput) {
   assertValidKindAndEntity(input.kind, input.entityType);
   if (!input.name.trim()) throw ApiError.badRequest('An audience needs a name.');
 
-  const recordCode = await nextRecordCode('AUD');
-  const audience = await prisma.marketingAudience.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      name: input.name,
-      kind: input.kind,
-      entityType: input.entityType,
-      rules: (input.rules ?? {}) as never,
-      description: input.description ?? null,
-      createdById: auth.partyId,
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const recordCode = await nextRecordCode('AUD', new Date(), tx);
+    const audience = await tx.marketingAudience.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        name: input.name,
+        kind: input.kind,
+        entityType: input.entityType,
+        rules: (input.rules ?? {}) as never,
+        description: input.description ?? null,
+        createdById: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'audience',
-    subjectId: audience.id,
-    after: { name: audience.name, kind: audience.kind },
-  });
-  await emit({
-    name: EVENTS.MKT_AUDIENCE_CREATED,
-    subject: { entityType: 'audience', entityId: audience.id, recordCode },
-    newState: { kind: audience.kind, entityType: audience.entityType },
-    impact: { domains: ['mkt'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'audience',
+      subjectId: audience.id,
+      after: { name: audience.name, kind: audience.kind },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_AUDIENCE_CREATED,
+      subject: { entityType: 'audience', entityId: audience.id, recordCode },
+      newState: { kind: audience.kind, entityType: audience.entityType },
+      impact: { domains: ['mkt'] },
+      tx,
+    });
 
-  return audience;
+    return audience;
+  });
 }
 
 export async function listAudiences(filter: { kind?: string; entityType?: string; q?: string } = {}) {
@@ -520,31 +524,41 @@ export async function addAudienceMember(audienceId: string, entityType: Audience
   });
   if (existing) throw ApiError.conflict('This entity is already a member of the audience.');
 
-  const recordCode = await nextRecordCode('AUD');
-  const member = await prisma.marketingAudienceMember.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      audienceId,
-      entityType,
-      entityId,
-      source: 'manual',
-      suppressed: audience.kind === 'suppression',
-      createdById: auth.partyId,
-    },
+  return prisma.$transaction(async (tx) => {
+    const recordCode = await nextRecordCode('AUD', new Date(), tx);
+    const member = await tx.marketingAudienceMember.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        audienceId,
+        entityType,
+        entityId,
+        source: 'manual',
+        suppressed: audience.kind === 'suppression',
+        createdById: auth.partyId,
+      },
+    });
+
+    const memberCount = await tx.marketingAudienceMember.count({ where: { audienceId, deletedAt: null } });
+    await tx.marketingAudience.update({ where: { id: audienceId }, data: { memberCount } });
+
+    await auditWrite({
+      action: 'create',
+      subjectType: 'audience_member',
+      subjectId: member.id,
+      after: { audienceId, entityType, entityId, suppressed: member.suppressed },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_AUDIENCE_MEMBER_ADDED,
+      subject: { entityType: 'audience', entityId: audienceId, recordCode: audience.recordCode },
+      related: [{ relation: 'member', entityType, entityId }],
+      impact: { domains: ['mkt'] },
+      tx,
+    });
+
+    return member;
   });
-
-  const memberCount = await prisma.marketingAudienceMember.count({ where: { audienceId, deletedAt: null } });
-  await prisma.marketingAudience.update({ where: { id: audienceId }, data: { memberCount } });
-
-  await emit({
-    name: EVENTS.MKT_AUDIENCE_MEMBER_ADDED,
-    subject: { entityType: 'audience', entityId: audienceId, recordCode: audience.recordCode },
-    related: [{ relation: 'member', entityType, entityId }],
-    impact: { domains: ['mkt'] },
-  });
-
-  return member;
 }
 
 export async function removeAudienceMember(audienceId: string, memberId: string) {
@@ -575,18 +589,29 @@ export async function suppressMember(audienceId: string, memberId: string, reaso
   });
   if (!member) throw ApiError.notFound('Audience member');
 
-  const updated = await prisma.marketingAudienceMember.update({
-    where: { id: memberId },
-    data: { suppressed: true, updatedById: auth.partyId },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.marketingAudienceMember.update({
+      where: { id: memberId },
+      data: { suppressed: true, updatedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'audience_member',
+      subjectId: memberId,
+      before: { suppressed: member.suppressed },
+      after: { suppressed: true },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_AUDIENCE_MEMBER_SUPPRESSED,
+      subject: { entityType: 'audience', entityId: audienceId, recordCode: audience.recordCode },
+      related: [{ relation: 'member', entityType: member.entityType, entityId: member.entityId }],
+      reason: reason ? { reasonCode: 'manual_suppression', note: reason } : null,
+      impact: { domains: ['mkt'] },
+      tx,
+    });
+    return updated;
   });
-  await emit({
-    name: EVENTS.MKT_AUDIENCE_MEMBER_SUPPRESSED,
-    subject: { entityType: 'audience', entityId: audienceId, recordCode: audience.recordCode },
-    related: [{ relation: 'member', entityType: member.entityType, entityId: member.entityId }],
-    reason: reason ? { reasonCode: 'manual_suppression', note: reason } : null,
-    impact: { domains: ['mkt'] },
-  });
-  return updated;
 }
 
 export async function listAudienceMembers(

@@ -17,8 +17,9 @@
 
 import { randomUUID } from 'node:crypto';
 import { EVENTS, ATTRIBUTION_MODELS, type AttributionModel, type ChannelKey } from '@kaizen/shared';
-import { prisma, num } from '../../platform/db.js';
+import { prisma, num, type DbTx } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
@@ -29,6 +30,8 @@ import { scoreLead } from '../leads.js';
 function internalCode(prefix: string): string {
   return `${prefix}-${randomUUID()}`;
 }
+
+registerGovernedEntities('mkt', ['marketing_touchpoint']);
 
 // ---------------------------------------------------------------------------
 // Touchpoints — immutable
@@ -62,38 +65,48 @@ export async function recordTouchpoint(input: TouchpointInput) {
     );
   }
 
-  const touchpoint = await prisma.marketingTouchpoint.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: internalCode('TCH'),
-      personId: input.personId ?? null,
-      organizationId: input.organizationId ?? null,
-      leadId: input.leadId ?? null,
-      campaignId: input.campaignId ?? null,
-      channelKey: input.channelKey,
-      touchKind: input.touchKind,
-      occurredAt: input.occurredAt ?? new Date(),
-      utm: (input.utm ?? {}) as never,
-      sourceRef: input.sourceRef ?? null,
-      cost: input.cost ?? null,
-      createdById: auth.partyId,
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const touchpoint = await tx.marketingTouchpoint.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: internalCode('TCH'),
+        personId: input.personId ?? null,
+        organizationId: input.organizationId ?? null,
+        leadId: input.leadId ?? null,
+        campaignId: input.campaignId ?? null,
+        channelKey: input.channelKey,
+        touchKind: input.touchKind,
+        occurredAt: input.occurredAt ?? new Date(),
+        utm: (input.utm ?? {}) as never,
+        sourceRef: input.sourceRef ?? null,
+        cost: input.cost ?? null,
+        createdById: auth.partyId,
+      },
+    });
 
-  await emit({
-    name: EVENTS.MKT_TOUCHPOINT_RECORDED,
-    subject: { entityType: 'marketing_touchpoint', entityId: touchpoint.id, recordCode: touchpoint.recordCode },
-    related: [
-      ...(input.personId ? [{ relation: 'contact', entityType: 'person', entityId: input.personId }] : []),
-      ...(input.leadId ? [{ relation: 'lead', entityType: 'lead', entityId: input.leadId }] : []),
-      ...(input.campaignId
-        ? [{ relation: 'campaign', entityType: 'marketing_campaign', entityId: input.campaignId }]
-        : []),
-    ],
-    newState: { channelKey: input.channelKey, touchKind: input.touchKind },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'marketing_touchpoint',
+      subjectId: touchpoint.id,
+      after: { channelKey: input.channelKey, touchKind: input.touchKind },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_TOUCHPOINT_RECORDED,
+      subject: { entityType: 'marketing_touchpoint', entityId: touchpoint.id, recordCode: touchpoint.recordCode },
+      related: [
+        ...(input.personId ? [{ relation: 'contact', entityType: 'person', entityId: input.personId }] : []),
+        ...(input.leadId ? [{ relation: 'lead', entityType: 'lead', entityId: input.leadId }] : []),
+        ...(input.campaignId
+          ? [{ relation: 'campaign', entityType: 'marketing_campaign', entityId: input.campaignId }]
+          : []),
+      ],
+      newState: { channelKey: input.channelKey, touchKind: input.touchKind },
+      tx,
+    });
 
-  return touchpoint;
+    return touchpoint;
+  });
 }
 
 export interface TouchpointFilters {
@@ -161,7 +174,9 @@ async function touchesForPerson(personId: string, upTo: Date): Promise<Touch[]> 
   return rows.map((r) => ({ campaignId: r.campaignId, channelKey: r.channelKey, occurredAt: r.occurredAt }));
 }
 
+/** `db` is the caller's transaction client when the rows must commit with an event (computeAttribution). */
 async function writeAttributionRows(
+  db: DbTx,
   subjectField: 'leadId' | 'opportunityId' | 'enrollmentId',
   subjectId: string,
   touches: Touch[],
@@ -172,10 +187,10 @@ async function writeAttributionRows(
   for (const model of ATTRIBUTION_MODELS) {
     // Replaces prior rows for this subject+model — computed and stored, never
     // appended to, so a re-run is idempotent rather than duplicating history.
-    await prisma.marketingAttribution.deleteMany({ where: { [subjectField]: subjectId, model } as never });
+    await db.marketingAttribution.deleteMany({ where: { [subjectField]: subjectId, model } as never });
 
     if (touches.length === 0) {
-      await prisma.marketingAttribution.create({
+      await db.marketingAttribution.create({
         data: {
           tenantId: auth.tenantId,
           recordCode: internalCode('ATB'),
@@ -194,7 +209,7 @@ async function writeAttributionRows(
     const weights = weightsForModel(model, touches.length);
     for (let i = 0; i < touches.length; i += 1) {
       if (weights[i] <= 0) continue;
-      await prisma.marketingAttribution.create({
+      await db.marketingAttribution.create({
         data: {
           tenantId: auth.tenantId,
           recordCode: internalCode('ATB'),
@@ -246,20 +261,33 @@ export async function computeAttribution(from: Date, to: Date): Promise<number> 
     }
     touches.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
 
-    const rowsForLead = await writeAttributionRows('leadId', lead.id, touches);
-    let rowsForOpportunity = 0;
-    let rowsForEnrollment = 0;
+    // One transaction per lead: the rows and the event for a lead commit or
+    // roll back together, so a failed lead leaves its previous attribution intact.
+    await prisma.$transaction(async (tx) => {
+      const rowsForLead = await writeAttributionRows(tx, 'leadId', lead.id, touches);
+      let rowsForOpportunity = 0;
+      let rowsForEnrollment = 0;
 
-    if (lead.convertedOpportunityId) {
-      rowsForOpportunity = await writeAttributionRows('opportunityId', lead.convertedOpportunityId, touches);
-      const enrollment = await prisma.enrollment.findFirst({ where: { opportunityId: lead.convertedOpportunityId } });
-      if (enrollment) rowsForEnrollment = await writeAttributionRows('enrollmentId', enrollment.id, touches);
-    }
+      if (lead.convertedOpportunityId) {
+        rowsForOpportunity = await writeAttributionRows(tx, 'opportunityId', lead.convertedOpportunityId, touches);
+        const enrollment = await tx.enrollment.findFirst({ where: { opportunityId: lead.convertedOpportunityId } });
+        if (enrollment) rowsForEnrollment = await writeAttributionRows(tx, 'enrollmentId', enrollment.id, touches);
+      }
 
-    await emit({
-      name: EVENTS.MKT_ATTRIBUTION_COMPUTED,
-      subject: { entityType: 'lead', entityId: lead.id },
-      newState: { touchCount: touches.length, rowsForLead, rowsForOpportunity, rowsForEnrollment },
+      await auditWrite({
+        action: 'update',
+        subjectType: 'lead',
+        subjectId: lead.id,
+        meta: { source: 'attribution' },
+        after: { touchCount: touches.length, rowsForLead, rowsForOpportunity, rowsForEnrollment },
+        tx,
+      });
+      await emit({
+        name: EVENTS.MKT_ATTRIBUTION_COMPUTED,
+        subject: { entityType: 'lead', entityId: lead.id },
+        newState: { touchCount: touches.length, rowsForLead, rowsForOpportunity, rowsForEnrollment },
+        tx,
+      });
     });
     processed += 1;
   }

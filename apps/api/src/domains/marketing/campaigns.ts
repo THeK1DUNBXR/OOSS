@@ -25,8 +25,9 @@ import {
   type CampaignDetailView,
   type CampaignApprovalView,
 } from '@kaizen/shared';
-import { prisma, num } from '../../platform/db.js';
+import { prisma, num, type DbTx } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
@@ -119,6 +120,8 @@ export interface CampaignListFilters {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+registerGovernedEntities('mkt', ['marketing_campaign']);
 
 const CAMPAIGN_INCLUDE = {
   offering: { select: { id: true, name: true } },
@@ -214,8 +217,8 @@ async function toCampaignViewSingle(row: NonNullable<CampaignRow>): Promise<Camp
 }
 
 /** Sum of every non-deleted MarketingSpend row against this campaign. */
-async function campaignSpendTotal(tenantId: string, campaignId: string): Promise<number> {
-  const agg = await prisma.marketingSpend.aggregate({
+async function campaignSpendTotal(tenantId: string, campaignId: string, db: DbTx = prisma): Promise<number> {
+  const agg = await db.marketingSpend.aggregate({
     where: { tenantId, campaignId, deletedAt: null },
     _sum: { amount: true },
   });
@@ -224,21 +227,37 @@ async function campaignSpendTotal(tenantId: string, campaignId: string): Promise
 
 /**
  * `budgetActual` is computed from `MarketingSpend`, never hand-edited
- * (MKT-CMP-005) — this is the one place that writes it.
+ * (MKT-CMP-005) — this is the one place that writes it. `db` is the caller's
+ * transaction when the spend that moved the total commits with it (recordSpend).
  */
-export async function recomputeCampaignActual(campaignId: string): Promise<number> {
+export async function recomputeCampaignActual(campaignId: string, db: DbTx = prisma): Promise<number> {
   const auth = currentAuth();
-  const total = await campaignSpendTotal(auth.tenantId, campaignId);
-  await prisma.marketingCampaign.update({ where: { id: campaignId }, data: { budgetActual: total } });
+  const total = await campaignSpendTotal(auth.tenantId, campaignId, db);
+  await db.marketingCampaign.update({ where: { id: campaignId }, data: { budgetActual: total } });
   return total;
 }
 
-async function emitCampaignEvent(
+/**
+ * Audit, then event, inside the caller's transaction. Audit goes first: both
+ * append to per-tenant hash chains under advisory locks, and every governed
+ * write takes them in this order (governedWrite.ts). A create is the only
+ * event with no previous state.
+ */
+async function recordCampaignEvent(
+  tx: DbTx,
   name: string,
   row: { id: string; recordCode: string; ownerPartyId: string | null },
   previousState: Record<string, unknown> | null,
   newState: Record<string, unknown>,
 ) {
+  await auditWrite({
+    action: previousState === null ? 'create' : 'update',
+    subjectType: 'marketing_campaign',
+    subjectId: row.id,
+    before: previousState,
+    after: newState,
+    tx,
+  });
   await emit({
     name,
     subject: { entityType: 'marketing_campaign', entityId: row.id, recordCode: row.recordCode },
@@ -246,6 +265,7 @@ async function emitCampaignEvent(
     newState,
     owner: { partyId: row.ownerPartyId },
     impact: { domains: ['mkt'] },
+    tx,
   });
 }
 
@@ -263,42 +283,45 @@ export async function createCampaign(input: CampaignCreateInput): Promise<Campai
     throw ApiError.badRequest('A campaign links at most one of offeringId/courseId, never both.');
   }
 
-  const recordCode = await nextRecordCode('CPG');
   const utmCampaign = await uniqueUtmSlug(input.utmCampaign ?? input.name, auth.tenantId);
 
-  const row = await prisma.marketingCampaign.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      name: input.name,
-      objective: input.objective,
-      channelMix: input.channelMix,
-      division: input.division,
-      vertical: input.vertical ?? null,
-      startAt: input.startAt,
-      endAt: input.endAt,
-      status: 'draft',
-      budgetPlanned: input.budgetPlanned,
-      currency: input.currency ?? 'INR',
-      // The creator is the campaign's owner/proposer — the party the
-      // Self-Dealing Bar checks against at approval time.
-      ownerPartyId: auth.partyId,
-      approvalRequired: false,
-      utmCampaign,
-      targetLeads: input.targetLeads ?? null,
-      targetEnrolments: input.targetEnrolments ?? null,
-      targetPipelineValue: input.targetPipelineValue ?? undefined,
-      offeringId: input.offeringId ?? null,
-      courseId: input.courseId ?? null,
-      audienceId: input.audienceId ?? null,
-      contentBrief: input.contentBrief ?? null,
-      tags: input.tags ?? [],
-      createdById: auth.partyId,
-    },
-    include: CAMPAIGN_INCLUDE,
-  });
+  const row = await prisma.$transaction(async (tx) => {
+    const recordCode = await nextRecordCode('CPG', new Date(), tx);
+    const created = await tx.marketingCampaign.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        name: input.name,
+        objective: input.objective,
+        channelMix: input.channelMix,
+        division: input.division,
+        vertical: input.vertical ?? null,
+        startAt: input.startAt,
+        endAt: input.endAt,
+        status: 'draft',
+        budgetPlanned: input.budgetPlanned,
+        currency: input.currency ?? 'INR',
+        // The creator is the campaign's owner/proposer — the party the
+        // Self-Dealing Bar checks against at approval time.
+        ownerPartyId: auth.partyId,
+        approvalRequired: false,
+        utmCampaign,
+        targetLeads: input.targetLeads ?? null,
+        targetEnrolments: input.targetEnrolments ?? null,
+        targetPipelineValue: input.targetPipelineValue ?? undefined,
+        offeringId: input.offeringId ?? null,
+        courseId: input.courseId ?? null,
+        audienceId: input.audienceId ?? null,
+        contentBrief: input.contentBrief ?? null,
+        tags: input.tags ?? [],
+        createdById: auth.partyId,
+      },
+      include: CAMPAIGN_INCLUDE,
+    });
 
-  await emitCampaignEvent(EVENTS.MKT_CAMPAIGN_CREATED, row, null, { status: 'draft' });
+    await recordCampaignEvent(tx, EVENTS.MKT_CAMPAIGN_CREATED, created, null, { status: 'draft' });
+    return created;
+  });
 
   return getCampaign(row.id);
 }
@@ -504,41 +527,47 @@ export async function submitCampaign(id: string): Promise<CampaignDetailView> {
   const approvalRequired = budgetPlanned > policy.campaignApprovalThreshold;
 
   if (approvalRequired) {
-    const approvalCode = await nextRecordCode('CAA');
-    await prisma.marketingCampaignApproval.create({
-      data: {
-        tenantId: auth.tenantId,
-        recordCode: approvalCode,
-        campaignId: id,
-        requestedById: auth.partyId ?? 'system',
-        decision: 'pending',
-        thresholdAmount: policy.campaignApprovalThreshold,
-        createdById: auth.partyId,
-      },
+    await prisma.$transaction(async (tx) => {
+      const approvalCode = await nextRecordCode('CAA', new Date(), tx);
+      await tx.marketingCampaignApproval.create({
+        data: {
+          tenantId: auth.tenantId,
+          recordCode: approvalCode,
+          campaignId: id,
+          requestedById: auth.partyId ?? 'system',
+          decision: 'pending',
+          thresholdAmount: policy.campaignApprovalThreshold,
+          createdById: auth.partyId,
+        },
+      });
+      const updated = await tx.marketingCampaign.update({
+        where: { id },
+        data: { status: 'pending_approval', approvalRequired: true, updatedById: auth.partyId },
+        include: CAMPAIGN_INCLUDE,
+      });
+      await recordCampaignEvent(
+        tx,
+        EVENTS.MKT_CAMPAIGN_SUBMITTED,
+        updated,
+        { status: 'draft' },
+        { status: 'pending_approval', budgetPlanned },
+      );
     });
-    const updated = await prisma.marketingCampaign.update({
-      where: { id },
-      data: { status: 'pending_approval', approvalRequired: true, updatedById: auth.partyId },
-      include: CAMPAIGN_INCLUDE,
-    });
-    await emitCampaignEvent(
-      EVENTS.MKT_CAMPAIGN_SUBMITTED,
-      updated,
-      { status: 'draft' },
-      { status: 'pending_approval', budgetPlanned },
-    );
   } else {
-    const updated = await prisma.marketingCampaign.update({
-      where: { id },
-      data: { status: 'scheduled', approvalRequired: false, updatedById: auth.partyId },
-      include: CAMPAIGN_INCLUDE,
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.marketingCampaign.update({
+        where: { id },
+        data: { status: 'scheduled', approvalRequired: false, updatedById: auth.partyId },
+        include: CAMPAIGN_INCLUDE,
+      });
+      await recordCampaignEvent(
+        tx,
+        EVENTS.MKT_CAMPAIGN_SCHEDULED,
+        updated,
+        { status: 'draft' },
+        { status: 'scheduled', budgetPlanned },
+      );
     });
-    await emitCampaignEvent(
-      EVENTS.MKT_CAMPAIGN_SCHEDULED,
-      updated,
-      { status: 'draft' },
-      { status: 'scheduled', budgetPlanned },
-    );
   }
 
   return getCampaign(id);
@@ -559,23 +588,26 @@ export async function approveCampaign(id: string, reason?: string): Promise<Camp
 
   assertNotSelfDealing('campaigns:approve', approval.requestedById, row.ownerPartyId);
 
-  await prisma.marketingCampaignApproval.update({
-    where: { id: approval.id },
-    data: { decision: 'approved', decidedById: auth.partyId, reason: reason ?? null },
-  });
+  await prisma.$transaction(async (tx) => {
+    await tx.marketingCampaignApproval.update({
+      where: { id: approval.id },
+      data: { decision: 'approved', decidedById: auth.partyId, reason: reason ?? null },
+    });
 
-  const updated = await prisma.marketingCampaign.update({
-    where: { id },
-    data: { status: 'scheduled', approvedById: auth.partyId, approvedAt: new Date(), updatedById: auth.partyId },
-    include: CAMPAIGN_INCLUDE,
-  });
+    const updated = await tx.marketingCampaign.update({
+      where: { id },
+      data: { status: 'scheduled', approvedById: auth.partyId, approvedAt: new Date(), updatedById: auth.partyId },
+      include: CAMPAIGN_INCLUDE,
+    });
 
-  await emitCampaignEvent(
-    EVENTS.MKT_CAMPAIGN_APPROVED,
-    updated,
-    { status: 'pending_approval' },
-    { status: 'scheduled' },
-  );
+    await recordCampaignEvent(
+      tx,
+      EVENTS.MKT_CAMPAIGN_APPROVED,
+      updated,
+      { status: 'pending_approval' },
+      { status: 'scheduled' },
+    );
+  });
   return getCampaign(id);
 }
 
@@ -595,23 +627,26 @@ export async function rejectCampaign(id: string, reason: string): Promise<Campai
 
   assertNotSelfDealing('campaigns:reject', approval.requestedById, row.ownerPartyId);
 
-  await prisma.marketingCampaignApproval.update({
-    where: { id: approval.id },
-    data: { decision: 'rejected', decidedById: auth.partyId, reason },
-  });
+  await prisma.$transaction(async (tx) => {
+    await tx.marketingCampaignApproval.update({
+      where: { id: approval.id },
+      data: { decision: 'rejected', decidedById: auth.partyId, reason },
+    });
 
-  const updated = await prisma.marketingCampaign.update({
-    where: { id },
-    data: { status: 'draft', updatedById: auth.partyId },
-    include: CAMPAIGN_INCLUDE,
-  });
+    const updated = await tx.marketingCampaign.update({
+      where: { id },
+      data: { status: 'draft', updatedById: auth.partyId },
+      include: CAMPAIGN_INCLUDE,
+    });
 
-  await emitCampaignEvent(
-    EVENTS.MKT_CAMPAIGN_REJECTED,
-    updated,
-    { status: 'pending_approval' },
-    { status: 'draft', reason },
-  );
+    await recordCampaignEvent(
+      tx,
+      EVENTS.MKT_CAMPAIGN_REJECTED,
+      updated,
+      { status: 'pending_approval' },
+      { status: 'draft', reason },
+    );
+  });
   return getCampaign(id);
 }
 
@@ -640,13 +675,14 @@ async function transition(
     });
   }
 
-  const updated = await prisma.marketingCampaign.update({
-    where: { id },
-    data: { status: target, updatedById: auth.partyId },
-    include: CAMPAIGN_INCLUDE,
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.marketingCampaign.update({
+      where: { id },
+      data: { status: target, updatedById: auth.partyId },
+      include: CAMPAIGN_INCLUDE,
+    });
+    await recordCampaignEvent(tx, eventName, updated, { status: from }, { status: target, ...extraState });
   });
-
-  await emitCampaignEvent(eventName, updated, { status: from }, { status: target, ...extraState });
   return getCampaign(id);
 }
 
