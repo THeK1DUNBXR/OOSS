@@ -14,6 +14,8 @@
  * posting in this PR touches, but it is asserted after every committed step.
  */
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { asUser, expectReject, prisma, unscopedPrisma, tenantId } from '../helpers.js';
 import { parseMinor } from '@kaizen/shared';
@@ -295,5 +297,43 @@ describe('payroll run posts once (FX-73a)', () => {
       where: { tenantId: TENANT, subjectType: 'transaction', subjectId: posted.transactionId!, action: 'create' },
     });
     expect(txnAudit).toBe(1);
+  });
+});
+
+/**
+ * The payroll posting paths hand the legacy writer bigint paise, not a rupee double
+ * (CLAUDE.md rule 1). This is a source assertion rather than a database one: the
+ * float conversion `Number(paise) / 100` round-trips through the Decimal(14,2)
+ * column for every paise value in its range, so no posted amount tells the two
+ * apart. The defect is the conversion itself, which is what the text shows.
+ */
+describe('payroll posts paise, not a rupee float (FX-73a, rule 1)', () => {
+  const BOOKS = fileURLToPath(new URL('../../domains/books.ts', import.meta.url));
+  const PAYROLLOPS = fileURLToPath(new URL('../../domains/hcm/payrollops.ts', import.meta.url));
+
+  /** The source from `signature` to the closing brace of that top-level function. */
+  function bodyOf(source: string, signature: string): string {
+    const at = source.indexOf(signature);
+    expect(at, `${signature} exists`).toBeGreaterThan(-1);
+    return source.slice(at, source.indexOf('\n}\n', at));
+  }
+
+  it('no payroll posting file converts paise to a rupee number', () => {
+    expect(readFileSync(BOOKS, 'utf8')).not.toMatch(/paiseToRupees/);
+    expect(readFileSync(PAYROLLOPS, 'utf8')).not.toMatch(/paiseToRupees/);
+  });
+
+  it('postPayrollToBooks writes each division with writeTransactionMinor and the bigint paise', () => {
+    const body = bodyOf(readFileSync(BOOKS, 'utf8'), 'export async function postPayrollToBooks(');
+    expect(body).toMatch(/writeTransactionMinor\(/);
+    expect(body).not.toMatch(/writeTransaction\(/);
+    expect(body).toMatch(/amount: paise,/);
+  });
+
+  it('postPayrollJournal writes the net leg with writeTransactionMinor and the bigint paise', () => {
+    const body = bodyOf(readFileSync(PAYROLLOPS, 'utf8'), 'export async function postPayrollJournal(');
+    expect(body).toMatch(/writeTransactionMinor\(/);
+    expect(body).not.toMatch(/writeTransaction\(/);
+    expect(body).toMatch(/amount: netPaise,/);
   });
 });
