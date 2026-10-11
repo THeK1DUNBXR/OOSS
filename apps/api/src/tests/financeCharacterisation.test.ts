@@ -36,6 +36,11 @@ import {
   runwayMonths,
   setOffInputCredit,
   stateCodeOf,
+  formatMinor,
+  invoicePayableMinor,
+  outstandingOfMinor,
+  parseMinor,
+  paymentTypeForMinor,
   stateNameFor,
   supplyTypeOf,
 } from '@kaizen/shared';
@@ -497,5 +502,53 @@ describe('dates, divisions and places (not money; pinned because the same module
       subsequentFrom: '2026-04-01',
     });
     expect(computePaymentSchedule(null)).toBeNull();
+  });
+});
+
+describe('paise exports agree with the number adapters on two-place amounts', () => {
+  // A seeded generator, so a failure names the same inputs on every run.
+  let seed = 20261011;
+  const next = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed;
+  };
+  const paise = () => BigInt(next() % 100_000_000) - 10_000_000n;
+  const rupees = (p: bigint) => Number(formatMinor(p));
+
+  it('outstandingOf and outstandingOfMinor give the same figure for 2,000 random triples', () => {
+    for (let i = 0; i < 2000; i += 1) {
+      const [p, a, c] = [paise(), paise(), paise()];
+      expect(outstandingOf(rupees(p), rupees(a), rupees(c))).toBe(rupees(outstandingOfMinor(p, a, c)));
+    }
+  });
+
+  it('paymentTypeFor and paymentTypeForMinor agree for 2,000 random pairs, including exact payment', () => {
+    for (let i = 0; i < 2000; i += 1) {
+      const payable = paise() < 0n ? -paise() : paise();
+      const now = i % 4 === 0 ? payable : paise();
+      expect(paymentTypeFor(rupees(payable), rupees(now))).toBe(paymentTypeForMinor(payable, now));
+    }
+  });
+
+  it('invoicePayable and invoicePayableMinor agree, with a sub-paisa grand total still counting as set', () => {
+    expect(invoicePayable(0.001, 5)).toBe(0);
+    // The paise helper reads zero as unset, as stored rows do; the adapter does not.
+    expect(invoicePayableMinor(0n, 500n)).toBe(500n);
+    expect(invoicePayable(null, 5)).toBe(5);
+    expect(invoicePayableMinor(null, 500n)).toBe(500n);
+    expect(invoicePayable(-3, 12.3)).toBe(12.3);
+    expect(invoicePayableMinor(-300n, 1230n)).toBe(1230n);
+  });
+
+  it('a missing figure stays missing in the number adapters rather than throwing', () => {
+    expect(outstandingOf(NaN, 1)).toBeNaN();
+    expect(paymentTypeFor(NaN, 5)).toBe('part');
+    expect(invoicePayable(null, NaN)).toBeNaN();
+  });
+
+  it('the bigint helpers read exact paise, with no rounding step', () => {
+    expect(outstandingOfMinor(parseMinor('0.30'), parseMinor('0.10'))).toBe(parseMinor('0.20'));
+    expect(paymentTypeForMinor(parseMinor('100.00'), parseMinor('99.99'))).toBe('part');
+    expect(paymentTypeForMinor(parseMinor('100.00'), parseMinor('100.00'))).toBe('full');
   });
 });

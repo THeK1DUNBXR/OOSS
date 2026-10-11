@@ -80,6 +80,7 @@ export type LedgerGroup = (typeof LEDGER_GROUPS)[number];
 // ---------------------------------------------------------------------------
 
 import { istFinancialYear, istMidnight, istMonthKey } from './time.js';
+import { formatMinor, parseMinor } from './money.js';
 
 /** `YYYY-MM` for a date, in IST. */
 export function monthKey(d: Date): string {
@@ -140,7 +141,12 @@ export interface GstBreakdown {
   grandTotal: number;
 }
 
-/** Rupees, to two places, without the drift of repeated float addition. */
+/**
+ * @deprecated Float rounding, and one paisa low on some ties at crore
+ * magnitudes (KNOWN in apps/api/src/tests/financeCharacterisation.test.ts).
+ * The GST arithmetic still runs on it: moving that changes GST figures, which
+ * is the accountant's decision (D-02). New money code uses packages/shared/src/money.ts.
+ */
 export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
@@ -418,8 +424,23 @@ export function setOffInputCredit(output: GstHeads, credit: GstHeads): GstSetOff
  * where somebody is taking a part payment — and four independently written
  * subtractions is how a screen comes to disagree with a ledger.
  */
+export function outstandingOfMinor(payable: bigint, allocated: bigint, creditNoted: bigint = 0n): bigint {
+  const left = payable - allocated - creditNoted;
+  return left > 0n ? left : 0n;
+}
+
+/**
+ * @deprecated Number adapter over {@link outstandingOfMinor}. Kept for callers
+ * that still hold rupees as a float; new code takes paise. Non-finite input
+ * falls through to the old float expression so NaN stays NaN, not a thrown
+ * parse error inside a render.
+ */
 export function outstandingOf(payable: number, allocated: number, creditNoted = 0): number {
-  return round2(Math.max(payable - allocated - creditNoted, 0));
+  const p = paiseAtEdge(payable);
+  const a = paiseAtEdge(allocated);
+  const c = paiseAtEdge(creditNoted);
+  if (p === null || a === null || c === null) return round2(Math.max(payable - allocated - creditNoted, 0));
+  return rupeesAtEdge(outstandingOfMinor(p, a, c));
 }
 
 /**
@@ -430,11 +451,28 @@ export function outstandingOf(payable: number, allocated: number, creditNoted = 
  * a smaller figure produces a document that contradicts itself, and the customer
  * is the one who finds out.
  */
-export function paymentTypeFor(payable: number, payingNow: number): 'full' | 'part' | 'credit' {
-  const now = round2(payingNow);
-  if (now <= 0) return 'credit';
-  if (now >= round2(payable) - 0.001) return 'full';
+export function paymentTypeForMinor(payable: bigint, payingNow: bigint): 'full' | 'part' | 'credit' {
+  if (payingNow <= 0n) return 'credit';
+  if (payingNow >= payable) return 'full';
   return 'part';
+}
+
+/**
+ * @deprecated Number adapter over {@link paymentTypeForMinor}. The old
+ * `>= payable - 0.001` tolerance is gone: both sides are already rounded to the
+ * paisa, so a tolerance under a paisa could never change the answer.
+ */
+export function paymentTypeFor(payable: number, payingNow: number): 'full' | 'part' | 'credit' {
+  const p = paiseAtEdge(payable);
+  const n = paiseAtEdge(payingNow);
+  if (p === null || n === null) {
+    // Non-finite input: the old comparisons, which answer 'part' for NaN.
+    const now = round2(payingNow);
+    if (now <= 0) return 'credit';
+    if (now >= round2(payable)) return 'full';
+    return 'part';
+  }
+  return paymentTypeForMinor(p, n);
 }
 
 /**
@@ -447,8 +485,42 @@ export function paymentTypeFor(payable: number, payingNow: number): 'full' | 'pa
  * correct reading of an older invoice, and it keeps a seven-month-old ledger
  * from restating itself the day this code ships.
  */
+/**
+ * Zero is unset here, as it is on stored rows: a row raised before tax was
+ * priced carries a grand total of zero, and the line total is its only figure.
+ */
+export function invoicePayableMinor(grandTotal: bigint | null | undefined, lineTotal: bigint): bigint {
+  return grandTotal !== null && grandTotal !== undefined && grandTotal > 0n ? grandTotal : lineTotal;
+}
+
+/**
+ * @deprecated Number adapter over {@link invoicePayableMinor}. A grand total
+ * that is set as a float (positive before rounding) is the answer even when it
+ * rounds to zero, as the old code had it. The paise helper would call that
+ * zero "unset", so the adapter takes the set case itself.
+ */
 export function invoicePayable(grandTotal: number | null | undefined, lineTotal: number): number {
-  return grandTotal && grandTotal > 0 ? round2(grandTotal) : round2(lineTotal);
+  const line = paiseAtEdge(lineTotal);
+  const isSet = typeof grandTotal === 'number' && grandTotal > 0;
+  const grand = isSet ? paiseAtEdge(grandTotal) : null;
+  if (line === null || (isSet && grand === null)) {
+    return grandTotal && grandTotal > 0 ? round2(grandTotal) : round2(lineTotal);
+  }
+  return rupeesAtEdge(grand ?? line);
+}
+
+/**
+ * The number-to-paise edge. A float is rounded to two places here, as round2
+ * always did, and only then parsed; null for a non-finite value, which the
+ * adapters hand to the old float expression.
+ */
+function paiseAtEdge(value: number): bigint | null {
+  return Number.isFinite(value) ? parseMinor(round2(value).toFixed(2)) : null;
+}
+
+/** Paise back to a number, at the edge only: Number of the exact decimal, which is the nearest float to it. */
+function rupeesAtEdge(paise: bigint): number {
+  return Number(formatMinor(paise));
 }
 
 // ---------------------------------------------------------------------------
