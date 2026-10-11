@@ -15,6 +15,9 @@ import { istCivilDay } from '@kaizen/shared';
 import { unscopedPrisma } from '../../platform/db.js';
 import { asSystem } from '../../platform/context.js';
 import { balanceOf, post, reverse } from '../../platform/ledger.js';
+import { assertTrialBalance, journalTrialBalance } from '../../platform/balances.js';
+import { closePeriod } from '../../domains/compliance/books.js';
+import { ALL_JOBS } from '../../jobs/scheduler.js';
 
 const APP_URL =
   process.env.TEST_APP_DATABASE_URL ??
@@ -23,6 +26,9 @@ const APP_URL =
     '//kaizen_app:kaizen_app@',
   );
 const app = new PrismaClient({ datasourceUrl: APP_URL });
+
+const DRIFT_JOB = 'runAccountBalanceDriftJob';
+const DRIFT_CODE = 'EX-LED-001';
 
 interface Ledger {
   tid: string;
@@ -93,6 +99,16 @@ function asAppRole<T>(l: Ledger, fn: (tx: Prisma.TransactionClient) => Promise<T
   });
 }
 
+function driftJob() {
+  const job = ALL_JOBS.find((j) => j.name === DRIFT_JOB);
+  if (!job) throw new Error(`${DRIFT_JOB} is not registered`);
+  return job;
+}
+
+function runDrift(l: Ledger) {
+  return asSystem(l.tid, () => driftJob().run(new AbortController().signal));
+}
+
 afterAll(async () => {
   await app.$disconnect();
 });
@@ -149,3 +165,119 @@ describe('1.4 reversal effects on the balance', () => {
   });
 });
 
+describe('1.4 journal trial balance', () => {
+  beforeAll(async () => {
+    ledger = await freshLedger('trial');
+    await openPeriod(ledger, '2030-06');
+    await openPeriod(ledger, '2030-07');
+    await postOn(ledger, '2030-06-05', 7000n);
+    await postOn(ledger, '2030-06-20', 3000n);
+    await postOn(ledger, '2030-07-03', 900n);
+  });
+
+  it('debits equal credits, as bigint, and the balance is the sum of the postings on the day', async () => {
+    const tb = await journalTrialBalance(new Date('2030-06-30T00:00:00.000Z'));
+    expect(typeof tb.debitsMinor).toBe('bigint');
+    expect(tb.debitsMinor).toBe(10000n);
+    expect(tb.creditsMinor).toBe(10000n);
+    expect(() => assertTrialBalance(tb)).not.toThrow();
+  });
+
+  it('after every posting this file made, the whole tenant nets to zero', async () => {
+    const tb = await journalTrialBalance(new Date('2099-12-31T00:00:00.000Z'));
+    expect(tb.debitsMinor).toBe(10900n);
+    expect(tb.debitsMinor - tb.creditsMinor).toBe(0n);
+    assertTrialBalance(tb);
+  });
+
+  it('the assertion refuses a trial balance whose debits and credits differ', () => {
+    expect(() =>
+      assertTrialBalance({ asOf: '2030-06-30', debitsMinor: 100n, creditsMinor: 99n, lineCount: 2 }),
+    ).toThrow(/debits 100 and credits 99/);
+  });
+});
+
+describe('1.4 nightly drift check on the closed-period snapshots', () => {
+  beforeAll(async () => {
+    ledger = await freshLedger('drift');
+    await openPeriod(ledger, '2030-08');
+    await postOn(ledger, '2030-08-10', 7000n);
+    await postOn(ledger, '2030-08-20', 3000n);
+    await unscopedPrisma.accountingPeriod.updateMany({
+      where: { tenantId: ledger.tid, period: '2030-08' },
+      data: { status: 'closing' },
+    });
+    await asSystem(ledger.tid, () => closePeriod('2030-08'));
+  });
+
+  it('a clean closed period gets one snapshot per account and raises nothing', async () => {
+    await runDrift(ledger);
+    const snaps = await unscopedPrisma.accountBalanceSnapshot.findMany({ where: { tenantId: ledger.tid } });
+    const byAccount = new Map(snaps.map((s) => [s.accountId, s.balanceMinor]));
+    expect(byAccount.get(ledger.bank)).toBe(10000n);
+    expect(byAccount.get(ledger.capital)).toBe(-10000n);
+    expect(await exceptionsFor(ledger, DRIFT_CODE)).toHaveLength(0);
+  });
+
+  it('a rerun writes no second snapshot and raises nothing', async () => {
+    const before = await unscopedPrisma.accountBalanceSnapshot.count({ where: { tenantId: ledger.tid } });
+    const again = await runDrift(ledger);
+    const after = await unscopedPrisma.accountBalanceSnapshot.count({ where: { tenantId: ledger.tid } });
+    expect(after).toBe(before);
+    expect(again.errors).toEqual([]);
+    expect(await exceptionsFor(ledger, DRIFT_CODE)).toHaveLength(0);
+  });
+
+  it('a snapshot corrupted through the owner role raises one exception, names both figures, and is left as it is', async () => {
+    await unscopedPrisma.accountBalanceSnapshot.updateMany({
+      where: { tenantId: ledger.tid, accountId: ledger.bank },
+      data: { balanceMinor: 9999n },
+    });
+
+    await runDrift(ledger);
+    const raised = await exceptionsFor(ledger, DRIFT_CODE);
+    expect(raised).toHaveLength(1);
+    expect(raised[0]!.subjectType).toBe('ledger_account');
+    expect(raised[0]!.subjectId).toBe(ledger.bank);
+    expect(raised[0]!.severity).toBe('S1_ATTENTION');
+    expect(raised[0]!.detail).toContain('expected 10000');
+    expect(raised[0]!.detail).toContain('actual 9999');
+
+    const row = await unscopedPrisma.accountBalanceSnapshot.findFirstOrThrow({
+      where: { tenantId: ledger.tid, accountId: ledger.bank },
+    });
+    expect(row.balanceMinor).toBe(9999n);
+  });
+
+  it('a rerun of the drift check on the same corruption raises no second exception', async () => {
+    await runDrift(ledger);
+    expect(await exceptionsFor(ledger, DRIFT_CODE)).toHaveLength(1);
+  });
+
+  it('the application role cannot update or delete a snapshot', async () => {
+    await expect(
+      asAppRole(ledger, (tx) =>
+        tx.$executeRaw`UPDATE "account_balance_snapshots" SET "balanceMinor" = 10000 WHERE "tenantId" = ${ledger.tid}`,
+      ),
+    ).rejects.toThrow(/permission denied/);
+    await expect(
+      asAppRole(ledger, (tx) => tx.$executeRaw`DELETE FROM "account_balance_snapshots" WHERE "tenantId" = ${ledger.tid}`),
+    ).rejects.toThrow(/permission denied/);
+  });
+});
+
+function exceptionsFor(l: Ledger, code: string) {
+  return unscopedPrisma.exceptionRecord.findMany({ where: { tenantId: l.tid, code } });
+}
+
+describe('1.4 trial balance and drift are per tenant', () => {
+  it('a tenant with no postings has a zero trial balance and nothing to drift', async () => {
+    const empty = await freshLedger('empty');
+    const tb = await asSystem(empty.tid, () => journalTrialBalance(new Date('2099-12-31T00:00:00.000Z')));
+    expect(tb.debitsMinor).toBe(0n);
+    expect(tb.creditsMinor).toBe(0n);
+    const result = await runDrift(empty);
+    expect(result.errors).toEqual([]);
+    expect(result.processed).toBe(0);
+  });
+});
