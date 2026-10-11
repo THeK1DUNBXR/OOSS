@@ -65,7 +65,9 @@ async function line(overrides: { effectiveFrom?: string } = {}) {
   return row;
 }
 
-async function unit(overrides: { code?: string; lineId?: string | null; parentUnitId?: string | null; effectiveFrom?: string } = {}) {
+async function unit(
+  overrides: { code?: string; lineId?: string | null; parentUnitId?: string | null; effectiveFrom?: string } = {},
+) {
   const code = overrides.code ?? uniqueCode();
   const row = await asUser(CHAIRMAN, () =>
     openUnit({
@@ -221,12 +223,12 @@ describe('Unit: immutability at the database', () => {
   it('refuses a raw UPDATE of lineId, code, tenantId, id and effectiveFrom, whatever the writer', async () => {
     const l = await line();
     const u = await unit({ lineId: l.id });
-    await expect(
-      unscopedPrisma.$executeRaw`UPDATE units SET "lineId" = ${null} WHERE id = ${u.id}`,
-    ).rejects.toThrow(/immutable/);
-    await expect(
-      unscopedPrisma.$executeRaw`UPDATE units SET code = ${'ZZZZZ'} WHERE id = ${u.id}`,
-    ).rejects.toThrow(/immutable/);
+    await expect(unscopedPrisma.$executeRaw`UPDATE units SET "lineId" = ${null} WHERE id = ${u.id}`).rejects.toThrow(
+      /immutable/,
+    );
+    await expect(unscopedPrisma.$executeRaw`UPDATE units SET code = ${'ZZZZZ'} WHERE id = ${u.id}`).rejects.toThrow(
+      /immutable/,
+    );
     await expect(
       unscopedPrisma.$executeRaw`UPDATE units SET "tenantId" = ${'other'} WHERE id = ${u.id}`,
     ).rejects.toThrow(/immutable/);
@@ -242,9 +244,9 @@ describe('Unit: immutability at the database', () => {
 
   it('refuses a closed status without an end date, at the database', async () => {
     const u = await unit();
-    await expect(
-      unscopedPrisma.$executeRaw`UPDATE units SET status = 'closed' WHERE id = ${u.id}`,
-    ).rejects.toThrow(/units_status_end_agree|check constraint/);
+    await expect(unscopedPrisma.$executeRaw`UPDATE units SET status = 'closed' WHERE id = ${u.id}`).rejects.toThrow(
+      /units_status_end_agree|check constraint/,
+    );
   });
 
   it('refuses a DELETE from the application role', async () => {
@@ -293,7 +295,9 @@ describe('Unit: permission, audit and events', () => {
     const auditBefore = await unscopedPrisma.auditRecord.count({ where: { tenantId: tid, subjectType: 'unit' } });
     const code = uniqueCode();
     const opened = await expectReject(() =>
-      asUser(EMPLOYEE, () => openUnit({ code, name: 'Refused', lineId: null, effectiveFrom: '2030-01-01', reason: 'x' })),
+      asUser(EMPLOYEE, () =>
+        openUnit({ code, name: 'Refused', lineId: null, effectiveFrom: '2030-01-01', reason: 'x' }),
+      ),
     );
     expect(opened.status).toBe(403);
     const closed = await expectReject(() =>
@@ -351,17 +355,19 @@ describe('Unit: permission, audit and events', () => {
 });
 
 describe('Unit: IST dates and the tenant', () => {
-  it('reads the default effective day in IST: 20:00 UTC on 31 March is 1 April, and is listed from 1 April', async () => {
-    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-03-31T19:00:00.000Z') });
+  it('reads the default effective day in IST: 19:00 UTC on 31 March is 1 April, and is listed from 1 April', async () => {
+    // The year is 2030, not 2026: a grant takes effect at its effectiveFrom
+    // (platform/permissions.ts:76), and the fixtures were seeded at the current
+    // date, so a fake clock in March 2026 would find no grant and refuse the
+    // write before the boundary is tested. The boundary is the same day of the year.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2030-03-31T19:00:00.000Z') });
     const code = uniqueCode();
-    const row = await asUser(CHAIRMAN, () =>
-      openUnit({ code, name: 'Clock unit', lineId: null, reason: 'fixture' }),
-    );
+    const row = await asUser(CHAIRMAN, () => openUnit({ code, name: 'Clock unit', lineId: null, reason: 'fixture' }));
     createdUnitCodes.push(code);
-    expect(row.effectiveFrom.toISOString()).toBe('2026-04-01T00:00:00.000Z');
+    expect(row.effectiveFrom.toISOString()).toBe('2030-04-01T00:00:00.000Z');
     const today = await asUser(CHAIRMAN, () => listUnits());
     expect(today.map((r) => r.id)).toContain(row.id);
-    const march = await asUser(CHAIRMAN, () => listUnits({ asOf: '2026-03-31' }));
+    const march = await asUser(CHAIRMAN, () => listUnits({ asOf: '2030-03-31' }));
     expect(march.map((r) => r.id)).not.toContain(row.id);
   });
 
@@ -388,7 +394,13 @@ describe('Unit: IST dates and the tenant', () => {
     });
     await expect(
       unscopedPrisma.unit.create({
-        data: { tenantId: tid, code: uniqueCode(), name: 'Mine', lineId: theirLine.id, effectiveFrom: day('2030-01-01') },
+        data: {
+          tenantId: tid,
+          code: uniqueCode(),
+          name: 'Mine',
+          lineId: theirLine.id,
+          effectiveFrom: day('2030-01-01'),
+        },
       }),
     ).rejects.toThrow(/[Ff]oreign key/);
     await unscopedPrisma.unit.deleteMany({ where: { id: theirs.id } });
