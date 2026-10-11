@@ -286,6 +286,7 @@ router.get(
   '/events/verify-chain',
   handler(async () => {
     await assertCan({ resource: 'events', verb: 'view' });
+    // Walks the whole chain in this request. A large tenant needs a background job, not this handler.
     return verifyChain(currentAuth().tenantId);
   }),
 );

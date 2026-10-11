@@ -76,7 +76,7 @@ router.get(
     const auth = currentAuth();
     const from = str(req.query.from);
     const to = str(req.query.to);
-    return verifyAuditChain(auth.tenantId, 10_000, from ? new Date(from) : undefined, to ? new Date(to) : undefined);
+    return verifyAuditChain(auth.tenantId, from ? new Date(from) : undefined, to ? new Date(to) : undefined);
   }),
 );
 

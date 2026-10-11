@@ -29,6 +29,7 @@ import { prisma, unscopedPrisma, type DbTx } from './db.js';
 import { config } from './config.js';
 import { currentAuth, requireContext } from './context.js';
 import { drainOutbox } from './outbox.js';
+import { canonicalJson } from './canonicalJson.js';
 
 export interface EmitInput {
   name: string;
@@ -102,9 +103,15 @@ export function clearSubscribers(): void {
 }
 
 /**
- * Computes the chain hash. The serialisation deliberately excludes the hash
- * itself and includes prevHash, so any tampering with an earlier event breaks
- * every subsequent link.
+ * Hash version 1, the algorithm every row written before hash version 2 carries.
+ * Existing rows are verified with it and never rewritten, so history stays as
+ * it was written.
+ *
+ * Known weakness, kept on purpose for those rows: `JSON.stringify`'s array
+ * replacer keeps only the top-level keys and filters nested ones too, so
+ * nested content (subject, newState, previousState, related) hashes as `{}`.
+ * An edit inside newState does not break a v1 link. Version 2 covers the full
+ * body.
  */
 export function computeHash(payload: Record<string, unknown>, prevHash: string | null): string {
   const canonical = JSON.stringify(payload, Object.keys(payload).sort());
@@ -113,6 +120,32 @@ export function computeHash(payload: Record<string, unknown>, prevHash: string |
     .update('|')
     .update(canonical)
     .digest('hex');
+}
+
+/**
+ * Hash version 2, used by every new row. It covers the full body, nested
+ * content included, in the same canonical form the audit chain uses, so that
+ * an edit anywhere in a record breaks its link.
+ */
+export function computeHashV2(payload: Record<string, unknown>, prevHash: string | null): string {
+  return createHash('sha256')
+    .update(prevHash ?? 'GENESIS')
+    .update('|')
+    .update(canonicalJson(payload))
+    .digest('hex');
+}
+
+/** The version every new row is written with. Rows without one are version 1, which is the column default. */
+export const CURRENT_HASH_VERSION = 2;
+
+/**
+ * Dispatches on the version a row was written with. An unknown version is a
+ * broken row: the verifier treats it as a failed link rather than guessing.
+ */
+export function hashFor(version: number, payload: Record<string, unknown>, prevHash: string | null): string {
+  if (version === 1) return computeHash(payload, prevHash);
+  if (version === CURRENT_HASH_VERSION) return computeHashV2(payload, prevHash);
+  throw new Error(`Unknown event hash version ${version}`);
 }
 
 /**
@@ -186,6 +219,7 @@ const CHAIN_FIELDS_SELECT = {
   reason: true,
   correlationId: true,
   causationId: true,
+  hashVersion: true,
   prevHash: true,
   hash: true,
 } as const;
@@ -262,7 +296,7 @@ async function appendToChain<T>(
       select: { hash: true },
     });
     const prevHash = last?.hash ?? null;
-    const hash = computeHash(body, prevHash);
+    const hash = hashFor(CURRENT_HASH_VERSION, body, prevHash);
     const record = await tx.eventRecord.create(build(prevHash, hash) as Parameters<typeof tx.eventRecord.create>[0]);
     // The outbox row (and any legacy dual-publish row) is written here, under
     // the same lock and in the same transaction as the chain link, so a
@@ -281,7 +315,9 @@ async function appendToChain<T>(
     try {
       return await prisma.$transaction(
         run,
-        // READ COMMITTED, deliberately, *because* of the lock above.
+        // READ COMMITTED, deliberately, *because* of the lock above. The plan
+        // named SERIALIZABLE here; this is the one place that choice is rejected,
+        // and the reason is below.
         //
         // Under SERIALIZABLE the transaction's snapshot is taken when its first
         // statement runs — which is the lock acquisition itself. A writer that
@@ -347,7 +383,14 @@ export async function emit(input: EmitInput): Promise<EventEnvelope> {
     actorAccessRole: auth.roleSlug,
     actorAgentId: auth.agentId,
     onBehalfOfPartyId: auth.onBehalfOfPartyId,
-    subject: input.subject,
+    // Normalised to the same shape `chainBodyOf` rebuilds from the stored row. An
+    // undefined recordCode would drop out of the JSON and make the hash disagree
+    // with the verifier, which reads it back as null.
+    subject: {
+      entityType: input.subject.entityType,
+      entityId: input.subject.entityId,
+      recordCode: input.subject.recordCode ?? null,
+    },
     related: input.related ?? [],
     previousState: input.previousState ?? null,
     newState: input.newState ?? null,
@@ -444,6 +487,7 @@ export async function emit(input: EmitInput): Promise<EventEnvelope> {
         causationId: ctx.causationId,
         confidentiality: input.confidentiality ?? 'internal',
         retentionClass: input.retentionClass ?? 'standard',
+        hashVersion: CURRENT_HASH_VERSION,
         prevHash,
         hash,
       },
@@ -469,7 +513,9 @@ export async function emit(input: EmitInput): Promise<EventEnvelope> {
             eventName: legacyName,
             legacyName,
             prevHash: hash,
-            hash: computeHash({ ...body, eventName: legacyName }, hash),
+            // The legacy row copies hashVersion from the canonical row, so it is
+            // hashed with the same version the verifier will dispatch on.
+            hash: hashFor(CURRENT_HASH_VERSION, { ...body, eventName: legacyName }, hash),
           } as never,
         });
       }
@@ -570,7 +616,15 @@ export async function verifyChain(tenantId: string, opts: { maxRows?: number } =
 
     for (const row of rows) {
       checked += 1;
-      if (row.prevHash !== expectedPrev || computeHash(chainBodyOf(row), row.prevHash) !== row.hash) {
+      // A row with a version this code does not know is a failed link, not an error
+      // that stops the walk: the report should name the row.
+      let recomputed: string | null = null;
+      try {
+        recomputed = hashFor(row.hashVersion, chainBodyOf(row), row.prevHash);
+      } catch {
+        recomputed = null;
+      }
+      if (row.prevHash !== expectedPrev || recomputed !== row.hash) {
         return { valid: false, checked, brokenAt: row.eventId, complete: false };
       }
       expectedPrev = row.hash;

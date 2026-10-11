@@ -15,6 +15,7 @@ import { createHash } from 'node:crypto';
 import { prisma, unscopedPrisma, type DbTx } from './db.js';
 import { currentAuth, getContext } from './context.js';
 import { assertCan } from './permissions.js';
+import { canonicalJson } from './canonicalJson.js';
 
 export const AUDIT_ACTIONS = [
   'create',
@@ -173,28 +174,6 @@ function normalise(v: unknown): unknown {
 // was altered without a matching hash edit is still caught.
 // ---------------------------------------------------------------------------
 
-/** Deep-sorts object keys so the hash is independent of how a JSON column happens to have stored them. */
-function sortDeep(v: unknown): unknown {
-  if (v instanceof Date) return v.toISOString();
-  if (Array.isArray(v)) return v.map(sortDeep);
-  if (v && typeof v === 'object') {
-    // A Decimal (or anything else with its own JSON representation) is
-    // serialised through that representation rather than walked as a plain
-    // object — walking a Decimal's own keys would silently produce `{}`.
-    const toJSON = (v as { toJSON?: () => unknown }).toJSON;
-    if (typeof toJSON === 'function') return sortDeep(toJSON.call(v));
-    const out: Record<string, unknown> = {};
-    for (const k of Object.keys(v as Record<string, unknown>).sort())
-      out[k] = sortDeep((v as Record<string, unknown>)[k]);
-    return out;
-  }
-  return v;
-}
-
-function canonicalJson(v: unknown): string {
-  return JSON.stringify(sortDeep(v));
-}
-
 export function computeAuditHash(payload: Record<string, unknown>, prevHash: string | null): string {
   return createHash('sha256')
     .update(prevHash ?? 'GENESIS')
@@ -203,7 +182,7 @@ export function computeAuditHash(payload: Record<string, unknown>, prevHash: str
     .digest('hex');
 }
 
-function hashPayloadOf(row: {
+export function hashPayloadOf(row: {
   tenantId: string;
   action: string;
   subjectType: string;
@@ -241,9 +220,11 @@ export async function createChainedAuditRecord(
   const tenantId = (data as { tenantId: string }).tenantId;
   const run = async (tx: DbTx): Promise<void> => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
+    // By sequence: two writes in one millisecond share a timestamp, so a head read
+    // by timestamp can pick a row that already has a successor and fork the chain.
     const last = await tx.auditRecord.findFirst({
       where: { tenantId, hash: { not: null } },
-      orderBy: { timestamp: 'desc' },
+      orderBy: { seq: 'desc' },
       select: { hash: true },
     });
     const prevHash = last?.hash ?? null;
@@ -290,45 +271,88 @@ export async function createChainedAuditRecord(
  * Rows written before hashing existed (`hash` null) are skipped, not counted
  * as broken; run `chainUnhashedAuditRecords` to bring them into the chain.
  */
-export async function verifyAuditChain(
-  tenantId: string,
-  limit = 10_000,
-  from?: Date,
-  to?: Date,
-): Promise<{ ok: boolean; checked: number; brokenAt: string | null }> {
-  await assertCan({ resource: 'audit', verb: 'view' });
-  const rows = await unscopedPrisma.auditRecord.findMany({
-    // Walk from genesis through the requested end so a bounded verification
-    // still proves the first in-range row links to its predecessor.
-    where: { tenantId, ...(to ? { timestamp: { lte: to } } : {}) },
-    orderBy: { timestamp: 'asc' },
-    take: limit,
-  });
+export interface AuditChainVerification {
+  ok: boolean;
+  checked: number;
+  brokenAt: string | null;
+  /**
+   * True when the walk reached the end of the requested range without a break.
+   * It used to stop silently at 10,000 rows and report ok, which read as a
+   * verified trail when it was only a prefix.
+   */
+  complete: boolean;
+}
 
+const AUDIT_VERIFY_PAGE_SIZE = 1000;
+
+/**
+ * Pages through the chain in sequence order from genesis to the end of `to`,
+ * so a bounded verification still proves the first in-range row links to its
+ * predecessor. For a large tenant this runs inside the request; it needs a
+ * background job before it is offered on a hot path.
+ */
+export async function verifyAuditChain(tenantId: string, from?: Date, to?: Date): Promise<AuditChainVerification> {
+  await assertCan({ resource: 'audit', verb: 'view' });
   let expectedPrev: string | null = null;
   let checked = 0;
-  for (const row of rows) {
-    if (!row.hash) continue;
-    const inRange = !from || row.timestamp >= from;
-    if (inRange) checked += 1;
-    const expectedHash = computeAuditHash(
-      hashPayloadOf({
-        tenantId: row.tenantId,
-        action: row.action,
-        subjectType: row.subjectType,
-        subjectId: row.subjectId,
-        actorId: row.actorId,
-        diff: row.diff,
-        timestamp: row.timestamp,
-      }),
-      row.prevHash,
-    );
-    if (row.prevHash !== expectedPrev || row.hash !== expectedHash) {
-      return { ok: false, checked, brokenAt: row.id };
+  let cursor: bigint | null = null;
+
+  for (;;) {
+    const rows = await unscopedPrisma.auditRecord.findMany({
+      where: {
+        tenantId,
+        ...(to ? { timestamp: { lte: to } } : {}),
+        ...(cursor === null ? {} : { seq: { gt: cursor } }),
+      },
+      orderBy: { seq: 'asc' },
+      take: AUDIT_VERIFY_PAGE_SIZE,
+    });
+    if (rows.length === 0) return { ok: true, checked, brokenAt: null, complete: true };
+
+    for (const row of rows) {
+      cursor = row.seq;
+      const result = verifyAuditRow(row, expectedPrev, from, checked);
+      if (result === 'unhashed') continue;
+      checked = result.checked;
+      if (!result.ok) return { ok: false, checked, brokenAt: row.id, complete: false };
+      expectedPrev = row.hash;
     }
-    expectedPrev = row.hash;
   }
-  return { ok: true, checked, brokenAt: null };
+}
+
+/** Checks one row against the link it claims and its own content. */
+function verifyAuditRow(
+  row: {
+    tenantId: string;
+    action: string;
+    subjectType: string;
+    subjectId: string;
+    actorId: string | null;
+    diff: unknown;
+    timestamp: Date;
+    prevHash: string | null;
+    hash: string | null;
+  },
+  expectedPrev: string | null,
+  from: Date | undefined,
+  checkedSoFar: number,
+): 'unhashed' | { ok: boolean; checked: number } {
+  if (!row.hash) return 'unhashed';
+  const inRange = !from || row.timestamp >= from;
+  const checked = checkedSoFar + (inRange ? 1 : 0);
+  const expectedHash = computeAuditHash(
+    hashPayloadOf({
+      tenantId: row.tenantId,
+      action: row.action,
+      subjectType: row.subjectType,
+      subjectId: row.subjectId,
+      actorId: row.actorId,
+      diff: row.diff,
+      timestamp: row.timestamp,
+    }),
+    row.prevHash,
+  );
+  return { ok: row.prevHash === expectedPrev && row.hash === expectedHash, checked };
 }
 
 /**
@@ -337,25 +361,31 @@ export async function verifyAuditChain(
  * that already has a hash is left untouched.
  */
 export async function chainUnhashedAuditRecords(tenantId: string): Promise<number> {
-  const unhashed = await unscopedPrisma.auditRecord.findMany({
-    where: { tenantId, hash: null },
-    orderBy: { timestamp: 'asc' },
-  });
-  if (unhashed.length === 0) return 0;
+  // The head is read under the same per-tenant lock the append takes. Without
+  // it, a live write could land between the read and the update and both would
+  // chain onto the same predecessor.
+  return unscopedPrisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
+    const unhashed = await tx.auditRecord.findMany({
+      where: { tenantId, hash: null },
+      orderBy: { timestamp: 'asc' },
+    });
+    if (unhashed.length === 0) return 0;
 
-  const head = await unscopedPrisma.auditRecord.findFirst({
-    where: { tenantId, hash: { not: null } },
-    orderBy: { timestamp: 'desc' },
-    select: { hash: true },
-  });
-  let prevHash = head?.hash ?? null;
+    const head = await tx.auditRecord.findFirst({
+      where: { tenantId, hash: { not: null } },
+      orderBy: { seq: 'desc' },
+      select: { hash: true },
+    });
+    let prevHash = head?.hash ?? null;
 
-  for (const row of unhashed) {
-    const hash = computeAuditHash(hashPayloadOf(row), prevHash);
-    await unscopedPrisma.auditRecord.update({ where: { id: row.id }, data: { prevHash, hash } });
-    prevHash = hash;
-  }
-  return unhashed.length;
+    for (const row of unhashed) {
+      const hash = computeAuditHash(hashPayloadOf(row), prevHash);
+      await tx.auditRecord.update({ where: { id: row.id }, data: { prevHash, hash } });
+      prevHash = hash;
+    }
+    return unhashed.length;
+  });
 }
 
 export interface AuditWriteInput {

@@ -991,8 +991,11 @@ model EventRecord {
 
   /// The hash-chain linkage that makes the log tamper-evident and replayable.
   /// A chain-continuity failure alerts per tenant, never merely logs.
-  prevHash String?
-  hash     String
+  /// Which hash algorithm wrote `hash`. Rows before version 2 are 1 and keep
+  /// their original hashes; the verifier dispatches on this field.
+  hashVersion Int    @default(2)
+  prevHash    String?
+  hash        String
 
   /// Set during the dual-publish migration window so both names are
   /// recognisable as the same fact.
@@ -1137,6 +1140,15 @@ model AuditRecord {
 
   timestamp DateTime @default(now())
 
+  /// Chain order. The append head and the verifier read by this, never by
+  /// `timestamp`, which is ambiguous when rows share a millisecond. Backfilled
+  /// in migration 20261011130000 by walking prevHash from each genesis.
+  seq BigInt @default(autoincrement())
+
+  /// A predecessor is chained at most once: the database refuses a fork.
+  /// The genesis is partial and hand-written (see the migration).
+  @@unique([tenantId, prevHash])
+  @@unique([tenantId, seq])
   @@index([tenantId, subjectType, subjectId, timestamp])
   @@index([tenantId, actorId, timestamp])
   @@index([tenantId, timestamp])
