@@ -37,11 +37,13 @@ import {
   type GstLineInput,
 } from '@kaizen/shared';
 import { prisma, unscopedPrisma, num, type DbTx } from '../platform/db.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney, assertScopeAll } from '../platform/permissions.js';
+import { paiseSum } from '../platform/wire.js';
 import { raiseException } from '../platform/exceptions.js';
 import { runHooks } from '../platform/hooks.js';
 import { registerGovernedEntities, auditWrite } from '../platform/audit.js';
@@ -332,7 +334,8 @@ export async function writeTransaction(input: TransactionInput, tx?: DbTx) {
 /**
  * writeTransaction for an amount held as bigint paise. The amount reaches the
  * column as the exact decimal text formatMinor gives, so no float is involved
- * on the way in. The import commit uses it (FX-72); payroll is to follow (PR7).
+ * on the way in. The import commit (FX-72) and payroll (FX-73a) both write
+ * through it.
  */
 export async function writeTransactionMinor(input: TransactionInputMinor, tx?: DbTx) {
   if (input.amount <= 0n) {
@@ -1553,11 +1556,41 @@ export async function cashForecast(months = 6) {
 }
 
 /**
+ * Takes the row lock of a payroll run and refuses if the run has already reached
+ * the books. Every route that writes a legacy `Transaction` for a run calls this
+ * first, inside its own `governedWrite`, so two posts of one run serialise here:
+ * the second waits for the first to commit, then reads the rows it wrote.
+ *
+ * A check before the transaction, which is what the routes had before FX-73a,
+ * lets two concurrent posts both pass it. The lock is the guard; the read after
+ * it is only correct because it happens under the lock.
+ */
+export async function lockPayrollRunForPosting(tx: DbTx, tenantId: string, runId: string): Promise<void> {
+  const [locked] = await tx.$queryRaw<Array<{ recordCode: string }>>`
+    SELECT "recordCode" FROM "payroll_runs"
+    WHERE "id" = ${runId} AND "tenantId" = ${tenantId}
+    FOR UPDATE`;
+  if (!locked) throw ApiError.notFound('Payroll run');
+
+  const prior = await tx.transaction.findFirst({
+    where: { tenantId, payrollRunId: runId, deletedAt: null },
+    select: { id: true },
+  });
+  if (prior) {
+    throw ApiError.conflict(`${locked.recordCode} has already been posted.`, { transactionId: prior.id });
+  }
+}
+
+/**
  * Posts a disbursed payroll run to the books.
  *
  * This is the join between People and Finance. Without it, salaries are the
  * largest cost the company has and the ledger never sees them — which is
  * precisely how a division P&L comes out looking profitable.
+ *
+ * The run is locked and checked, and every leg is written, in one transaction.
+ * A failed leg leaves no leg behind; a second post of the same run is refused
+ * with the first post's transaction id (FX-73a).
  */
 export async function postPayrollToBooks(payrollRunId: string, accountId: string) {
   const auth = currentAuth();
@@ -1575,12 +1608,9 @@ export async function postPayrollToBooks(payrollRunId: string, accountId: string
     );
   }
 
-  const already = await prisma.transaction.findFirst({
-    where: { tenantId: auth.tenantId, payrollRunId, deletedAt: null },
-  });
-  if (already) {
-    throw ApiError.conflict(`${run.recordCode} has already been posted.`, { transactionId: already.id });
-  }
+  // The period veto and the permission check run before any row is written, as
+  // recordTransaction ran them for each leg before FX-73a.
+  await checkTransactionAllowed({ txnDate: run.disbursedAt ?? new Date(), source: 'payroll' });
 
   const salaryCategory = await prisma.ledgerCategory.findFirst({
     where: { tenantId: auth.tenantId, name: 'Salary & Wages', deletedAt: null },
@@ -1588,32 +1618,40 @@ export async function postPayrollToBooks(payrollRunId: string, accountId: string
 
   // One entry per division rather than one per employee: the ledger records
   // what the company spent on payroll, and what each person was paid is the
-  // payroll run's business, not the general ledger's.
-  const byDivision = new Map<string, number>();
+  // payroll run's business, not the general ledger's. Summed in paise, because
+  // a float sum of rupees drifts by a paisa over enough instructions.
+  const byDivision = new Map<string, bigint>();
   for (const i of run.instructions) {
     const key = i.division ?? 'shared';
-    byDivision.set(key, round2((byDivision.get(key) ?? 0) + (num(i.netAmount) ?? 0)));
+    byDivision.set(key, (byDivision.get(key) ?? 0n) + paiseSum([i.netAmount]));
   }
 
-  const created: Awaited<ReturnType<typeof recordTransaction>>[] = [];
-  for (const [division, amount] of byDivision) {
-    if (amount <= 0) continue;
-    created.push(
-      await recordTransaction({
-        txnDate: run.disbursedAt ?? new Date(),
-        direction: 'out',
-        amount,
-        accountId,
-        categoryId: salaryCategory?.id ?? null,
-        division,
-        counterparty: 'Payroll',
-        reference: run.recordCode,
-        note: `Payroll ${run.payPeriod} — ${division}`,
-        source: 'payroll',
-        payrollRunId: run.id,
-      }),
-    );
-  }
+  const created = await governedWrite(async (tx) => {
+    await lockPayrollRunForPosting(tx, auth.tenantId, run.id);
+    const legs: Awaited<ReturnType<typeof writeTransactionMinor>>[] = [];
+    for (const [division, paise] of byDivision) {
+      if (paise <= 0n) continue;
+      legs.push(
+        await writeTransactionMinor(
+          {
+            txnDate: run.disbursedAt ?? new Date(),
+            direction: 'out',
+            amount: paise,
+            accountId,
+            categoryId: salaryCategory?.id ?? null,
+            division,
+            counterparty: 'Payroll',
+            reference: run.recordCode,
+            note: `Payroll ${run.payPeriod} — ${division}`,
+            source: 'payroll',
+            payrollRunId: run.id,
+          },
+          tx,
+        ),
+      );
+    }
+    return legs;
+  });
 
   return { posted: created.length, transactions: created };
 }
