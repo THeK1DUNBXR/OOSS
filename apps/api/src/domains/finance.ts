@@ -33,6 +33,7 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
+import { runHooks } from '../platform/hooks.js';
 import { invoiceLabel, rehydrateReceivablesFor, totalsOf } from './invoicing.js';
 
 /**
@@ -114,6 +115,10 @@ export async function recordPayment(input: {
     where: { tenantId: auth.tenantId, gatewayReference: input.gatewayReference },
   });
   if (existing) return existing;
+  await runHooks('accounting_document.before_write', {
+    date: input.receivedAt ?? new Date(),
+    what: 'This payment',
+  });
 
   const recordCode = await nextRecordCode('PAY');
   const payment = await prisma.payment.create({
@@ -174,6 +179,7 @@ export async function reversePayment(paymentId: string, reason: string) {
   if (original.reversalOfPaymentId) {
     throw ApiError.unprocessable('This payment is itself a reversal. Reversing it would restore the original error.');
   }
+  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This reversal' });
 
   const recordCode = await nextRecordCode('PAY');
   const reversal = await prisma.payment.create({
@@ -247,6 +253,7 @@ export async function allocatePayment(input: {
       { available },
     );
   }
+  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This receipt' });
 
   // The position this allocation leaves the subject in, snapshotted onto the
   // receipt. A receipt is a document as well as a join row, and the document has
@@ -379,6 +386,7 @@ async function settleIfFullyPaid(invoiceId: string | null, feeInstalmentId: stri
 export async function issueCreditNote(invoiceId: string, amount: number, reason: string, reasonCode?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'invoices', verb: 'edit' });
+  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This credit note' });
 
   // The company's own document series ('C'), not the generic record-code
   // sequence: a credit note is a final document a customer holds, and its

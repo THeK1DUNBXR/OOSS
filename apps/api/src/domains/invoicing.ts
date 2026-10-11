@@ -705,6 +705,7 @@ export async function createInvoice(input: InvoiceInput) {
   const issue = input.issue !== false;
   const issuedDate = input.issuedDate ?? new Date();
   if (issue) await assertPeriodOpen(issuedDate, 'This invoice');
+  if (issue) await runHooks('accounting_document.before_write', { date: issuedDate, what: 'This invoice' });
 
   const profile = await companyProfile();
   const dueDate =
@@ -1015,6 +1016,7 @@ export async function issueInvoiceDraft(
 
   const issuedDate = options.issuedDate ?? new Date();
   await assertPeriodOpen(issuedDate, 'This invoice');
+  await runHooks('accounting_document.before_write', { date: issuedDate, what: 'This invoice' });
   // GST classification rules and e-invoicing readiness attach here (workstream B).
   await runHooks('invoice.before_issue', { invoice: existing, lines: existing.lines, issuedDate });
 
@@ -1087,6 +1089,9 @@ export async function voidInvoice(invoiceId: string, reason: string) {
   }
   if (existing.status === 'void') return existing;
   if (existing.issuedDate) await assertPeriodOpen(existing.issuedDate, 'This invoice');
+  if (existing.issuedDate) {
+    await runHooks('accounting_document.before_write', { date: existing.issuedDate, what: 'This invoice' });
+  }
 
   const voided = await prisma.invoice.update({
     where: { id: invoiceId },
@@ -1168,6 +1173,7 @@ export async function collectInvoicePayment(
   }
 
   const receivedAt = input.receivedAt ?? new Date();
+  await runHooks('accounting_document.before_write', { date: receivedAt, what: 'This payment' });
   // A counter payment has no gateway behind it, so the reference is the
   // invoice and the moment: unique per tenant, which is what makes the
   // idempotency constraint on PAYMENT mean something for cash as well as for
