@@ -375,25 +375,30 @@ export async function closeRound(id: string) {
       newState: { status: 'closed', raised: round2(raised), postMoney },
       tx,
     });
+    // The PAS-3 exception is the consequence of this close, so it commits or rolls back
+    // with it. Raised after the commit, a failed raise left a closed round with no
+    // return-of-allotment exception to act on.
+    const pas3Days = row.kind === 'private_placement' ? 15 : 30;
+    const dueOn = new Date(Date.now() + pas3Days * 86_400_000);
+    await raiseException(
+      {
+        code: 'EX-EQT-003',
+        label: 'PAS-3 return of allotment due',
+        severity: 'S2_WARNING',
+        subjectType: 'funding_round',
+        subjectId: id,
+        subjectLabel: row.recordCode,
+        domain: 'eqt',
+        detail:
+          `s.39 requires a PAS-3 return of allotment within ${pas3Days} days of ${row.kind === 'private_placement' ? 'a private placement' : 'an allotment'} closing. ` +
+          `${row.recordCode} closed on ${next.closedOn!.toISOString().slice(0, 10)}; PAS-3 is due by ${dueOn.toISOString().slice(0, 10)}.`,
+        reasonCode: 'pas3_due',
+        slaDueAt: dueOn,
+        triggerFingerprint: `pas3_due:${id}`,
+      },
+      tx,
+    );
     return next;
-  });
-
-  const pas3Days = row.kind === 'private_placement' ? 15 : 30;
-  const dueOn = new Date(Date.now() + pas3Days * 86_400_000);
-  await raiseException({
-    code: 'EX-EQT-003',
-    label: 'PAS-3 return of allotment due',
-    severity: 'S2_WARNING',
-    subjectType: 'funding_round',
-    subjectId: id,
-    subjectLabel: row.recordCode,
-    domain: 'eqt',
-    detail:
-      `s.39 requires a PAS-3 return of allotment within ${pas3Days} days of ${row.kind === 'private_placement' ? 'a private placement' : 'an allotment'} closing. ` +
-      `${row.recordCode} closed on ${updated.closedOn!.toISOString().slice(0, 10)}; PAS-3 is due by ${dueOn.toISOString().slice(0, 10)}.`,
-    reasonCode: 'pas3_due',
-    slaDueAt: dueOn,
-    triggerFingerprint: `pas3_due:${id}`,
   });
 
   return fundingRoundView(updated);
