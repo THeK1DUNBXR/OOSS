@@ -32,12 +32,13 @@ import {
   type ModelRoundInput,
   type ScenarioCapTableRow,
 } from '@kaizen/shared';
-import { prisma, dec, num } from '../platform/db.js';
+import { prisma, dec, num, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { assertCan } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
 import { emit } from '../platform/eventBus.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { raiseException } from '../platform/exceptions.js';
 import { effectiveBalance, shareTransactionView, holderView, outgoingCount } from './equity.js';
@@ -71,35 +72,45 @@ export async function createRound(input: FundingRoundInput) {
 
   if (!input.name.trim()) throw ApiError.badRequest('A round needs a name.');
 
-  const row = await prisma.fundingRound.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('RND'),
-      name: input.name,
-      kind: input.kind,
-      status: 'draft',
-      preMoneyValuation: input.preMoneyValuation == null ? null : dec(input.preMoneyValuation),
-      pricePerShareByClass: (input.pricePerShareByClass ?? undefined) as never,
-      valuationId: input.valuationId ?? null,
-      boardResolutionRef: input.boardResolutionRef ?? null,
-      shareholderResolutionRef: input.shareholderResolutionRef ?? null,
-      mgt14Srn: input.mgt14Srn ?? null,
-      offerLetterSerial: input.offerLetterSerial ?? null,
-      separateBankAccountRef: input.separateBankAccountRef ?? null,
-      offereeCount: input.offereeCount ?? null,
-      renunciationAllowed: input.renunciationAllowed ?? null,
-      sourceOfBonus: input.sourceOfBonus ?? null,
-      valuationReportRef: input.valuationReportRef ?? null,
-      tribunalOrderRef: input.tribunalOrderRef ?? null,
-      notes: input.notes ?? null,
-    },
-  });
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.fundingRound.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('RND', new Date(), tx),
+        name: input.name,
+        kind: input.kind,
+        status: 'draft',
+        preMoneyValuation: input.preMoneyValuation == null ? null : dec(input.preMoneyValuation),
+        pricePerShareByClass: (input.pricePerShareByClass ?? undefined) as never,
+        valuationId: input.valuationId ?? null,
+        boardResolutionRef: input.boardResolutionRef ?? null,
+        shareholderResolutionRef: input.shareholderResolutionRef ?? null,
+        mgt14Srn: input.mgt14Srn ?? null,
+        offerLetterSerial: input.offerLetterSerial ?? null,
+        separateBankAccountRef: input.separateBankAccountRef ?? null,
+        offereeCount: input.offereeCount ?? null,
+        renunciationAllowed: input.renunciationAllowed ?? null,
+        sourceOfBonus: input.sourceOfBonus ?? null,
+        valuationReportRef: input.valuationReportRef ?? null,
+        tribunalOrderRef: input.tribunalOrderRef ?? null,
+        notes: input.notes ?? null,
+      },
+    });
 
-  await auditWrite({ action: 'create', subjectType: 'funding_round', subjectId: row.id, after: row as never });
-  await emit({
-    name: EVENTS.ROUND_CREATED,
-    subject: { entityType: 'funding_round', entityId: row.id, recordCode: row.recordCode },
-    newState: { name: row.name, kind: row.kind },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'funding_round',
+      subjectId: created.id,
+      after: { recordCode: created.recordCode, name: created.name, kind: created.kind, status: 'draft' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.ROUND_CREATED,
+      subject: { entityType: 'funding_round', entityId: created.id, recordCode: created.recordCode },
+      newState: { name: created.name, kind: created.kind },
+      tx,
+    });
+    return created;
   });
 
   return fundingRoundView(row);
@@ -296,18 +307,23 @@ export async function openRound(id: string) {
     }
   }
 
-  const updated = await prisma.fundingRound.update({ where: { id }, data: { status: 'open', openedOn: new Date() } });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'funding_round',
-    subjectId: id,
-    before: row as never,
-    after: updated as never,
-  });
-  await emit({
-    name: EVENTS.ROUND_OPENED,
-    subject: { entityType: 'funding_round', entityId: id, recordCode: row.recordCode },
-    newState: { status: 'open', kind: row.kind },
+  const updated = await governedWrite(async (tx) => {
+    const next = await tx.fundingRound.update({ where: { id }, data: { status: 'open', openedOn: new Date() } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'funding_round',
+      subjectId: id,
+      before: row as never,
+      after: next as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.ROUND_OPENED,
+      subject: { entityType: 'funding_round', entityId: id, recordCode: row.recordCode },
+      newState: { status: 'open', kind: row.kind },
+      tx,
+    });
+    return next;
   });
 
   return fundingRoundView(updated);
@@ -334,27 +350,32 @@ export async function closeRound(id: string) {
     .reduce((sum, t) => sum + (num(t.count) ?? 0) * (num(t.pricePerShare) ?? 0), 0);
   const postMoney = row.preMoneyValuation != null ? round2((num(row.preMoneyValuation) ?? 0) + raised) : null;
 
-  const updated = await prisma.fundingRound.update({
-    where: { id },
-    data: {
-      status: 'closed',
-      closedOn: new Date(),
-      raised: dec(round2(raised)),
-      postMoneyValuation: postMoney == null ? null : dec(postMoney),
-    },
-  });
+  const updated = await governedWrite(async (tx) => {
+    const next = await tx.fundingRound.update({
+      where: { id },
+      data: {
+        status: 'closed',
+        closedOn: new Date(),
+        raised: dec(round2(raised)),
+        postMoneyValuation: postMoney == null ? null : dec(postMoney),
+      },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'funding_round',
-    subjectId: id,
-    before: row as never,
-    after: updated as never,
-  });
-  await emit({
-    name: EVENTS.ROUND_CLOSED,
-    subject: { entityType: 'funding_round', entityId: id, recordCode: row.recordCode },
-    newState: { status: 'closed', raised: round2(raised), postMoney },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'funding_round',
+      subjectId: id,
+      before: row as never,
+      after: next as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.ROUND_CLOSED,
+      subject: { entityType: 'funding_round', entityId: id, recordCode: row.recordCode },
+      newState: { status: 'closed', raised: round2(raised), postMoney },
+      tx,
+    });
+    return next;
   });
 
   const pas3Days = row.kind === 'private_placement' ? 15 : 30;
@@ -387,18 +408,23 @@ export async function cancelRound(id: string) {
   if (row.status === 'closed')
     throw ApiError.conflict('A closed round cannot be cancelled — reverse the transactions under it instead.');
 
-  const updated = await prisma.fundingRound.update({ where: { id }, data: { status: 'cancelled' } });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'funding_round',
-    subjectId: id,
-    before: row as never,
-    after: updated as never,
-  });
-  await emit({
-    name: EVENTS.ROUND_CANCELLED,
-    subject: { entityType: 'funding_round', entityId: id, recordCode: row.recordCode },
-    newState: { status: 'cancelled' },
+  const updated = await governedWrite(async (tx) => {
+    const next = await tx.fundingRound.update({ where: { id }, data: { status: 'cancelled' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'funding_round',
+      subjectId: id,
+      before: row as never,
+      after: next as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.ROUND_CANCELLED,
+      subject: { entityType: 'funding_round', entityId: id, recordCode: row.recordCode },
+      newState: { status: 'cancelled' },
+      tx,
+    });
+    return next;
   });
   return fundingRoundView(updated);
 }
@@ -688,34 +714,44 @@ export async function proposeConversion(input: ProposeConversionInput) {
     throw ApiError.unprocessable('The conversion ratio applied to this count rounds to zero target shares.');
   }
 
-  const row = await prisma.shareTransaction.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('SHT'),
-      type: 'conversion',
-      shareClassId: terms.convertsToClassId,
-      fromShareClassId: input.fromClassId,
-      fromHolderId: input.holderId,
-      toHolderId: input.holderId,
-      count: dec(targetCount)!,
-      effectiveOn: new Date(input.effectiveOn),
-      roundId: input.roundId ?? null,
-      status: 'proposed',
-      proposedByPartyId: auth.partyId ?? 'system',
-      meta: { sourceCount: input.count, ratio: terms.ratio } as never,
-    },
-  });
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.shareTransaction.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('SHT', new Date(), tx),
+        type: 'conversion',
+        shareClassId: terms.convertsToClassId,
+        fromShareClassId: input.fromClassId,
+        fromHolderId: input.holderId,
+        toHolderId: input.holderId,
+        count: dec(targetCount)!,
+        effectiveOn: new Date(input.effectiveOn),
+        roundId: input.roundId ?? null,
+        status: 'proposed',
+        proposedByPartyId: auth.partyId ?? 'system',
+        meta: { sourceCount: input.count, ratio: terms.ratio } as never,
+      },
+    });
 
-  await auditWrite({ action: 'create', subjectType: 'share_transaction', subjectId: row.id, after: row as never });
-  await emit({
-    name: EVENTS.CONVERSION_PROPOSED,
-    subject: { entityType: 'share_transaction', entityId: row.id, recordCode: row.recordCode },
-    newState: {
-      fromShareClassId: input.fromClassId,
-      toShareClassId: terms.convertsToClassId,
-      sourceCount: input.count,
-      targetCount,
-    },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'share_transaction',
+      subjectId: created.id,
+      after: created as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.CONVERSION_PROPOSED,
+      subject: { entityType: 'share_transaction', entityId: created.id, recordCode: created.recordCode },
+      newState: {
+        fromShareClassId: input.fromClassId,
+        toShareClassId: terms.convertsToClassId,
+        sourceCount: input.count,
+        targetCount,
+      },
+      tx,
+    });
+    return created;
   });
 
   return shareTransactionView(row);
@@ -763,32 +799,42 @@ export async function proposeRedemption(input: ProposeRedemptionInput) {
     }
   }
 
-  const row = await prisma.shareTransaction.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('SHT'),
-      type: 'redemption',
-      shareClassId: input.shareClassId,
-      fromHolderId: input.holderId,
-      count: dec(input.count)!,
-      effectiveOn: new Date(input.effectiveOn),
-      roundId: input.roundId ?? null,
-      status: 'proposed',
-      proposedByPartyId: auth.partyId ?? 'system',
-      meta: { fromReserves: input.fromReserves } as never,
-    },
-  });
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.shareTransaction.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('SHT', new Date(), tx),
+        type: 'redemption',
+        shareClassId: input.shareClassId,
+        fromHolderId: input.holderId,
+        count: dec(input.count)!,
+        effectiveOn: new Date(input.effectiveOn),
+        roundId: input.roundId ?? null,
+        status: 'proposed',
+        proposedByPartyId: auth.partyId ?? 'system',
+        meta: { fromReserves: input.fromReserves } as never,
+      },
+    });
 
-  await auditWrite({ action: 'create', subjectType: 'share_transaction', subjectId: row.id, after: row as never });
-  await emit({
-    name: EVENTS.REDEMPTION_PROPOSED,
-    subject: { entityType: 'share_transaction', entityId: row.id, recordCode: row.recordCode },
-    newState: {
-      shareClassId: input.shareClassId,
-      holderId: input.holderId,
-      count: input.count,
-      fromReserves: input.fromReserves,
-    },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'share_transaction',
+      subjectId: created.id,
+      after: created as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.REDEMPTION_PROPOSED,
+      subject: { entityType: 'share_transaction', entityId: created.id, recordCode: created.recordCode },
+      newState: {
+        shareClassId: input.shareClassId,
+        holderId: input.holderId,
+        count: input.count,
+        fromReserves: input.fromReserves,
+      },
+      tx,
+    });
+    return created;
   });
 
   return shareTransactionView(row);
@@ -865,27 +911,37 @@ export async function proposeBuyback(input: ProposeBuybackInput) {
     );
   }
 
-  const row = await prisma.shareTransaction.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('SHT'),
-      type: 'buyback',
-      shareClassId: input.shareClassId,
-      fromHolderId: input.holderId,
-      count: dec(input.count)!,
-      pricePerShare: dec(input.pricePerShare),
-      effectiveOn: new Date(input.effectiveOn),
-      roundId: input.roundId,
-      status: 'proposed',
-      proposedByPartyId: auth.partyId ?? 'system',
-    },
-  });
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.shareTransaction.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('SHT', new Date(), tx),
+        type: 'buyback',
+        shareClassId: input.shareClassId,
+        fromHolderId: input.holderId,
+        count: dec(input.count)!,
+        pricePerShare: dec(input.pricePerShare),
+        effectiveOn: new Date(input.effectiveOn),
+        roundId: input.roundId,
+        status: 'proposed',
+        proposedByPartyId: auth.partyId ?? 'system',
+      },
+    });
 
-  await auditWrite({ action: 'create', subjectType: 'share_transaction', subjectId: row.id, after: row as never });
-  await emit({
-    name: EVENTS.BUYBACK_PROPOSED,
-    subject: { entityType: 'share_transaction', entityId: row.id, recordCode: row.recordCode },
-    newState: { shareClassId: input.shareClassId, holderId: input.holderId, count: input.count, value },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'share_transaction',
+      subjectId: created.id,
+      after: created as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.BUYBACK_PROPOSED,
+      subject: { entityType: 'share_transaction', entityId: created.id, recordCode: created.recordCode },
+      newState: { shareClassId: input.shareClassId, holderId: input.holderId, count: input.count, value },
+      tx,
+    });
+    return created;
   });
 
   return shareTransactionView(row);
@@ -934,39 +990,55 @@ export async function proposeBonus(input: ProposeBonusInput) {
   if (!shareClass) throw ApiError.notFound('Share class');
 
   const holders = await prisma.holder.findMany({ where: { tenantId: auth.tenantId, deletedAt: null } });
-  const proposals: Array<ReturnType<typeof shareTransactionView>> = [];
+  // Balances are read on the scoped client, so the plan is worked out before
+  // the transaction opens; the writes then commit or fail as one batch.
+  const plan: Array<{ holderId: string; bonusCount: number }> = [];
   for (const holder of holders) {
     const balance = await effectiveBalance(holder.id, input.shareClassId);
     if (balance <= 0) continue;
     const bonusCount = Math.round((balance * input.ratioNumerator) / input.ratioDenominator);
     if (bonusCount <= 0) continue;
-
-    const row = await prisma.shareTransaction.create({
-      data: {
-        tenantId: auth.tenantId,
-        recordCode: await nextRecordCode('SHT'),
-        type: 'bonus',
-        shareClassId: input.shareClassId,
-        toHolderId: holder.id,
-        count: dec(bonusCount)!,
-        effectiveOn: new Date(input.effectiveOn),
-        roundId: input.roundId,
-        status: 'proposed',
-        proposedByPartyId: auth.partyId ?? 'system',
-        meta: { ratioNumerator: input.ratioNumerator, ratioDenominator: input.ratioDenominator } as never,
-      },
-    });
-
-    await auditWrite({ action: 'create', subjectType: 'share_transaction', subjectId: row.id, after: row as never });
-    await emit({
-      name: EVENTS.BONUS_PROPOSED,
-      subject: { entityType: 'share_transaction', entityId: row.id, recordCode: row.recordCode },
-      newState: { holderId: holder.id, shareClassId: input.shareClassId, count: bonusCount },
-    });
-
-    proposals.push(shareTransactionView(row));
+    plan.push({ holderId: holder.id, bonusCount });
   }
 
+  const rows = await governedWrite(async (tx) => {
+    const created: Array<Awaited<ReturnType<typeof tx.shareTransaction.create>>> = [];
+    for (const { holderId, bonusCount } of plan) {
+      const row = await tx.shareTransaction.create({
+        data: {
+          tenantId: auth.tenantId,
+          recordCode: await nextRecordCode('SHT', new Date(), tx),
+          type: 'bonus',
+          shareClassId: input.shareClassId,
+          toHolderId: holderId,
+          count: dec(bonusCount)!,
+          effectiveOn: new Date(input.effectiveOn),
+          roundId: input.roundId,
+          status: 'proposed',
+          proposedByPartyId: auth.partyId ?? 'system',
+          meta: { ratioNumerator: input.ratioNumerator, ratioDenominator: input.ratioDenominator } as never,
+        },
+      });
+
+      await auditWrite({
+        action: 'create',
+        subjectType: 'share_transaction',
+        subjectId: row.id,
+        after: row as never,
+        tx,
+      });
+      await emit({
+        name: EVENTS.BONUS_PROPOSED,
+        subject: { entityType: 'share_transaction', entityId: row.id, recordCode: row.recordCode },
+        newState: { holderId, shareClassId: input.shareClassId, count: bonusCount },
+        tx,
+      });
+      created.push(row);
+    }
+    return created;
+  });
+
+  const proposals: Array<ReturnType<typeof shareTransactionView>> = rows.map((row) => shareTransactionView(row));
   return { items: proposals };
 }
 
@@ -999,14 +1071,26 @@ async function loadRightsOffers(roundId: string): Promise<RightsOffer[]> {
   return meta.__rightsOffers ?? [];
 }
 
-async function saveRightsOffers(roundId: string, offers: RightsOffer[]): Promise<void> {
+/**
+ * Offers are kept on the round row (see the note above), so saving them is a
+ * change to the round and is audited as one. Called inside the caller's
+ * transaction: every statement goes through `tx`.
+ */
+async function saveRightsOffers(roundId: string, offers: RightsOffer[], tx: DbTx): Promise<void> {
   const auth = currentAuth();
-  const row = await prisma.fundingRound.findFirst({ where: { id: roundId, tenantId: auth.tenantId } });
+  const row = await tx.fundingRound.findFirst({ where: { id: roundId, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Round');
   const existing = (row.pricePerShareByClass as Record<string, unknown> | null) ?? {};
-  await prisma.fundingRound.update({
+  await tx.fundingRound.update({
     where: { id: roundId },
     data: { pricePerShareByClass: { ...existing, __rightsOffers: offers } as never },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'funding_round',
+    subjectId: roundId,
+    after: { rightsOffers: offers.length },
+    tx,
   });
 }
 
@@ -1032,7 +1116,7 @@ export async function createRightsOffers(input: CreateRightsOffersInput) {
     if (balance <= 0) continue;
     const entitlement = Math.round((balance * input.ratioNumerator) / input.ratioDenominator);
     if (entitlement <= 0) continue;
-    const offer: RightsOffer = {
+    offers.push({
       offerId: `${holder.id}:${input.shareClassId}:${Date.now()}`,
       holderId: holder.id,
       shareClassId: input.shareClassId,
@@ -1040,17 +1124,21 @@ export async function createRightsOffers(input: CreateRightsOffersInput) {
       accepted: 0,
       renouncedToHolderId: null,
       status: 'offered',
-    };
-    offers.push(offer);
-    await emit({
-      name: EVENTS.RIGHTS_OFFERED,
-      subject: { entityType: 'funding_round', entityId: input.roundId },
-      newState: { holderId: holder.id, shareClassId: input.shareClassId, entitlement },
     });
   }
 
   const existing = await loadRightsOffers(input.roundId);
-  await saveRightsOffers(input.roundId, [...existing, ...offers]);
+  await governedWrite(async (tx) => {
+    for (const offer of offers) {
+      await emit({
+        name: EVENTS.RIGHTS_OFFERED,
+        subject: { entityType: 'funding_round', entityId: input.roundId },
+        newState: { holderId: offer.holderId, shareClassId: input.shareClassId, entitlement: offer.entitlement },
+        tx,
+      });
+    }
+    await saveRightsOffers(input.roundId, [...existing, ...offers], tx);
+  });
   return { items: offers };
 }
 
@@ -1074,31 +1162,41 @@ export async function acceptRightsOffer(roundId: string, offerId: string, count:
     throw ApiError.unprocessable(`Only ${remaining} shares remain of this entitlement.`);
   }
 
-  const row = await prisma.shareTransaction.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('SHT'),
-      type: 'allotment',
-      shareClassId: offer.shareClassId,
-      toHolderId: offer.holderId,
-      count: dec(count)!,
-      effectiveOn: new Date(),
-      roundId,
-      status: 'proposed',
-      proposedByPartyId: auth.partyId ?? 'system',
-      meta: { rightsOfferId: offerId } as never,
-    },
-  });
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.shareTransaction.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('SHT', new Date(), tx),
+        type: 'allotment',
+        shareClassId: offer.shareClassId,
+        toHolderId: offer.holderId,
+        count: dec(count)!,
+        effectiveOn: new Date(),
+        roundId,
+        status: 'proposed',
+        proposedByPartyId: auth.partyId ?? 'system',
+        meta: { rightsOfferId: offerId } as never,
+      },
+    });
 
-  offer.accepted += count;
-  offer.status = offer.accepted >= offer.entitlement ? 'accepted' : 'offered';
-  await saveRightsOffers(roundId, offers);
+    offer.accepted += count;
+    offer.status = offer.accepted >= offer.entitlement ? 'accepted' : 'offered';
+    await saveRightsOffers(roundId, offers, tx);
 
-  await auditWrite({ action: 'create', subjectType: 'share_transaction', subjectId: row.id, after: row as never });
-  await emit({
-    name: EVENTS.RIGHTS_ACCEPTED,
-    subject: { entityType: 'funding_round', entityId: roundId },
-    newState: { offerId, count, shareTransactionId: row.id },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'share_transaction',
+      subjectId: created.id,
+      after: { recordCode: created.recordCode, type: 'allotment', count, status: 'proposed', roundId },
+      tx,
+    });
+    await emit({
+      name: EVENTS.RIGHTS_ACCEPTED,
+      subject: { entityType: 'funding_round', entityId: roundId },
+      newState: { offerId, count, shareTransactionId: created.id },
+      tx,
+    });
+    return created;
   });
 
   return { offer, allotment: shareTransactionView(row) };
@@ -1124,14 +1222,17 @@ export async function renounceRightsOffer(roundId: string, offerId: string, toHo
   if (offer.accepted > 0)
     throw ApiError.conflict('Part of this entitlement has already been accepted and cannot also be renounced.');
 
-  offer.status = 'renounced';
-  offer.renouncedToHolderId = toHolderId;
-  await saveRightsOffers(roundId, offers);
+  await governedWrite(async (tx) => {
+    offer.status = 'renounced';
+    offer.renouncedToHolderId = toHolderId;
+    await saveRightsOffers(roundId, offers, tx);
 
-  await emit({
-    name: EVENTS.RIGHTS_RENOUNCED,
-    subject: { entityType: 'funding_round', entityId: roundId },
-    newState: { offerId, renouncedToHolderId: toHolderId },
+    await emit({
+      name: EVENTS.RIGHTS_RENOUNCED,
+      subject: { entityType: 'funding_round', entityId: roundId },
+      newState: { offerId, renouncedToHolderId: toHolderId },
+      tx,
+    });
   });
 
   return { offer };

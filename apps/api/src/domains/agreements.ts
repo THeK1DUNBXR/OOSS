@@ -22,12 +22,13 @@ import {
   type AgreementType,
   type SeverityCode,
 } from '@kaizen/shared';
-import { prisma, num } from '../platform/db.js';
+import { prisma, num, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { assertCan } from '../platform/permissions.js';
 import { evaluateApprovalGate } from '../platform/approvals.js';
 import { raiseException } from '../platform/exceptions.js';
@@ -62,52 +63,56 @@ export async function createMou(input: {
     throw ApiError.badRequest('An MoU requires at least one of organization_id or institution_id.');
   }
 
-  const recordCode = await nextRecordCode('MOU');
-  const mou = await prisma.mou.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title: input.title,
-      organizationId: input.organizationId ?? null,
-      institutionId: input.institutionId ?? null,
-      opportunityId: input.opportunityId ?? null,
-      scope: input.scope ?? null,
-      vertical: input.vertical ?? null,
-      status: 'proposed',
-      // Zero is a valid coverage-instrument state for an MoU.
-      commercialValue: input.commercialValue ?? 0,
-      currency: input.currency ?? 'INR',
-      strategicValue: input.strategicValue ?? null,
-      termMonths: input.termMonths ?? null,
-      startDate: input.startDate ?? null,
-      endDate: input.endDate ?? null,
-      renewedFromId: input.renewedFromId ?? null,
-      ownerPartyId: auth.partyId,
-      createdById: auth.partyId,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('MOU', new Date(), tx);
+    const mou = await tx.mou.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title: input.title,
+        organizationId: input.organizationId ?? null,
+        institutionId: input.institutionId ?? null,
+        opportunityId: input.opportunityId ?? null,
+        scope: input.scope ?? null,
+        vertical: input.vertical ?? null,
+        status: 'proposed',
+        // Zero is a valid coverage-instrument state for an MoU.
+        commercialValue: input.commercialValue ?? 0,
+        currency: input.currency ?? 'INR',
+        strategicValue: input.strategicValue ?? null,
+        termMonths: input.termMonths ?? null,
+        startDate: input.startDate ?? null,
+        endDate: input.endDate ?? null,
+        renewedFromId: input.renewedFromId ?? null,
+        ownerPartyId: auth.partyId,
+        createdById: auth.partyId,
+      },
+    });
 
-  if (input.opportunityId) {
-    await prisma.opportunity.update({ where: { id: input.opportunityId }, data: { mouId: mou.id } });
-  }
+    if (input.opportunityId) {
+      await tx.opportunity.update({ where: { id: input.opportunityId }, data: { mouId: mou.id } });
+    }
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'mou',
-    subjectId: mou.id,
-    after: { recordCode, title: mou.title },
-  });
-  await emit({
-    name: EVENTS.MOU_CREATED,
-    subject: { entityType: 'mou', entityId: mou.id, recordCode },
-    related: input.organizationId
-      ? [{ relation: 'covers', entityType: 'organization', entityId: input.organizationId }]
-      : [],
-    newState: { status: 'proposed', commercialValue: input.commercialValue ?? 0 },
-    confidentiality: 'confidential',
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'mou',
+      subjectId: mou.id,
+      after: { recordCode, title: mou.title },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MOU_CREATED,
+      subject: { entityType: 'mou', entityId: mou.id, recordCode },
+      related: input.organizationId
+        ? [{ relation: 'covers', entityType: 'organization', entityId: input.organizationId }]
+        : [],
+      newState: { status: 'proposed', commercialValue: input.commercialValue ?? 0 },
+      confidentiality: 'confidential',
+      tx,
+    });
 
-  return mou;
+    return mou;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -138,42 +143,45 @@ export async function createContract(input: {
     );
   }
 
-  const recordCode = await nextRecordCode('CON');
-  const contract = await prisma.contract.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title: input.title,
-      organizationId: input.organizationId ?? null,
-      accountId: input.accountId ?? null,
-      opportunityId: input.opportunityId ?? null,
-      quoteId: input.quoteId ?? null,
-      status: 'proposed',
-      commercialValue: input.commercialValue,
-      currency: input.currency ?? 'INR',
-      strategicValue: input.strategicValue ?? null,
-      termMonths: input.termMonths ?? null,
-      startDate: input.startDate ?? null,
-      endDate: input.endDate ?? null,
-      renewedFromId: input.renewedFromId ?? null,
-      ownerPartyId: auth.partyId,
-      createdById: auth.partyId,
-    },
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('CON', new Date(), tx);
+    const contract = await tx.contract.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title: input.title,
+        organizationId: input.organizationId ?? null,
+        accountId: input.accountId ?? null,
+        opportunityId: input.opportunityId ?? null,
+        quoteId: input.quoteId ?? null,
+        status: 'proposed',
+        commercialValue: input.commercialValue,
+        currency: input.currency ?? 'INR',
+        strategicValue: input.strategicValue ?? null,
+        termMonths: input.termMonths ?? null,
+        startDate: input.startDate ?? null,
+        endDate: input.endDate ?? null,
+        renewedFromId: input.renewedFromId ?? null,
+        ownerPartyId: auth.partyId,
+        createdById: auth.partyId,
+      },
+    });
+
+    if (input.opportunityId) {
+      await tx.opportunity.update({ where: { id: input.opportunityId }, data: { contractId: contract.id } });
+    }
+
+    await auditWrite({ action: 'create', subjectType: 'contract', subjectId: contract.id, after: { recordCode }, tx });
+    await emit({
+      name: EVENTS.CONTRACT_CREATED,
+      subject: { entityType: 'contract', entityId: contract.id, recordCode },
+      newState: { status: 'proposed', commercialValue: input.commercialValue },
+      confidentiality: 'confidential',
+      tx,
+    });
+
+    return contract;
   });
-
-  if (input.opportunityId) {
-    await prisma.opportunity.update({ where: { id: input.opportunityId }, data: { contractId: contract.id } });
-  }
-
-  await auditWrite({ action: 'create', subjectType: 'contract', subjectId: contract.id, after: { recordCode } });
-  await emit({
-    name: EVENTS.CONTRACT_CREATED,
-    subject: { entityType: 'contract', entityId: contract.id, recordCode },
-    newState: { status: 'proposed', commercialValue: input.commercialValue },
-    confidentiality: 'confidential',
-  });
-
-  return contract;
 }
 
 // ---------------------------------------------------------------------------
@@ -237,27 +245,50 @@ export async function createPartnerAgreement(input: {
     },
   });
 
-  const recordCode = await nextRecordCode('PA');
-  const agreement = await prisma.partnerAgreement.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title: input.title,
-      partnerOrganizationId: input.partnerOrganizationId,
-      relationshipId: relationship.id,
-      agreementType: input.agreementType,
-      scope: input.scope ?? null,
-      territoryScope: input.territoryScope ?? null,
-      status: 'proposed',
-      commercialValue: input.commercialValue ?? 0,
-      currency: input.currency ?? 'INR',
-      strategicValue: input.strategicValue ?? null,
-      termMonths: input.termMonths ?? null,
-      startDate: input.startDate ?? null,
-      endDate: input.endDate ?? null,
-      ownerPartyId: auth.partyId,
-      createdById: auth.partyId,
-    },
+  // The agreement, its audit row and its event commit together. The EX-CRM-013
+  // exception is raised after that commit: it is not transaction-aware yet
+  // (platform/exceptions.ts), and a conflict record that outlives a rolled-back
+  // agreement would point at nothing.
+  const agreement = await governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('PA', new Date(), tx);
+    const created = await tx.partnerAgreement.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title: input.title,
+        partnerOrganizationId: input.partnerOrganizationId,
+        relationshipId: relationship.id,
+        agreementType: input.agreementType,
+        scope: input.scope ?? null,
+        territoryScope: input.territoryScope ?? null,
+        status: 'proposed',
+        commercialValue: input.commercialValue ?? 0,
+        currency: input.currency ?? 'INR',
+        strategicValue: input.strategicValue ?? null,
+        termMonths: input.termMonths ?? null,
+        startDate: input.startDate ?? null,
+        endDate: input.endDate ?? null,
+        ownerPartyId: auth.partyId,
+        createdById: auth.partyId,
+      },
+    });
+
+    await auditWrite({
+      action: 'create',
+      subjectType: 'partner_agreement',
+      subjectId: created.id,
+      after: { recordCode, agreementType: input.agreementType, status: 'proposed' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.PARTNER_AGREEMENT_CREATED,
+      subject: { entityType: 'partner_agreement', entityId: created.id, recordCode },
+      related: [{ relation: 'with', entityType: 'organization', entityId: input.partnerOrganizationId }],
+      newState: { agreementType: input.agreementType, status: 'proposed' },
+      confidentiality: 'confidential',
+      tx,
+    });
+    return created;
   });
 
   if (existing) {
@@ -267,20 +298,12 @@ export async function createPartnerAgreement(input: {
       severity: 'S2_WARNING',
       subjectType: 'partner_agreement',
       subjectId: agreement.id,
-      subjectLabel: `${recordCode} — ${input.title}`,
+      subjectLabel: `${agreement.recordCode} — ${input.title}`,
       detail: `An active ${input.agreementType} agreement (${existing.recordCode}) already covers this partner. Two channels for the same motion conflict on attribution.`,
       ownerPartyId: auth.partyId,
       reasonCode: 'dual_channel_conflict',
     });
   }
-
-  await emit({
-    name: EVENTS.PARTNER_AGREEMENT_CREATED,
-    subject: { entityType: 'partner_agreement', entityId: agreement.id, recordCode },
-    related: [{ relation: 'with', entityType: 'organization', entityId: input.partnerOrganizationId }],
-    newState: { agreementType: input.agreementType, status: 'proposed' },
-    confidentiality: 'confidential',
-  });
 
   return agreement;
 }
@@ -301,10 +324,10 @@ async function loadAgreement(kind: AgreementKind, id: string) {
   return prisma.partnerAgreement.findFirst({ where: { id } });
 }
 
-async function updateAgreement(kind: AgreementKind, id: string, data: Record<string, unknown>) {
-  if (kind === 'mou') return prisma.mou.update({ where: { id }, data: data as never });
-  if (kind === 'contract') return prisma.contract.update({ where: { id }, data: data as never });
-  return prisma.partnerAgreement.update({ where: { id }, data: data as never });
+async function updateAgreement(kind: AgreementKind, id: string, data: Record<string, unknown>, db: DbTx = prisma) {
+  if (kind === 'mou') return db.mou.update({ where: { id }, data: data as never });
+  if (kind === 'contract') return db.contract.update({ where: { id }, data: data as never });
+  return db.partnerAgreement.update({ where: { id }, data: data as never });
 }
 
 export interface TransitionResult {
@@ -392,57 +415,62 @@ export async function transitionAgreement(
     patch.terminationReason = note;
   }
 
-  const updated = (await updateAgreement(kind, id, patch)) as Record<string, unknown>;
+  const updated = await governedWrite(async (tx) => {
+    const next = (await updateAgreement(kind, id, patch, tx)) as Record<string, unknown>;
 
-  await auditWrite({
-    action: 'update',
-    subjectType: kind,
-    subjectId: id,
-    before: { status: from },
-    after: { status: toStatus },
-    meta: { note },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: kind,
+      subjectId: id,
+      before: { status: from },
+      after: { status: toStatus },
+      meta: { note },
+      tx,
+    });
 
-  const eventName =
-    kind === 'mou'
-      ? EVENTS.MOU_STATUS_CHANGED
-      : kind === 'contract'
-        ? toStatus === 'signed'
-          ? EVENTS.CONTRACT_SIGNED
-          : toStatus === 'terminated'
-            ? EVENTS.CONTRACT_TERMINATED
-            : EVENTS.CONTRACT_STATUS_CHANGED
-        : EVENTS.PARTNER_AGREEMENT_STATUS_CHANGED;
+    const eventName =
+      kind === 'mou'
+        ? EVENTS.MOU_STATUS_CHANGED
+        : kind === 'contract'
+          ? toStatus === 'signed'
+            ? EVENTS.CONTRACT_SIGNED
+            : toStatus === 'terminated'
+              ? EVENTS.CONTRACT_TERMINATED
+              : EVENTS.CONTRACT_STATUS_CHANGED
+          : EVENTS.PARTNER_AGREEMENT_STATUS_CHANGED;
 
-  await emit({
-    name: eventName,
-    subject: { entityType: kind, entityId: id, recordCode: agreement.recordCode as string },
-    related: agreement.opportunityId
-      ? [{ relation: 'formalizes', entityType: 'opportunity', entityId: agreement.opportunityId as string }]
-      : [],
-    previousState: { status: from },
-    newState: {
-      status: toStatus,
-      commercialValue: num(agreement.commercialValue as never),
-      currency: agreement.currency,
-      startDate: agreement.startDate,
-      endDate: agreement.endDate,
-    },
-    reason: { reasonCode: `${kind}_${toStatus}`, note },
-    impact: {
-      domains: kind === 'contract' && toStatus === 'signed' ? ['crm', 'fin', 'prj'] : ['crm'],
-      materiality: agreement.commercialValue
-        ? {
-            measure: `${kind}_value`,
-            value: num(agreement.commercialValue as never)!,
-            currency: (agreement.currency as string) ?? 'INR',
-          }
-        : null,
-    },
-    // The load-bearing cross-domain event: Finance subscribes for billing
-    // schedule publication, deriving revenue recognition from the offering's
-    // default treatment rather than asking sales.
-    confidentiality: 'confidential',
+    await emit({
+      name: eventName,
+      subject: { entityType: kind, entityId: id, recordCode: agreement.recordCode as string },
+      related: agreement.opportunityId
+        ? [{ relation: 'formalizes', entityType: 'opportunity', entityId: agreement.opportunityId as string }]
+        : [],
+      previousState: { status: from },
+      newState: {
+        status: toStatus,
+        commercialValue: num(agreement.commercialValue as never),
+        currency: agreement.currency,
+        startDate: agreement.startDate,
+        endDate: agreement.endDate,
+      },
+      reason: { reasonCode: `${kind}_${toStatus}`, note },
+      impact: {
+        domains: kind === 'contract' && toStatus === 'signed' ? ['crm', 'fin', 'prj'] : ['crm'],
+        materiality: agreement.commercialValue
+          ? {
+              measure: `${kind}_value`,
+              value: num(agreement.commercialValue as never)!,
+              currency: (agreement.currency as string) ?? 'INR',
+            }
+          : null,
+      },
+      // The load-bearing cross-domain event: Finance subscribes for billing
+      // schedule publication, deriving revenue recognition from the offering's
+      // default treatment rather than asking sales.
+      confidentiality: 'confidential',
+      tx,
+    });
+    return next;
   });
 
   return { applied: true, agreement: updated, approvalStepId: null, reason: `Transitioned ${from} -> ${toStatus}.` };
@@ -495,13 +523,25 @@ export async function runExpiryLadder(kind: 'mou' | 'contract' | 'partner_agreem
 
     if (daysToExpiry < 0) {
       if (row.status !== 'expired') {
-        await updateAgreement(kind, row.id as string, { status: 'expired' });
-        await emit({
-          name: kind === 'mou' ? EVENTS.MOU_EXPIRED : EVENTS.CONTRACT_EXPIRED,
-          subject: { entityType: kind, entityId: row.id as string, recordCode: row.recordCode as string },
-          previousState: { status: row.status },
-          newState: { status: 'expired' },
-          impact: { domains: ['crm'], severity: 'S2_WARNING' },
+        await governedWrite(async (tx) => {
+          await updateAgreement(kind, row.id as string, { status: 'expired' }, tx);
+          await auditWrite({
+            action: 'update',
+            subjectType: kind,
+            subjectId: row.id as string,
+            before: { status: row.status },
+            after: { status: 'expired' },
+            meta: { source: 'expiry_ladder' },
+            tx,
+          });
+          await emit({
+            name: kind === 'mou' ? EVENTS.MOU_EXPIRED : EVENTS.CONTRACT_EXPIRED,
+            subject: { entityType: kind, entityId: row.id as string, recordCode: row.recordCode as string },
+            previousState: { status: row.status },
+            newState: { status: 'expired' },
+            impact: { domains: ['crm'], severity: 'S2_WARNING' },
+            tx,
+          });
         });
       }
       continue;
@@ -540,17 +580,33 @@ export async function runExpiryLadder(kind: 'mou' | 'contract' | 'partner_agreem
     // Every crossed rung is recorded, not just the one notified: a wider rung
     // the agreement passed before anyone was watching is spent, and must not
     // fire later as though it had just been reached.
-    await updateAgreement(kind, row.id as string, {
-      status: 'expiring',
-      expiryNotifiedDays: [...new Set([...already, ...crossed])],
-    });
-
-    await emit({
-      name: kind === 'mou' ? EVENTS.MOU_EXPIRY_APPROACHING : EVENTS.CONTRACT_EXPIRING,
-      subject: { entityType: kind, entityId: row.id as string, recordCode: row.recordCode as string },
-      newState: { daysToExpiry, rung },
-      impact: { domains: ['crm'], severity },
-      owner: { partyId: (row.ownerPartyId as string | null) ?? null },
+    await governedWrite(async (tx) => {
+      await updateAgreement(
+        kind,
+        row.id as string,
+        {
+          status: 'expiring',
+          expiryNotifiedDays: [...new Set([...already, ...crossed])],
+        },
+        tx,
+      );
+      await auditWrite({
+        action: 'update',
+        subjectType: kind,
+        subjectId: row.id as string,
+        before: { status: row.status },
+        after: { status: 'expiring', rung, daysToExpiry },
+        meta: { source: 'expiry_ladder' },
+        tx,
+      });
+      await emit({
+        name: kind === 'mou' ? EVENTS.MOU_EXPIRY_APPROACHING : EVENTS.CONTRACT_EXPIRING,
+        subject: { entityType: kind, entityId: row.id as string, recordCode: row.recordCode as string },
+        newState: { daysToExpiry, rung },
+        impact: { domains: ['crm'], severity },
+        owner: { partyId: (row.ownerPartyId as string | null) ?? null },
+        tx,
+      });
     });
 
     notified += 1;
@@ -591,12 +647,26 @@ export async function renewAgreement(kind: AgreementKind, id: string, endDate: D
             endDate,
           });
 
-  await updateAgreement(kind, id, { status: 'renewed' });
-  await emit({
-    name: EVENTS.MOU_RENEWED,
-    subject: { entityType: kind, entityId: id, recordCode: existing.recordCode as string },
-    related: [{ relation: 'renewed_as', entityType: kind, entityId: renewal.id }],
-    newState: { status: 'renewed', renewalId: renewal.id },
+  // The renewal row is created by its own governed write (createMou and the
+  // others open their own transactions); the predecessor's status change and
+  // its event commit together here.
+  await governedWrite(async (tx) => {
+    await updateAgreement(kind, id, { status: 'renewed' }, tx);
+    await auditWrite({
+      action: 'update',
+      subjectType: kind,
+      subjectId: id,
+      before: { status: existing.status },
+      after: { status: 'renewed', renewalId: renewal.id },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MOU_RENEWED,
+      subject: { entityType: kind, entityId: id, recordCode: existing.recordCode as string },
+      related: [{ relation: 'renewed_as', entityType: kind, entityId: renewal.id }],
+      newState: { status: 'renewed', renewalId: renewal.id },
+      tx,
+    });
   });
 
   return renewal;
