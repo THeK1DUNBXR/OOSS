@@ -15,8 +15,19 @@
  * Real Postgres and the real decision paths. The trigger is a fault injection,
  * not a mock: the insert really is refused by the database.
  */
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { asUser, expectReject, prisma, principalFor, tenantId, unscopedPrisma } from './helpers.js';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  asUser,
+  booksTenant,
+  closeThrough,
+  expectReject,
+  prisma,
+  principalFor,
+  reopenLatestFirst,
+  tenantId,
+  unscopedPrisma,
+  type BooksTenant,
+} from './helpers.js';
 import { markChallanPaid } from '../domains/compliance/tax.js';
 import { closeRound, createRound } from '../domains/rounds.js';
 import { accrueEntitlement, createLeaveRequest, transitionLeaveRequest, leaveBalances } from '../domains/leave.js';
@@ -31,7 +42,6 @@ import { decideApprovalStep } from '../platform/approvals.js';
 import { submitResignation } from '../domains/hcm/separations.js';
 import { createQuote, issueQuote } from '../domains/commercial.js';
 import { nextRecordCode } from '../platform/recordCode.js';
-import { requestClosePeriod, closePeriod } from '../domains/compliance/books.js';
 
 const CLOSED = '2017-10';
 const FINANCE = 'finance@kaizen.co.in';
@@ -80,11 +90,6 @@ afterEach(async () => {
 
 beforeAll(async () => {
   TENANT = await tenantId();
-  const row = await unscopedPrisma.accountingPeriod.findFirst({ where: { tenantId: TENANT, period: CLOSED } });
-  if (row?.status !== 'closed') {
-    await asUser(FINANCE, () => requestClosePeriod(CLOSED));
-    await asUser(CHAIRMAN, () => closePeriod(CLOSED));
-  }
 });
 
 function unique(label: string): string {
@@ -92,10 +97,24 @@ function unique(label: string): string {
 }
 
 describe('a challan paid in a closed period raises EX-FIN-008 in the same transaction', () => {
+  // Its own books tenant: this is the only block that needs 2017-10 closed, and a close in `kaizen`
+  // freezes every row-less month below it for every other file (W7-F4).
+  let BOOKS: BooksTenant;
+
+  beforeAll(async () => {
+    BOOKS = await booksTenant('raise-atomic-test');
+    await reopenLatestFirst(BOOKS, 'Test fixture reset at the start of the run');
+    await closeThrough(BOOKS, CLOSED);
+  });
+
+  afterAll(async () => {
+    await reopenLatestFirst(BOOKS, 'Challan atomicity test finished; reopening the months it closed');
+  });
+
   it('when the raise cannot be recorded, the challan stays unpaid and the call rejects', async () => {
     const challan = await unscopedPrisma.tdsChallan.create({
       data: {
-        tenantId: TENANT,
+        tenantId: BOOKS.tenantId,
         recordCode: unique('W2-ATOMIC-CHALLAN'),
         month: '2026-09',
         sectionGroup: '194C_IND',
@@ -106,7 +125,7 @@ describe('a challan paid in a closed period raises EX-FIN-008 in the same transa
 
     await refuseExceptionAudit();
     await expectReject(() =>
-      asUser(CHAIRMAN, () =>
+      asUser(BOOKS.chairman, () =>
         markChallanPaid(challan.id, {
           bsrCode: '0000000',
           challanNo: unique('W2-ATOMIC'),
@@ -120,7 +139,7 @@ describe('a challan paid in a closed period raises EX-FIN-008 in the same transa
     expect(after.paidOn).toBeNull();
     expect(
       await unscopedPrisma.exceptionRecord.count({
-        where: { tenantId: TENANT, code: 'EX-FIN-008', subjectId: challan.id },
+        where: { tenantId: BOOKS.tenantId, code: 'EX-FIN-008', subjectId: challan.id },
       }),
     ).toBe(0);
   });

@@ -7,7 +7,7 @@
  * cookie. Both are POST, and a cross-site request never carries a Strict
  * cookie, so a page on another origin cannot make the browser refresh or end
  * a session on the user's behalf. The web app and API share an origin behind
- * Caddy, so Strict costs nothing for the app itself.
+ * the reverse proxy, so Strict costs nothing for the app itself.
  */
 
 import type { Request, Response } from 'express';

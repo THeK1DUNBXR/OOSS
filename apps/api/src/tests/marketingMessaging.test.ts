@@ -28,7 +28,7 @@ import {
   listSendRecipients,
 } from '../domains/marketing/messaging.js';
 import { createJourney, activateJourney, enrolPerson, tick, loadJourney } from '../domains/marketing/journeys.js';
-import { ConsoleAdapter } from '../domains/marketing/adapters/console.js';
+import { FakeEmailAdapter, clearFakeOutbox, fakeOutbox } from '../domains/marketing/adapters/fake.js';
 import type { OutboundMessage } from '../domains/marketing/adapters/types.js';
 
 const CREATOR = 'operations@kaizen.co.in'; // hr_ops_manager: holds marketing_templates/sends VCEDXF,approve
@@ -214,9 +214,9 @@ describe('MKT-MSG-011 — adapter not configured blocks a send', () => {
   });
 });
 
-describe('MKT-MSG-005 — dispatch with the console adapter', () => {
+describe('MKT-MSG-005 — dispatch with the fake adapter', () => {
   it('marks recipients sent and logs an Interaction against the person', async () => {
-    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    process.env.MARKETING_EMAIL_ADAPTER = 'fake';
     resetAdapterCacheForTests();
 
     const person = await makePerson('Dispatch Person', `dispatch-${Date.now()}@example.com`, null);
@@ -244,7 +244,7 @@ describe('MKT-MSG-005 — dispatch with the console adapter', () => {
   });
 
   it('applyDeliveryEvents updates the send counters from a providerMessageId', async () => {
-    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    process.env.MARKETING_EMAIL_ADAPTER = 'fake';
     resetAdapterCacheForTests();
 
     const person = await makePerson('Delivery Person', `delivery-${Date.now()}@example.com`, null);
@@ -270,7 +270,7 @@ describe('MKT-MSG-005 — dispatch with the console adapter', () => {
   });
 
   it('a bounce rate above the alarm threshold raises EX-MKT-005', async () => {
-    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    process.env.MARKETING_EMAIL_ADAPTER = 'fake';
     resetAdapterCacheForTests();
 
     const p1 = await makePerson('Bounce One', `bounce1-${Date.now()}@example.com`, null);
@@ -301,7 +301,7 @@ describe('MKT-MSG-005 — dispatch with the console adapter', () => {
 
 describe('MKT-MSG — sends over the approval threshold need a distinct approver', () => {
   it('the requester of a send can never also approve it', async () => {
-    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    process.env.MARKETING_EMAIL_ADAPTER = 'fake';
     resetAdapterCacheForTests();
 
     const person = await makePerson('Threshold Person', `threshold-${Date.now()}@example.com`, null);
@@ -329,7 +329,7 @@ describe('MKT-MSG — sends over the approval threshold need a distinct approver
 
 describe('MKT-MSG-008 — journeys enrol and advance', () => {
   it('tick() sends step 0 then advances to step 1, and enrolling twice never duplicates the active run', async () => {
-    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    process.env.MARKETING_EMAIL_ADAPTER = 'fake';
     resetAdapterCacheForTests();
 
     const person = await makePerson('Journey Person', `journey-${Date.now()}@example.com`, null);
@@ -392,30 +392,32 @@ describe('MKT-MSG — cross-tenant isolation', () => {
 });
 
 /**
- * Counts what actually reached the provider, per recipient. Wraps the console
- * adapter's real send rather than replacing it, so the send still happens and
- * the test measures the double-send, not a stub. `delayMs` widens the window
- * so overlapping runs really overlap; `crashOn` throws once after the provider
- * has accepted that recipient's message, the crash the marks must survive.
+ * Counts what reached the fake provider, per recipient, from the fake's own
+ * outbox: a recorded message is a message the provider accepted, so the count
+ * is the double-send measured at the provider, not a stub. The spy on
+ * FakeEmailAdapter.send exists only for the two things an outbox cannot do:
+ * `delayMs` widens the window so overlapping runs really overlap, and `crashOn`
+ * throws once after the provider has accepted that recipient's message, the
+ * crash the marks must survive. The real send runs before either.
  */
-function countAdapterSends(opts: { delayMs?: number; crashOn?: string } = {}) {
-  const sentTo = new Map<string, number>();
-  const original = ConsoleAdapter.prototype.send;
+async function countAdapterSends(opts: { delayMs?: number; crashOn?: string } = {}) {
+  const tid = await tenantId();
+  clearFakeOutbox(tid);
+  const original = FakeEmailAdapter.prototype.send;
   let crashed = false;
-  vi.spyOn(ConsoleAdapter.prototype, 'send').mockImplementation(async function (
-    this: ConsoleAdapter,
+  vi.spyOn(FakeEmailAdapter.prototype, 'send').mockImplementation(async function (
+    this: FakeEmailAdapter,
     msg: OutboundMessage,
   ) {
     if (opts.delayMs) await new Promise((resolve) => setTimeout(resolve, opts.delayMs));
     const result = await original.call(this, msg);
-    sentTo.set(msg.to.personId, (sentTo.get(msg.to.personId) ?? 0) + 1);
     if (opts.crashOn === msg.to.personId && !crashed) {
       crashed = true;
       throw new Error('process crashed after the provider accepted the message');
     }
     return result;
   });
-  return sentTo;
+  return (personId: string) => fakeOutbox(tid).filter((r) => r.personId === personId).length;
 }
 
 describe('MKT-MSG-005a — a recipient is claimed before it is sent, so it is never sent twice', () => {
@@ -424,9 +426,9 @@ describe('MKT-MSG-005a — a recipient is claimed before it is sent, so it is ne
   });
 
   it('two overlapping dispatch runs send each recipient exactly once', async () => {
-    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    process.env.MARKETING_EMAIL_ADAPTER = 'fake';
     resetAdapterCacheForTests();
-    const sentTo = countAdapterSends({ delayMs: 15 });
+    const sentTo = await countAdapterSends({ delayMs: 15 });
 
     // Typed explicitly: an empty array literal here infers never[] and the
     // pushes below fail to typecheck.
@@ -444,13 +446,13 @@ describe('MKT-MSG-005a — a recipient is claimed before it is sent, so it is ne
 
     await Promise.all([asUser(CREATOR, () => dispatchSend(send.id)), asUser(CREATOR, () => dispatchSend(send.id))]);
 
-    for (const p of people) expect(sentTo.get(p.id) ?? 0).toBe(1);
+    for (const p of people) expect(sentTo(p.id)).toBe(1);
     const recipients = await asUser(CREATOR, () => listSendRecipients(send.id));
     expect(recipients.every((r) => r.status === 'sent')).toBe(true);
   });
 
   it('a crash between the provider accepting a message and the sent mark does not resend on the next run', async () => {
-    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    process.env.MARKETING_EMAIL_ADAPTER = 'fake';
     resetAdapterCacheForTests();
 
     const crashing = await makePerson('Crash Target', `crash-${Date.now()}@example.com`, null);
@@ -463,16 +465,16 @@ describe('MKT-MSG-005a — a recipient is claimed before it is sent, so it is ne
     );
     await asUser(CREATOR, () => requestSend(send.id));
 
-    const sentTo = countAdapterSends({ crashOn: crashing.id });
+    const sentTo = await countAdapterSends({ crashOn: crashing.id });
     await expect(asUser(CREATOR, () => dispatchSend(send.id))).rejects.toThrow('process crashed');
     await asUser(CREATOR, () => dispatchSend(send.id));
 
-    expect(sentTo.get(crashing.id)).toBe(1);
-    expect(sentTo.get(other.id)).toBe(1);
+    expect(sentTo(crashing.id)).toBe(1);
+    expect(sentTo(other.id)).toBe(1);
   });
 
   it('a claim older than the lease is surfaced as unknown delivery and is not resent', async () => {
-    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    process.env.MARKETING_EMAIL_ADAPTER = 'fake';
     resetAdapterCacheForTests();
 
     const person = await makePerson('Stale Claim', `stale-${Date.now()}@example.com`, null);
@@ -489,10 +491,10 @@ describe('MKT-MSG-005a — a recipient is claimed before it is sent, so it is ne
       data: { status: 'sending', claimedAt: new Date(Date.now() - 6 * 60 * 60_000) } as never,
     });
 
-    const sentTo = countAdapterSends();
+    const sentTo = await countAdapterSends();
     await asUser(CREATOR, () => dispatchSend(send.id));
 
-    expect(sentTo.get(person.id) ?? 0).toBe(0);
+    expect(sentTo(person.id)).toBe(0);
     const [after] = await asUser(CREATOR, () => listSendRecipients(send.id));
     expect(after.status).toBe('unknown_delivery');
   });
@@ -504,9 +506,9 @@ describe('MKT-MSG-008a — a journey step is claimed before it is sent', () => {
   });
 
   it('two overlapping ticks for the same due step send it once', async () => {
-    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    process.env.MARKETING_EMAIL_ADAPTER = 'fake';
     resetAdapterCacheForTests();
-    const sentTo = countAdapterSends({ delayMs: 15 });
+    const sentTo = await countAdapterSends({ delayMs: 15 });
 
     const person = await makePerson('Step Once', `step-once-${Date.now()}@example.com`, null);
     await grantMarketingConsent(person.id);
@@ -523,7 +525,7 @@ describe('MKT-MSG-008a — a journey step is claimed before it is sent', () => {
 
     await Promise.all([asUser(CREATOR, () => tick()), asUser(CREATOR, () => tick())]);
 
-    expect(sentTo.get(person.id) ?? 0).toBe(1);
+    expect(sentTo(person.id)).toBe(1);
     const after = await unscopedPrisma.marketingJourneyRun.findFirst({ where: { id: run.id } });
     expect(after?.currentStep).toBe(1);
   });
@@ -553,14 +555,14 @@ describe('MKT-MSG-005b — an expired claim is an unknown delivery an operator c
   });
 
   it('dispatch turns an expired sending claim into unknown_delivery, raises EX-MKT-016, and does not resend', async () => {
-    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    process.env.MARKETING_EMAIL_ADAPTER = 'fake';
     resetAdapterCacheForTests();
     const { send, person } = await sendWithStaleClaim(6 * 60 * 60_000, 'queued');
-    const sentTo = countAdapterSends();
+    const sentTo = await countAdapterSends();
 
     await asUser(CREATOR, () => dispatchSend(send.id));
 
-    expect(sentTo.get(person.id) ?? 0).toBe(0);
+    expect(sentTo(person.id)).toBe(0);
     const [after] = await asUser(CREATOR, () => listSendRecipients(send.id));
     expect(after.status).toBe('unknown_delivery');
     const exception = await unscopedPrisma.exceptionRecord.findFirst({
@@ -570,15 +572,15 @@ describe('MKT-MSG-005b — an expired claim is an unknown delivery an operator c
   });
 
   it('the scheduled dispatch job sweeps expired claims even when no send is queued', async () => {
-    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    process.env.MARKETING_EMAIL_ADAPTER = 'fake';
     resetAdapterCacheForTests();
     const { send, person } = await sendWithStaleClaim(6 * 60 * 60_000, 'sending');
-    const sentTo = countAdapterSends();
+    const sentTo = await countAdapterSends();
 
     const job = MARKETING_JOBS.find((j) => j.name === 'marketing.sends.dispatch');
     await asUser(CREATOR, () => job!.run(new AbortController().signal));
 
-    expect(sentTo.get(person.id) ?? 0).toBe(0);
+    expect(sentTo(person.id)).toBe(0);
     const [after] = await asUser(CREATOR, () => listSendRecipients(send.id));
     expect(after.status).toBe('unknown_delivery');
     const exception = await unscopedPrisma.exceptionRecord.findFirst({
@@ -604,7 +606,7 @@ describe('MKT-MSG-008b — a journey exit is claimed like a step, so an overlapp
   }
 
   it('two overlapping ticks exit a run whose step condition is no longer met, with one exit event', async () => {
-    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    process.env.MARKETING_EMAIL_ADAPTER = 'fake';
     resetAdapterCacheForTests();
     const person = await makePerson('Condition Exit', `cond-exit-${Date.now()}@example.com`, null);
     await grantMarketingConsent(person.id);
@@ -634,7 +636,7 @@ describe('MKT-MSG-008b — a journey exit is claimed like a step, so an overlapp
   });
 
   it('two overlapping ticks exit a run with no consent once, with one exit event', async () => {
-    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    process.env.MARKETING_EMAIL_ADAPTER = 'fake';
     resetAdapterCacheForTests();
     const person = await makePerson('No Consent Exit', `no-consent-${Date.now()}@example.com`, null);
     const template = await makeApprovedTemplate('email');
