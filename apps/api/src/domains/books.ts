@@ -38,6 +38,7 @@ import { prisma, unscopedPrisma, num, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
+import { lockLegacyPeriod } from '../platform/periodLock.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney, assertScopeAll } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
@@ -312,10 +313,19 @@ export async function checkTransactionAllowed(input: Pick<TransactionInput, 'txn
  * transaction passes its `tx` (payRefund, FX-33): the scoped client refuses to
  * run inside one, and the permission check and the period veto have already
  * run outside it, so nothing here needs the outer client.
+ *
+ * Without a `tx` the write opens its own. The period lock (platform/periodLock.ts)
+ * and the insert must share one transaction: the lock is what keeps the period
+ * open until the row is committed. Before this, the status was read outside any
+ * transaction, and a close could move the period between the read and the insert.
  */
 export async function writeTransaction(input: TransactionInput, tx?: DbTx) {
+  if (tx) return writeTransactionIn(tx, input);
+  return prisma.$transaction((owned) => writeTransactionIn(owned as unknown as DbTx, input));
+}
+
+async function writeTransactionIn(db: DbTx, input: TransactionInput) {
   const auth = currentAuth();
-  const db = tx ?? (prisma as unknown as DbTx);
 
   if (input.amount <= 0) {
     // The direction carries the sign, so a negative amount would be a second,
@@ -344,6 +354,10 @@ export async function writeTransaction(input: TransactionInput, tx?: DbTx) {
       'An inter-company counterparty must be another entity in this group — the holding, a sibling subsidiary, or a child.',
     );
   }
+
+  // Lock order (platform/periodLock.ts): the period row first, then the record
+  // sequence, the rows, and the audit and event locks last.
+  await lockLegacyPeriod(db, auth.tenantId, input.txnDate);
 
   const recordCode = await nextRecordCode('TXN', new Date(), db);
   const txn = await db.transaction.create({
@@ -383,7 +397,7 @@ export async function writeTransaction(input: TransactionInput, tx?: DbTx) {
       categoryId: input.categoryId ?? null,
       txnDate: input.txnDate,
     },
-    tx,
+    tx: db,
   });
 
   await emit({
@@ -398,7 +412,7 @@ export async function writeTransaction(input: TransactionInput, tx?: DbTx) {
     },
     confidentiality: 'confidential',
     impact: { domains: ['fin'] },
-    tx,
+    tx: db,
   });
 
   return txn;
@@ -433,11 +447,15 @@ export async function reverseTransaction(id: string, reason: string) {
   const recordCode = await nextRecordCode('TXN');
 
   const reversal = await prisma.$transaction(async (tx) => {
+    // One instant for the lock and the row: the reversal lands in the month this lock
+    // covers. Two separate reads of the clock could straddle a month boundary.
+    const now = new Date();
+    await lockLegacyPeriod(tx, auth.tenantId, now);
     const created = await tx.transaction.create({
       data: {
         tenantId: auth.tenantId,
         recordCode,
-        txnDate: new Date(),
+        txnDate: now,
         direction: original.direction === 'in' ? 'out' : 'in',
         amount: original.amount,
         accountId: original.accountId,

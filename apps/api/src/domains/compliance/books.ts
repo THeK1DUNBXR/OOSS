@@ -93,9 +93,15 @@ async function ensurePeriod(period: string): Promise<{ id: string; status: strin
   const [year, month] = period.split('-').map(Number);
   const existing = await prisma.accountingPeriod.findFirst({ where: { tenantId: auth.tenantId, period } });
   if (existing) return existing;
-  const created = await prisma.accountingPeriod.create({
-    data: { tenantId: auth.tenantId, period, fy: fyOf(new Date(Date.UTC(year, month - 1, 1))), status: 'open' },
+  // A legacy write into the same month can create the row between the read above and
+  // this insert (platform/periodLock.ts). A plain create would then fail on the unique
+  // key, so the insert skips a duplicate and the row is read back.
+  const made = await prisma.accountingPeriod.createMany({
+    data: [{ tenantId: auth.tenantId, period, fy: fyOf(new Date(Date.UTC(year, month - 1, 1))), status: 'open' }],
+    skipDuplicates: true,
   });
+  const created = await prisma.accountingPeriod.findFirstOrThrow({ where: { tenantId: auth.tenantId, period } });
+  if (made.count === 0) return created;
   // Opening a period is itself a books write: it is the row a close is later
   // requested against, so its creation is a fact the chain should carry.
   await emit({
@@ -200,12 +206,12 @@ export async function closePeriod(period: string) {
   // closed figures disagreed with the books they were meant to freeze.
   //
   // What closes that window: the period is `closing` before this runs, so a legacy
-  // write that checks the status now is refused (refuseClosedPeriod). A posting
-  // holds FOR SHARE on this row while it writes (platform/ledger.ts
-  // lockPostablePeriod), so this FOR UPDATE waits for it to commit first.
-  // What it does not close: legacy writes take no lock on this row. A write whose
-  // status check passed before the close was requested can still commit after the
-  // figures are taken, and would then be missing from the snapshot.
+  // write that checks the status now is refused (refuseClosedPeriod). A posting and
+  // a legacy write each hold FOR SHARE on this row while they write
+  // (platform/ledger.ts lockPostablePeriod, platform/periodLock.ts lockLegacyPeriod),
+  // so this FOR UPDATE waits for them to commit first. Before the legacy lock, a write
+  // whose status check passed before the close was requested could commit after the
+  // figures were taken, and would then be missing from the snapshot.
   //
   // Both figures are taken: the legacy cashbook TB (it reads `Transaction`) and the
   // journal TB (it reads the ledger), so the closed period carries both and the gap
