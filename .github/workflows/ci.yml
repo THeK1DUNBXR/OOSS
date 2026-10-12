@@ -150,6 +150,10 @@ jobs:
       TEST_DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public
       NODE_ENV: test
       JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
+      # The replayed red tests boot the API and read seeded PAN and bank values,
+      # so this job needs the test job's key: without it the API refuses to boot
+      # (G5) and every replay fails for the wrong reason.
+      FIELD_ENCRYPTION_KEY: test-only-field-encryption-key-not-used-anywhere-else-0123456789
     steps:
       - uses: actions/checkout@v4
         with:
