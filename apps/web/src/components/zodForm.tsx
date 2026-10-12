@@ -52,7 +52,18 @@ const GROUPED_WHOLE_RUPEES = /^-?(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3})
  * Parsing inside the schema means no form can receive a float for money, and a
  * form that forgets to validate has nothing to send.
  */
-export function moneyField({ positive = false, optional = false }: { positive?: boolean; optional?: boolean } = {}) {
+export function moneyField(options: {
+  positive?: boolean;
+  optional: true;
+}): z.ZodEffects<z.ZodString, bigint | undefined, string>;
+export function moneyField(options?: {
+  positive?: boolean;
+  optional?: false;
+}): z.ZodEffects<z.ZodString, bigint, string>;
+export function moneyField({
+  positive = false,
+  optional = false,
+}: { positive?: boolean; optional?: boolean } = {}): z.ZodEffects<z.ZodString, bigint | undefined, string> {
   return z.string().transform((text, ctx): bigint | undefined => {
     const typed = text.trim();
     if (typed === '') {
