@@ -251,7 +251,12 @@ describe('PR11b scope: vertical access grants', () => {
       unitCode: 'U-1',
     });
     const decision = await asPrincipal(auth, () =>
-      evaluate({ resource, verb: 'view', record: { ownerPartyId: head.id, verticalCode: v.code, unitCode: 'U-1' }, auth }),
+      evaluate({
+        resource,
+        verb: 'view',
+        record: { ownerPartyId: head.id, verticalCode: v.code, unitCode: 'U-1' },
+        auth,
+      }),
     );
     expect(decision.allowed).toBe(false);
     expect(decision.deniedBy).toBe('WHERE');
