@@ -24,6 +24,10 @@ import { auditWrite } from '../platform/audit.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { writeTransactionMinor, assertPeriodPostableInTx, reverseTransactionIn } from '../domains/books.js';
 import { filedReturnFor } from '../domains/invoicing.js';
+// A register import writes learner profiles, and auditWrite refuses a subject type
+// no module has registered. The student_profile registration is in that module, so
+// it must be loaded here rather than only wherever the routes happen to load it.
+import '../domains/students.js';
 import { EVENTS, DIVISION_LABELS, DIVISIONS, parseMinor, type Division } from '@kaizen/shared';
 import { matchFailure, matchPerson } from './matchName.js';
 import { classifyLedger, divisionFor, isAccountName, JOURNAL_ACCOUNT_NAME, JOURNAL_ACCOUNT_TYPE } from './classify.js';
@@ -955,26 +959,68 @@ async function commitSalaryRow(data: Record<string, unknown>) {
     return { entityType: 'compensationRecord', entityId: existing.id, matched: true };
   }
 
-  const record = await prisma.compensationRecord.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: employment.id,
-      amount,
-      currency: 'INR',
-      revisionReason: 'imported_baseline',
-      status: 'Effective',
-      effectiveFrom: new Date(),
-    },
+  // The new record and the supersede of the one it replaces are one governed
+  // write. The superseded record is listed with its action, so a revert puts it
+  // back to Effective if nothing has replaced it since (restoreSupersededIn), and
+  // never voids it: it was not this batch's to void.
+  const created: CreatedRecord[] = [];
+  let madeId = '';
+  await governedWrite(async (tx) => {
+    const record = await tx.compensationRecord.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: employment.id,
+        amount,
+        currency: 'INR',
+        revisionReason: 'imported_baseline',
+        status: 'Effective',
+        effectiveFrom: new Date(),
+      },
+    });
+    madeId = record.id;
+    created.push({ entityType: 'compensationRecord', entityId: record.id });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'compensation_record',
+      subjectId: record.id,
+      after: { amount, status: 'Effective' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.COMPENSATION_RECORD_CREATED,
+      subject: { entityType: 'compensation_record', entityId: record.id },
+      newState: { amount, status: 'Effective' },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
+    if (existing) {
+      const effectiveTo = new Date();
+      await tx.compensationRecord.update({
+        where: { id: existing.id },
+        data: { status: 'Superseded', effectiveTo },
+      });
+      created.push({ entityType: 'compensationRecord', entityId: existing.id, action: 'superseded' });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'compensation_record',
+        subjectId: existing.id,
+        before: { status: 'Effective', effectiveTo: existing.effectiveTo },
+        after: { status: 'Superseded', effectiveTo },
+        tx,
+      });
+      await emit({
+        name: EVENTS.COMPENSATION_RECORD_SUPERSEDED,
+        subject: { entityType: 'compensation_record', entityId: existing.id },
+        newState: { status: 'Superseded', effectiveTo },
+        related: [{ relation: 'replaced_by', entityType: 'compensation_record', entityId: record.id }],
+        impact: { domains: ['hr'] },
+        tx,
+      });
+    }
   });
 
-  if (existing) {
-    await prisma.compensationRecord.update({
-      where: { id: existing.id },
-      data: { status: 'Superseded', effectiveTo: new Date() },
-    });
-  }
-
-  return { entityType: 'compensationRecord', entityId: record.id };
+  return { entityType: 'compensationRecord', entityId: madeId, created };
 }
 
 async function commitAttendanceRow(data: Record<string, unknown>) {
@@ -1112,6 +1158,20 @@ export async function revertImport(id: string) {
 /** A batch a revert may start from: committed, or partly reverted by an earlier run. */
 const REVERTABLE_STATUSES = new Set(['committed', 'revert_partial']);
 
+/**
+ * The kinds whose legacy rows (committed before ImportRow.created) are refused:
+ * a person-bearing row (staff, contact, student) or an attendance row. See
+ * revertUnderLock.
+ */
+const LEGACY_REFUSED_KINDS = new Set([
+  'employees',
+  'template_staff',
+  'template_contacts',
+  'template_students',
+  'student_register',
+  'attendance',
+]);
+
 interface RevertFailure {
   rowNumber: number;
   message: string;
@@ -1130,6 +1190,30 @@ async function revertUnderLock(id: string) {
   const batch = await prisma.importBatch.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!batch) throw ApiError.notFound('Import');
   if (!REVERTABLE_STATUSES.has(batch.status)) throw ApiError.conflict('Only a committed import can be reverted.');
+
+  // A batch committed before ImportRow.created existed cannot say which of its
+  // rows it created and which it only matched. For these kinds, undoing the row
+  // by its entity type voids a matched person, or another batch's attendance
+  // days (FX-71a), so the whole batch is refused before any row is touched. A
+  // legacy row of any other kind is not refused: it keeps the revert it had.
+  if (LEGACY_REFUSED_KINDS.has(batch.kind)) {
+    const legacy = await prisma.importRow.findFirst({
+      where: {
+        tenantId: auth.tenantId,
+        batchId: id,
+        status: { in: ['committed', 'matched'] },
+        created: { equals: Prisma.DbNull },
+      },
+      select: { rowNumber: true },
+      orderBy: { rowNumber: 'asc' },
+    });
+    if (legacy) {
+      throw ApiError.conflict(
+        `This import predates per-row tracking, so the revert cannot tell what row ${legacy.rowNumber} created from what it matched. ` +
+          'Nothing has been reverted. Correct the records it touched by hand.',
+      );
+    }
+  }
 
   // A matched row is visited only when it created something: a matched row
   // with nothing on its created list has nothing for a revert to undo. A matched
@@ -1259,10 +1343,9 @@ async function settleRevertedBatch(
  *
  * A row committed since ImportRow.created exists is undone by that list, and
  * nothing else: a record the row only matched belongs to another entry. A row
- * committed before the column (created is null) is undone by its entityType,
- * as every revert before it was. Those rows keep that behaviour, including the
- * matched-person soft-delete and the attendance taken by the staged date set,
- * because the record of what they created was never kept.
+ * committed before the column is refused whole before any row is touched (see
+ * revertUnderLock) when it is of a kind that can over-revert; the rest are
+ * undone by entityType, as they always were.
  */
 async function revertRowIn(tx: DbTx, row: ImportRow, batch: ImportBatch): Promise<RowRevert> {
   const reason = `Import ${batch.recordCode} reverted`;
@@ -1272,25 +1355,33 @@ async function revertRowIn(tx: DbTx, row: ImportRow, batch: ImportBatch): Promis
 
   if (row.status === 'matched') {
     // The record it matched stays. What the row created is reversed.
-    const { reversalIds, unmatched } = await undoCreatedIn(tx, created, batch, reason);
+    const { reversalIds, unmatched, messages } = await undoCreatedIn(tx, created, batch, reason);
     return {
       status: 'reverted',
       reversalIds,
       unmatched,
-      message: 'The record this row matched stays on file. Only what the row created is reversed.',
+      message: ['The record this row matched stays on file. Only what the row created is reversed.', ...messages].join(
+        ' ',
+      ),
     };
   }
 
   const undoable = created.filter((c) => !KEPT_KINDS.has(c.entityType));
   if (undoable.length === 0) return keptRowRevert(created[0]?.entityType ?? row.entityType ?? 'record');
-  const { reversalIds, unmatched } = await undoCreatedIn(tx, undoable, batch, reason);
-  return { status: 'reverted', reversalIds, unmatched, message: null };
+  const { reversalIds, unmatched, messages } = await undoCreatedIn(tx, undoable, batch, reason);
+  return { status: 'reverted', reversalIds, unmatched, message: messages.length > 0 ? messages.join(' ') : null };
 }
 
 /** A record an import row created, as ImportRow.created lists it. */
 interface CreatedRecord {
   entityType: string;
   entityId: string;
+  /**
+   * Set on a pay record this row superseded rather than created. A revert then
+   * restores that record to Effective, if nothing has replaced it since; it never
+   * voids it.
+   */
+  action?: 'superseded';
 }
 
 /**
@@ -1318,24 +1409,26 @@ async function revertLegacyRowIn(tx: DbTx, row: ImportRow, batch: ImportBatch, r
     await legacyVoidAttendanceIn(tx, row, batch, reason);
     return { status: 'reverted', reversalIds: [], unmatched: 0, message: null };
   }
-  const { reversalIds, unmatched } = await undoRecordIn(
+  const { reversalIds, unmatched, message } = await undoRecordIn(
     tx,
     { entityType: row.entityType, entityId: row.entityId },
     batch,
     reason,
   );
-  return { status: 'reverted', reversalIds, unmatched, message: null };
+  return { status: 'reverted', reversalIds, unmatched, message: message ?? null };
 }
 
 async function undoCreatedIn(tx: DbTx, items: CreatedRecord[], batch: ImportBatch, reason: string) {
   const reversalIds: string[] = [];
+  const messages: string[] = [];
   let unmatched = 0;
   for (const item of items) {
     const one = await undoRecordIn(tx, item, batch, reason);
     reversalIds.push(...one.reversalIds);
     unmatched += one.unmatched;
+    if (one.message) messages.push(one.message);
   }
-  return { reversalIds, unmatched };
+  return { reversalIds, unmatched, messages };
 }
 
 /** Undoes one record a batch created. Throws with the reason when it cannot. */
@@ -1344,7 +1437,7 @@ async function undoRecordIn(
   item: CreatedRecord,
   batch: ImportBatch,
   reason: string,
-): Promise<{ reversalIds: string[]; unmatched: number }> {
+): Promise<{ reversalIds: string[]; unmatched: number; message?: string }> {
   const auth = currentAuth();
   switch (item.entityType) {
     case 'transaction': {
@@ -1368,6 +1461,10 @@ async function undoRecordIn(
     }
 
     case 'compensationRecord': {
+      if (item.action === 'superseded') {
+        const message = await restoreSupersededIn(tx, item, batch, reason);
+        return { reversalIds: [], unmatched: 0, message };
+      }
       const record = await tx.compensationRecord.findFirst({
         where: { id: item.entityId, tenantId: auth.tenantId, voidedAt: null },
         select: { id: true },
@@ -1396,8 +1493,29 @@ async function undoRecordIn(
       // Soft-deleted rather than removed. A person may already be referenced by a
       // leave request or an employment record by now, and the statutory retention
       // floor on an employee affiliation means deleting one is not the platform's
-      // call anyway.
-      await tx.person.update({ where: { id: item.entityId }, data: { deletedAt: new Date() } });
+      // call anyway. Only a person this batch created is listed here: a matched
+      // person is another entry's and is never undone.
+      const before = await tx.person.findFirstOrThrow({
+        where: { id: item.entityId, tenantId: auth.tenantId },
+        select: { deletedAt: true },
+      });
+      const at = new Date();
+      await tx.person.update({ where: { id: item.entityId }, data: { deletedAt: at } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'person',
+        subjectId: item.entityId,
+        before: { deletedAt: before.deletedAt },
+        after: { deletedAt: at, reason },
+        tx,
+      });
+      await emit({
+        name: EVENTS.PERSON_DELETED,
+        subject: { entityType: 'person', entityId: item.entityId },
+        newState: { deletedAt: at },
+        impact: { domains: ['idn'] },
+        tx,
+      });
       return { reversalIds: [], unmatched: 0 };
     }
 
@@ -1405,7 +1523,55 @@ async function undoRecordIn(
       // Withdrawn rather than deleted. An enrolment with attendance or a fee
       // receipted against it is a record of something that happened, and
       // reverting the import that created it does not unhappen that.
+      const before = await tx.enrollment.findFirstOrThrow({
+        where: { id: item.entityId, tenantId: auth.tenantId },
+        select: { status: true },
+      });
       await tx.enrollment.update({ where: { id: item.entityId }, data: { status: 'withdrawn' } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'enrollment',
+        subjectId: item.entityId,
+        before: { status: before.status },
+        after: { status: 'withdrawn', reason },
+        tx,
+      });
+      await emit({
+        name: EVENTS.ENROLLMENT_WITHDRAWN,
+        subject: { entityType: 'enrollment', entityId: item.entityId },
+        newState: { status: 'withdrawn' },
+        impact: { domains: ['edu'] },
+        tx,
+      });
+      return { reversalIds: [], unmatched: 0 };
+    }
+
+    case 'studentProfile': {
+      // The learner record a register import made for a new student. Soft-deleted
+      // as the person is: the register, and any billing read off it, keep the
+      // fact that the learner was on file.
+      const live = await tx.studentProfile.findFirst({
+        where: { id: item.entityId, tenantId: auth.tenantId, deletedAt: null },
+        select: { id: true, status: true },
+      });
+      if (!live) throw new Error('The student record this row wrote is no longer on file.');
+      const at = new Date();
+      await tx.studentProfile.update({ where: { id: live.id }, data: { deletedAt: at } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'student_profile',
+        subjectId: live.id,
+        before: { status: live.status },
+        after: { deletedAt: at, reason },
+        tx,
+      });
+      await emit({
+        name: EVENTS.STUDENT_PROFILE_ENDED,
+        subject: { entityType: 'student_profile', entityId: live.id },
+        newState: { deletedAt: at },
+        impact: { domains: ['edu'] },
+        tx,
+      });
       return { reversalIds: [], unmatched: 0 };
     }
 
@@ -1422,10 +1588,67 @@ async function undoRecordIn(
 }
 
 /**
+ * Puts back the pay record a batch superseded, if the batch's own record is the
+ * only thing that replaced it. A record that is voided, or that a later record
+ * has replaced, stays as it is, and the row says why. Returns the reason the
+ * record was not restored, or nothing when it was.
+ */
+async function restoreSupersededIn(
+  tx: DbTx,
+  item: CreatedRecord,
+  batch: ImportBatch,
+  reason: string,
+): Promise<string | undefined> {
+  const auth = currentAuth();
+  const prior = await tx.compensationRecord.findFirst({
+    where: { id: item.entityId, tenantId: auth.tenantId },
+    select: { id: true, status: true, voidedAt: true, effectiveTo: true, employmentRelationshipId: true },
+  });
+  if (!prior) return 'Not restored: the pay record this import superseded is no longer on file.';
+  if (prior.voidedAt !== null || prior.status !== 'Superseded') {
+    const state = prior.voidedAt !== null ? 'voided' : prior.status;
+    return `Not restored: the pay record this import superseded is ${state}, so it stays as it is.`;
+  }
+  const later = await tx.compensationRecord.findFirst({
+    where: {
+      tenantId: auth.tenantId,
+      employmentRelationshipId: prior.employmentRelationshipId,
+      id: { not: prior.id },
+      voidedAt: null,
+      status: { not: 'Superseded' },
+    },
+    select: { id: true },
+  });
+  if (later) return `Not restored: a later pay record (${later.id}) replaced it, so it stays Superseded.`;
+
+  await tx.compensationRecord.update({
+    where: { id: prior.id },
+    data: { status: 'Effective', effectiveTo: null },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'compensation_record',
+    subjectId: prior.id,
+    before: { status: 'Superseded', effectiveTo: prior.effectiveTo },
+    after: { status: 'Effective', effectiveTo: null, reason, batchId: batch.id },
+    tx,
+  });
+  await emit({
+    name: EVENTS.COMPENSATION_RECORD_RESTORED,
+    subject: { entityType: 'compensation_record', entityId: prior.id },
+    newState: { status: 'Effective' },
+    impact: { domains: ['hr'] },
+    tx,
+  });
+  return undefined;
+}
+
+/**
  * Ends a record an employee or contact import created, for a matched person or
  * a new one. None of these has a void column, so each is ended by the model's
  * own state (deletedAt, or the superseded state an assignment already uses),
- * with an audit row naming the batch. The row stays for the register.
+ * with an audit row naming the batch and an event for the end. The row stays
+ * for the register.
  */
 async function endCreatedIn(tx: DbTx, item: CreatedRecord, batch: ImportBatch, reason: string) {
   const auth = currentAuth();
@@ -1472,6 +1695,13 @@ async function endCreatedIn(tx: DbTx, item: CreatedRecord, batch: ImportBatch, r
         after: { deletedAt: at, reason },
         tx,
       });
+      await emit({
+        name: EVENTS.EMPLOYMENT_RELATIONSHIP_ENDED,
+        subject: { entityType: 'employment_relationship', entityId: subjectId },
+        newState: { deletedAt: at },
+        impact: { domains: ['hr'] },
+        tx,
+      });
       return;
     }
 
@@ -1488,6 +1718,13 @@ async function endCreatedIn(tx: DbTx, item: CreatedRecord, batch: ImportBatch, r
         subjectId,
         before: { status: live.status },
         after: { deletedAt: at, reason },
+        tx,
+      });
+      await emit({
+        name: EVENTS.POSITION_ENDED,
+        subject: { entityType: 'position', entityId: subjectId },
+        newState: { deletedAt: at },
+        impact: { domains: ['hr'] },
         tx,
       });
       return;
@@ -1509,6 +1746,13 @@ async function endCreatedIn(tx: DbTx, item: CreatedRecord, batch: ImportBatch, r
         subjectId,
         before: { rowStatus: live.rowStatus },
         after: { rowStatus: 'Superseded', effectiveTo: at, reason },
+        tx,
+      });
+      await emit({
+        name: EVENTS.ASSIGNMENT_ENDED,
+        subject: { entityType: 'assignment', entityId: subjectId },
+        newState: { rowStatus: 'Superseded', effectiveTo: at },
+        impact: { domains: ['hr'] },
         tx,
       });
       return;
@@ -1849,8 +2093,8 @@ async function commitStudentRow(data: Record<string, unknown>) {
   // typed one are the same act: the same college check, the same guardian rule,
   // the same student affiliation, the same refusal to enrol somebody twice.
   const ageBasis = learnerAgeBasis(data);
-  const { enrolStudent } = await import('../domains/education.js');
-  const enrollment = await enrolStudent({
+  const { enrolStudentRecorded } = await import('../domains/education.js');
+  const recorded = await enrolStudentRecorded({
     cohortId: cohort.id,
     fullName: text(data.fullName) ?? undefined,
     primaryPhone: text(data.primaryPhone),
@@ -1861,7 +2105,12 @@ async function commitStudentRow(data: Record<string, unknown>) {
     guardianName: text(data.guardianName),
     guardianPhone: text(data.guardianPhone),
   });
-  return { entityType: 'enrollment', entityId: enrollment.id };
+  const enrollment = recorded.enrollment;
+  return {
+    entityType: 'enrollment',
+    entityId: enrollment.id,
+    created: [...recorded.created, { entityType: 'enrollment', entityId: enrollment.id }],
+  };
 }
 
 /**
@@ -1985,8 +2234,8 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
   // Through the same function the form calls, so an imported student and a typed
   // one are the same act: the same phone-and-email matching, the same refusal to
   // enrol somebody twice, the same student affiliation.
-  const { enrolStudent } = await import('../domains/education.js');
-  const enrollment = await enrolStudent({
+  const { enrolStudentRecorded } = await import('../domains/education.js');
+  const recorded = await enrolStudentRecorded({
     cohortId: cohort.id,
     fullName,
     primaryPhone: text(data.primaryPhone),
@@ -1996,6 +2245,8 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
     guardianName: text(data.guardianName),
     guardianPhone: text(data.guardianPhone),
   });
+  const enrollment = recorded.enrollment;
+  const created: CreatedRecord[] = [...recorded.created];
 
   // The register's own identifiers and dates, which the enrolment is the right
   // place for: they are facts about this student's run of the course, not about
@@ -2030,14 +2281,34 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
     // row failing.
     const numberFree =
       !registrationNumber || !(await prisma.studentProfile.findFirst({ where: { registrationNumber } }));
-    await prisma.studentProfile.create({
-      data: {
-        tenantId: auth.tenantId,
-        personId: enrollment.personId,
-        registrationNumber: numberFree ? registrationNumber : null,
-        status: 'active',
-      },
+    // Written as the student route writes one: the profile, its audit row, and
+    // the person-created event that route emits for the learner it makes.
+    const profile = await governedWrite(async (tx) => {
+      const made = await tx.studentProfile.create({
+        data: {
+          tenantId: auth.tenantId,
+          personId: enrollment.personId,
+          registrationNumber: numberFree ? registrationNumber : null,
+          status: 'active',
+        },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'student_profile',
+        subjectId: made.id,
+        after: { registrationNumber: made.registrationNumber, status: made.status },
+        tx,
+      });
+      await emit({
+        name: EVENTS.PERSON_CREATED,
+        subject: { entityType: 'person', entityId: enrollment.personId },
+        related: [{ relation: 'specialises', entityType: 'student_profile', entityId: made.id }],
+        newState: { student: true, status: made.status },
+        tx,
+      });
+      return made;
     });
+    created.push({ entityType: 'studentProfile', entityId: profile.id });
   } else if (registrationNumber && !existingStudent.registrationNumber) {
     const taken = await prisma.studentProfile.findFirst({ where: { registrationNumber } });
     if (!taken) {
@@ -2048,7 +2319,11 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
     }
   }
 
-  return { entityType: 'enrollment', entityId: enrollment.id };
+  return {
+    entityType: 'enrollment',
+    entityId: enrollment.id,
+    created: [...created, { entityType: 'enrollment', entityId: enrollment.id }],
+  };
 }
 
 /** "C.C++ & Java" and "C C++ and Java" are the same course. */
