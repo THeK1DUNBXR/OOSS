@@ -433,8 +433,7 @@ async function commitRowOutsideChunk(row: ImportRow, kind: string, options: Reco
           status: 'matched',
           entityType: outcome.entityType,
           entityId: outcome.entityId,
-          message:
-            'Matched an existing record for this person and amount. This import did not create it, so a revert leaves it.',
+          message: 'Matched an existing record. This import did not create it, so a revert leaves it.',
         },
       });
     } else if (outcome) {
@@ -600,16 +599,26 @@ async function commitBankRow(data: Record<string, unknown>, options: Record<stri
 }
 
 async function commitAccountRow(data: Record<string, unknown>) {
+  const auth = currentAuth();
   const name = String(data.name ?? '');
   if (!name) return null;
   // Not a chunk kind (CHUNKED_KINDS): there is no transaction to pass, so the
   // scoped client writes, as it always has for this kind.
   const db = prisma as unknown as DbTx;
   const classified = classifyLedger(name);
+  // Looked up before ensuring, because ensure returns an existing id and a
+  // created one alike; a revert must leave the first kind of row alone.
   if (classified.kind === 'account') {
-    return { entityType: 'ledgerAccount', entityId: await ensureAccount(name, classified.accountType, db) };
+    const existed = await db.ledgerAccount.findFirst({
+      where: { tenantId: auth.tenantId, name },
+      select: { id: true },
+    });
+    const entityId = await ensureAccount(name, classified.accountType, db);
+    return { entityType: 'ledgerAccount', entityId, matched: existed !== null };
   }
-  return { entityType: 'ledgerCategory', entityId: await ensureCategory(name, classified.categoryKind, db) };
+  const existed = await db.ledgerCategory.findFirst({ where: { tenantId: auth.tenantId, name }, select: { id: true } });
+  const entityId = await ensureCategory(name, classified.categoryKind, db);
+  return { entityType: 'ledgerCategory', entityId, matched: existed !== null };
 }
 
 /**
@@ -868,7 +877,9 @@ async function commitEmployeeRow(data: Record<string, unknown>) {
     hireDate: data.joiningDate ? String(data.joiningDate) : null,
   });
 
-  return { entityType: 'person', entityId: person.id };
+  // A person already on file is updated in place, not made. Their fields stay as
+  // this import set them when it reverts: the revert does not restore prior values.
+  return { entityType: 'person', entityId: person.id, matched: existing !== undefined };
 }
 
 async function commitSalaryRow(data: Record<string, unknown>) {
@@ -1446,7 +1457,7 @@ async function commitCourseRow(data: Record<string, unknown>) {
   if (!code || !name) return null;
 
   const existing = await prisma.course.findFirst({ where: { tenantId: auth.tenantId, code } });
-  if (existing) return { entityType: 'course', entityId: existing.id };
+  if (existing) return { entityType: 'course', entityId: existing.id, matched: true };
 
   const course = await prisma.course.create({
     data: {
@@ -1473,7 +1484,7 @@ async function commitBatchRow(data: Record<string, unknown>) {
   }
 
   const existing = await prisma.cohort.findFirst({ where: { tenantId: auth.tenantId, name } });
-  if (existing) return { entityType: 'cohort', entityId: existing.id };
+  if (existing) return { entityType: 'cohort', entityId: existing.id, matched: true };
 
   let institutionId: string | null = null;
   const collegeName = text(data.institutionName);
@@ -1514,17 +1525,17 @@ async function commitBatchRow(data: Record<string, unknown>) {
  */
 async function organizationFor(name: string, kind: 'institution' | 'organization') {
   const existing = await organizationByName(name);
-  if (existing) return existing;
+  if (existing) return { org: existing, matched: true };
   const { createOrganization } = await import('../domains/organizations.js');
   const created = await createOrganization({ name, kind });
-  return { ...created, institutionProfile: null as { id: string } | null };
+  return { org: { ...created, institutionProfile: null as { id: string } | null }, matched: false };
 }
 
 async function commitCollegeRow(data: Record<string, unknown>) {
   const name = text(data.name);
   if (!name) return null;
 
-  const org = await organizationFor(name, 'institution');
+  const { org, matched } = await organizationFor(name, 'institution');
   const { attachInstitutionProfile, attachAccount } = await import('../domains/organizations.js');
 
   if (!org.institutionProfile) {
@@ -1549,14 +1560,14 @@ async function commitCollegeRow(data: Record<string, unknown>) {
     if (!account) await attachAccount(org.id, {});
   }
 
-  return { entityType: 'organization', entityId: org.id };
+  return { entityType: 'organization', entityId: org.id, matched };
 }
 
 async function commitClientRow(data: Record<string, unknown>) {
   const name = text(data.name);
   if (!name) return null;
 
-  const org = await organizationFor(name, 'organization');
+  const { org, matched } = await organizationFor(name, 'organization');
   const { attachAccount } = await import('../domains/organizations.js');
 
   const account = await prisma.account.findFirst({ where: { organizationId: org.id } });
@@ -1573,7 +1584,7 @@ async function commitClientRow(data: Record<string, unknown>) {
     await prisma.organization.update({ where: { id: org.id }, data: { website: text(data.website) } });
   }
 
-  return { entityType: 'organization', entityId: org.id };
+  return { entityType: 'organization', entityId: org.id, matched };
 }
 
 async function commitStudentRow(data: Record<string, unknown>) {
@@ -1894,7 +1905,7 @@ async function commitContactRow(data: Record<string, unknown>) {
     }
   }
 
-  return { entityType: 'person', entityId: person.id };
+  return { entityType: 'person', entityId: person.id, matched: existing !== null };
 }
 
 // ---------------------------------------------------------------------------
@@ -1998,7 +2009,7 @@ async function commitLedgerAccountTemplateRow(data: Record<string, unknown>) {
   if (!name) return null;
 
   const existing = await prisma.ledgerAccount.findFirst({ where: { tenantId: auth.tenantId, name } });
-  if (existing) return { entityType: 'ledgerAccount', entityId: existing.id };
+  if (existing) return { entityType: 'ledgerAccount', entityId: existing.id, matched: true };
 
   const { createAccount } = await import('../domains/books.js');
   const account = await createAccount({
@@ -2017,7 +2028,7 @@ async function commitLedgerCategoryTemplateRow(data: Record<string, unknown>) {
   if (!name) return null;
 
   const existing = await prisma.ledgerCategory.findFirst({ where: { tenantId: auth.tenantId, name } });
-  if (existing) return { entityType: 'ledgerCategory', entityId: existing.id };
+  if (existing) return { entityType: 'ledgerCategory', entityId: existing.id, matched: true };
 
   let parentId: string | null = null;
   const parentName = text(data.parentName);
@@ -2049,7 +2060,7 @@ async function commitVendorBillTemplateRow(data: Record<string, unknown>) {
   if (!vendorName || !billNumber) return null;
 
   const existing = await prisma.vendorBill.findFirst({ where: { tenantId: auth.tenantId, vendorName, billNumber } });
-  if (existing) return { entityType: 'vendorBill', entityId: existing.id };
+  if (existing) return { entityType: 'vendorBill', entityId: existing.id, matched: true };
 
   let categoryId: string | null = null;
   const categoryName = text(data.categoryName);
