@@ -23,7 +23,8 @@ import { prisma, unscopedPrisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { navigationFor, surfaceCompositionFor } from '../domains/surfaces.js';
 import { createOrResetSignIn } from '../domains/signIns.js';
-import { loginRateLimit } from '../domains/compliance/corporate/rateLimit.js';
+import { loginRateLimit, recoveryRateLimit } from '../domains/compliance/corporate/rateLimit.js';
+import { recoverAccount } from '../domains/accountRecovery.js';
 
 const router = Router();
 
@@ -126,6 +127,29 @@ router.post(
     const auth = req.ctx!.auth!;
     await changePassword(auth.userId!, input.currentPassword, input.newPassword);
     return { ok: true };
+  }),
+);
+
+/**
+ * Recovers a locked-out employee's sign-in. The founder or the IT desk calls it;
+ * the employee cannot, and no code is sent to a phone or an inbox. The response
+ * carries the one-time password, so it is marked uncacheable. See
+ * domains/accountRecovery.ts for the refusals and the audit.
+ */
+router.post(
+  '/account-recovery',
+  recoveryRateLimit,
+  requireAuth,
+  handler(async (req, res) => {
+    const schema = z.object({
+      userId: z.string().min(1),
+      reason: z.string(),
+      resetMfa: z.boolean().optional(),
+      totpCode: z.string().optional(),
+    });
+    const input = schema.parse(req.body);
+    res.setHeader('Cache-Control', 'no-store');
+    return recoverAccount(input);
   }),
 );
 

@@ -1247,6 +1247,10 @@ model Principal {
   id           String    @id @default(cuid())
   email        String    @unique
   passwordHash String
+  /// Set when an account recovery issued a one-time password. While it is set,
+  /// every authenticated route but change-password and logout refuses with
+  /// PASSWORD_CHANGE_REQUIRED (lib/http.ts). Cleared by changePassword.
+  mustChangePassword Boolean @default(false)
   status       String    @default("active") // active | suspended
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())

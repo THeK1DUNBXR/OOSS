@@ -196,6 +196,10 @@ export const EVENTS = {
   /// employment here (§1.10). Never fires on the founding-account seed path.
   SIGN_IN_CREATED: 'kz.idn.sign_in.created',
   SIGN_IN_RESET: 'kz.idn.sign_in.reset',
+  /// A locked-out account's sign-in was recovered by the founder or the IT desk:
+  /// password rotated, live sessions revoked, optionally TOTP cleared. Carries no
+  /// secret. The domain is `idn` because the grammar admits two to four letters.
+  ACCOUNT_RECOVERED: 'kz.idn.account.recovered',
   /// A principal chose which entity to continue in, after `login()` returned
   /// more than one. Written in the target tenant only — switching carries no
   /// cross-tenant event, the same way the token it issues carries no

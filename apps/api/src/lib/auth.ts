@@ -26,7 +26,7 @@ import {
   type TenantConfig,
   type TenantKind,
 } from '@kaizen/shared';
-import { prisma, unscopedPrisma, num } from '../platform/db.js';
+import { prisma, unscopedPrisma, num, type DbTx } from '../platform/db.js';
 import { asSystem, runWithContext, newRequestContext, type AuthContext } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { emit } from '../platform/eventBus.js';
@@ -205,18 +205,18 @@ function signMfaChallenge(payload: Omit<MfaChallengePayload, 'mfaChallenge'>): s
   return jwt.sign({ ...payload, mfaChallenge: true }, JWT_SECRET, { expiresIn: MFA_CHALLENGE_TTL });
 }
 
-function verifyMfaChallenge(token: string): MfaChallengePayload {
+function verifyMfaChallenge(token: string): MfaChallengePayload & { iat?: number } {
   let payload: unknown;
   try {
     payload = jwt.verify(token, JWT_SECRET);
   } catch {
     throw ApiError.unauthorized('MFA challenge is invalid or expired. Sign in again.');
   }
-  const p = payload as Partial<MfaChallengePayload>;
+  const p = payload as Partial<MfaChallengePayload> & { iat?: number };
   if (!p.mfaChallenge || !p.userId || !p.tenantId || !p.affiliationId) {
     throw ApiError.unauthorized('MFA challenge is invalid or expired. Sign in again.');
   }
-  return p as MfaChallengePayload;
+  return p as MfaChallengePayload & { iat?: number };
 }
 
 function signSelectionToken(principalId: string): string {
@@ -560,6 +560,11 @@ export async function verifyMfaAndLogin(challengeToken: string, code: string): P
   const payload = verifyMfaChallenge(challengeToken);
   const user = await unscopedPrisma.user.findFirst({ where: { id: payload.userId, status: 'active' } });
   if (!user || !user.mfaSecret) throw ApiError.unauthorized('MFA challenge is invalid or expired. Sign in again.');
+  // A password recovered after this challenge was issued makes it stale, even
+  // though the TOTP secret it checks may still be enrolled.
+  if (!user.principalId || (await credentialChangedSince(user.principalId, payload.iat))) {
+    throw ApiError.unauthorized('MFA challenge is invalid or expired. Sign in again.');
+  }
 
   if (!verifyTotp(user.mfaSecret, code)) {
     throw ApiError.unauthorized(
@@ -615,7 +620,7 @@ export async function changePassword(userId: string, currentPassword: string, ne
   assertPasswordAllowed(newPassword, principal.email);
   await unscopedPrisma.principal.update({
     where: { id: principal.id },
-    data: { passwordHash: await hashPassword(newPassword) },
+    data: { passwordHash: await hashPassword(newPassword), mustChangePassword: false },
   });
   // The credential is one thing across entities, so the "last changed" stamp
   // lands on every user of the principal, not only the one that asked.
@@ -623,6 +628,84 @@ export async function changePassword(userId: string, currentPassword: string, ne
     where: { principalId: principal.id },
     data: { passwordChangedAt: new Date() },
   });
+}
+
+/**
+ * Whether this sign-in also holds a `User` row in another entity. Recovery
+ * rotates the one credential every entity shares and ends every session of
+ * the principal, so a recovery begun in one entity would reach into another
+ * entity's sign-ins. The recovery route refuses such a principal until the
+ * operator procedure exists (an owner question, see the account-recovery PR).
+ * The other row is read only to learn that it exists; nothing about it leaves
+ * the request.
+ */
+export async function principalHoldsOtherEntities(principalId: string, tenantId: string): Promise<boolean> {
+  const other = await unscopedPrisma.user.findFirst({
+    where: { principalId, tenantId: { not: tenantId } },
+    select: { id: true },
+  });
+  return other !== null;
+}
+
+/**
+ * The credential half of an account recovery, inside the caller's transaction.
+ * The caller has already checked that the target is in this tenant, active,
+ * single-entity, not a founder, and has a principal.
+ *
+ * Rotates the password to a fresh random one, which the caller returns once
+ * and nothing stores in plain. Clears the lock, because a locked-out employee
+ * cannot use a new password until it lifts. Clears the TOTP enrolment only when
+ * asked. Ends every live session of the principal, which also ends its refresh
+ * tokens (`refreshSession` refuses a revoked session). Stamps `passwordChangedAt`
+ * so that a selection token or MFA challenge minted earlier is refused too
+ * (`credentialChangedSince`).
+ *
+ * Sets `Principal.mustChangePassword`, so the one-time password opens nothing but
+ * change-password until it is replaced (lib/http.ts, `contextMiddleware`).
+ */
+export async function recoverSignIn(
+  tx: DbTx,
+  args: { userId: string; principalId: string; resetMfa: boolean; now: Date },
+): Promise<{ password: string; sessionsRevoked: number }> {
+  // 96 bits from the CSPRNG, base64url: a sixteen-character password that
+  // passes the policy floor (`assertPasswordAllowed`) by construction.
+  const password = randomBytes(12).toString('base64url');
+  await tx.principal.update({
+    where: { id: args.principalId },
+    data: { passwordHash: await hashPassword(password), mustChangePassword: true },
+  });
+  await tx.user.update({
+    where: { id: args.userId },
+    data: {
+      passwordChangedAt: args.now,
+      failedLoginCount: 0,
+      lockedUntil: null,
+      ...(args.resetMfa ? { mfaSecret: null, mfaEnabledAt: null } : {}),
+    },
+  });
+  const userIds = (await tx.user.findMany({ where: { principalId: args.principalId }, select: { id: true } })).map(
+    (u) => u.id,
+  );
+  const revoked = await tx.session.updateMany({
+    where: { userId: { in: userIds }, revokedAt: null },
+    data: { revokedAt: args.now },
+  });
+  return { password, sessionsRevoked: revoked.count };
+}
+
+/**
+ * A selection token or MFA challenge minted before the credential last changed
+ * is refused. Both are short-lived and carry no `Session` row, so revoking
+ * sessions does not reach them; this check is what does. An `iat`-less token is
+ * refused too, since every token this file mints carries one.
+ */
+async function credentialChangedSince(principalId: string, issuedAtSeconds: number | undefined): Promise<boolean> {
+  if (issuedAtSeconds === undefined) return true;
+  const changed = await unscopedPrisma.user.findFirst({
+    where: { principalId, passwordChangedAt: { gt: new Date(issuedAtSeconds * 1000) } },
+    select: { id: true },
+  });
+  return changed !== null;
 }
 
 /** `GET /auth/entities` — the same list `login()` would have offered, for a principal already holding a normal token. */
@@ -650,9 +733,14 @@ export async function identifySwitchCaller(
   } catch {
     throw ApiError.unauthorized('Session token is invalid or expired.');
   }
-  const payload = decoded as Partial<SelectionTokenPayload & TokenPayload>;
+  const payload = decoded as Partial<SelectionTokenPayload & TokenPayload> & { iat?: number };
 
   if (payload.purpose === 'select-entity' && payload.principalId) {
+    // Refused when the password changed after the token was minted: a recovery
+    // since then must end it, and revoking sessions does not reach it.
+    if (await credentialChangedSince(payload.principalId, payload.iat)) {
+      throw ApiError.unauthorized('Session token is invalid or expired.');
+    }
     return { principalId: payload.principalId };
   }
   if (payload.userId && payload.tenantId) {
@@ -1001,7 +1089,7 @@ export async function buildSessionUser(
 ): Promise<SessionUser> {
   const user = await unscopedPrisma.user.findFirstOrThrow({
     where: { id: userId },
-    include: { tenant: true, person: true },
+    include: { tenant: true, person: true, principal: { select: { mustChangePassword: true } } },
   });
 
   const affiliations = await unscopedPrisma.affiliation.findMany({
@@ -1071,6 +1159,7 @@ export async function buildSessionUser(
       riskClassCeiling: g.riskClassCeiling,
     })),
     branch: user.branch,
+    mustChangePassword: user.principal?.mustChangePassword ?? false,
   };
 }
 

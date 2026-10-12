@@ -80,6 +80,13 @@ export interface SessionUser {
   grants: string[];
   authorityGrants: AuthorityGrantView[];
   branch: string | null;
+  /**
+   * True for a sign-in whose one-time password was issued by an account
+   * recovery and has not been replaced. The API then answers every route but
+   * change-password and logout with 403 PASSWORD_CHANGE_REQUIRED (lib/http.ts),
+   * so the sign-in response is where the web learns it is owed a change.
+   */
+  mustChangePassword: boolean;
 }
 
 export const TENANT_KINDS = ['holding', 'subsidiary', 'standalone'] as const;
