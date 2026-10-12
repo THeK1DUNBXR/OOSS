@@ -196,6 +196,8 @@
 
 **`apps/api/src/domains/marketing/adapters/console.ts`** (74 lines) — ConsoleAdapter:29
 
+**`apps/api/src/domains/marketing/adapters/fake.ts`** (122 lines) — FakeEmailRecord:35 · FakeEmailAdapter:51 · fakeOutbox:114 · clearFakeOutbox:119
+
 **`apps/api/src/domains/marketing/adapters/httpEmail.ts`** (142 lines) — HttpEmailAdapter:56
 
 **`apps/api/src/domains/marketing/adapters/merge.ts`** (94 lines) — extractMergeFields:45 · renderMergeFields:80
@@ -204,7 +206,7 @@
 
 **`apps/api/src/domains/marketing/adapters/notConfigured.ts`** (50 lines) — NotConfiguredAdapter:20
 
-**`apps/api/src/domains/marketing/adapters/registry.ts`** (100 lines) — getAdapter:76 · adapterStatus:85 · resetAdapterCacheForTests:97
+**`apps/api/src/domains/marketing/adapters/registry.ts`** (102 lines) — getAdapter:78 · adapterStatus:87 · resetAdapterCacheForTests:99
 
 **`apps/api/src/domains/marketing/adapters/types.ts`** (100 lines) — ChannelKey:15 · ChannelKind:32 · OutboundMessage:34 · SendResult:51 · RenderedMessage:57 · InboundDeliveryEvent:64 · ChannelAdapter:77
 
