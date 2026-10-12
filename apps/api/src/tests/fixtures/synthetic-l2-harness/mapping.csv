@@ -1,0 +1,5 @@
+ledgerGroup,accountClass,accountName,lineCode
+bank,asset,SYNTH Bank,
+sales,income,SYNTH Sales,SYNTHLINE1
+rent,expense,SYNTH Rent,SYNTHLINE1
+suspense,equity,Opening Balance Difference,

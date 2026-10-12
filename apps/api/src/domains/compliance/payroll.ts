@@ -650,6 +650,8 @@ async function issuePayslipsForRun(payrollRunId: string, payPeriod: string, inst
     if (!instruction || instruction.computedFrom == null || instruction.payslipNumber) continue;
 
     const employment = instruction.employmentRelationship;
+    // Decrypted once here: the masked form is taken from the clear value, not the ciphertext (FX-64).
+    const esicPlain = readRegulated(employment.esicNumber);
 
     const snapshot = {
       employer: {
@@ -661,8 +663,8 @@ async function issuePayslipsForRun(payrollRunId: string, payPeriod: string, inst
       employee: {
         name: employment.person.fullName,
         designation: employment.assignments?.[0]?.position?.job?.title ?? null,
-        uan: employment.uanNumber ?? null,
-        esicNumber: employment.esicNumber ? `XXXX${employment.esicNumber.slice(-4)}` : null,
+        uan: readRegulated(employment.uanNumber),
+        esicNumber: esicPlain ? `XXXX${esicPlain.slice(-4)}` : null,
       },
       payPeriod,
       earnings: {
@@ -796,7 +798,7 @@ export async function exportEcr(payrollRunId: string): Promise<string> {
     const pfWage = num(i.basicPay) ?? 0;
     const epsWage = Math.min(pfWage, pfWage); // EPS wage equals capped basic already
     return [
-      employment.uanNumber ?? '',
+      readRegulated(employment.uanNumber) ?? '',
       employment.person.fullName,
       num(i.grossAmount),
       pfWage,
@@ -830,7 +832,9 @@ export async function exportEsic(payrollRunId: string): Promise<string> {
   const rows = ['IP Number,IP Name,Days,Wages,Reason Code'];
   for (const i of instructions) {
     const employment = i.employmentRelationship;
-    rows.push([employment.esicNumber ?? '', employment.person.fullName, 26, num(i.grossAmount), ''].join(','));
+    rows.push(
+      [readRegulated(employment.esicNumber) ?? '', employment.person.fullName, 26, num(i.grossAmount), ''].join(','),
+    );
   }
 
   await auditExport('payroll_run', 'esic', instructions.length);
@@ -980,6 +984,7 @@ export async function setBankDetails(employmentRelationshipId: string, input: Ba
     ...(input.bankAccountNumber !== undefined ? { bankAccountNumber: encryptField(input.bankAccountNumber) } : {}),
     ...(input.bankAccountName !== undefined ? { bankAccountName: encryptField(input.bankAccountName) } : {}),
     ...(input.bankIfsc !== undefined ? { bankIfsc: encryptField(input.bankIfsc) } : {}),
+    ...(input.esicNumber !== undefined ? { esicNumber: encryptField(input.esicNumber) } : {}),
   };
   const row = await prisma.employmentRelationship.update({ where: { id: employmentRelationshipId }, data });
   // Regulated values themselves never enter the diff — only that the fields changed.

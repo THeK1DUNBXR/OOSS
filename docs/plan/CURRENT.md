@@ -20,27 +20,27 @@ Checked against the code on 2026-10-12. The plan follows the code (DECISIONS.md,
 
 Built and checked:
 
-- 0.7: schema split, `scripts/genmap.mjs`, `docs/plan/MAP.md`, `db:validate` and `db:drift` (CI runs both: `.github/workflows/ci.yml:42` and `:91`).
-- 0.1: `platform/config.ts` loads through a Zod schema. The `lib/auth.ts` fallback is gone and `TENANT_ENFORCE_MODE` is absent from source. Open: the FX-60 refusal applies only in production today (`platform/config.ts:150`). Ruled in round 24 item b: it applies in every environment. The code change belongs to the Phase 0 session.
+- 0.7: schema split, `scripts/genmap.mjs`, `docs/plan/MAP.md`, `db:validate` and `db:drift` (CI runs both: `.github/workflows/ci.yml:42` and `:120`).
+- 0.1: `platform/config.ts` loads through a Zod schema. The `lib/auth.ts` fallback is gone and `TENANT_ENFORCE_MODE` is absent from source. FX-60: `FIELD_ENCRYPTION_KEY` is required in every environment (`platform/config.ts:96-104`, round 24 item b). The production check at `config.ts:158` is for `UNSCOPED_DATABASE_URL`, a different variable.
 - Time helpers: `packages/shared/src/time.ts`, used for FX-40, FX-41 and FX-42.
-- 0.8 (part): ESLint; Prettier (CI runs `pnpm format:check`, `ci.yml:47`); build identity; migration baseline.
+- 0.8 (part): ESLint; Prettier (CI runs `pnpm format:check`, `ci.yml:53`); build identity; migration baseline.
 - 0.2: sessions with `jti`, 15-minute access token, hashed refresh token.
 - 0.3 and 0.4: helmet, CORS allowlist, express-rate-limit with a Postgres store, pino.
 
 Open in Wave 0:
 
-- 0.8: dead classes at `Start.tsx:100,109` and `People.tsx:56` are not confirmed. `db push` still runs in `apps/api/docker-entrypoint.sh:30`.
-- 0.1: FX-60 refusal in every environment (round 24 item b). The code still checks production only (`config.ts:150`). The dev key is commented out in `apps/api/.env.example:17`.
-- 0.3 and 0.4: error-leak fix and G11 redaction test not located.
+- 0.8: dead classes are done. `band-healthy` has no references, and the token guard is `scripts/check-tailwind-tokens.mjs`, run by `pnpm lint` (`package.json:22`, `ci.yml:44`). The docker entrypoint runs `prisma migrate deploy`, not `db push` (`apps/api/docker-entrypoint.sh:33`).
+- 0.1: FX-60 refusal applies in every environment (round 24 item b), as the code now does (`platform/config.ts:96-104`). The dev key is blank, not commented out, in `apps/api/.env.example:18`.
+- 0.3: error-leak fix not confirmed; the error handler still sends `err.message` (`apps/api/src/lib/http.ts:150`). 0.4: the G11 redaction test exists (`apps/api/src/tests/logRedaction.test.ts`).
 - 0.5 scheduler is built; the croner licence check is still open.
-- CI does not set `FIELD_ENCRYPTION_KEY` (`.github/workflows/ci.yml`), so G5's "CI must supply" requirement is not met (round 24 item b: CI must supply one).
+- CI sets `FIELD_ENCRYPTION_KEY` (`.github/workflows/ci.yml:107,171,245`), so G5's "CI must supply" requirement is met (round 24 item b).
 - G6 and G10 are not built.
 
 Retired: the "pending CI on the PR" line (the branch is an ancestor of `origin/main`), and the "Prettier reformat deferred" line (`format:check` runs in CI).
 
 ## Remaining Phase 0 money work (round 24 item e)
 
-- Migrate the roughly 250 `Decimal(18,2)` money columns outside the ledger to bigint paise before Phase 0 closes: items 1.5 (cashbook, `model Transaction`) and 1.6 (`round2`, `finance.ts:150`), with trial-balance assertions. Owner wording: "ledger first". RULED 2026-10-12: money comes first; ORDERED principle 1 (money before ledger) stands (see DECISIONS.md, round 24 follow-up).
+- Migrate the 101 `Decimal(18, 2)` money column definitions in `apps/api/prisma/schema/` (measured at `f08d279` with `grep -rc "Decimal(18, 2)" apps/api/prisma/schema/ | awk -F: '{s+=$2} END {print s}'`; the earlier estimate was roughly 250) to bigint paise before Phase 0 closes: items 1.5 (cashbook, `model Transaction`) and 1.6 (`round2`, `finance.ts:150`), with trial-balance assertions. Owner wording: "ledger first". RULED 2026-10-12: money comes first; ORDERED principle 1 (money before ledger) stands (see DECISIONS.md, round 24 follow-up).
 
 ## Exit criteria (Wave 0)
 
