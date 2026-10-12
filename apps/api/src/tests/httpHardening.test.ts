@@ -11,9 +11,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import express from 'express';
 import type { Server } from 'node:http';
 import { createApp } from '../server.js';
-import { contextMiddleware, errorMiddleware } from '../lib/http.js';
+import { apiErrorBody, contextMiddleware, errorMiddleware } from '../lib/http.js';
 import { requestLog } from '../lib/requestLog.js';
 import { createLogger } from '../platform/logger.js';
+import { ApiError } from '../platform/errors.js';
+import type { AxisOutcome } from '@kaizen/shared';
 import { unscopedPrisma } from '../platform/db.js';
 
 const ALLOWED = 'https://zen.kaizen.test';
@@ -120,6 +122,102 @@ describe('unexpected errors (http.ts errorMiddleware)', () => {
     } finally {
       await new Promise<void>((resolve) => s.close(() => resolve()));
     }
+  });
+});
+
+describe('0.3 ApiError details reach the client by allowlist only', () => {
+  // A route that throws an ApiError whose details carry what a careless caller
+  // might put there: a stack, a SQL fragment, a raw cause, another tenant's id,
+  // beside the reason code and field errors the client is meant to get.
+  const SECRET_STACK = 'at Object.<anonymous> (/srv/api/src/domains/x.ts:1:1)';
+  const SECRET_SQL = 'INSERT INTO "journal_lines" VALUES (1)';
+  const OTHER_TENANT = 'tenant-of-another-company-0001';
+
+  async function over(err: unknown): Promise<{ status: number; body: { error: Record<string, unknown> } }> {
+    const app = express();
+    app.use(contextMiddleware);
+    app.get('/probe', () => {
+      throw err;
+    });
+    app.use(errorMiddleware);
+    const s = app.listen(0);
+    const port = (s.address() as { port: number }).port;
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/probe`);
+      return { status: res.status, body: (await res.json()) as { error: Record<string, unknown> } };
+    } finally {
+      await new Promise<void>((resolve) => s.close(() => resolve()));
+    }
+  }
+
+  it('sends the keys a client reads, and drops a stack, SQL, a raw cause and another tenant id', async () => {
+    const { status, body } = await over(
+      new ApiError(422, 'UNPROCESSABLE', 'Refused.', {
+        reasonCode: 'accounting_period_closed',
+        blockingCount: 2,
+        formErrors: [],
+        fieldErrors: { amount: ['Required'] },
+        stack: SECRET_STACK,
+        sql: SECRET_SQL,
+        cause: new Error(SECRET_SQL),
+        subsidiaryTenantId: OTHER_TENANT,
+      }),
+    );
+    expect(status).toBe(422);
+    expect(body.error.details).toEqual({
+      reasonCode: 'accounting_period_closed',
+      blockingCount: 2,
+      formErrors: [],
+      fieldErrors: { amount: ['Required'] },
+    });
+    const text = JSON.stringify(body);
+    expect(text).not.toContain(SECRET_STACK);
+    expect(text).not.toContain('journal_lines');
+    expect(text).not.toContain(OTHER_TENANT);
+  });
+
+  it('still hoists candidates and axes to the top of the error, where the client reads them', async () => {
+    const candidates = [{ personId: 'p-1', score: 0.9 }];
+    const axes: AxisOutcome[] = [{ axis: 'WHO', passed: false, reason: 'no grant' }];
+    const dup = await over(ApiError.duplicate('Match.', candidates));
+    expect(dup.body.error.candidates).toEqual(candidates);
+    const denied = await over(ApiError.forbidden('No.', axes));
+    expect(denied.body.error.axes).toEqual(axes);
+  });
+
+  it('keeps the permitted next states a refused campaign move names (marketing/campaigns.ts:678)', async () => {
+    const { status, body } = await over(
+      ApiError.conflict("Invalid transition: cannot launch a campaign from 'draft' to 'closed'.", {
+        from: 'draft',
+        to: 'closed',
+        allowed: ['scheduled', 'cancelled'],
+      }),
+    );
+    expect(status).toBe(409);
+    expect(body.error.details).toEqual({ from: 'draft', to: 'closed', allowed: ['scheduled', 'cancelled'] });
+  });
+
+  it('drops details that are not an object, rather than sending them as they are', async () => {
+    const { body } = await over(new ApiError(409, 'CONFLICT', 'Taken.', `raw ${SECRET_SQL}`));
+    expect(JSON.stringify(body)).not.toContain('journal_lines');
+  });
+});
+
+describe('0.3 a 5xx ApiError in production sends no message text', () => {
+  it('replaces the message and the details with a generic one, and keeps the code', () => {
+    const err = ApiError.internal('relation "journal_lines" violates check on tenant t-2', { stack: 'x' });
+    const body = apiErrorBody(err, { production: true, requestId: 'req-9' });
+    expect(JSON.stringify(body)).not.toContain('journal_lines');
+    expect(JSON.stringify(body)).not.toContain('t-2');
+    expect(body).toEqual({
+      error: { code: 'INTERNAL', message: expect.any(String), requestId: 'req-9' },
+    });
+  });
+
+  it('keeps a 4xx message, which is written for the user', () => {
+    const err = ApiError.unprocessable('No accounting period is open for 2026-10.');
+    const body = apiErrorBody(err, { production: true, requestId: 'req-9' });
+    expect(body.error.message).toBe('No accounting period is open for 2026-10.');
   });
 });
 

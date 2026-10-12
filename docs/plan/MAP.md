@@ -308,7 +308,7 @@
 
 **`apps/api/src/platform/errors.ts`** (61 lines) — ApiError:3
 
-**`apps/api/src/platform/eventBus.ts`** (635 lines) — EmitInput:34 · Subscriber:60 · Registration:62 · emittedEvents:71 · setEventCapture:74 · subscribe:79 · subscribersFor:93 · subscriberCount:97 · clearSubscribers:101 · computeHash:116 · computeHashV2:130 · CURRENT_HASH_VERSION:139 · hashFor:145 · ChainFields:157 · chainBodyOf:179 · emit:362 · wouldLoop:553 · ChainVerification:569 · verifyChain:593
+**`apps/api/src/platform/eventBus.ts`** (667 lines) — EmitInput:35 · Subscriber:61 · Registration:63 · emittedEvents:72 · setEventCapture:75 · subscribe:80 · subscribersFor:94 · subscriberCount:98 · clearSubscribers:102 · computeHash:117 · computeHashV2:131 · CURRENT_HASH_VERSION:140 · hashFor:146 · ChainFields:158 · chainBodyOf:180 · emit:363 · wouldLoop:554 · ChainVerification:570 · verifyChain:600
 
 **`apps/api/src/platform/exceptions.ts`** (445 lines) — RaiseExceptionInput:33 · passesFourPropertyTest:59 · OPEN_STATES:70 · raiseException:114 · acknowledgeException:282 · resolveException:297 · escalateException:325 · severityToPriority:400 · NotifyInput:415 · notify:427
 
@@ -442,7 +442,7 @@
 
 **`apps/api/src/lib/auth.ts`** (1243 lines) — assertProductionSecrets:89 · TokenPayload:121 · SelectionTokenPayload:136 · signToken:141 · hashRefreshSecret:146 · liveSessionFor:155 · verifyToken:189 · MfaChallengePayload:197 · hashPassword:228 · ensureSignInPrincipal:248 · EntitySelectionResult:320 · assertPasswordAllowed:331 · LoginResult:388 · MfaRequiredResult:396 · login:419 · verifyMfaAndLogin:559 · enrolMfa:591 · confirmMfa:597 · changePassword:613 · principalHoldsOtherEntities:642 · recoverSignIn:666 · entitiesForToken:712 · identifySwitchCaller:727 · switchEntity:769 · SessionRefresh:831 · refreshSession:858 · logoutWithRefreshCookie:1021 · logoutSession:1074 · buildSessionUser:1084 · toAuthContext:1166 · switchContext:1198
 
-**`apps/api/src/lib/http.ts`** (224 lines) — ceilingForRole:38 · contextMiddleware:51 · requireAuth:119 · handler:128 · errorMiddleware:144 · parsePaging:197 · str:203 · bool:207 · date:213 · numeric:219
+**`apps/api/src/lib/http.ts`** (352 lines) — ceilingForRole:39 · contextMiddleware:52 · requireAuth:120 · handler:129 · clientDetails:226 · ApiErrorBody:235 · apiErrorBody:252 · errorMiddleware:274 · parsePaging:325 · str:331 · bool:335 · date:341 · numeric:347
 
 **`apps/api/src/lib/refreshCookie.ts`** (51 lines) — REFRESH_COOKIE:16 · readRefreshCookie:19 · setRefreshCookie:44 · clearRefreshCookie:48
 

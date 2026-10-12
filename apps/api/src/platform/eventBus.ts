@@ -27,6 +27,7 @@ import {
 } from '@kaizen/shared';
 import { prisma, unscopedPrisma, type DbTx } from './db.js';
 import { config } from './config.js';
+import { ApiError } from './errors.js';
 import { currentAuth, requireContext } from './context.js';
 import { drainOutbox } from './outbox.js';
 import { canonicalJson } from './canonicalJson.js';
@@ -577,6 +578,12 @@ export interface ChainVerification {
    * caller cannot read "valid" as "the whole trail is intact" from a partial walk.
    */
   complete: boolean;
+  /**
+   * Set only when a capped walk stopped with `complete: false` and no failure:
+   * pass it back as `cursor` to continue after the last row this call checked.
+   * `checked` counts this call's rows, not the chain's.
+   */
+  nextCursor?: string;
 }
 
 const VERIFY_PAGE_SIZE = 1000;
@@ -590,7 +597,10 @@ const VERIFY_PAGE_SIZE = 1000;
  * also stopped at 5,000 rows and said `valid: true` about the rest, and it
  * skipped legacy rows that the append head does chain through.
  */
-export async function verifyChain(tenantId: string, opts: { maxRows?: number } = {}): Promise<ChainVerification> {
+export async function verifyChain(
+  tenantId: string,
+  opts: { maxRows?: number; cursor?: string } = {},
+): Promise<ChainVerification> {
   // Deliberately the unscoped client: the tenant is supplied explicitly and
   // the point of the walk is to be independent of the request context that
   // wrote the chain, so an auditor can verify it out of band.
@@ -598,9 +608,31 @@ export async function verifyChain(tenantId: string, opts: { maxRows?: number } =
   let cursor: bigint | null = null;
   let checked = 0;
 
+  if (opts.cursor !== undefined) {
+    if (!/^\d+$/.test(opts.cursor)) throw ApiError.badRequest('The verification cursor is not valid.');
+    cursor = BigInt(opts.cursor);
+    // The hash to continue from is the last row of the previous page, and it is
+    // read for this tenant only: a cursor minted for another tenant names no row
+    // here and is refused, rather than resuming from some other chain's hash.
+    const from = await unscopedPrisma.eventRecord.findFirst({
+      where: { tenantId, seq: cursor },
+      select: { hash: true },
+    });
+    if (!from) throw ApiError.badRequest('The verification cursor does not belong to this tenant.');
+    expectedPrev = from.hash;
+  }
+
   for (;;) {
     const want = opts.maxRows === undefined ? VERIFY_PAGE_SIZE : Math.min(VERIFY_PAGE_SIZE, opts.maxRows - checked);
-    if (want <= 0) return { valid: true, checked, brokenAt: null, complete: false };
+    if (want <= 0) {
+      return {
+        valid: true,
+        checked,
+        brokenAt: null,
+        complete: false,
+        ...(cursor === null ? {} : { nextCursor: cursor.toString() }),
+      };
+    }
 
     // By sequence, for the same reason the append reads the head that way:
     // several records share a millisecond, so `recordedAt asc` walks them in an
