@@ -126,7 +126,7 @@ async function resolvePlacements(inputs: PlacementInput[]) {
   }
   const levels = await prisma.accessLevel.findMany({
     where: { code: { in: inputs.map((p) => p.levelCode) } },
-    select: { id: true, code: true },
+    select: { id: true, code: true, reach: true },
   });
   const seen = new Set<string>();
   const out: { verticalId: string; levelId: string; unitCode: string }[] = [];
@@ -136,6 +136,14 @@ async function resolvePlacements(inputs: PlacementInput[]) {
     const level = levels.find((l) => l.code === p.levelCode);
     if (!level) throw ApiError.unprocessable(`Level ${p.levelCode} is not defined for this tenant.`);
     const unitCode = (p.unitCode ?? '').trim();
+    // Company reach is company-wide: a unit on it has nothing to narrow, and the compile
+    // would drop it silently. Refused here, where the author can see it; compile.ts keeps
+    // the same guard as a backstop.
+    if (level.reach === 'company' && unitCode !== '') {
+      throw ApiError.unprocessable(
+        `This placement is refused: a company placement cannot name a unit (${p.verticalCode}, ${p.levelCode}).`,
+      );
+    }
     if (unitCode !== '') {
       const unit = await prisma.unit.findFirst({ where: { code: unitCode, effectiveTo: null }, select: { id: true } });
       if (!unit) throw ApiError.unprocessable(`Unit ${unitCode} has no open row.`);
