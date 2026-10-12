@@ -22,7 +22,7 @@ Markers: `BLOCKED-BY` marks a work item that cannot start until the named condit
 6. Every stop-ship fix starts with a failing test on the old code, in a separate first commit.
 7. Statutory values are date-effective `StatutoryRule` rows, seeded DRAFT until sign-off. The interim sign-off holder is the internal finance head.
 8. Statutory uncertainty means stop and flag it. Do not guess.
-9. Open source is learned from by reading and rewriting, never by copying (owner method). Exception for the mail component only: copy code from open-source mail projects where relevant and log provenance (round 22 clarification, DECISIONS.md, 2026-10-12).
+9. Open source: copying code from open-source projects is an approved way to build any feature (round 24 item g; the round 22 clarification extended it from mail). Each copied file is logged in `docs/plan/zen360/MAIL-PROVENANCE.md`. Proprietary or paid software is not copied or reverse-engineered; only public docs and feature lists are used. Licences are set aside for now (round 22, second clarification).
 
 ---
 
@@ -36,7 +36,7 @@ Stop rule for each wave: the wave's listed items are merged, and the gates named
 
 - **0.7 Schema split and tooling.** Split the schema into `apps/api/prisma/schema/`. Add `genmap.mjs`. Add scoped test scripts, including `test: prisma validate` and a `migrate diff` no-drift check. **Status 2026-10-12: DONE.** `scripts/genmap.mjs`, `docs/plan/MAP.md`, `db:validate` and `db:drift` in `apps/api/package.json`, the schema split under `apps/api/prisma/schema/`.
 - **0.1 Config and secrets.** Add `platform/config.ts` with Zod validation at load. Remove the fallback at `auth.ts:31` and `TENANT_ENFORCE_MODE` at `context.ts:94`. Add the FX-60 boot refusal at `privacy.ts:944-954`. **Status 2026-10-12: PARTLY.** Done: Zod load in `platform/config.ts` (`envSchema` at :54); the `auth.ts` fallback is gone (the literal survives only in the refusal list, `lib/auth.ts:74`); `TENANT_ENFORCE_MODE` is absent from source. Open: the FX-60 refusal applies only when `NODE_ENV === 'production'` (`platform/config.ts:150`), see DECISIONS round 23, C-003. The cite `privacy.ts:944-954` is the erasure flow, not a boot check.
-  - Test: boot without `JWT_SECRET` exits, naming the variable. Production without `FIELD_ENCRYPTION_KEY` throws.
+  - Test: boot without `JWT_SECRET` exits, naming the variable. Without `FIELD_ENCRYPTION_KEY` the process refuses to boot in every environment (round 24 item b). Dev uses a dummy key from `apps/api/.env.example` (the example has the key commented out today, line 17: OPEN for the Phase 0 session). CI supplies one (OPEN: `ci.yml` does not set it yet).
 - **Time helpers.** Add `packages/shared/src/time.ts`. Use it for FX-40 (`documentNumber.ts:92-94`), FX-41 (`domains/compliance/tax.ts:60-63`) and FX-42 (`invoicing.ts:266-269`). **Status 2026-10-12: DONE.** `packages/shared/src/time.ts`. FX-40 at `apps/api/src/platform/documentNumber.ts:99`, FX-41 at `apps/api/src/domains/compliance/tax.ts:74`. FX-42's cite is now `totalsMinorOf`, a paise helper, not a date; the period check is `assertPeriodOpen` (`apps/api/src/domains/invoicing.ts:368`, `filingPeriodOf` at :342). The cites in this item are stale.
   - Test: `fyOf(2026-03-31T19:00Z) === '2026-27'`.
 - **0.8 CI.** Add ESLint and Prettier. Remove the dead classes at `Start.tsx:100,109` and `People.tsx:56`. Add a build identity. Replace `db push` with a migration baseline. The migration baseline sits in Wave 0 (DECISIONS.md, round 10). **Status 2026-10-12: PARTLY.** Done: ESLint, Prettier (`.github/workflows/ci.yml:47` runs `pnpm format:check`), build identity (`platform/build.ts`), migration baseline (CI runs `db:validate` and `db:drift`). Open: the dead classes at `Start.tsx:100,109` and `People.tsx:56` are not confirmed (the cited lines are live code; re-derive the list); `db push` still runs in `apps/api/docker-entrypoint.sh:30`.
@@ -75,9 +75,11 @@ Stop rule for each wave: the wave's listed items are merged, and the gates named
 
 ### Wave 3: money and ledger (serial, one person)
 
-- **1.6 Money.** `money.ts` with bigint. Allocate leftover paise to the first line, so 100 split three ways gives 33.34 / 33.33 / 33.33. Delete `round2` (`finance.ts:132`) and the epsilon comparisons. **Status 2026-10-12: PARTLY.** Done: `packages/shared/src/money.ts` (`allocate` at :97, `parseMinor`, `formatMinor`, `applyBps`). Open: `round2` is still at `packages/shared/src/finance.ts:150` with its call sites; the epsilon removal is open. The cite `finance.ts:132` is stale.
+- **1.6 Money.** `money.ts` with bigint. Allocate leftover paise to the first line, so 100 split three ways gives 33.34 / 33.33 / 33.33. Delete `round2` (`finance.ts:150`; earlier cited as :132) and the epsilon comparisons.
+  - Remaining Phase 0 money work (round 24 item e): the roughly 250 `Decimal(18,2)` money columns outside the ledger move to bigint paise before Phase 0 closes, with trial-balance assertions. Items 1.5 and 1.6 stay in Phase 0. Owner wording: "ledger first". OPEN: principle 1 says money before ledger; the owner states which order applies. **Status 2026-10-12: PARTLY.** Done: `packages/shared/src/money.ts` (`allocate` at :97, `parseMinor`, `formatMinor`, `applyBps`). Open: `round2` is still at `packages/shared/src/finance.ts:150` with its call sites; the epsilon removal is open. The cite `finance.ts:132` is stale.
 - **Payment allocation.** `FOR UPDATE` with a DB CHECK. Invoice numbering inside the same transaction (`invoicing.ts:584`). **Status 2026-10-12: PARTLY.** `apps/api/src/domains/finance.ts:275` `allocatePayment` (one lock, commit `1ca0a2c`); invoice numbering is taken at `apps/api/src/domains/invoicing.ts`, not :584. The DB CHECK is not verified.
-- **1.1 Ledger models.** `LedgerEntity`, `AccountingPeriod`, `JournalEntry` (with `entityId`), `JournalLine` (bigint), `LedgerAccount`. **Status 2026-10-12: DONE for models.** `apps/api/prisma/schema/compliance-books.prisma` (`AccountingPeriod` :12, `LedgerEntity` :86, `JournalEntry` :103, `JournalLine` :134, `JournalReversal` :174); `LedgerAccount` at `main.prisma:5106`. OPEN: the bigint type, the two-line minimum and the `set_config` form are not yet checked.
+- **1.1 Ledger models.** `LedgerEntity`, `AccountingPeriod`, `JournalEntry` (with `entityId`), `JournalLine` (bigint), `LedgerAccount`.
+  - **Done (round 24 item d):** `BusinessLine` registry (`apps/api/prisma/schema/business-lines.prisma:11`) and `lineId` / `costCentreId` composite foreign keys on `JournalLine` (`compliance-books.prisma:152-161`; migrations `20261010235800_business_lines`, `20261013110000_business_line_units`, `20261013205000_journal_line_cost_centre_fk`). **Status 2026-10-12: DONE for models.** `apps/api/prisma/schema/compliance-books.prisma` (`AccountingPeriod` :12, `LedgerEntity` :86, `JournalEntry` :103, `JournalLine` :134, `JournalReversal` :174); `LedgerAccount` at `main.prisma:5106`. OPEN: the bigint type, the two-line minimum and the `set_config` form are not yet checked.
 - **1.2 Ledger migration.** Hand-written migration with: a deferred balance trigger, immutability, a period trigger, a two-line minimum, RLS with both USING and WITH CHECK, and `SET LOCAL` via `set_config(..., true)`. **Status 2026-10-12: PARTLY.** Triggers and the REVOKEs are present (`20260920173000_ledger_invariants`, `20261012100000_ledger_gates`, `20261010235900_tenant_rls/migration.sql:51-52`). OPEN: the two-line minimum and the `set_config` form.
   - ~~BLOCKED-BY PgBouncer in transaction mode.~~ **Superseded by round 18b, item 2:** PgBouncer is not a blocker. Revisit only if connections run short.
   - ~~BLOCKED-BY the non-owner role set up on the own server.~~ **Superseded by round 18b, item 5:** the non-owner role is a dev and CI database setting, needed for the immutability test. It is not a hosting item.
@@ -112,6 +114,7 @@ Moved to "After Phase 1: hosting and operations (deferred)" below. The non-owner
 
 ### Wave 6: spine and onboarding
 
+- BusinessLine registry and `lineId` / `costCentreId` on `JournalLine`: **done**, see 1.1 (round 24 item d).
 - Commitment record. **Status 2026-10-12: DONE.** `apps/api/prisma/schema/commitments.prisma`, `apps/api/src/domains/commitments.ts`, migration `20261013100000_commitment_record`.
 - Case record (stays in Phase 0 Wave 6, round 22 item a). **Status 2026-10-12: DONE.** `apps/api/prisma/schema/cases.prisma`, `apps/api/src/domains/cases.ts`, migration `20261013120000_case_record`.
 - Case record. **Clarified by round 21b, item 1 (round 22 item a repeats it):** the customer Case record stays in this wave. The ROADMAP row that put it out of Phase 0 is superseded.
@@ -181,7 +184,7 @@ Stop rule for each sub-phase: its items are merged and its listed tests pass. Te
 - COM-13: response SLA mechanism only. The numbers come after one month of measurement.
 - COM-15: notifications in-app and by email via Resend.
   - BLOCKED-BY the Resend data-hosting check, before the first outside user.
-- COM-02: internal-only shared inbox.
+- COM-02: shared inbox. One mailbox that several employees open (for example support@), with assignment and internal notes. It may receive and send to external addresses (round 24 item g). Customer-facing sends keep human approval. Supersedes the round 4 COM-02 rule "internal-only, no external provider".
 - Employee company mailboxes and in-app inbox (round 21, OPEN, new large scope, not estimated). Owner answers: the app creates and hosts each employee's mailbox; the inbox sends and reads mail and links it to customers (Z3 capture pulled in for employee mail only). Round 22 owner decision, clarified 2026-10-12: copy code from open-source mail projects where relevant (Stalwart and others) into our own mail component, and log provenance in `docs/plan/zen360/MAIL-PROVENANCE.md`. This is not a literal fork. Unresearched caveats (Enterprise features, JMAP, release cadence, hosting conflict) are listed in DECISIONS.md round 22. Still OPEN and not estimated. No CAP row or spec yet. MVP, v2 and later feature phasing is in DECISIONS.md round 22. See DECISIONS.md round 21 and round 22.
 - COM-11: meetings and minutes, typed by people. No recordings.
 - Standups are dropped.
@@ -190,7 +193,7 @@ Stop rule for each sub-phase: its items are merged and its listed tests pass. Te
 
 - Claim, approve, and post to the ledger via `post()` on approval.
 - Desktop capture only.
-- BLOCKED-BY the receipt storage location.
+- Not BLOCKED-BY the receipt storage location. Storage and backups are decided with hosting after Phase 1 (round 24 item i).
 
 ### Feature 1 work items, in waves
 
@@ -229,8 +232,8 @@ Not moved: the non-owner database role stays in item 1.2 as a dev and CI setting
 
 ## Open-source use
 
-- Read and learn only. No third-party code is copied, whatever its licence (owner method).
-  - Exception on record (round 22 clarification, 2026-10-12): for the mail component only, copy code from open-source mail projects where relevant and log provenance. Licence questions are out of scope for now (second clarification, DECISIONS.md, 2026-10-12). Each copied file goes in MAIL-PROVENANCE.md.
+- Copying code from open-source projects is an approved way to build any feature (round 24 item g). Licences are set aside for now (round 22, second clarification). Proprietary or paid software is not copied or reverse-engineered; only public docs and feature lists are used.
+  - Each copied file goes in MAIL-PROVENANCE.md, for any feature and not only mail (round 24 item g). Copied code follows CLAUDE.md (round 22 item vi).
 - Dependencies allowed: pino, express-rate-limit, fast-check (test-only), the LiveKit SDK and server as a service, React Aria, TanStack Table, hey-api, Playwright, schemathesis (dev).
 - Licences to verify before use: helmet, croner.
 - Ideas studied: pg_ledger, pgledger, Formance, pg-boss, xstate, OpenFGA, Zulip, Taiga, Vikunja, Plane, Kimai, frappe hrms, ERPNext, OpenProject, OpenFisca, Catala.
@@ -238,15 +241,17 @@ Not moved: the non-owner database role stays in item 1.2 as a dev and CI setting
 
 ## Access model
 
-Levels are split by stakeholder type:
+Identity types are decided first (round 14, round 24 item a). Level and function are attributes, and each placement carries one level (round 19a(f)). Round 10's "one level per person" and "levels by stakeholder type" are retired.
+
+Identity types:
 
 - Employees: Head, Manager, Staff.
 - Founders and owners.
-- Contractors and freelancers.
+- Contractors and freelancers. Timesheets and tasks are employee-only until guest accounts are designed (round 24 item f; a default, not an owner decision).
 - External auditors and accountants.
 - Board and investors.
 
-The level template ships with the app. ~~Editable per tenant at onboarding.~~ **Per-tenant editing is DEFERRED (round 18b, item 1).** Each person holds one level, plus named extra duties. Exact duties per level and read scope are not yet defined (DECISIONS.md, round 10).
+The level template ships with the app. ~~Editable per tenant at onboarding.~~ **Per-tenant editing is DEFERRED (round 18b, item 1).** Each placement holds one level, plus named extra duties. Exact duties per level and read scope are not yet defined (DECISIONS.md, round 10).
 
 - `payment_create_approve` blocks only granting both permissions; no code gates `payments:approve`, so the pair does not stop any payment until the approval step lands (owner, 2026-10-12).
 

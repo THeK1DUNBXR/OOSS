@@ -910,6 +910,8 @@ Every conflict not covered by items a) to d). Severity and order follow the audi
 | C-029 | "No external users at launch" (round 2) against guest accounts (round 15), deferred (round 16).                                                                                                                | cosmetic      | OPEN - owner ruling needed | audit-1 C-029 |
 | C-032 | "GSP, per README" (D-06 row) against "direct to the government e-invoice portal (IRP), not a GSP" (rounds 2, 11).                                                                                              | cosmetic      | OPEN - owner ruling needed | audit-1 C-032 |
 
+**Status note, round 24 (recorded 2026-10-12).** C-001, C-002, C-003, C-004, C-008, C-013, C-014, C-015, C-016, C-017, C-030 and C-031 are RULED in round 24 (see the round 24 section below). The rows above are unchanged. The other rows remain OPEN.
+
 Items a) to d) cover C-019, C-020, C-005, C-006, C-007, C-011 and C-012. Those rows are closed by the rulings above, except where the item says otherwise.
 
 ### f) Audit findings, not yet ruled (code side)
@@ -939,3 +941,89 @@ CLAUDE.md is not changed on this branch. Owner decision: correct it, or confirm 
 
 - No CLAUDE.md, code, schema or CI change. `docs/plan/MAP.md` is not regenerated (it is generated only for exports and schema changes; the branch changes docs only).
 - Not ruled, and not decided here: the founder payment question (b, point 6); the copy decision for mail (C-013); onboarding decisions (d); every item in the open register (e).
+
+## Owner answers, round 24 (recorded 2026-10-12): audit rulings, second batch
+
+Append-only. These are the owner's answers to the second batch of the read-only audit of 2026-10-12 (the round 23 item e register). The audit report is not in the repository and is cited by ID only. Where this section supersedes an earlier round, it says so. No CLAUDE.md, code, schema or CI file changed with these rulings. The register rows are ruled in the status note under the round 23 register.
+
+### a) C-008: level model
+
+Owner ruling: rounds 14 and 19a stand. Identity type is decided first. Level is stored as an attribute. A person holds one level per placement, and may hold placements in more than one vertical or unit (round 19a(f)). Round 10's "one level per person" and "levels by stakeholder type" are retired.
+
+Edited on this branch: `ORDERED-PLAN.md` (access model section) and `ROADMAP.md` (section 3, access-level assignment).
+
+### b) C-003: FIELD_ENCRYPTION_KEY boot refusal applies in every environment
+
+Owner ruling: the boot refusal for `FIELD_ENCRYPTION_KEY` applies in every environment, as round 2 says. Dev uses a dummy key from `.env.example`. CI supplies one.
+
+Edited on this branch: `CI-GATES-DRAFT.md` G5, `ORDERED-PLAN.md` 0.1 and `CURRENT.md`.
+
+OPEN follow-up for the Phase 0 session. No code was changed here.
+
+1. `apps/api/src/platform/config.ts:150` refuses only when `NODE_ENV === 'production'`.
+2. `.github/workflows/ci.yml:78` and `:149` set `JWT_SECRET` only. No `FIELD_ENCRYPTION_KEY` is set in CI.
+3. `apps/api/.env.example:17` has `# FIELD_ENCRYPTION_KEY=` commented out. There is no dummy key to copy yet. The dummy value is added with the config change.
+
+### c) C-015: recovery holder until onboarding names an IT admin
+
+Owner ruling: until onboarding names an IT admin, the recovery holder is the founder. The founder may also create a stopgap IT owner grant, tagged `to_migrate`. The stopgap is allowed. It is replaced at onboarding.
+
+Tension, stated plainly. Round 19a(b) (line 572 above) says no employees or roles are set up outside onboarding: "No employees or roles are set up through hardcode; they are set up only during onboarding." The audit cited this as "19b(b)". Round 19b has no item (b). The reference is to 19a(b). The owner has chosen to allow the stopgap anyway, as an exception to 19a(b) until onboarding. Round 22 item e (account recovery through the founder or the IT admin) and `ACCESS-MODEL-PLAN.md` "Wave 4 IT-owner conflict" are the sources the stopgap rests on.
+
+### d) C-016: BusinessLine registry and cost-centre foreign key are built
+
+Owner ruling: the BusinessLine registry, with `lineId` and `costCentreId` on `JournalLine`, is already built. The owner asked only for a plan update: `ORDERED-PLAN.md` item 1.1 and Wave 6 record it as done, and it is removed from the open lists.
+
+Checked on 2026-10-12 with grep and ls before marking:
+
+- `apps/api/prisma/schema/business-lines.prisma:11` `model BusinessLine`.
+- `apps/api/prisma/schema/compliance-books.prisma:134` `model JournalLine`. `:152-153` `costCentreId` with a composite foreign key to `CostCentre(tenantId, id)`. `:160-161` `lineId` with a composite foreign key to `BusinessLine(tenantId, id)`.
+- Migrations `20261010235800_business_lines`, `20261013110000_business_line_units` and `20261013205000_journal_line_cost_centre_fk` exist under `apps/api/prisma/migrations/`.
+
+Edited on this branch: `ORDERED-PLAN.md` 1.1 and Wave 6, and the round 20 row of `ACCESS-MODEL-PLAN.md`.
+
+### e) C-017: money columns outside the ledger move to bigint paise before Phase 0 closes
+
+Owner ruling: the roughly 250 `Decimal(18,2)` money columns outside the ledger are migrated to bigint paise before Phase 0 closes. Items 1.5 (cashbook, `model Transaction` at `apps/api/prisma/schema/main.prisma:5205`) and 1.6 (`round2` at `packages/shared/src/finance.ts:150`) stay in Phase 0. The owner's wording is "ledger first", with trial-balance assertions. The owner says Phase 0 is almost done and wants this finished before it closes. Recorded in `ORDERED-PLAN.md` 1.6 and `CURRENT.md` as the remaining Phase 0 money work.
+
+Tension, not resolved here. `ORDERED-PLAN.md` principle 1 says "money before ledger" (`money.ts` lands before the ledger schema). The owner's "ledger first" points the other way. OPEN: the owner states which order applies. The round 23 item f count (253 `Decimal(` declarations) is not all money. Which columns hold money is UNVERIFIED.
+
+### f) C-014: contractor timesheets and tasks are employee-only. DEFAULT, not an owner decision
+
+No owner preference was given. The following is a DEFAULT applied in the plan, and it is labelled as one. Contractors' timesheets and tasks are employee-only until guest accounts are designed. Round 12 item 4 (contractors see their own tasks and timesheets only) remains the rule for when guests exist. The round 16 deferral stands. The owner may override the default.
+
+Edited on this branch: "Guests" is removed from the Phase 1 row of `ACCESS-MODEL-PLAN.md` (the access-model Phase 1 row).
+
+### g) C-031 and C-013 (widened): shared inboxes, and copying open-source code for any feature
+
+g1. **Shared inboxes.** A shared inbox is one mailbox that several employees open, for example support@, with assignment and internal notes. It may receive AND send to external addresses. Round 4 COM-02 ("internal-only, no external email provider") is superseded. Customer-facing sends keep the human-approval rule (CLAUDE.md, "Never": no agent emails a customer without human approval).
+
+g2. **Copying open-source code is approved for any feature.** Copying code from open-source projects is an approved way to build ANY feature, from any project, not only mail. Licences are set aside for now (round 22 second clarification). This supersedes the "read and learn only, never copy" rule (round 5, D-04; `ORDERED-PLAN.md` principle 9 and "Open-source use") for every part of the app. Copied code still follows CLAUDE.md (round 22 item vi).
+
+g3. **Provenance.** `docs/plan/zen360/MAIL-PROVENANCE.md` is kept under the same name. It now covers any copied code, not only mail.
+
+g4. **Limit.** This is for open-source code only. Reverse engineering, or copying proprietary or paid software, is not part of the plan. For those products only public documentation and feature lists are used.
+
+Edited on this branch: `ORDERED-PLAN.md` principle 9, "Open-source use" and 1E COM-02; `zen360/README.md:64`; `MAIL-PROVENANCE.md` header; `ROADMAP.md` 1E and the shared-inbox row.
+
+### h) C-001 and C-030: local only until hosting is decided
+
+Owner ruling: until hosting is decided after Phase 1, the app runs LOCAL ONLY. There is no non-local deployment and no outside user. Residency for LiveKit media and for Resend is decided together with the hosting choice, not before.
+
+Implication, not an owner statement: while no non-local deployment exists, C-001 (an interim owner for TLS, DDoS and rate-limit) does not arise. The Caddyfile and the DPDP line (C-025) are not changed by this ruling.
+
+### i) C-002: receipt storage and backups are decided with hosting
+
+Owner ruling: the receipt storage location and backups are decided with hosting, after Phase 1. Nothing in Phase 1F waits on them.
+
+Edited on this branch: the 1F "BLOCKED-BY the receipt storage location" line in `ORDERED-PLAN.md`.
+
+### j) C-004: single webhook secret and one encryption key, confirmed deferral
+
+Owner ruling: one webhook secret and one encryption key now, because the company is one tenant. Per-tenant versions come with multi-tenant work. This confirms the deferral. It supersedes round 2 (per-tenant HMAC, D-13) and round 5 item 6 (one key per tenant) for the present.
+
+### Owner answers, round 24: what was not done
+
+- No CLAUDE.md, code, schema, CI or `.env.example` change. The OPEN items in b and e are for the Phase 0 session.
+- Not ruled, and not decided here: the order of items 1.5 and 1.6 (e, tension); whether the founder's payment step (round 23 item b, point 6) changes (not in this batch); the statutory approver and the DRAFT-row holder (round 23 item d) remain TBD at onboarding.
+- `docs/plan/MAP.md` is not regenerated. The branch changes documents only.

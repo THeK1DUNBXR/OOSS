@@ -11,7 +11,7 @@ Work in this order.
 2. **0.1 Config and secrets.** `platform/config.ts` with Zod validation at load. Remove the fallback at `auth.ts:31` and `TENANT_ENFORCE_MODE` at `context.ts:94`. Add the FX-60 boot refusal at `privacy.ts:944-954`.
 3. **Time helpers.** `packages/shared/src/time.ts`. Used for FX-40, FX-41 and FX-42 (see ORDERED-PLAN for the file lines).
 4. **0.8 CI.** ESLint and Prettier. Remove the dead classes at `Start.tsx:100,109` and `People.tsx:56`. Build identity. Replace `db push` with a migration baseline.
-   Not active: the Cloudflare Worker removal is done and stands (DECISIONS.md, round 19b, item 2). **Hosting** (server, reverse proxy, caching, routing) is undecided until after Phase 1 (round 18b, item 3). See [`zen360/ORDERED-PLAN.md`](zen360/ORDERED-PLAN.md), "After Phase 1: hosting and operations (deferred)".
+   Not active: the Cloudflare Worker removal is done and stands (DECISIONS.md, round 19b, item 2). **Hosting** (server, reverse proxy, caching, routing) is undecided until after Phase 1 (round 18b, item 3). Until hosting is decided the app runs local only: no non-local deployment and no outside user (round 24 item h). See [`zen360/ORDERED-PLAN.md`](zen360/ORDERED-PLAN.md), "After Phase 1: hosting and operations (deferred)".
 
 ## Status (2026-10-12, round 23)
 
@@ -20,7 +20,7 @@ Checked against the code on 2026-10-12. The plan follows the code (DECISIONS.md,
 Built and checked:
 
 - 0.7: schema split, `scripts/genmap.mjs`, `docs/plan/MAP.md`, `db:validate` and `db:drift` (CI runs both: `.github/workflows/ci.yml:42` and `:91`).
-- 0.1: `platform/config.ts` loads through a Zod schema. The `lib/auth.ts` fallback is gone and `TENANT_ENFORCE_MODE` is absent from source. Open: the FX-60 refusal applies only in production (`platform/config.ts:150`; DECISIONS round 23, C-003).
+- 0.1: `platform/config.ts` loads through a Zod schema. The `lib/auth.ts` fallback is gone and `TENANT_ENFORCE_MODE` is absent from source. Open: the FX-60 refusal applies only in production today (`platform/config.ts:150`). Ruled in round 24 item b: it applies in every environment. The code change belongs to the Phase 0 session.
 - Time helpers: `packages/shared/src/time.ts`, used for FX-40, FX-41 and FX-42.
 - 0.8 (part): ESLint; Prettier (CI runs `pnpm format:check`, `ci.yml:47`); build identity; migration baseline.
 - 0.2: sessions with `jti`, 15-minute access token, hashed refresh token.
@@ -29,17 +29,21 @@ Built and checked:
 Open in Wave 0:
 
 - 0.8: dead classes at `Start.tsx:100,109` and `People.tsx:56` are not confirmed. `db push` still runs in `apps/api/docker-entrypoint.sh:30`.
-- 0.1: FX-60 refusal scope (C-003).
+- 0.1: FX-60 refusal in every environment (round 24 item b). The code still checks production only (`config.ts:150`). The dev key is commented out in `apps/api/.env.example:17`.
 - 0.3 and 0.4: error-leak fix and G11 redaction test not located.
 - 0.5 scheduler is built; the croner licence check is still open.
-- CI does not set `FIELD_ENCRYPTION_KEY` (`.github/workflows/ci.yml`), so G5's "CI must supply" requirement is not met.
+- CI does not set `FIELD_ENCRYPTION_KEY` (`.github/workflows/ci.yml`), so G5's "CI must supply" requirement is not met (round 24 item b: CI must supply one).
 - G6 and G10 are not built.
 
 Retired: the "pending CI on the PR" line (the branch is an ancestor of `origin/main`), and the "Prettier reformat deferred" line (`format:check` runs in CI).
 
+## Remaining Phase 0 money work (round 24 item e)
+
+- Migrate the roughly 250 `Decimal(18,2)` money columns outside the ledger to bigint paise before Phase 0 closes: items 1.5 (cashbook, `model Transaction`) and 1.6 (`round2`, `finance.ts:150`), with trial-balance assertions. Owner wording: "ledger first". OPEN: ORDERED principle 1 says money before ledger.
+
 ## Exit criteria (Wave 0)
 
-- Boot without `JWT_SECRET` exits, naming the variable. Production without `FIELD_ENCRYPTION_KEY` throws.
+- Boot without `JWT_SECRET` exits, naming the variable. Without `FIELD_ENCRYPTION_KEY` the process refuses to boot, in every environment (round 24 item b).
 - `fyOf(2026-03-31T19:00Z) === '2026-27'` passes.
 - `prisma validate` and the migration no-drift check pass.
 - Gates G1, G2 and G3 run in CI.
