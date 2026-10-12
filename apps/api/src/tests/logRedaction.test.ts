@@ -56,6 +56,54 @@ describe('(a) the logger drops a regulated field from any line it writes', () =>
   });
 });
 
+describe('(a2) personal data and credentials the regulated list does not name', () => {
+  // REGULATED_EXCLUDED_FIELDS covers the statutory and bank identifiers. These are the
+  // other things a request or an object carries that must not reach the log: contact
+  // details, a password, a bearer token, the auth header and cookies. The allowlist drops
+  // them by name, and this probes each name at the top level, nested, in a child binding,
+  // inside a request-shaped object and on an error, so a change that lets one through
+  // fails here rather than in a log review.
+  const EXTRA = [
+    'email',
+    'phone',
+    'mobile',
+    'password',
+    'newPassword',
+    'token',
+    'refreshToken',
+    'authorization',
+    'cookie',
+    'pan',
+    'aadhaar',
+    'dateOfBirth',
+  ] as const;
+  const extraSentinel = (name: string) => `sentinel-extra-${name}-${randomBytes(8).toString('hex')}`;
+
+  it.each(EXTRA.map((f) => [f]))('%s never reaches a line, a child, a request-shaped object or an error', (field) => {
+    const sentinel = extraSentinel(field);
+    const chunks: string[] = [];
+    const log = createLogger({ destination: { write: (s: string) => void chunks.push(s) } });
+    log.info(
+      {
+        tenantId: 'tenant-1',
+        requestId: 'req-2',
+        [field]: sentinel,
+        nested: { [field]: sentinel },
+        req: { headers: { authorization: `Bearer ${sentinel}`, cookie: `sid=${sentinel}` } },
+      },
+      'extra probe',
+    );
+    log.child({ [field]: sentinel }).info('extra child probe');
+    log.error({ requestId: 'req-2', err: Object.assign(new Error('extra error'), { [field]: sentinel }) }, 'extra err');
+    const output = chunks.join('');
+    // The positive control: all three lines were written, so an absent sentinel means dropped.
+    expect(output).toContain('"msg":"extra probe"');
+    expect(output).toContain('"msg":"extra child probe"');
+    expect(output).toContain('"msg":"extra err"');
+    expect(output).not.toContain(sentinel);
+  });
+});
+
 describe('(b) an error carrying a regulated field, logged and answered over HTTP', () => {
   let output = '';
   let status: number | null = null;
