@@ -563,6 +563,24 @@ describe('CMP-DPD-004: PAN/Aadhaar/bank values encrypted at rest', () => {
     expect(readRegulated(encrypted)).toBe(readRegulated(encrypted));
   });
 
+  it('UAN and ESIC number are regulated: the backfill encrypts plaintext already on disk (FX-64)', async () => {
+    const { employment } = await makeEmployee('encrypt-uan-esic');
+    const uan = '100200300400';
+    const esic = '3100000000000001';
+    await unscopedPrisma.employmentRelationship.update({
+      where: { id: employment.id },
+      data: { uanNumber: uan, esicNumber: esic },
+    });
+
+    await asUser('chairman@kaizen.co.in', () => backfillEncryptAtRest());
+
+    const raw = await unscopedPrisma.employmentRelationship.findFirstOrThrow({ where: { id: employment.id } });
+    expect(raw.uanNumber?.startsWith(ENCRYPTED_FIELD_PREFIX)).toBe(true);
+    expect(raw.esicNumber?.startsWith(ENCRYPTED_FIELD_PREFIX)).toBe(true);
+    expect(readRegulated(raw.uanNumber)).toBe(uan);
+    expect(readRegulated(raw.esicNumber)).toBe(esic);
+  });
+
   it('operations (not the chairman) cannot run the backfill', async () => {
     const err = await expectReject(() => asUser('operations@kaizen.co.in', () => backfillEncryptAtRest()));
     expect(err.status).toBe(403);

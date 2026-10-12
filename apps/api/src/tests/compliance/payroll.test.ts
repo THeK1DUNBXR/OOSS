@@ -18,9 +18,10 @@ import {
   bonus,
   statutoryLines,
   type PtSlab,
+  ENCRYPTED_FIELD_PREFIX,
 } from '@kaizen/shared';
-import { asUser, expectReject, prisma, tenantId } from '../helpers.js';
-import { hire, transitionEmployment } from '../../domains/employment.js';
+import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from '../helpers.js';
+import { hire, transitionEmployment, updateEmployeeProfile } from '../../domains/employment.js';
 import { transitionPayrollRun } from '../../domains/payroll.js';
 import {
   proposeSalaryStructure,
@@ -369,6 +370,47 @@ describe('payroll runs against the dated tables (real database)', () => {
 
     const esic = await asUser('finance@kaizen.co.in', () => exportEsic(run.id));
     expect(esic.split('\n')[0]).toBe('IP Number,IP Name,Days,Wages,Reason Code');
+  });
+
+  it('UAN and ESIC number are encrypted on the way in, and the ECR and ESIC files still carry them in the clear (FX-64)', async () => {
+    const { employment: emp } = await makeEmployee('uan-esic');
+    const uan = '100200300400';
+    const esic = '3100000000000002';
+    await asUser('chairman@kaizen.co.in', () => updateEmployeeProfile(emp.id, { uanNumber: uan, esicNumber: esic }));
+
+    const raw = await unscopedPrisma.employmentRelationship.findFirstOrThrow({ where: { id: emp.id } });
+    expect(raw.uanNumber?.startsWith(ENCRYPTED_FIELD_PREFIX)).toBe(true);
+    expect(raw.esicNumber?.startsWith(ENCRYPTED_FIELD_PREFIX)).toBe(true);
+
+    await asUser('operations@kaizen.co.in', () =>
+      proposeSalaryStructure({
+        employmentRelationshipId: emp.id,
+        effectiveFrom: new Date('2020-01-01'),
+        ctcAnnual: 240_000,
+        basic: 12_000,
+        hra: 4_000,
+      }),
+    );
+    const structure = await asUser('chairman@kaizen.co.in', () =>
+      prisma.salaryStructure.findFirstOrThrow({
+        where: { tenantId: TENANT, employmentRelationshipId: emp.id },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+    await asUser('finance@kaizen.co.in', () => approveSalaryStructure(structure.id));
+    const run = await makeSoloRun(emp.id, '2031-05');
+    await asUser('operations@kaizen.co.in', () => transitionPayrollRun(run.id, 'COMPUTE'));
+
+    const ecr = await asUser('finance@kaizen.co.in', () => exportEcr(run.id));
+    expect(
+      ecr
+        .split('\n')
+        .find((l) => l.length > 0)!
+        .split('#~#')[0],
+    ).toBe(uan);
+
+    const esicFile = await asUser('finance@kaizen.co.in', () => exportEsic(run.id));
+    expect(esicFile.split('\n').some((l) => l.startsWith(`${esic},`))).toBe(true);
   });
 
   it('full-and-final settlement computes gratuity, leave encashment and bonus from years of service', async () => {
