@@ -299,6 +299,78 @@ describe('PR11a confirm', () => {
   });
 });
 
+describe('PR11a cross-tenant references (T10; design O13 and the no-FK decision)', () => {
+  /** The rows a suggestion could write in tenant A, counted before and after a refused call. */
+  async function accessRowCounts(t: string): Promise<number[]> {
+    return Promise.all([
+      unscopedPrisma.accessAssignment.count({ where: { tenantId: t } }),
+      unscopedPrisma.accessPlacement.count({ where: { tenantId: t } }),
+      unscopedPrisma.accessVertical.count({ where: { tenantId: t } }),
+    ]);
+  }
+
+  it('T10a: a person who exists only in another tenant is refused, and nothing is written', async () => {
+    const other = await unscopedPrisma.tenant.create({
+      data: { name: 'Other tenant', slug: `access-x-${uniqCode('').toLowerCase()}` },
+    });
+    const foreign = await makePerson(other.id, 'Foreign');
+    const before = await accessRowCounts(tid);
+    const err = await asUser(CHAIRMAN, () =>
+      expectReject(() =>
+        suggestAssignment({
+          personId: foreign.id,
+          identityType: 'employee',
+          placements: [plc(staffVertical, staffLevel)],
+          reason: 'T10a foreign person',
+        }),
+      ),
+    );
+    expect(err.status).toBe(404);
+    expect(await accessRowCounts(tid)).toEqual(before);
+  });
+
+  it('T10b: a vertical whose business line belongs to another tenant is refused, and nothing is written', async () => {
+    const other = await unscopedPrisma.tenant.create({
+      data: { name: 'Other line', slug: `access-y-${uniqCode('').toLowerCase()}` },
+    });
+    const foreignLine = await unscopedPrisma.businessLine.create({
+      data: {
+        tenantId: other.id,
+        code: uniqCode('B'),
+        name: 'Foreign line',
+        payerKind: 'x',
+        revenueModel: 'x',
+        effectiveFrom: new Date('2026-04-01T00:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    const code = uniqCode('V');
+    await unscopedPrisma.accessVertical.create({
+      data: {
+        tenantId: tid,
+        code,
+        name: 'Vertical on a foreign line',
+        kind: 'business',
+        businessLineId: foreignLine.id,
+      },
+    });
+    const subject = await makePerson(tid);
+    const before = await accessRowCounts(tid);
+    const err = await asUser(CHAIRMAN, () =>
+      expectReject(() =>
+        suggestAssignment({
+          personId: subject.id,
+          identityType: 'employee',
+          placements: [plc(code, staffLevel)],
+          reason: 'T10b foreign line',
+        }),
+      ),
+    );
+    expect(err.status).toBe(422);
+    expect(await accessRowCounts(tid)).toEqual(before);
+  });
+});
+
 describe('PR11a database invariants', () => {
   it('T6: row-level security isolates the eight new tables (the app role)', async () => {
     const other = `tenant-b-${uniqCode('')}`;
