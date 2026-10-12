@@ -135,6 +135,8 @@ Moved to "After Phase 1: hosting and operations (deferred)" below. The non-owner
 
 ### Wave 7: proof
 
+**Status 2026-10-13 (round 26): IN PROGRESS, local only, not pushed.** Owner statement; the code was not checked for this tag.
+
 - Concurrency suite.
 - ~~Tenant-leakage fuzzer. Needs second-tenant test data.~~ **DEFERRED (round 18b, item 1).**
 - All CI gates in `docs/plan/zen360/CI-GATES-DRAFT.md` except G7, which is **DEFERRED (round 18b, item 1)**. Mandatory: G1 to G6, G8 to G12 and ledger tests L1 to L3.

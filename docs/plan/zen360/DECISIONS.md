@@ -136,7 +136,7 @@ Phase 1 scope chosen:
 Phase 1 prerequisite notes:
 
 - Phase 1 sits on the Phase 0 selection above.
-- Feature 1 needs: the Task completion route fix at `crm.routes.ts:1109` first; tenant row-level security on new work tables (CLAUDE.md rule 6); legal review before Phase B; a check against CAP-HRM-32 (no covert monitoring); SSE tested first for realtime; chat kept under the 8-year retention rule (needs counsel confirmation); and the doc's decisions on transactional email and object storage (email open, storage deferred).
+- Feature 1 needs: the Task completion route fix at `crm.routes.ts:1109` first; tenant row-level security on new work tables (CLAUDE.md rule 6); legal review before Phase B (warning only, round 25); a check against CAP-HRM-32 (no covert monitoring); SSE tested first for realtime; chat kept under the 8-year retention rule (counsel confirmation is warning only, round 25); and the doc's decisions on transactional email and object storage (email open, storage deferred).
 - DEL-04, CON-05, CRM-13 and DEL-07 depend on D-12 (now answered).
 - DEL-03 depends on HRM-18. DEL-02 needs the one document store and an exact money type. COM-13 depends on D-11 (service levels after a baseline).
 - Conflict to resolve: COM-02 shared inboxes depend on D-13 provider decisions, but email and WhatsApp capture are deferred.
@@ -381,7 +381,7 @@ Answers given by the owner in an eleventh round. Each item is an owner answer un
 - **Restricted funds (owner answer, conflict 1).** Restricted-fund tracking is DEFERRED until D-17, which follows `docs/plan/zen360/README.md`. The round 2 answer that restricted funds are "tracked in the ledger from Phase 1" is superseded.
 - **Intercompany pairing (owner answer, conflict 2).** Intercompany pairing and reciprocal entries are DEFERRED together with the holding-company link between tenants (D-01). The round 2 answer to "pair both sides now" is superseded.
 - **E-invoicing route (owner answer, conflict 3).** The route is direct to the government invoice registration portal (IRP), not through a GSP. The round 2 answer stands.
-  - Implication (label): `docs/plan/zen360/` Phase 3 file and `docs/plan/README.md` decision B recommend a GSP and now disagree with the owner. They are not edited in this round. They are flagged for update when Phase 3 is scheduled.
+  - Implication (label): `docs/plan/zen360/` Phase 3 file and `docs/plan/README.md` decision B recommend a GSP and now disagree with the owner. They are not edited in this round. They are flagged for update when Phase 3 is scheduled. Round 25 item f changed the `docs/plan/zen360/` files. Round 26 checked `docs/plan/README.md`: it has no decision B and no GSP text, so the GSP recommendation now survives only in the archive (`docs/plan/archive/README-old-index.md:48`, `docs/plan/archive/phase-3-statutory.md:43`). The archive is history and is not edited.
 - **Own-server operations in Phase 0 (owner answer, conflict 4).** The own-server operations in `docs/plan/zen360/ORDERED-PLAN.md` Wave 4 are in Phase 0. The Phase 0 selection line that says "real API deployment is out" is superseded for the own-server operations. The deploy manifest and deploy pipeline are not changed by this answer and stay as recorded in the earlier rounds.
 
 Still open after round 11 (supersedes round 10):
@@ -576,7 +576,7 @@ Context: the access-model plan draft (`docs/plan/zen360/ACCESS-MODEL-PLAN.md`, D
 - **(f) Multiple placements are allowed.** A person may hold placements in more than one vertical or unit, each with its own level.
 - **(g) Who confirms access.** HR answers. The vertical Head confirms placements in their vertical. The founder confirms sensitive extra duties, Head placements and HR's own mapping (owner answer to plan question 5: "yes").
 
-## Owner answers, round 20 (recorded 2026-10-10, vertical taxonomy)
+## Owner answers, round 20v (recorded 2026-10-10, vertical taxonomy)
 
 Context: the vertical taxonomy proposal (`docs/plan/zen360/VERTICAL-TAXONOMY.md`), which answers round 19a (e). The owner approved all five decisions ("yes to all 5").
 
@@ -1088,3 +1088,54 @@ CLAUDE.md engineering rules are unchanged by this ruling. Personal-data handling
 Wording fixes made in this follow-up, with no change to the rulings they cite (see b and f above): the function-picks-a-template wording in `QUESTIONNAIRE-DRAFT.md` (lines 14, 29, 168) and `ROADMAP.md` (line 150), now one editable starter template with no job-role catalogue (C-009); and the GSP wording in `zen360/CAPABILITIES.md` (CAP-FIN-24) and `zen360/evidence/07`, `11` and `12`, now direct to the IRP (C-032).
 
 Not changed: the dated history sections of this file. The Phase 1 prerequisite note at line 139 ("legal review before Phase B") sits in the 2026-10-10 phase-definition section and is a record of that date. Read it as superseded by this ruling.
+
+## Owner answers, round 26 (recorded 2026-10-13): consolidated PR and follow-ups
+
+Append-only. One consolidated PR (branch `docs/rounds-23-26-consolidated`, from `origin/main`) replaces the three open PRs `docs/claude-md-stale-facts`, `docs/round-25-rulings` and `chore/remove-deploy-files`. Those three PRs are closed with a comment pointing to it. Their branches are kept.
+
+a. **Five code follow-ups, for the Phase 0 session.** These are recorded as owner decisions to build. None is built in this PR, which changes documents only.
+
+i. `FIELD_ENCRYPTION_KEY` refuses to boot in every environment, and the `.env.example` key line is added (round 24 item b).
+
+ii. Founder exemption. Reconcile it with the Self-Dealing Bar at `apps/api/src/platform/approvals.ts:367` ("a requester may never approve their own step") and with the access separation-of-duties code (round 23 item b).
+
+iii. Remove `prisma db push` from `apps/api/docker-entrypoint.sh:30` (CLAUDE.md: never `db push`).
+
+iv. Finish the Decimal to bigint money migration (round 24 item e and the round 24 follow-up).
+
+v. Reconcile the statutory rate tables with `StatutoryRule`, including platform rules (NULL tenant) and their RLS visibility (CLAUDE.md rule 4).
+
+b. **Forms library: react-hook-form.**
+
+c. **Test email: a built-in fake adapter behind the mail interface.** Tests send through the fake, not a real provider.
+
+d. **Commit trailers: Claude Haiku 5.5 going forward.** `Co-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>`.
+
+e. **Resend: employee and system transactional mail only, kept long-term.**
+
+f. **Mail: the founder owns the domain and DNS. Nobody reads other people's mail. Retention is decided with hosting.**
+
+g. **Statutory approver: "decide at onboarding" stands** (round 23 item d).
+
+h. **`QUESTIONNAIRE-DRAFT.md` is approved as drafted.**
+
+i. **Wave 7 is in progress locally and is not pushed.** It is tagged in progress in `ORDERED-PLAN.md` (Wave 7) and in `docs/plan/CURRENT.md`. This is the owner's statement. The code was not checked for it in this round.
+
+j. **One consolidated PR replaces #53, #56 and #57.**
+
+### Round 26 cleanup (docs only, no owner ruling needed)
+
+- **C-018, round numbering.** The 10-10 vertical-taxonomy section (line 579) is now "round 20v". Where `ACCESS-MODEL-PLAN.md` rows 0 and 1 and the table at its line 336 cite "round 20" for the taxonomy, they now read "round 20v". Other "round 20" citations in that file, and in this file, mean 20v when they concern the vertical taxonomy. The 10-11 section keeps "round 20". Sections are in recording order, so the 10-10 section stays where it is.
+- **C-021, G7 text.** `CI-GATES-DRAFT.md` no longer says "until FX-51 lands": FX-51 is merged. The twelve-checks sentence now says eleven are mandatory after G7's deferral (round 18b, item 1).
+- **C-022, `post()` callers: closed by a code check.** No non-test module imports `post`, `postInTx` or `reverse` from `platform/ledger.ts`. The only call to `post()` is inside `reverse()` (`ledger.ts:419`), and `reverse()` has no caller. The audit's pointers to `platform/balances.ts` and `domains/compliance/books.ts` are false positives: `balances.ts` mentions `post()` in a comment, and `books.ts` imports `POSTABLE_PERIOD_STATUSES`. `zen360/README.md` now says so and gives `post()` at `ledger.ts:351`.
+- **C-023, zen360 README Z-track.** The Z0 week count is removed (round 4: no week labels). The 24-hour founder-absence test is a Phase 1A test, not a Z2 gate (round 21b, item 2). The Z2 "runs parallel to Phase 1 for non-money parts" wording agrees with `ROADMAP.md:172` and is unchanged.
+- **Leftover wording.** The "legal review before Phase B" and "counsel confirmation" notes in the Feature 1 list (line 139) are marked warning only (round 25). The conflict 3 implication note in the round 11 answers (line 384) is updated, as recorded there.
+- **Dangling Caddyfile references.** `deploy/Caddyfile` was removed with the hosting-specific deploy files. The "Deploying" section of `README.md`, `docs/operations.md` (the `WEB_DIST_DIR` row, the `PORTAL_HOSTS` paragraph and the `JWT` cookie note) now say hosting is undecided and that no reverse proxy is chosen. The DPDP cross-border paragraph that justified a hosted edge is removed, as it was unsourced (C-025). `docs/plan/CURRENT.md` no longer names the Caddyfile.
+- **Left as follow-ups, in code and tests.** `apps/api/src/platform/config.ts:112`, `apps/api/src/server.ts:52-74`, `apps/api/src/tests/staticServing.test.ts:3`, `apps/api/src/tests/publicCaptureRateLimit.test.ts`, `apps/api/src/tests/httpHardening.test.ts:67`, `apps/api/src/lib/refreshCookie.ts:10` and `apps/api/src/routes/marketing/public.routes.ts:22` still say Caddy in comments. Changing them is a code change, not part of this PR.
+- **CLAUDE.md rule 8.** The example cite is now `domains/invoicing.ts:244` ("this used to be four"), which names a past mistake and its consequence. The old `:505` cite was a comment about tax readings, not a mistake.
+
+### Round 26: what was not done
+
+- No code, schema, test, CI or `.env.example` change. The five follow-ups in item a are for the Phase 0 session.
+- `docs/plan/MAP.md` is not regenerated. No export or schema moved.
+- Not decided here: the `docs/plan/archive/` GSP text (kept as history).

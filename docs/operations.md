@@ -225,7 +225,7 @@ that runs twice does not act twice.
 | `UNSCOPED_DATABASE_URL`  | —            | required in production; the unscoped role above. Without a `rolbypassrls` or `rolsuper` role the server refuses to start                                                                                                                   |
 | `JWT_SECRET`             | —            | required                                                                                                                                                                                                                                   |
 | `PORT`                   | `4000`       |                                                                                                                                                                                                                                            |
-| `WEB_DIST_DIR`           | _(unset)_    | path to the built client (`apps/web/dist`). Set in production so the API serves the client as well as `/api`; Caddy proxies to it (`deploy/Caddyfile`)                                                                                     |
+| `WEB_DIST_DIR`           | _(unset)_    | path to the built client (`apps/web/dist`). Set in production so the API serves the client as well as `/api`; a reverse proxy in front of it is not chosen yet (hosting, round 18b)                                                        |
 | `JOBS_ENABLED`           | `true`       | in-process scheduler                                                                                                                                                                                                                       |
 | `TENANT_ENFORCE_MODE`    | `enforce`    | `warn` logs an unscoped query instead of throwing — for migration only                                                                                                                                                                     |
 | `PORTAL_HOSTS`           | _(empty)_    | comma-separated hostnames the equity portal shell serves — read into `surfaceHosts.portal` by `/api/meta/version`                                                                                                                          |
@@ -240,8 +240,8 @@ tenant's rows.
 reads into `surfaceHosts.portal` (`routes/meta.routes.ts`), which is what the
 client checks to render the portal shell (equity-portal plan §3.1). It is read
 from `process.env` directly rather than through the Zod config, so a hostname
-change needs no code. The Caddy site block in `deploy/Caddyfile` must also
-answer on that hostname, since Caddy is what routes by host now.
+change needs no code. Once hosting is decided, the reverse proxy in front of the
+API must also answer on that hostname; no routing by host is built yet.
 
 ---
 
@@ -387,4 +387,4 @@ Access tokens are now bound to a server-side Session. Tokens issued before this
 deploy carry no `jti` and are refused, so every signed-in user is asked to sign
 in once after the deploy. Expect one re-login per user; there is nothing to
 migrate. Sessions are 30 days from sign-in, and the refresh secret lives in an
-httpOnly cookie scoped to `/api/auth`, which Caddy passes through unchanged.
+httpOnly cookie scoped to `/api/auth`, which a reverse proxy must pass through unchanged once hosting is decided.

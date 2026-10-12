@@ -327,15 +327,13 @@ one.
 
 ## Deploying
 
-The app runs on one server the company owns, in India. Caddy terminates TLS and
-reverse-proxies every request to the API process, and the API serves both
-`/api` and the built client from one origin. `deploy/Caddyfile` is the whole
-front end.
+Hosting is undecided until after Phase 1 (`docs/plan/zen360/DECISIONS.md`, round 18b, item 3; round 26). The Caddy configuration, its run command and the other hosting-specific deploy files were removed in round 26. The repository has no reverse proxy, TLS terminator or deployment target. Until hosting is decided the app runs locally only (round 24, item h).
+
+To run the built API and client on one machine:
 
 ```bash
 pnpm run build                                  # shared, semantic, api, then web (apps/web/dist)
-ZEN_DOMAIN=zen.example.co.in caddy run --config deploy/Caddyfile
-WEB_DIST_DIR=/srv/zen/apps/web/dist \
+WEB_DIST_DIR=/path/to/ooss/apps/web/dist \
 NODE_ENV=production DATABASE_URL=... JWT_SECRET=... FIELD_ENCRYPTION_KEY=... \
   pnpm --filter @kaizen/api start               # node dist/server.js on PORT (default 4000)
 ```
@@ -345,20 +343,6 @@ NODE_ENV=production DATABASE_URL=... JWT_SECRET=... FIELD_ENCRYPTION_KEY=... \
   client. Set, it serves `/assets` with a one-year immutable cache, serves
   `index.html` with `no-cache`, and falls back to `index.html` for client routes
   such as `/people/employees`. An unknown `/api` path still returns the JSON 404.
-- **`ZEN_DOMAIN`** is the public hostname Caddy obtains a certificate for. Ports
-  80 and 443 must reach the box for the ACME challenge.
-- **`API_PORT`** is the port Caddy proxies to (default `4000`, matching `PORT`).
-  The API listens on every interface, so firewall the API port: Caddy should be
-  the only route in.
-- Run the API under a process manager (systemd or similar) so a crash restarts
-  it; Caddy will return 502 in the meantime rather than hang.
-
-### Why not a hosted edge
-
-The app is internal, holds personal data of employees and customers, and the
-DPDP cross-border rules make routing it through a third-party edge something
-we have to justify. One server in India, with TLS terminated on that server,
-keeps every request, log line and certificate on our own infrastructure.
 
 Earlier the client was served from a Cloudflare Worker that forwarded `/api` to
 the API. That split is removed: it put a foreign network between every user

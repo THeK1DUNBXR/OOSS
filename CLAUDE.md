@@ -24,7 +24,7 @@ Events are past tense and validated against the `kz.<domain>.<object>.<verb>` gr
 
 **7. A number on screen carries `drillTo` or `noActionReason`.** `Metric` (`apps/web/src/components/ui.tsx:153`) takes `MetricProps` (`:145-146`), a discriminated union (phase-4 audit 4.2a, archived spec `docs/plan/archive/phase-4-interface.md`): exactly one of `drillTo` or `noActionReason` must be passed, and passing both is a type error. The union does not separate withheld from zero, because `value` is a `ReactNode` (`:134`). Keep the triad: **not measured ≠ zero ≠ withheld.** A `noActionReason` must say something true, not "no drill available".
 
-**8. Comments say why, not what.** This codebase's comments explain reasoning and admit past mistakes (`domains/invoicing.ts:505`). Match the register. When you fix a bug that had a consequence, name the consequence.
+**8. Comments say why, not what.** This codebase's comments explain reasoning and admit past mistakes (`domains/invoicing.ts:244`). Match the register. When you fix a bug that had a consequence, name the consequence.
 
 ## Never
 
