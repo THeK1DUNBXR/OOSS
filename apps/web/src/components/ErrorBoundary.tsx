@@ -54,9 +54,13 @@ export class ErrorBoundary extends Component<Props, State> {
     const frame = isApp
       ? 'flex min-h-screen items-center justify-center bg-ink-950 p-6 text-center'
       : 'mx-auto max-w-xl py-10';
+    // The app-level fallback replaces the whole page, so it is the page's main
+    // landmark. A route fallback sits inside the shell's <main>, and a second
+    // one would be a landmark error.
+    const Frame = isApp ? 'main' : 'div';
 
     return (
-      <div className={frame}>
+      <Frame className={frame}>
         <div className="max-w-md rounded-lg border border-band-critical/40 bg-band-critical/5 p-6 text-left">
           <p className="text-lg font-semibold text-band-critical">
             {isApp ? 'Something went wrong.' : 'This screen could not be shown.'}
@@ -82,7 +86,7 @@ export class ErrorBoundary extends Component<Props, State> {
             </pre>
           )}
         </div>
-      </div>
+      </Frame>
     );
   }
 }
