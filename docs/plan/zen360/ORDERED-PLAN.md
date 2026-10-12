@@ -1,6 +1,6 @@
 # Zen 360 ordered plan: owner Phase 0 and Phase 1 (planning only, 2026-10-10)
 
-Status: planning only. Nothing in this plan is built. This file is not authority over the decisions in `docs/plan/zen360/DECISIONS.md`; where they differ, DECISIONS.md governs.
+Status: planning document, with build status on each item. Items marked DONE, BUILT, PARTLY, OPEN or NOT BUILT were checked against the code on 2026-10-12 (DECISIONS.md, round 23, item a). Items not yet checked carry no status. This file is not authority over the decisions in `docs/plan/zen360/DECISIONS.md`; where they differ, DECISIONS.md governs.
 
 Round 18b (DECISIONS.md, 2026-10-11) defers tenancy and all hosting. Items marked DEFERRED or moved below are superseded by round 18b and are kept as history.
 
@@ -34,32 +34,32 @@ Stop rule for each wave: the wave's listed items are merged, and the gates named
 
 ### Wave 0: foundations
 
-- **0.7 Schema split and tooling.** Split the schema into `apps/api/prisma/schema/`. Add `genmap.mjs`. Add scoped test scripts, including `test: prisma validate` and a `migrate diff` no-drift check.
-- **0.1 Config and secrets.** Add `platform/config.ts` with Zod validation at load. Remove the fallback at `auth.ts:31` and `TENANT_ENFORCE_MODE` at `context.ts:94`. Add the FX-60 boot refusal at `privacy.ts:944-954`.
+- **0.7 Schema split and tooling.** Split the schema into `apps/api/prisma/schema/`. Add `genmap.mjs`. Add scoped test scripts, including `test: prisma validate` and a `migrate diff` no-drift check. **Status 2026-10-12: DONE.** `scripts/genmap.mjs`, `docs/plan/MAP.md`, `db:validate` and `db:drift` in `apps/api/package.json`, the schema split under `apps/api/prisma/schema/`.
+- **0.1 Config and secrets.** Add `platform/config.ts` with Zod validation at load. Remove the fallback at `auth.ts:31` and `TENANT_ENFORCE_MODE` at `context.ts:94`. Add the FX-60 boot refusal at `privacy.ts:944-954`. **Status 2026-10-12: PARTLY.** Done: Zod load in `platform/config.ts` (`envSchema` at :54); the `auth.ts` fallback is gone (the literal survives only in the refusal list, `lib/auth.ts:74`); `TENANT_ENFORCE_MODE` is absent from source. Open: the FX-60 refusal applies only when `NODE_ENV === 'production'` (`platform/config.ts:150`), see DECISIONS round 23, C-003. The cite `privacy.ts:944-954` is the erasure flow, not a boot check.
   - Test: boot without `JWT_SECRET` exits, naming the variable. Production without `FIELD_ENCRYPTION_KEY` throws.
-- **Time helpers.** Add `packages/shared/src/time.ts`. Use it for FX-40 (`documentNumber.ts:92-94`), FX-41 (`domains/compliance/tax.ts:60-63`) and FX-42 (`invoicing.ts:266-269`).
+- **Time helpers.** Add `packages/shared/src/time.ts`. Use it for FX-40 (`documentNumber.ts:92-94`), FX-41 (`domains/compliance/tax.ts:60-63`) and FX-42 (`invoicing.ts:266-269`). **Status 2026-10-12: DONE.** `packages/shared/src/time.ts`. FX-40 at `apps/api/src/platform/documentNumber.ts:99`, FX-41 at `apps/api/src/domains/compliance/tax.ts:74`. FX-42's cite is now `totalsMinorOf`, a paise helper, not a date; the period check is `assertPeriodOpen` (`apps/api/src/domains/invoicing.ts:368`, `filingPeriodOf` at :342). The cites in this item are stale.
   - Test: `fyOf(2026-03-31T19:00Z) === '2026-27'`.
-- **0.8 CI.** Add ESLint and Prettier. Remove the dead classes at `Start.tsx:100,109` and `People.tsx:56`. Add a build identity. Replace `db push` with a migration baseline. The migration baseline sits in Wave 0 (DECISIONS.md, round 10).
+- **0.8 CI.** Add ESLint and Prettier. Remove the dead classes at `Start.tsx:100,109` and `People.tsx:56`. Add a build identity. Replace `db push` with a migration baseline. The migration baseline sits in Wave 0 (DECISIONS.md, round 10). **Status 2026-10-12: PARTLY.** Done: ESLint, Prettier (`.github/workflows/ci.yml:47` runs `pnpm format:check`), build identity (`platform/build.ts`), migration baseline (CI runs `db:validate` and `db:drift`). Open: the dead classes at `Start.tsx:100,109` and `People.tsx:56` are not confirmed (the cited lines are live code; re-derive the list); `db push` still runs in `apps/api/docker-entrypoint.sh:30`.
 - ~~**Worker removal.** Remove the Cloudflare Worker (`worker/index.ts`).~~ **Done; the removal stands** (round 19b, item 2).
 - ~~**Hosting.** Serve everything from the own server behind Caddy.~~ **Replacement hosting DEFERRED until after Phase 1 (superseded by round 18b, item 3).** Server, reverse proxy, caching and routing move to "After Phase 1: hosting and operations (deferred)".
 
 ### Wave 1: authority, audit, security, statutory data
 
-- **Task-complete fix.** `POST /tasks/:id/complete` (`crm.routes.ts:1108-1109`) has no `assertCan`, audit or emit. Write the failing test first, in its own commit.
+- **Task-complete fix.** `POST /tasks/:id/complete` (`crm.routes.ts:1108-1109`) has no `assertCan`, audit or emit. Write the failing test first, in its own commit. **Status 2026-10-12: DONE.** `apps/api/src/domains/tasks.ts:114` `completeTask`: `assertCan` at :115, `auditWrite` at :149, `emit` at :158. Route `crm.routes.ts:1175`.
 - **FX-20 audit registry.** `registerGovernedEntities` (`audit.ts:37`).
-- **FX-21.** Drop `force` (`lifecycle.ts:74-119`).
-- **FX-22.** Writes with no audit.
-- **FX-01 and FX-04.** `decideApprovalStep` (`approvals.ts:309`) and `decideAgentAction` (`agents/index.ts:251`).
+- **FX-21.** Drop `force` (`lifecycle.ts:74-119`). **Status 2026-10-12: DONE.** No `force` option in `apps/api/src/platform/lifecycle.ts`; `transition` is at :76.
+- **FX-22.** Writes with no audit. **Status 2026-10-12: OPEN.** No coverage scan of routes against `auditWrite` has been run.
+- **FX-01 and FX-04.** `decideApprovalStep` (`approvals.ts:309`) and `decideAgentAction` (`agents/index.ts:251`). **Status 2026-10-12: DONE.** `apps/api/src/platform/approvals.ts:330` (`assertCan` at :349, before the state check); `apps/api/src/agents/index.ts:328` (`assertCan` at :341). Cites were `:309` and `:251`.
   - Test: an ungranted user gets 403 and the state is unchanged.
-- **FX-02, FX-03, FX-05.** `hr.routes.ts:844-856`, `crm.routes.ts:243-257`, `agents/index.ts:95-98`.
+- **FX-02, FX-03, FX-05.** `hr.routes.ts:844-856`, `crm.routes.ts:243-257`, `agents/index.ts:95-98`. **Status 2026-10-12: PARTLY.** FX-03 DONE (`apps/api/src/domains/identity.ts:354` `assertCan` for merge). FX-05 DONE (`apps/api/src/agents/index.ts:93-99` blocks an undeclared tool). FX-02 OPEN: `transitionPayrollRun` (`apps/api/src/domains/payroll.ts:207`) has no `assertCan` in its body; whether `transition()` reaches the guard is not verified.
 - **FX-50.** Webhook dedupe, and HMAC with a single webhook secret. Per-tenant HMAC is **DEFERRED (superseded by round 18b, item 1)**; FX-50 is now a single secret.
 - **FX-61, FX-80.**
-- **FX-24.** Postgres outbox (D-16).
-- ~~**FX-51.** RLS on every table: ENABLE and FORCE, default deny, a non-owner app role, and a boot check that the role has neither `rolsuper` nor `rolbypassrls`.~~ **MERGED (#33; round 19b, item 1); extra proof deferred.** Existing ledger-table RLS and tenant scoping stay (round 18b, implications (a) and (g)).
-- **FX-06, FX-07, FX-62 to FX-65.** Exceptions, merge, privacy.
-- **0.4 Logging.** pino with allowlist redaction (G11).
-- **0.3 HTTP hardening.** helmet. CORS allowlist (FX-52, `server.ts:19`). express-rate-limit with a Postgres store. Error leak fix at `http.ts:116-118`.
-- **0.2 Sessions.** `jti`. A Session model and logout. A 15-minute access token. A rotating, hashed refresh token. Login throttle.
+- **FX-24.** Postgres outbox (D-16). **Status 2026-10-12: OPEN, no verdict.** `apps/api/src/platform/outbox.ts` exists; not verified against D-16.
+- ~~**FX-51.** RLS on every table: ENABLE and FORCE, default deny, a non-owner app role, and a boot check that the role has neither `rolsuper` nor `rolbypassrls`.~~ **MERGED (#33; round 19b, item 1); extra proof deferred.** Existing ledger-table RLS and tenant scoping stay (round 18b, implications (a) and (g)). **Status 2026-10-12: DONE.** Migration `20261010235900_tenant_rls`; boot guard `apps/api/src/platform/rlsGuard.ts:14-19`. The extra proof stays deferred (round 18b).
+- **FX-06, FX-07, FX-62 to FX-65.** Exceptions, merge, privacy. **Status 2026-10-12: PARTLY.** `apps/api/src/platform/exceptions.ts` and `mergePersons` (`apps/api/src/domains/identity.ts`) are present. FX-62 to FX-65 not verified.
+- **0.4 Logging.** pino with allowlist redaction (G11). **Status 2026-10-12: BUILT, open.** pino is present (`apps/api/src/platform/logger.ts`). Open: the G11 redaction test was not located.
+- **0.3 HTTP hardening.** helmet. CORS allowlist (FX-52, `server.ts:19`). express-rate-limit with a Postgres store. Error leak fix at `http.ts:116-118`. **Status 2026-10-12: BUILT, open.** helmet (`apps/api/src/server.ts:77`); CORS allowlist (`server.ts:27-33`); express-rate-limit with a Postgres store (`apps/api/src/platform/rateLimitStore.ts`). Open: the error-leak fix at the cited `http.ts:116-118` was not located (that range is now `requireAuth`).
+- **0.2 Sessions.** `jti`. A Session model and logout. A 15-minute access token. A rotating, hashed refresh token. Login throttle. **Status 2026-10-12: DONE.** `jti` at `apps/api/prisma/schema/main.prisma:1315`; 15-minute access token at `apps/api/src/lib/auth.ts:45`; hashed refresh token at `main.prisma:1317-1321`.
 - **3.1 Statutory master pack.** The owner overrides the "do not reorder" rule for this item.
   - Contents: an EXCLUDE constraint on the date range via `btree_gist`, written as hand-written SQL. Status values DRAFT, APPROVED and HOLD. A citation on every row. Good and bad fixtures.
   - Figures are NOT reproduced in the repository.
@@ -67,23 +67,23 @@ Stop rule for each wave: the wave's listed items are merged, and the gates named
 
 ### Wave 2: scheduler and audit correctness
 
-- **0.5 Scheduler.** Verify the croner licence first. Atomic claim with a unique key on `(tenantId, jobKey, scheduledFor)`. Lease with heartbeat. Backoff. Dead-letter queue.
+- **0.5 Scheduler.** Verify the croner licence first. Atomic claim with a unique key on `(tenantId, jobKey, scheduledFor)`. Lease with heartbeat. Backoff. Dead-letter queue. **Status 2026-10-12: DONE (build).** `apps/api/src/jobs/schedule.ts` (croner, lease, backoff, dead-letter); `JobClaim` at `apps/api/prisma/schema/main.prisma:1127`. The unique key is on `jobName`, not `jobKey`. OPEN: the croner licence check.
   - Test: `'0 6 * * *'` fires once per simulated day.
-- **0.6 Hash chain.** Unique `(tenantId, prevHash)`. SERIALIZABLE retry (`eventBus.ts:104-105, 158`). FX-81 `verifyChain` (`eventBus.ts:422`).
+- **0.6 Hash chain.** Unique `(tenantId, prevHash)`. SERIALIZABLE retry (`eventBus.ts:104-105, 158`). FX-81 `verifyChain` (`eventBus.ts:422`). **Status 2026-10-12: PARTLY.** Done: unique `(tenantId, prevHash)` at `main.prisma:1071`. The SERIALIZABLE retry is not in code, by choice: `apps/api/src/platform/eventBus.ts:319-328` uses ReadCommitted with the lock, and says the plan's SERIALIZABLE choice is rejected there. This item's text is not yet rewritten. `verifyChain` is at `eventBus.ts:593`, not :422.
 - Audit gaps in `books.ts`.
 - `assertPeriodOpen` on the remaining write paths.
 
 ### Wave 3: money and ledger (serial, one person)
 
-- **1.6 Money.** `money.ts` with bigint. Allocate leftover paise to the first line, so 100 split three ways gives 33.34 / 33.33 / 33.33. Delete `round2` (`finance.ts:132`) and the epsilon comparisons.
-- **Payment allocation.** `FOR UPDATE` with a DB CHECK. Invoice numbering inside the same transaction (`invoicing.ts:584`).
-- **1.1 Ledger models.** `LedgerEntity`, `AccountingPeriod`, `JournalEntry` (with `entityId`), `JournalLine` (bigint), `LedgerAccount`.
-- **1.2 Ledger migration.** Hand-written migration with: a deferred balance trigger, immutability, a period trigger, a two-line minimum, RLS with both USING and WITH CHECK, and `SET LOCAL` via `set_config(..., true)`.
+- **1.6 Money.** `money.ts` with bigint. Allocate leftover paise to the first line, so 100 split three ways gives 33.34 / 33.33 / 33.33. Delete `round2` (`finance.ts:132`) and the epsilon comparisons. **Status 2026-10-12: PARTLY.** Done: `packages/shared/src/money.ts` (`allocate` at :97, `parseMinor`, `formatMinor`, `applyBps`). Open: `round2` is still at `packages/shared/src/finance.ts:150` with its call sites; the epsilon removal is open. The cite `finance.ts:132` is stale.
+- **Payment allocation.** `FOR UPDATE` with a DB CHECK. Invoice numbering inside the same transaction (`invoicing.ts:584`). **Status 2026-10-12: PARTLY.** `apps/api/src/domains/finance.ts:275` `allocatePayment` (one lock, commit `1ca0a2c`); invoice numbering is taken at `apps/api/src/domains/invoicing.ts`, not :584. The DB CHECK is not verified.
+- **1.1 Ledger models.** `LedgerEntity`, `AccountingPeriod`, `JournalEntry` (with `entityId`), `JournalLine` (bigint), `LedgerAccount`. **Status 2026-10-12: DONE for models.** `apps/api/prisma/schema/compliance-books.prisma` (`AccountingPeriod` :12, `LedgerEntity` :86, `JournalEntry` :103, `JournalLine` :134, `JournalReversal` :174); `LedgerAccount` at `main.prisma:5106`. OPEN: the bigint type, the two-line minimum and the `set_config` form are not yet checked.
+- **1.2 Ledger migration.** Hand-written migration with: a deferred balance trigger, immutability, a period trigger, a two-line minimum, RLS with both USING and WITH CHECK, and `SET LOCAL` via `set_config(..., true)`. **Status 2026-10-12: PARTLY.** Triggers and the REVOKEs are present (`20260920173000_ledger_invariants`, `20261012100000_ledger_gates`, `20261010235900_tenant_rls/migration.sql:51-52`). OPEN: the two-line minimum and the `set_config` form.
   - ~~BLOCKED-BY PgBouncer in transaction mode.~~ **Superseded by round 18b, item 2:** PgBouncer is not a blocker. Revisit only if connections run short.
   - ~~BLOCKED-BY the non-owner role set up on the own server.~~ **Superseded by round 18b, item 5:** the non-owner role is a dev and CI database setting, needed for the immutability test. It is not a hosting item.
-- **1.3 Posting.** `post()` is the sole writer (enforced by a lint rule). Idempotency key. A reversal refuses to reverse a reversal (`books.ts:264`).
-- **1.4 Balances.** Derived balances and a nightly drift check. Ledger gate tests L1 to L3. FX-30 to FX-35.
-- **1.5 Cashbook migration, then delete `model Transaction`.**
+- **1.3 Posting.** `post()` is the sole writer (enforced by a lint rule). Idempotency key. A reversal refuses to reverse a reversal (`books.ts:264`). **Status 2026-10-12: DONE.** `post` at `apps/api/src/platform/ledger.ts:351`, `postInTx` at :394; the reversal refusal is at `ledger.ts:253` (the cite `books.ts:264` is stale); the lint rule is at `eslint.config.js:97-119`.
+- **1.4 Balances.** Derived balances and a nightly drift check. Ledger gate tests L1 to L3. FX-30 to FX-35. **Status 2026-10-12: BUILT, open.** `apps/api/src/platform/balances.ts`; ledger gates in `apps/api/src/tests/ledger/ledgerGates.test.ts` (L1 :139, L2 :164, L3 :244). OPEN: the file's L1 is an unbalanced-entry refusal, while CI-GATES L1 is the ten-thousand-operation property test. The scopes differ.
+- **1.5 Cashbook migration, then delete `model Transaction`.** **Status 2026-10-12: NOT DONE.** `model Transaction` is still at `apps/api/prisma/schema/main.prisma:5205`; used in 10 non-test files.
   - BLOCKED-BY internal finance head review of the mapping.
   - BLOCKED-BY confirmation of the Kaizen figures: 1,123 vouchers, 66 accounts, a gap of about 40,500. UNVERIFIED.
   - Cutover at a financial year start (1 April), after the trial balance ties to the paisa.
@@ -94,10 +94,10 @@ Moved to "After Phase 1: hosting and operations (deferred)" below. The non-owner
 
 ### Wave 5: ledger consumers and interface (parallel within the wave)
 
-- **FX-70.** Post from domain events.
-- **FX-71.** Reversal, not hard delete (`commit.ts:714-746`).
-- **FX-72.** Imports via `recordTransaction` in chunks of 500 rows.
-- **FX-73.** Payroll posts liabilities (`payrollops.ts:414-455`).
+- **FX-70.** Post from domain events. **Status 2026-10-12: DONE.** `apps/api/src/platform/ledger.ts:394` `postInTx`; `apps/api/src/platform/postingRoles.ts`; migration `20261013201000_ledger_posting_roles`.
+- **FX-71.** Reversal, not hard delete (`commit.ts:714-746`). **Status 2026-10-12: DONE.** Commit `2b30fbf`; revert by reversal at `apps/api/src/imports/commit.ts:1181-1190`. The cite `commit.ts:714-746` is stale; the file has no hard delete.
+- **FX-72.** Imports via `recordTransaction` in chunks of 500 rows. **Status 2026-10-12: DONE.** Commit `54295b9`, 500-row transactions.
+- **FX-73.** Payroll posts liabilities (`payrollops.ts:414-455`). **Status 2026-10-12: OPEN.** Payroll does not post liabilities. `apps/api/src/domains/hcm/payrollops.ts:13-16` says so; `:414-455` is a read path. FX-73a (commit `2d68f74`) posts net pay in paise.
   - BLOCKED-BY statutory sign-off for PF, ESI, PT and TDS.
 - **P4 interface, in this order:**
   1. `MetricProps` discriminated union.
@@ -112,21 +112,21 @@ Moved to "After Phase 1: hosting and operations (deferred)" below. The non-owner
 
 ### Wave 6: spine and onboarding
 
-- Commitment record.
-- Case record (stays in Phase 0 Wave 6, round 22 item a).
+- Commitment record. **Status 2026-10-12: DONE.** `apps/api/prisma/schema/commitments.prisma`, `apps/api/src/domains/commitments.ts`, migration `20261013100000_commitment_record`.
+- Case record (stays in Phase 0 Wave 6, round 22 item a). **Status 2026-10-12: DONE.** `apps/api/prisma/schema/cases.prisma`, `apps/api/src/domains/cases.ts`, migration `20261013120000_case_record`.
 - Case record. **Clarified by round 21b, item 1 (round 22 item a repeats it):** the customer Case record stays in this wave. The ROADMAP row that put it out of Phase 0 is superseded.
-- One document store.
-- Typed task source.
-- Decision foreign keys.
-- Founder exception view.
-- Z3 continuity and handover gate.
-- **P7 onboarding state machine** and per-state packs. Stays in Phase 0 Wave 6 (round 22 item c). Not BLOCKED-BY 3.1 sign-off (round 22 item d).
+- One document store. **Status 2026-10-12: DONE.** Migration `20261013090000_document_store`.
+- Typed task source. **Status 2026-10-12: DONE.** Migration `20261013130000_task_source_kind`.
+- Decision foreign keys. **Status 2026-10-12: DONE.** Migration `20261013150000_decision_links_money`; `apps/api/src/domains/decisions.ts`.
+- Founder exception view. **Status 2026-10-12: DONE.** `apps/api/src/domains/founderView.ts`.
+- Z3 continuity and handover gate. **Status 2026-10-12: DONE.** `apps/api/src/domains/handover.ts`; `apps/api/src/tests/handoverGate.test.ts`.
+- **P7 onboarding state machine** and per-state packs. Stays in Phase 0 Wave 6 (round 22 item c). Not BLOCKED-BY 3.1 sign-off (round 22 item d). **Status 2026-10-12: BUILT, open.** `apps/api/prisma/schema/onboarding.prisma`, `apps/api/src/domains/onboarding.ts`, migration `20261013140000_onboarding_run`. The per-state packs are not verified.
   - ~~BLOCKED-BY 3.1 sign-off.~~ **Superseded by round 21b, item 4 (round 22 item d repeats it):** 3.1 sign-off is not a blocker for the onboarding state machine, matching round 19a (c). Statutory rules stay gated until the accountant approves them.
-- Level-based access system, assigned at onboarding. Stays in Phase 0 Wave 6 (round 22 item c).
+- Level-based access system, assigned at onboarding. Stays in Phase 0 Wave 6 (round 22 item c). **Status 2026-10-12: DONE for the tables and assignments.** `apps/api/prisma/schema/access.prisma`, `apps/api/src/domains/access/assignments.ts`, migrations `20261013180000_access_model` and `20261013191000_access_sod`. The level model itself is open (DECISIONS round 23, C-008 and C-009).
 - Level mapping (questionnaire, suggestion until confirmed) stays in Phase 0 Wave 6 (round 22 item c).
-- **Payment approval step.** Adds a `payments:approve` gate to the payment flow, so a payment needs a second person's approval before it counts. It goes after Wave 6 PR12, in the finance path, with its own ledger tests including the trial-balance assertion. Owner-approved, 2026-10-12.
+- **Payment approval step.** Adds a `payments:approve` gate to the payment flow, so a payment needs a second person's approval before it counts. It goes after Wave 6 PR12, in the finance path, with its own ledger tests including the trial-balance assertion. Owner-approved, 2026-10-12. **Status 2026-10-12: NOT BUILT.** `payments:approve` appears only in `apps/api/src/tests/accessSod.test.ts`. The owner's decision, dated 2026-10-12, is recorded in DECISIONS.md round 23, item b, with an open question about founder-created payments.
 - Thresholds, reserved matters and alternates are entered as data during onboarding ("tbd during onboard").
-- Account recovery goes through the founder or the IT admin. SMS to employees' phones is NOT a recovery method (round 22 item e: owner chose this over SMS; reason noted: SIM-swap risk on a finance system).
+- Account recovery goes through the founder or the IT admin. SMS to employees' phones is NOT a recovery method (round 22 item e: owner chose this over SMS; reason noted: SIM-swap risk on a finance system). **Status 2026-10-12: BUILT, open.** `apps/api/src/domains/accountRecovery.ts`. The recovery holder is open (DECISIONS round 23, C-015).
 - Delegation and the 24-hour absence test are owned by Phase 1A, not this wave (round 22 item b).
 - ~~A static public IP exists.~~ **DEFERRED (superseded by round 18b, item 3):** hosting.
 
