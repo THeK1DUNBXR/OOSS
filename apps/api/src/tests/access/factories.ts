@@ -133,9 +133,10 @@ export async function makeCapabilityRule(
   levelId: string,
   resource: string,
   verbs: string[],
+  unitCode = '',
 ): Promise<{ id: string }> {
   return unscopedPrisma.accessCapabilityRule.create({
-    data: { tenantId, verticalId, levelId, unitCode: '', resource, verbs },
+    data: { tenantId, verticalId, levelId, unitCode, resource, verbs },
     select: { id: true },
   });
 }
@@ -144,9 +145,10 @@ export async function makeResourceBinding(
   tenantId: string,
   resource: string,
   bindingKind: 'field' | 'fixed' | 'derived' | 'none' = 'none',
+  opts: { column?: string; verticalId?: string } = {},
 ): Promise<{ id: string }> {
   return unscopedPrisma.accessResourceBinding.create({
-    data: { tenantId, resource, bindingKind, column: null, verticalId: null },
+    data: { tenantId, resource, bindingKind, column: opts.column ?? null, verticalId: opts.verticalId ?? null },
     select: { id: true },
   });
 }
@@ -189,4 +191,47 @@ export async function makeFounderPlacement(tenantId: string, partyId: string): P
   const vertical = await makeVertical(tenantId, 'shared');
   const level = await makeLevel(tenantId, 'company');
   await makeConfirmedPlacement(tenantId, partyId, vertical.id, level.id);
+}
+
+/**
+ * A grant in the row shape PR11b's compile writes for a confirmed placement: an
+ * individual grant tagged with its assignment, scope resolver `vertical`, and the
+ * vertical (and unit) in its conditions. The scope tests use it so they do not depend
+ * on the compile; the compile tests go through confirm and recompile instead.
+ */
+export async function grantVertical(opts: {
+  tenantId: string;
+  partyId: string;
+  resource: string;
+  verbs: string[];
+  scope: 'own' | 'all';
+  verticalCode: string;
+  unitCode?: string;
+}): Promise<{ assignmentId: string }> {
+  const level = await makeLevel(opts.tenantId, opts.scope === 'all' ? 'vertical' : 'own');
+  const vertical = await unscopedPrisma.accessVertical.findFirstOrThrow({
+    where: { tenantId: opts.tenantId, code: opts.verticalCode },
+    select: { id: true },
+  });
+  const { assignmentId } = await makeConfirmedPlacement(
+    opts.tenantId,
+    opts.partyId,
+    vertical.id,
+    level.id,
+    opts.unitCode ?? null,
+  );
+  await unscopedPrisma.grant.create({
+    data: {
+      tenantId: opts.tenantId,
+      principalType: 'individual',
+      principalId: opts.partyId,
+      resource: opts.resource,
+      verbs: opts.verbs,
+      scope: opts.scope,
+      scopeResolver: 'vertical',
+      conditions: { verticalCode: opts.verticalCode, ...(opts.unitCode ? { unitCode: opts.unitCode } : {}) },
+      accessAssignmentId: assignmentId,
+    },
+  });
+  return { assignmentId };
 }

@@ -44,6 +44,18 @@ export interface ResolvedGrant {
   policyVersion: number | null;
   policyId: string | null;
   conditions: Record<string, unknown>;
+  /** The confirmed assignment this grant was compiled from (PR11b). Null for every legacy grant. */
+  accessAssignmentId: string | null;
+}
+
+/** A grant compiled from a confirmed access assignment (PR11b). Legacy grants never are. */
+function isAccessGrant(g: ResolvedGrant): boolean {
+  return g.accessAssignmentId !== null;
+}
+
+/** A compiled grant whose scope is a vertical (and unit) rather than the owner or everything. */
+function isVerticalAccessGrant(g: ResolvedGrant): boolean {
+  return isAccessGrant(g) && g.scopeResolver === 'vertical';
 }
 
 const grantCache = new Map<string, { at: number; grants: ResolvedGrant[] }>();
@@ -89,6 +101,7 @@ export async function resolveGrants(auth: AuthContext): Promise<ResolvedGrant[]>
       policyVersion: g.policyVersion?.version ?? null,
       policyId: g.policyVersion?.policyId ?? null,
       conditions: (g.conditions as Record<string, unknown>) ?? {},
+      accessAssignmentId: g.accessAssignmentId ?? null,
     }));
 
   grantCache.set(cacheKey, { at: Date.now(), grants });
@@ -110,6 +123,10 @@ export interface ScopedRecord {
   /** For the `batch_member` scope resolver. */
   cohortId?: string | null;
   trainerPartyId?: string | null;
+  /** For the `vertical` scope resolver (PR11b): the vertical code the record belongs to, read from its binding column. */
+  verticalCode?: string | null;
+  /** For the `vertical` scope resolver (PR11b): the unit code, when the record carries one. */
+  unitCode?: string | null;
 }
 
 export interface EvaluateInput {
@@ -164,8 +181,12 @@ export async function evaluate(input: EvaluateInput): Promise<PermissionDecision
     return deny(axes, 'WHO', 'no_permission');
   }
   // Widest matching grant wins — a principal holding both `own` and `all`
-  // resolves to `all`.
-  const grant = matching.reduce((a, b) => (scopeRank(b.scope) > scopeRank(a.scope) ? b : a));
+  // resolves to `all`. PR11b: the legacy grants decide the legacy path exactly as
+  // before; access grants (compiled from assignments) are judged separately below.
+  const legacy = matching.filter((g) => !isAccessGrant(g));
+  const access = matching.filter((g) => isAccessGrant(g));
+  const legacyGrant = legacy.length > 0 ? widestGrant(legacy) : null;
+  const grant = legacyGrant ?? widestGrant(access);
   axes.push({ axis: 'WHO', passed: true, reason: `${input.resource}:${input.verb}@${grant.scope}` });
 
   // ---- WHERE ---------------------------------------------------------------
@@ -183,7 +204,15 @@ export async function evaluate(input: EvaluateInput): Promise<PermissionDecision
   // explicit `@all` cell alongside the narrower mutation cell. The permission
   // is then a thing you can read off the matrix rather than a rule you have to
   // know about the evaluator.
-  const whereOk = input.record ? checkScope(grant, input.record, auth) : true;
+  // A record passes when a legacy grant passes it, or any access grant does. The
+  // binding that says which vertical a record is in is loaded only when an access
+  // grant is in play, so a legacy caller never reads it.
+  const record = input.record;
+  const binding = record && access.length > 0 ? await bindingOf(input.resource, auth) : null;
+  const whereOk =
+    !record ||
+    (legacyGrant !== null && checkScope(legacyGrant, record, auth)) ||
+    access.some((g) => checkScope(g, record, auth, binding));
   if (!whereOk) {
     axes.push({ axis: 'WHERE', passed: false, reason: `Record outside ${grant.scope} scope` });
     return deny(axes, 'WHERE', 'out_of_scope');
@@ -273,11 +302,44 @@ function scopeRank(scope: Scope): number {
   return scope === 'all' ? 2 : scope === 'own_or_unowned' ? 1 : 0;
 }
 
+/** The widest of a non-empty set of grants. The same rule `evaluate` has always applied. */
+function widestGrant(grants: ResolvedGrant[]): ResolvedGrant {
+  return grants.reduce((a, b) => (scopeRank(b.scope) > scopeRank(a.scope) ? b : a));
+}
+
+/**
+ * How a resource says which vertical its records belong to (PR11b; ACCESS-MODEL-PLAN
+ * s.4). `field` reads the vertical code from a column on the resource's table, `fixed`
+ * is one shared vertical owning every record, and `derived` and `none` name no vertical,
+ * so a vertical grant on them denies.
+ */
+export interface ResolvedBinding {
+  kind: string;
+  column: string | null;
+  verticalCode: string | null;
+}
+
+async function bindingOf(resource: string, auth: AuthContext): Promise<ResolvedBinding | null> {
+  const row = await prisma.accessResourceBinding.findFirst({
+    where: { tenantId: auth.tenantId, resource },
+    select: { bindingKind: true, column: true, vertical: { select: { code: true } } },
+  });
+  if (!row) return null;
+  return { kind: row.bindingKind, column: row.column, verticalCode: row.vertical?.code ?? null };
+}
+
 function ownerOf(record: ScopedRecord): string | null {
   return record.ownerPartyId ?? record.assigneePartyId ?? record.actorPartyId ?? record.ownerId ?? null;
 }
 
-function checkScope(grant: ResolvedGrant, record: ScopedRecord, auth: AuthContext): boolean {
+function checkScope(
+  grant: ResolvedGrant,
+  record: ScopedRecord,
+  auth: AuthContext,
+  binding: ResolvedBinding | null = null,
+): boolean {
+  // Checked before the `all` return: a vertical grant at scope all is not company-wide.
+  if (isVerticalAccessGrant(grant)) return checkVerticalScope(grant, record, auth, binding);
   if (grant.scope === 'all') return true;
 
   const owner = ownerOf(record);
@@ -302,6 +364,34 @@ function checkScope(grant: ResolvedGrant, record: ScopedRecord, auth: AuthContex
     return !!auth.branch && record.branch === auth.branch;
   }
   return owner === auth.partyId;
+}
+
+/**
+ * The vertical scope of a compiled grant (PR11b). The record must sit in the grant's
+ * vertical, and in its unit when the grant names one; the scope then decides whether
+ * the record must also be the holder's own. A resource with no field or fixed binding
+ * names no vertical, so the grant denies every record of it.
+ */
+function checkVerticalScope(
+  grant: ResolvedGrant,
+  record: ScopedRecord,
+  auth: AuthContext,
+  binding: ResolvedBinding | null,
+): boolean {
+  // A unit-narrowed grant reaches nothing. No resource carries a unit binding yet (O6),
+  // so there is no column to read the unit from; the list filter (verticalWhere) leaves
+  // these grants out, and the record check must agree with it.
+  if (typeof grant.conditions.unitCode === 'string') return false;
+  if (!binding || (binding.kind !== 'field' && binding.kind !== 'fixed')) return false;
+  const recordVertical = binding.kind === 'fixed' ? binding.verticalCode : (record.verticalCode ?? null);
+  const wanted = typeof grant.conditions.verticalCode === 'string' ? grant.conditions.verticalCode : null;
+  if (recordVertical === null || wanted === null || recordVertical !== wanted) return false;
+  if (grant.scope === 'all') return true;
+  if (grant.scope === 'own') {
+    const owner = ownerOf(record);
+    return owner !== null && owner === auth.partyId;
+  }
+  return false;
 }
 
 async function activeCeilingGrant(auth: AuthContext, authorityClass: string) {
@@ -383,7 +473,9 @@ export async function scopeFor(resource: string, verb: Verb, auth?: AuthContext)
   const a = auth ?? currentAuth();
   if (a.principalType === 'system') return 'all';
   const grants = await resolveGrants(a);
-  const matching = grants.filter((g) => g.resource === resource && g.verbs.includes(verb));
+  // A vertical grant at scope all is not company-wide: it is left out here, so an
+  // aggregate (assertScopeAll) refuses it and visibilityWhere narrows by vertical.
+  const matching = grants.filter((g) => g.resource === resource && g.verbs.includes(verb) && !isVerticalAccessGrant(g));
   if (matching.length === 0) return null;
   return matching.reduce((x, y) => (scopeRank(y.scope) > scopeRank(x.scope) ? y : x)).scope;
 }
@@ -400,7 +492,12 @@ export function matchNothing(ownerField: string): Record<string, unknown> {
  * Builds a Prisma `where` fragment implementing the WHERE axis for a list
  * query.
  */
-export function scopeWhere(scope: Scope, auth: AuthContext, ownerField = 'ownerPartyId'): Record<string, unknown> {
+export function scopeWhere(
+  scope: Scope,
+  auth: AuthContext,
+  ownerField = 'ownerPartyId',
+  accessClause?: Record<string, unknown> | null,
+): Record<string, unknown> {
   if (scope === 'all') return {};
   // Fail closed. A principal with no party (an agent) owns nothing, and
   // `{ owner: null }` is exactly the set of unowned rows, so it must not be
@@ -409,6 +506,8 @@ export function scopeWhere(scope: Scope, auth: AuthContext, ownerField = 'ownerP
   const clauses: Record<string, unknown>[] = [
     ...(auth.partyId ? [{ [ownerField]: auth.partyId }] : []),
     ...(scope === 'own' || !auth.branch ? [] : [{ [ownerField]: null, branch: auth.branch }]),
+    // PR11b: rows the caller reaches through a vertical grant, ORed in.
+    ...(accessClause ? [accessClause] : []),
   ];
   if (clauses.length === 0) return matchNothing(ownerField);
   return clauses.length === 1 ? clauses[0] : { OR: clauses };
@@ -463,11 +562,54 @@ export async function visibilityWhere(
 ): Promise<Record<string, unknown>> {
   const a = auth ?? currentAuth();
   const scope = await scopeFor(resource, 'view', a);
+  const access = await verticalWhere(resource, 'view', a, ownerField);
   // No grant at all: the caller should have asserted first. Returning an
   // unsatisfiable filter rather than `{}` means a missing assertion degrades to
   // an empty list instead of to the whole table.
-  if (scope === null) return matchNothing(ownerField);
-  return scopeWhere(scope, a, ownerField);
+  if (scope === null) return access ?? matchNothing(ownerField);
+  return scopeWhere(scope, a, ownerField, access);
+}
+
+/**
+ * The list filter for the vertical grants a caller holds on `resource` (PR11b). Each
+ * grant contributes its vertical (the binding column, or the fixed vertical), and its
+ * owner when the scope is own. A grant with no field or fixed binding contributes
+ * nothing, which is the fail-closed case. A unit-narrowed grant contributes nothing
+ * too: no column names the unit on a resource yet, so its rows are left out of lists
+ * while the record check still allows them. Null when no grant contributes.
+ */
+async function verticalWhere(
+  resource: string,
+  verb: Verb,
+  auth: AuthContext,
+  ownerField: string,
+): Promise<Record<string, unknown> | null> {
+  const grants = (await resolveGrants(auth)).filter(
+    (g) => isVerticalAccessGrant(g) && g.resource === resource && g.verbs.includes(verb),
+  );
+  if (grants.length === 0) return null;
+  const binding = await bindingOf(resource, auth);
+  if (!binding || (binding.kind !== 'field' && binding.kind !== 'fixed')) return null;
+
+  const clauses: Record<string, unknown>[] = [];
+  for (const g of grants) {
+    const wanted = typeof g.conditions.verticalCode === 'string' ? g.conditions.verticalCode : null;
+    if (wanted === null || typeof g.conditions.unitCode === 'string') continue;
+    const parts: Record<string, unknown>[] = [];
+    if (binding.kind === 'field') {
+      if (!binding.column) continue;
+      parts.push({ [binding.column]: wanted });
+    } else if (binding.verticalCode !== wanted) {
+      continue;
+    }
+    if (g.scope === 'own') {
+      if (!auth.partyId) continue;
+      parts.push({ [ownerField]: auth.partyId });
+    }
+    clauses.push(parts.length === 0 ? {} : parts.length === 1 ? parts[0] : { AND: parts });
+  }
+  if (clauses.length === 0) return null;
+  return clauses.length === 1 ? clauses[0] : { OR: clauses };
 }
 
 // ---------------------------------------------------------------------------
