@@ -4,6 +4,20 @@ import { currentAuth } from '../../platform/context.js';
 const EFFECTIVE_FROM = new Date('2025-09-22T00:00:00.000Z');
 
 /**
+ * The author of every seeded row. A marker, not a person: no human is the enterer of a
+ * seed, so no human approver is ever the author (approveStatutoryRule refuses the
+ * author). Every seeded row is DRAFT, and a test asserts that none is APPROVED (G10 c(3)).
+ */
+export const SEED_CREATED_BY = 'system:statutory-seed';
+
+/**
+ * Every seeded source is prefixed UNVERIFIED: and says what it rests on. These are not
+ * notification numbers and none has been checked against a gazette. approveStatutoryRule
+ * refuses such a row unless the approver supplies a citation to replace it.
+ */
+const UNVERIFIED = 'UNVERIFIED: ';
+
+/**
  * The pack is deliberately marked for legal verification. It makes the
  * effective-dated shape available without pretending that this seed is a
  * gazette or a substitute for counsel's sign-off.
@@ -16,35 +30,35 @@ export async function seedStatutory(): Promise<void> {
       key: 'gst.rate.slabs',
       jurisdiction: 'IN',
       value: { status: 'needs_legal_verification', rates: ['0', '5', '18', '40'], effectiveDate: '2025-09-22' },
-      source: 'Phase 3 brief; verify against the applicable CBIC notification before production use.',
+      source: `${UNVERIFIED}Phase 3 brief; verify against the applicable CBIC notification before production use.`,
     },
     {
       domain: 'pf',
       key: 'pf.wage_ceiling',
       jurisdiction: 'IN',
       value: { status: 'needs_legal_verification', amountMinor: '1500000', currency: 'INR' },
-      source: 'Phase 3 brief; verify current EPF Scheme notification before production use.',
+      source: `${UNVERIFIED}Phase 3 brief; verify current EPF Scheme notification before production use.`,
     },
     {
       domain: 'esi',
       key: 'esi.contribution_period',
       jurisdiction: 'IN',
       value: { status: 'needs_legal_verification', periods: ['APR-SEP', 'OCT-MAR'] },
-      source: 'Phase 3 brief; verify current ESIC notification before production use.',
+      source: `${UNVERIFIED}Phase 3 brief; verify current ESIC notification before production use.`,
     },
     {
       domain: 'pt',
       key: 'pt.local_body_schedule',
       jurisdiction: 'IN-TN',
       value: { status: 'needs_local_body_confirmation', localBodyRequired: true, slabs: [] },
-      source: 'Tamil Nadu local-body schedule must be supplied per municipality before payroll use.',
+      source: `${UNVERIFIED}Tamil Nadu local-body schedule must be supplied per municipality before payroll use.`,
     },
     {
       domain: 'tds',
       key: 'tds.forms',
       jurisdiction: 'IN',
       value: { status: 'needs_gazette_verification', forms: {} },
-      source: 'Read the current Income-tax Rules and notified appendices before generating certificates.',
+      source: `${UNVERIFIED}Read the current Income-tax Rules and notified appendices before generating certificates.`,
     },
   ];
 
@@ -59,7 +73,16 @@ export async function seedStatutory(): Promise<void> {
       },
     });
     if (!existing) {
-      await prisma.statutoryRule.create({ data: { tenantId, effectiveFrom: EFFECTIVE_FROM, ...rule } });
+      await prisma.statutoryRule.create({
+        data: { tenantId, effectiveFrom: EFFECTIVE_FROM, ...rule, status: 'DRAFT', createdBy: SEED_CREATED_BY },
+      });
+    } else if (existing.status === 'DRAFT' && existing.createdBy === null) {
+      // A seed row written before the marker existed. Only a DRAFT with no author
+      // is touched: a row a person entered has an author and is never overwritten here.
+      await prisma.statutoryRule.update({
+        where: { id: existing.id },
+        data: { source: rule.source, createdBy: SEED_CREATED_BY },
+      });
     }
   }
 }
