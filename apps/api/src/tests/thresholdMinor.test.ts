@@ -13,7 +13,9 @@
  *   - the migration refuses a fractional-paise currency value and a fractional
  *     day count, under the application role, and converts the rest exactly.
  *
- * Real Postgres and real contexts, no mocks. The migration runs from its file on
+ * A missing row is never a block: a reader reports the figure as not measured
+ * with its reason, and a review that needs the threshold is required rather than
+ * refused. Real Postgres and real contexts, no mocks. The migration runs from its file on
  * scratch databases built from the migrations that precede it.
  */
 
@@ -28,7 +30,7 @@ import * as commandCenter from '../domains/commandCenter.js';
 import * as health from '../domains/health.js';
 import * as winLoss from '../domains/winLoss.js';
 import { createApp } from '../server.js';
-import { asUser, principalFor, sessionToken, tenantId, unscopedPrisma } from './helpers.js';
+import { asUser, principalFor, sessionToken, tenantId, unscopedPrisma, withFixtureRole } from './helpers.js';
 
 const CHAIRMAN = 'chairman@kaizen.co.in';
 const TEST_DB_URL =
@@ -170,10 +172,69 @@ describe('a missing threshold is reported, never replaced by a literal', () => {
     }
   }
 
-  it('the materiality floor refuses with a typed 409 when its row is missing', async () => {
+  it('the materiality floor is null when its row is missing, so the figure is not measured', async () => {
+    await withoutRow(MATERIALITY, async () => {
+      expect(await asUser(CHAIRMAN, () => commandCenter.materialityFloorMinor())).toBeNull();
+    });
+  });
+
+  it('the command centre still serves 200 when the floor and window rows are missing, and names both as not measured', async () => {
     await withoutRow(MATERIALITY, () =>
-      expect(asUser(CHAIRMAN, () => commandCenter.materialityFloorMinor())).rejects.toMatchObject({ status: 409 }),
+      withoutRow(WINDOW, async () => {
+        const server: Server = createApp().listen(0);
+        try {
+          const address = server.address();
+          const port = typeof address === 'object' && address ? address.port : 0;
+          const p = await principalFor(CHAIRMAN);
+          const token = await sessionToken({
+            userId: p.userId,
+            tenantId: p.tenantId,
+            affiliationId: p.affiliationId,
+            stepUp: true,
+          });
+          const res = await fetch(`http://127.0.0.1:${port}/api/command/what-changed`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          expect(res.status).toBe(200);
+          const body = (await res.json()) as {
+            narrativeWindowElapsed: boolean | null;
+            suppressedBelowMateriality: number | null;
+            notMeasured: { figure: string; reason: string }[];
+          };
+          expect(body.suppressedBelowMateriality).toBeNull();
+          expect(body.narrativeWindowElapsed).toBeNull();
+          expect(body.notMeasured.map((n) => n.figure).sort()).toEqual(['materiality_floor', 'narrative_window']);
+          expect(body.notMeasured.find((n) => n.figure === 'materiality_floor')?.reason).toBe(
+            `threshold ${MATERIALITY} is not configured`,
+          );
+        } finally {
+          server.close();
+        }
+      }),
     );
+  });
+
+  it('a win/loss review is required, with the reason recorded, when the value threshold row is missing', async () => {
+    // An opportunity with no review yet, so ensureWinLossReview has to decide rather than return the old one.
+    const reviewed = await unscopedPrisma.winLossReview.findMany({
+      where: { tenantId: KAIZEN, subjectType: 'opportunity' },
+      select: { subjectId: true },
+    });
+    const opp = await unscopedPrisma.opportunity.findFirst({
+      where: { tenantId: KAIZEN, id: { notIn: reviewed.map((r) => r.subjectId) } },
+    });
+    expect(opp, 'the seed needs an opportunity with no win/loss review').not.toBeNull();
+    try {
+      await withoutRow(WIN_LOSS, async () => {
+        const review = await asUser(CHAIRMAN, () => winLoss.ensureWinLossReview('opportunity', opp!.id));
+        expect(review.mandatory).toBe(true);
+        expect(review.mandatoryBasis).toContain(`threshold ${WIN_LOSS} is not configured`);
+      });
+    } finally {
+      await unscopedPrisma.winLossReview.deleteMany({
+        where: { tenantId: KAIZEN, subjectType: 'opportunity', subjectId: opp!.id },
+      });
+    }
   });
 
   it('the quarter target is null, which the health domain reports as not measured', async () => {
@@ -244,6 +305,35 @@ describe('the admin write is audited, emitted and shape-checked', () => {
     const res = await patch(MATERIALITY, { valueInt: 999 });
     expect(res.status).toBe(400);
     expect((await thresholdRow(MATERIALITY))?.valueMinor).toBe(10_000_000n);
+  });
+
+  it('a write without the policies grant is refused 403, and the row is unchanged', async () => {
+    await setTyped(WINDOW, { valueInt: 72 });
+    const before = await thresholdRow(WINDOW);
+    const server: Server = createApp().listen(0);
+    try {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      const res = await withFixtureRole({ slug: 'thr_no_policy', grants: [] }, async (p) => {
+        const t = await sessionToken({
+          userId: p.userId,
+          tenantId: p.tenantId,
+          affiliationId: p.affiliationId,
+          stepUp: true,
+        });
+        return fetch(`http://127.0.0.1:${port}/api/admin/thresholds/${encodeURIComponent(WINDOW)}`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${t}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ valueInt: 1 }),
+        });
+      });
+      expect(res.status).toBe(403);
+      const after = await thresholdRow(WINDOW);
+      expect(after?.valueInt).toBe(before?.valueInt);
+      expect(after?.updatedAt).toEqual(before?.updatedAt);
+    } finally {
+      server.close();
+    }
   });
 
   it('refuses a JavaScript number where the paise string belongs', async () => {
