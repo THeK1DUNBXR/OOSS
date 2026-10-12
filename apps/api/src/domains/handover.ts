@@ -109,21 +109,26 @@ export async function authoriseHandover(handover: HandoverInput): Promise<void> 
 }
 
 /**
- * The kinds of blocker the caller may see named. Each kind uses the check its own list
- * route makes, so the 409 never shows a row the caller could not list:
- *   commitment  listCommitments, commitments.ts:256-257 (assertCan view)
- *   case        listCases, cases.ts:327-329 (assertCan view)
- *   lead        listLeads, leads.ts:460-463 (scopeFor view, forbidden when null)
+ * The kinds of blocker the caller may see named. A kind is named only at view scope
+ * 'all'. Every blocker is a row the leaver owns, so an 'own' or 'own_or_unowned' grant
+ * can never list it, and naming it would show ids the caller could not read by list.
+ * Each kind also keeps the check its own list route makes, where that route has one:
+ *   commitment     listCommitments, commitments.ts:256-257 (assertCan view)
+ *   case           listCases, cases.ts:327-329 (assertCan view)
+ *   lead           listLeads, leads.ts:460-463 (scopeFor view only)
  *   asset_custody  listAssetAssignments, hcm/assets.ts:189-191 (assertCan view)
  * Read before the transaction: these reads go through the scoped client, which cannot
  * run inside a transaction this code did not open (as authoriseHandover says).
  */
 export async function viewableHandoverKinds(): Promise<ReadonlySet<HandoverKind>> {
+  const viewsAll = async (resource: string) => (await scopeFor(resource, 'view')) === 'all';
   const kinds = new Set<HandoverKind>();
-  if (await can({ resource: 'commitments', verb: 'view' })) kinds.add('commitment');
-  if (await can({ resource: 'cases', verb: 'view' })) kinds.add('case');
-  if ((await scopeFor('leads', 'view')) !== null) kinds.add('lead');
-  if (await can({ resource: 'asset_assignments', verb: 'view' })) kinds.add('asset_custody');
+  if ((await viewsAll('commitments')) && (await can({ resource: 'commitments', verb: 'view' })))
+    kinds.add('commitment');
+  if ((await viewsAll('cases')) && (await can({ resource: 'cases', verb: 'view' }))) kinds.add('case');
+  if (await viewsAll('leads')) kinds.add('lead');
+  if ((await viewsAll('asset_assignments')) && (await can({ resource: 'asset_assignments', verb: 'view' })))
+    kinds.add('asset_custody');
   return kinds;
 }
 
