@@ -158,7 +158,16 @@ model Gstr2bMatch {
 
   matchedAt DateTime @default(now())
 
+  /// The Gstr2bImport row of the period this set was reconciled against. That
+  /// row is upserted once per period, so it names the import, not the upload.
+  importId String?
+  /// Set when a later recompute for the same period replaces this row. Rows are
+  /// superseded, never deleted: ITC claimed on an earlier reading of the portal
+  /// stays provable. Readers of the current state filter `supersededAt: null`.
+  supersededAt DateTime?
+
   @@index([tenantId, period])
+  @@index([tenantId, period, supersededAt])
   @@index([tenantId, vendorBillId])
   @@map("gstr2b_matches")
 }

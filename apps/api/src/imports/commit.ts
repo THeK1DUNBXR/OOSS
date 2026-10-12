@@ -12,14 +12,17 @@
  * sixty of them before their first import is asking them not to bother.
  */
 
-import { prisma, dec } from '../platform/db.js';
+import { Prisma, type ImportRow } from '@prisma/client';
+import { prisma, unscopedPrisma, dec, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { assertCan } from '../platform/permissions.js';
 import { assertCanAssignRole } from '../platform/roleAssignment.js';
 import { ApiError } from '../platform/errors.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { emit } from '../platform/eventBus.js';
-import { EVENTS, DIVISION_LABELS, DIVISIONS, type Division } from '@kaizen/shared';
+import { auditWrite } from '../platform/audit.js';
+import { writeTransactionMinor, assertPeriodPostableInTx } from '../domains/books.js';
+import { EVENTS, DIVISION_LABELS, DIVISIONS, parseMinor, type Division } from '@kaizen/shared';
 import { matchFailure, matchPerson } from './matchName.js';
 import { classifyLedger, divisionFor, isAccountName, JOURNAL_ACCOUNT_NAME, JOURNAL_ACCOUNT_TYPE } from './classify.js';
 import { UNSTATED_LEDGER_KIND } from './chart.js';
@@ -41,11 +44,16 @@ export interface CommitResult {
   errors: Array<{ rowNumber: number; message: string }>;
 }
 
-async function ensureAccount(name: string, accountType: string): Promise<string> {
+/**
+ * Finds or creates an account named in the file, inside the chunk's
+ * transaction. A created account is audited and announced like one made by
+ * hand (books.ts createAccount), so an import cannot add to the books unseen.
+ */
+async function ensureAccount(name: string, accountType: string, tx: DbTx): Promise<string> {
   const auth = currentAuth();
-  const existing = await prisma.ledgerAccount.findFirst({ where: { tenantId: auth.tenantId, name } });
+  const existing = await tx.ledgerAccount.findFirst({ where: { tenantId: auth.tenantId, name } });
   if (existing) return existing.id;
-  const created = await prisma.ledgerAccount.create({
+  const created = await tx.ledgerAccount.create({
     data: {
       tenantId: auth.tenantId,
       name,
@@ -54,14 +62,27 @@ async function ensureAccount(name: string, accountType: string): Promise<string>
       openingBalance: 0,
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'ledger_account',
+    subjectId: created.id,
+    after: { name, accountType, ledgerGroup: created.ledgerGroup, openingBalance: 0 },
+    tx,
+  });
+  await emit({
+    name: EVENTS.LEDGER_ACCOUNT_CREATED,
+    subject: { entityType: 'ledger_account', entityId: created.id },
+    newState: { name, accountType },
+    tx,
+  });
   return created.id;
 }
 
-async function ensureCategory(name: string, categoryKind: string): Promise<string> {
+async function ensureCategory(name: string, categoryKind: string, tx: DbTx): Promise<string> {
   const auth = currentAuth();
-  const existing = await prisma.ledgerCategory.findFirst({ where: { tenantId: auth.tenantId, name } });
+  const existing = await tx.ledgerCategory.findFirst({ where: { tenantId: auth.tenantId, name } });
   if (existing) return existing.id;
-  const created = await prisma.ledgerCategory.create({
+  const created = await tx.ledgerCategory.create({
     data: {
       tenantId: auth.tenantId,
       name,
@@ -70,123 +91,163 @@ async function ensureCategory(name: string, categoryKind: string): Promise<strin
       defaultDivision: divisionFor(name),
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'ledger_category',
+    subjectId: created.id,
+    after: { name, kind: categoryKind, behaviour: 'variable' },
+    tx,
+  });
   return created.id;
+}
+
+/**
+ * The file's amount in paise. The reader hands over a JavaScript number, so it
+ * is taken back to the text the file had (String of a double is the shortest
+ * text that reads back to it, which for a two-place amount is that amount) and
+ * parsed strictly: a third decimal is refused, not rounded. Refusing it is the
+ * point, because a third decimal is nearly always a unit mistake.
+ */
+function paiseOf(value: unknown): bigint {
+  if (value === undefined || value === null) return 0n;
+  const text = String(value);
+  try {
+    return parseMinor(text);
+  } catch {
+    throw new Error(`The amount ${text} is not a rupee amount with at most two decimal places.`);
+  }
 }
 
 // ---------------------------------------------------------------------------
 
+/** Rows per transaction. A crash loses at most the open chunk, and the rerun finds those rows still ready (FX-72). */
+const CHUNK_ROWS = 500;
+
+/**
+ * Kinds whose writers take the chunk's transaction. The others still write
+ * through the scoped client, one row at a time, as they did before FX-72: a
+ * crash between one of their writes and the row being marked can still leave a
+ * duplicate on the rerun. Moving them is the same change as the ledger's.
+ */
+const CHUNKED_KINDS = new Set(['tally_ledger', 'bank_statement', 'transactions']);
+
+const CHUNK_TIMEOUT_MS = 5 * 60_000;
+const BATCH_LOCK_TIMEOUT_MS = 4 * 60 * 60_000;
+
+interface Tally {
+  created: Record<string, number>;
+  skipped: number;
+  errors: Array<{ rowNumber: number; message: string }>;
+}
+
+/**
+ * Errors from the database itself, rather than from the row. Postgres aborts
+ * the whole transaction on one of them, so the chunk cannot go on: it is rolled
+ * back, and the rerun starts from its first row.
+ */
+function isDatabaseFault(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError ||
+    error instanceof Prisma.PrismaClientUnknownRequestError ||
+    error instanceof Prisma.PrismaClientRustPanicError ||
+    error instanceof Prisma.PrismaClientInitializationError
+  );
+}
+
+/**
+ * One commit at a time per batch. A session-level lock cannot span the chunk
+ * transactions, since each takes its own connection from the pool, so the lock
+ * is a transaction-scoped advisory lock held by an outer transaction. It is
+ * released when that transaction ends, including when the process dies, which
+ * is what lets an interrupted commit be resumed.
+ *
+ * The outer transaction runs on the unscoped client and holds no tenant data:
+ * it sets no tenant and reads no row, only takes the lock. That matters because
+ * the scoped client refuses any statement made inside an interactive transaction
+ * (db.ts refuseOuterClientInTransaction), and the work below must run its own
+ * scoped chunk transactions. The key names the tenant, so a batch id is never
+ * shared across tenants.
+ */
+async function withBatchLock<T>(tenant: string, batchId: string, work: () => Promise<T>): Promise<T> {
+  return unscopedPrisma.$transaction(
+    async (lock) => {
+      const [row] = await lock.$queryRaw<Array<{ held: boolean }>>`
+        SELECT pg_try_advisory_xact_lock(hashtextextended(${`import_batch:${tenant}:${batchId}`}, 0)) AS held`;
+      if (!row?.held) {
+        throw ApiError.conflict(
+          'This import is already being committed. Wait for that commit to finish, then look again.',
+        );
+      }
+      return work();
+    },
+    { timeout: BATCH_LOCK_TIMEOUT_MS, maxWait: 10_000 },
+  );
+}
+
 export async function commitImport(id: string): Promise<CommitResult> {
-  const auth = currentAuth();
   await assertCan({ resource: 'imports', verb: 'edit' });
+  const auth = currentAuth();
 
   const batch = await prisma.importBatch.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!batch) throw ApiError.notFound('Import');
   if (batch.status === 'committed') throw ApiError.conflict('This import has already been committed.');
 
-  const rows = await prisma.importRow.findMany({
-    where: { tenantId: auth.tenantId, batchId: id, status: 'ready' },
-    orderBy: { rowNumber: 'asc' },
-  });
+  return withBatchLock(auth.tenantId, id, () => commitUnderLock(id));
+}
 
-  if (rows.length === 0) {
+async function commitUnderLock(id: string): Promise<CommitResult> {
+  const auth = currentAuth();
+
+  // Read again under the lock: a commit that held it a moment ago may have finished.
+  const batch = await prisma.importBatch.findFirst({ where: { id, tenantId: auth.tenantId } });
+  if (!batch) throw ApiError.notFound('Import');
+  if (batch.status === 'committed') throw ApiError.conflict('This import has already been committed.');
+
+  const pending = await prisma.importRow.count({
+    where: { tenantId: auth.tenantId, batchId: id, status: 'ready' },
+  });
+  // An interrupted commit can have nothing left to write and still be unmarked:
+  // that is a resume to finish, not a file with nothing to commit.
+  if (pending === 0 && batch.status !== 'committing') {
     throw ApiError.badRequest(
       'Every row in this import is a duplicate, a blank or an error. There is nothing to commit.',
     );
   }
 
+  // Written outside the chunk transactions, so an interrupted commit leaves it
+  // on the batch and the rerun resumes rather than starting the batch over.
+  await prisma.importBatch.update({ where: { id }, data: { status: 'committing' } });
+
   const options = (batch.options ?? {}) as Record<string, unknown>;
-  const result: CommitResult = { created: {}, skipped: 0, errors: [] };
-  const bump = (k: string) => {
-    result.created[k] = (result.created[k] ?? 0) + 1;
-  };
+  const chunked = CHUNKED_KINDS.has(batch.kind);
+  const tally: Tally = { created: {}, skipped: 0, errors: [] };
 
-  for (const row of rows) {
-    // Opened here, and only here: the domain functions below seal what they
-    // are given for their own records, so a staged ciphertext would be sealed
-    // a second time and come out unreadable.
-    const data = openStagedNormalised(row.normalised);
-    if (!data) {
-      result.skipped += 1;
-      continue;
-    }
-    try {
-      let outcome: { entityType: string; entityId: string } | null = null;
-      switch (batch.kind) {
-        case 'tally_ledger':
-          outcome = await commitLedgerRow(data, options);
-          break;
-        case 'bank_statement':
-        case 'transactions':
-          outcome = await commitBankRow(data, options);
-          break;
-        case 'chart_of_accounts':
-          outcome = await commitAccountRow(data);
-          break;
-        case 'employees':
-          outcome = await commitEmployeeRow(data);
-          break;
-        case 'salary':
-          outcome = await commitSalaryRow(data);
-          break;
-        case 'attendance':
-          outcome = await commitAttendanceRow(data);
-          break;
-        case 'template_courses':
-          outcome = await commitCourseRow(data);
-          break;
-        case 'template_batches':
-          outcome = await commitBatchRow(data);
-          break;
-        case 'template_colleges':
-          outcome = await commitCollegeRow(data);
-          break;
-        case 'template_clients':
-          outcome = await commitClientRow(data);
-          break;
-        case 'template_students':
-          outcome = await commitStudentRow(data);
-          break;
-        case 'student_register':
-          outcome = await commitStudentRegisterRow(data);
-          break;
-        case 'template_contacts':
-          outcome = await commitContactRow(data);
-          break;
-        case 'template_staff':
-          outcome = await commitEmployeeRow(data);
-          break;
-        case 'template_ledger_accounts':
-          outcome = await commitLedgerAccountTemplateRow(data);
-          break;
-        case 'template_ledger_categories':
-          outcome = await commitLedgerCategoryTemplateRow(data);
-          break;
-        case 'template_vendor_bills':
-          outcome = await commitVendorBillTemplateRow(data);
-          break;
-        case 'template_opening_register':
-          outcome = await commitOpeningRegisterRow(data);
-          break;
-        default:
-          throw new Error(`No commit path for an import of kind "${batch.kind}".`);
-      }
-
-      if (outcome) {
-        bump(outcome.entityType);
-        await prisma.importRow.update({
-          where: { id: row.id },
-          data: { status: 'committed', entityType: outcome.entityType, entityId: outcome.entityId, message: null },
-        });
-      } else {
-        result.skipped += 1;
-        await prisma.importRow.update({ where: { id: row.id }, data: { status: 'skipped' } });
-      }
-    } catch (error) {
-      const message = (error as Error).message;
-      result.errors.push({ rowNumber: row.rowNumber, message });
-      await prisma.importRow.update({ where: { id: row.id }, data: { status: 'error', message } });
+  for (;;) {
+    const rows = await prisma.importRow.findMany({
+      where: { tenantId: auth.tenantId, batchId: id, status: 'ready' },
+      orderBy: { rowNumber: 'asc' },
+      take: CHUNK_ROWS,
+    });
+    if (rows.length === 0) break;
+    if (chunked) {
+      await commitChunk(rows, batch.kind, options, tally);
+    } else {
+      for (const row of rows) await commitRowOutsideChunk(row, batch.kind, options, tally);
     }
   }
+
+  // Read back from the rows, not from this run alone, so a resumed commit
+  // reports the errors the interrupted run already recorded.
+  const errorRows = await prisma.importRow.findMany({
+    where: { tenantId: auth.tenantId, batchId: id, status: 'error' },
+    orderBy: { rowNumber: 'asc' },
+    select: { rowNumber: true, message: true },
+  });
+  const result: CommitResult = {
+    created: tally.created,
+    skipped: tally.skipped,
+    errors: errorRows.map((r) => ({ rowNumber: r.rowNumber, message: r.message ?? '' })),
+  };
 
   await prisma.importBatch.update({
     where: { id },
@@ -220,16 +281,175 @@ export async function commitImport(id: string): Promise<CommitResult> {
   return result;
 }
 
+/**
+ * One chunk: up to CHUNK_ROWS rows in one transaction. Its rows are committed
+ * together or not at all. The tally is merged only once the transaction has
+ * committed, so a rolled-back chunk reports nothing.
+ */
+async function commitChunk(rows: ImportRow[], kind: string, options: Record<string, unknown>, tally: Tally) {
+  const chunk: Tally = { created: {}, skipped: 0, errors: [] };
+  await prisma.$transaction(
+    async (tx) => {
+      for (const row of rows) await commitRowInChunk(tx, row, kind, options, chunk);
+    },
+    { timeout: CHUNK_TIMEOUT_MS, maxWait: 10_000 },
+  );
+  for (const [k, n] of Object.entries(chunk.created)) tally.created[k] = (tally.created[k] ?? 0) + n;
+  tally.skipped += chunk.skipped;
+  tally.errors.push(...chunk.errors);
+}
+
+async function commitRowInChunk(
+  tx: DbTx,
+  row: ImportRow,
+  kind: string,
+  options: Record<string, unknown>,
+  tally: Tally,
+) {
+  // Opened here, and only here: the domain functions below seal what they
+  // are given for their own records, so a staged ciphertext would be sealed
+  // a second time and come out unreadable.
+  const data = openStagedNormalised(row.normalised);
+  if (!data) {
+    tally.skipped += 1;
+    await tx.importRow.update({ where: { id: row.id }, data: { status: 'skipped' } });
+    return;
+  }
+  try {
+    const outcome = await commitChunkedRow(tx, kind, data, options);
+    if (outcome) {
+      tally.created[outcome.entityType] = (tally.created[outcome.entityType] ?? 0) + 1;
+      await tx.importRow.update({
+        where: { id: row.id },
+        data: { status: 'committed', entityType: outcome.entityType, entityId: outcome.entityId, message: null },
+      });
+    } else {
+      tally.skipped += 1;
+      await tx.importRow.update({ where: { id: row.id }, data: { status: 'skipped' } });
+    }
+  } catch (error) {
+    if (isDatabaseFault(error)) {
+      logger.error(
+        { component: 'imports', batchId: row.batchId, rowNumber: row.rowNumber, err: error },
+        'import chunk rolled back on a database fault',
+      );
+      throw error;
+    }
+    const message = (error as Error).message;
+    tally.errors.push({ rowNumber: row.rowNumber, message });
+    await tx.importRow.update({ where: { id: row.id }, data: { status: 'error', message } });
+  }
+}
+
+async function commitChunkedRow(
+  tx: DbTx,
+  kind: string,
+  data: Record<string, unknown>,
+  options: Record<string, unknown>,
+) {
+  switch (kind) {
+    case 'tally_ledger':
+      return commitLedgerRow(data, options, tx);
+    case 'bank_statement':
+    case 'transactions':
+      return commitBankRow(data, options, tx);
+    default:
+      throw new Error(`No commit path for an import of kind "${kind}".`);
+  }
+}
+
+/** The row-at-a-time path, for the kinds not yet moved into chunks (see CHUNKED_KINDS). */
+async function commitRowOutsideChunk(row: ImportRow, kind: string, options: Record<string, unknown>, tally: Tally) {
+  // Opened here, and only here (see commitRowInChunk).
+  const data = openStagedNormalised(row.normalised);
+  if (!data) {
+    tally.skipped += 1;
+    await prisma.importRow.update({ where: { id: row.id }, data: { status: 'skipped' } });
+    return;
+  }
+  try {
+    let outcome: { entityType: string; entityId: string } | null = null;
+    switch (kind) {
+      case 'chart_of_accounts':
+        outcome = await commitAccountRow(data);
+        break;
+      case 'employees':
+        outcome = await commitEmployeeRow(data);
+        break;
+      case 'salary':
+        outcome = await commitSalaryRow(data);
+        break;
+      case 'attendance':
+        outcome = await commitAttendanceRow(data);
+        break;
+      case 'template_courses':
+        outcome = await commitCourseRow(data);
+        break;
+      case 'template_batches':
+        outcome = await commitBatchRow(data);
+        break;
+      case 'template_colleges':
+        outcome = await commitCollegeRow(data);
+        break;
+      case 'template_clients':
+        outcome = await commitClientRow(data);
+        break;
+      case 'template_students':
+        outcome = await commitStudentRow(data);
+        break;
+      case 'student_register':
+        outcome = await commitStudentRegisterRow(data);
+        break;
+      case 'template_contacts':
+        outcome = await commitContactRow(data);
+        break;
+      case 'template_staff':
+        outcome = await commitEmployeeRow(data);
+        break;
+      case 'template_ledger_accounts':
+        outcome = await commitLedgerAccountTemplateRow(data);
+        break;
+      case 'template_ledger_categories':
+        outcome = await commitLedgerCategoryTemplateRow(data);
+        break;
+      case 'template_vendor_bills':
+        outcome = await commitVendorBillTemplateRow(data);
+        break;
+      case 'template_opening_register':
+        outcome = await commitOpeningRegisterRow(data);
+        break;
+      default:
+        throw new Error(`No commit path for an import of kind "${kind}".`);
+    }
+
+    if (outcome) {
+      tally.created[outcome.entityType] = (tally.created[outcome.entityType] ?? 0) + 1;
+      await prisma.importRow.update({
+        where: { id: row.id },
+        data: { status: 'committed', entityType: outcome.entityType, entityId: outcome.entityId, message: null },
+      });
+    } else {
+      tally.skipped += 1;
+      await prisma.importRow.update({ where: { id: row.id }, data: { status: 'skipped' } });
+    }
+  } catch (error) {
+    const message = (error as Error).message;
+    tally.errors.push({ rowNumber: row.rowNumber, message });
+    await prisma.importRow.update({ where: { id: row.id }, data: { status: 'error', message } });
+  }
+}
+
 // ---- per-kind commits -----------------------------------------------------
 
-async function commitLedgerRow(data: Record<string, unknown>, options: Record<string, unknown>) {
-  const auth = currentAuth();
+async function commitLedgerRow(data: Record<string, unknown>, options: Record<string, unknown>, tx: DbTx) {
   const chart = (options.chart ?? {}) as Record<string, string>;
   const ledger = String(data.ledger ?? '');
   const contra = String(data.contraAccount ?? '');
   const side = String(data.side ?? 'debit');
-  const amount = Number(data.amount ?? 0);
-  if (!ledger || !amount) return null;
+  const amount = paiseOf(data.amount);
+  if (!ledger || amount === 0n) return null;
+  const txnDate = new Date(String(data.txnDate));
+  await assertPeriodPostableInTx(tx, txnDate);
 
   const ledgerIsAccount = isAccountName(ledger, chart);
   const contraIsAccount = contra ? isAccountName(contra, chart) : false;
@@ -275,18 +495,18 @@ async function commitLedgerRow(data: Record<string, unknown>, options: Record<st
       : accountClass.kind === 'account'
         ? accountClass.accountType
         : 'bank',
+    tx,
   );
 
   const categoryId = await ensureCategory(
     categoryName,
     categoryName === SETTLEMENT_CATEGORY_NAME ? 'transfer' : categoryKindFor(categoryName, chart),
+    tx,
   );
 
-  const txn = await prisma.transaction.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('TXN'),
-      txnDate: new Date(String(data.txnDate)),
+  const txn = await writeTransactionMinor(
+    {
+      txnDate,
       direction,
       amount,
       accountId,
@@ -297,9 +517,9 @@ async function commitLedgerRow(data: Record<string, unknown>, options: Record<st
       reference: data.voucherNo ? `${data.voucherType ?? 'Voucher'} ${data.voucherNo}` : null,
       note: String(data.narration ?? ''),
       source: 'tally_import',
-      createdById: auth.partyId,
     },
-  });
+    tx,
+  );
 
   return { entityType: 'transaction', entityId: txn.id };
 }
@@ -330,9 +550,7 @@ function categoryKindFor(name: string, chart: Record<string, string>): string {
   return Object.keys(chart).length === 0 ? 'expense' : UNSTATED_LEDGER_KIND;
 }
 
-async function commitBankRow(data: Record<string, unknown>, options: Record<string, unknown>) {
-  const auth = currentAuth();
-
+async function commitBankRow(data: Record<string, unknown>, options: Record<string, unknown>, tx: DbTx) {
   // An opening-balance line sets the account's starting figure rather than
   // creating a transaction, so the running balance in the file and the balance
   // the platform computes agree from the first row.
@@ -343,14 +561,15 @@ async function commitBankRow(data: Record<string, unknown>, options: Record<stri
     throw new Error('No account was chosen for this statement. Pick the bank account it belongs to and commit again.');
   }
 
+  const txnDate = new Date(String(data.txnDate));
+  await assertPeriodPostableInTx(tx, txnDate);
+
   const narration = String(data.narration ?? '');
-  const txn = await prisma.transaction.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('TXN'),
-      txnDate: new Date(String(data.txnDate)),
+  const txn = await writeTransactionMinor(
+    {
+      txnDate,
       direction: String(data.direction) === 'in' ? 'in' : 'out',
-      amount: Number(data.amount ?? 0),
+      amount: paiseOf(data.amount),
       accountId,
       categoryId: options.defaultCategoryId ? String(options.defaultCategoryId) : null,
       division: String(options.defaultDivision ?? 'shared'),
@@ -359,20 +578,23 @@ async function commitBankRow(data: Record<string, unknown>, options: Record<stri
       reference: data.reference ? String(data.reference) : null,
       note: narration,
       source: 'bank_import',
-      createdById: auth.partyId,
     },
-  });
+    tx,
+  );
   return { entityType: 'transaction', entityId: txn.id };
 }
 
 async function commitAccountRow(data: Record<string, unknown>) {
   const name = String(data.name ?? '');
   if (!name) return null;
+  // Not a chunk kind (CHUNKED_KINDS): there is no transaction to pass, so the
+  // scoped client writes, as it always has for this kind.
+  const db = prisma as unknown as DbTx;
   const classified = classifyLedger(name);
   if (classified.kind === 'account') {
-    return { entityType: 'ledgerAccount', entityId: await ensureAccount(name, classified.accountType) };
+    return { entityType: 'ledgerAccount', entityId: await ensureAccount(name, classified.accountType, db) };
   }
-  return { entityType: 'ledgerCategory', entityId: await ensureCategory(name, classified.categoryKind) };
+  return { entityType: 'ledgerCategory', entityId: await ensureCategory(name, classified.categoryKind, db) };
 }
 
 /**

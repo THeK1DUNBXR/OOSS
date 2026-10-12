@@ -5033,6 +5033,7 @@ model LedgerAccount {
   transactions Transaction[]
   journalLines JournalLine[]
   balanceSnapshots AccountBalanceSnapshot[]
+  postingRoles LedgerPostingRole[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, name])

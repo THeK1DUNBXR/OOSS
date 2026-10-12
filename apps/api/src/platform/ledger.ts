@@ -1,4 +1,12 @@
-import { EVENTS, formatMinor, formatRecordCode, istCivilDay, istFinancialYear, istMonthKey } from '@kaizen/shared';
+import {
+  EVENTS,
+  formatMinor,
+  formatRecordCode,
+  istCivilDay,
+  istFinancialYear,
+  istMonthKey,
+  JOURNAL_SOURCE_TYPES,
+} from '@kaizen/shared';
 import { Prisma } from '@prisma/client';
 import { prisma, type DbTx } from './db.js';
 import { currentAuth } from './context.js';
@@ -7,18 +15,8 @@ import { auditWrite } from './audit.js';
 import { emit } from './eventBus.js';
 import { ApiError } from './errors.js';
 
-export type SourceType =
-  | 'invoice'
-  | 'receipt'
-  | 'payment'
-  | 'payroll_run'
-  | 'depreciation'
-  | 'import'
-  | 'manual'
-  | 'opening_balance'
-  | 'fx_revaluation'
-  | 'accrual'
-  | 'reversal';
+/** The vocabulary lives in shared postingRules.ts so both tiers name the same sources. */
+export type SourceType = (typeof JOURNAL_SOURCE_TYPES)[number];
 
 export interface JournalLineInput {
   accountId: string;
@@ -303,6 +301,36 @@ export async function post(input: PostInput) {
     }
     throw err;
   }
+}
+
+/**
+ * The same write as post(), inside the caller's transaction (contract FX-70,
+ * D1 and O1). The entry commits with its source document or not at all: a
+ * fault after this call takes the entry back with the invoice, so neither is
+ * left without the other. An outbox consumer could not give that.
+ *
+ * Lock order (contract D6), so that no two writers wait on each other in a
+ * cycle: the source row FOR UPDATE first, then the period FOR SHARE in
+ * lockPostablePeriod, then the ledger rows. A close takes only the period, FOR
+ * UPDATE, so it never holds a source row and waits on a posting.
+ *
+ * Callers, in this order:
+ *   1. assertCan({ resource: 'transactions', verb: 'create' }) before they open
+ *      their transaction. Permission evaluation reads through the scoped client,
+ *      which refuses inside a transaction (db.ts refuseOuterClientInTransaction),
+ *      so this function cannot run the check.
+ *   2. The source row FOR UPDATE, then this call. Two posts with one key then
+ *      wait on the source row rather than on the unique index. If they race
+ *      anyway, the index refuses the second insert and the caller's transaction
+ *      aborts with it. Nothing is written twice. Unlike post(), there is no
+ *      retry, because a failed statement ends the Postgres transaction it is in.
+ *   3. `tx` for every statement, never the outer client.
+ */
+export async function postInTx(tx: DbTx, input: PostInput) {
+  const auth = currentAuth();
+  validatePostInput(input);
+  const result = await writeEntry(tx, input, auth.tenantId, auth.partyId);
+  return result.entry;
 }
 
 export async function reverse(entryId: string, reason: string) {
