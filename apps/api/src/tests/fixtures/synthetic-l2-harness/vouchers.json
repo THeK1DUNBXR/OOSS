@@ -1,0 +1,48 @@
+[
+  {
+    "id": "SYNTH-V001",
+    "date": "2030-02-05",
+    "narration": "SYNTHETIC sales receipt",
+    "legs": [
+      { "ledgerGroup": "bank", "amount": "10000.00" },
+      { "ledgerGroup": "sales", "amount": "-10000.00" }
+    ]
+  },
+  {
+    "id": "SYNTH-V002",
+    "date": "2030-02-20",
+    "narration": "SYNTHETIC rent paid",
+    "legs": [
+      { "ledgerGroup": "rent", "amount": "2500.00" },
+      { "ledgerGroup": "bank", "amount": "-2500.00" }
+    ]
+  },
+  {
+    "id": "SYNTH-V003",
+    "date": "2030-03-03",
+    "narration": "SYNTHETIC sale with a tax leg whose group is not mapped",
+    "legs": [
+      { "ledgerGroup": "bank", "amount": "7500.50" },
+      { "ledgerGroup": "sales", "amount": "-6000.50" },
+      { "ledgerGroup": "taxpayable", "amount": "-1500.00" }
+    ]
+  },
+  {
+    "id": "SYNTH-V004",
+    "date": "2030-03-10",
+    "narration": "SYNTHETIC voucher that does not balance",
+    "legs": [
+      { "ledgerGroup": "bank", "amount": "100.00" },
+      { "ledgerGroup": "sales", "amount": "-90.00" }
+    ]
+  },
+  {
+    "id": "SYNTH-V005",
+    "date": "2030-03-15",
+    "narration": "SYNTHETIC rent paid, March",
+    "legs": [
+      { "ledgerGroup": "rent", "amount": "400.00" },
+      { "ledgerGroup": "bank", "amount": "-400.00" }
+    ]
+  }
+]

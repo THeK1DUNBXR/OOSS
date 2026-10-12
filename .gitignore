@@ -30,3 +30,6 @@ e2e/playwright-report/
 
 # Agent worktrees are scratch checkouts, never content.
 .claude/worktrees/
+
+# Local spreadsheet fixture for the L2 harness (may carry personal-looking data). Never commit.
+apps/api/src/tests/fixtures/kaizen-l2/
