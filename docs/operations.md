@@ -41,8 +41,13 @@ which is what `scripts/setup.sh` does.
 The native path creates the `kaizen` role (`LOGIN CREATEDB`, password `kaizen`)
 and the `kaizen` database, trying the current account first and falling back to
 the `postgres` system account. It writes `apps/api/.env` from `.env.example`
-with a freshly generated `JWT_SECRET`, and skips seeding entirely if the
-database already holds a tenant — so re-running it never touches your data.
+with freshly generated `JWT_SECRET` and `FIELD_ENCRYPTION_KEY` values, and skips
+seeding entirely if the database already holds a tenant — so re-running it never
+touches your data. An `apps/api/.env` from before `FIELD_ENCRYPTION_KEY` was
+required is left alone and reported: the API will not start until the key is
+added. A key generated for a database that was seeded under the old development
+fallback will not decrypt that database's PAN and bank values. If that data
+matters, ask the owner which value it was encrypted under before changing the key.
 
 ## Running
 
@@ -224,6 +229,7 @@ that runs twice does not act twice.
 | `MIGRATION_DATABASE_URL` | —            | the owner, for `prisma migrate` (schema `directUrl`)                                                                                                                                                                                       |
 | `UNSCOPED_DATABASE_URL`  | —            | required in production; the unscoped role above. Without a `rolbypassrls` or `rolsuper` role the server refuses to start                                                                                                                   |
 | `JWT_SECRET`             | —            | required                                                                                                                                                                                                                                   |
+| `FIELD_ENCRYPTION_KEY`   | —            | required in every environment, at least 32 characters. Keys encryption of PAN, Aadhaar and bank values; the API refuses to start without it, and there is no development fallback                                                          |
 | `PORT`                   | `4000`       |                                                                                                                                                                                                                                            |
 | `WEB_DIST_DIR`           | _(unset)_    | path to the built client (`apps/web/dist`). Set in production so the API serves the client as well as `/api`; Caddy proxies to it (`deploy/Caddyfile`)                                                                                     |
 | `JOBS_ENABLED`           | `true`       | in-process scheduler                                                                                                                                                                                                                       |

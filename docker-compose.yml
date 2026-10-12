@@ -53,6 +53,10 @@ services:
       # Development only. A real deployment injects a secret rather than
       # carrying one in a file that lives in the repository.
       JWT_SECRET: kaizen-local-dev-secret-2026-do-not-use-in-prod
+      # Not committed here: a value in this file would be a public key, which
+      # protects nothing. Set it in your shell or in a .env beside this file
+      # (openssl rand -base64 48). Without it the API refuses to start.
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-}
       # The first account, so `docker compose up` gives you credentials you can
       # actually type. Without these the seed generates a random password and
       # prints it once into this container's log — correct for a real install,
@@ -102,6 +106,7 @@ services:
       TEST_DATABASE_URL: postgresql://kaizen:kaizen@postgres:5432/kaizen_test?schema=public
       NODE_ENV: test
       JWT_SECRET: test-only-secret-not-used-anywhere-else-0123456789
+      FIELD_ENCRYPTION_KEY: test-only-field-encryption-key-not-used-anywhere-else-0123456789
     volumes:
       - .:/workspace
     working_dir: /workspace
