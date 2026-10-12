@@ -183,7 +183,7 @@ Stop rule for each sub-phase: its items are merged and its listed tests pass. Te
 
 - COM-13: response SLA mechanism only. The numbers come after one month of measurement.
 - COM-15: notifications in-app and by email via Resend.
-  - BLOCKED-BY the Resend data-hosting check, before the first outside user.
+  - Not gated by the Resend data-hosting check (round 25 item g; see DECISIONS.md, round 25).
 - COM-02: shared inbox. One mailbox that several employees open (for example support@), with assignment and internal notes. It may receive and send to external addresses (round 24 item g). Customer-facing sends keep human approval. Supersedes the round 4 COM-02 rule "internal-only, no external provider".
 - Employee company mailboxes and in-app inbox (round 21, OPEN, new large scope, not estimated). Owner answers: the app creates and hosts each employee's mailbox; the inbox sends and reads mail and links it to customers (Z3 capture pulled in for employee mail only). Round 22 owner decision, clarified 2026-10-12: copy code from open-source mail projects where relevant (Stalwart and others) into our own mail component, and log provenance in `docs/plan/zen360/MAIL-PROVENANCE.md`. This is not a literal fork. Unresearched caveats (Enterprise features, JMAP, release cadence, hosting conflict) are listed in DECISIONS.md round 22. Still OPEN and not estimated. No CAP row or spec yet. MVP, v2 and later feature phasing is in DECISIONS.md round 22. See DECISIONS.md round 21 and round 22.
 - COM-11: meetings and minutes, typed by people. No recordings.
@@ -199,7 +199,7 @@ Stop rule for each sub-phase: its items are merged and its listed tests pass. Te
 
 - **Wave 2 (projects):** projects, epics, stories, tasks, subtasks. Per-project status rows via `lifecycle.ts:74`. WIP limits. Midpoint fractional rank, with rebalance. A `version` column for optimistic concurrency. RLS.
 - **Wave 3 (discussion):** channels, DMs, mentions, reactions. Per-channel sequence numbers. Edits kept as revisions. Deletes kept as tombstones.
-  - BLOCKED-BY the chat-retention legal check (D-14).
+  - Not gated by the chat-retention counsel check (D-14; round 25 item g; see DECISIONS.md, round 25).
 - **Wave 4 (realtime):** SSE served directly by the Express API. The Worker spike is dropped. A notification worker with do-not-disturb.
 - **Wave 5 (automation):** rules cannot post journals, generate IRNs, file returns, run payroll, or email customers without approval.
 - **Wave 6 (voice and video):** LiveKit. ~~Self-hosted on the own server in India.~~ **Superseded by round 18b, item 4:** the code needs only a configurable server address; hosting deferred. Development and tests use a local setup. Where the server runs is a hosting decision after Phase 1.
@@ -247,9 +247,7 @@ Identity types:
 
 - Employees: Head, Manager, Staff.
 - Founders and owners.
-- Contractors and freelancers. Timesheets and tasks are employee-only until guest accounts are designed (round 24 item f; a default, not an owner decision).
-- External auditors and accountants.
-- Board and investors.
+- No external users in Phase 0 or Phase 1 (round 25 item e). Contractors and freelancers, external auditors and accountants, and board and investors have no accounts. Guest accounts are designed later. Timesheets and tasks stay employee-only.
 
 The level template ships with the app. ~~Editable per tenant at onboarding.~~ **Per-tenant editing is DEFERRED (round 18b, item 1).** Each placement holds one level, plus named extra duties. Exact duties per level and read scope are not yet defined (DECISIONS.md, round 10).
 
@@ -265,7 +263,7 @@ The level template ships with the app. ~~Editable per tenant at onboarding.~~ **
   - IT owner, as a level assignment at onboarding.
   - Expense receipt storage location.
   - D-11 numbers after the one-month measurement.
-  - Legal checks before the first outside user: Resend data hosting, and chat retention (D-14).
+  - Legal checks (Resend data hosting, chat retention D-14) are not gates for now (round 25 item g).
 - Still open after round 22 (DECISIONS.md, 2026-10-11): hosting, caching and routing (after Phase 1); mail hosting exception and domain/DNS owner (round 22); questionnaire approval; statutory sign-off holder and IT owner (tbd during onboard); D-11 numbers; Resend data-hosting and chat-retention legal checks.
 - Earlier list, as on origin/main, kept for history: Still open after round 18b (DECISIONS.md, 2026-10-11): hosting, caching and routing (after Phase 1); ~~whether onboarding and level mapping stay in Phase 0~~ **closed by round 21b, item 3:** they stay in Phase 0; questionnaire approval; statutory sign-off holder and IT owner (tbd during onboard); D-11 numbers; Resend data-hosting and chat-retention legal checks.
 - Phase 0 is mostly new build, with no effort estimates.

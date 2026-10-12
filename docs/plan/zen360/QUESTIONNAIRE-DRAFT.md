@@ -10,10 +10,10 @@ Sources: `DECISIONS.md` rounds 9 to 15 (round 13: guided flow; round 14: hybrid 
 
 ## 0. How the flow runs
 
-1. **Identity type, first.** The founder or onboarding owner chooses **employee** or **founder**. Guests (auditors, board members, contractors) are not in this flow. They are guest accounts (round 15), and their design is open.
+1. **Identity type, first.** HR, the founder or the onboarding owner chooses **employee** or **founder** (round 25 item a). Guests (auditors, board members, contractors) are not in this flow. They are guest accounts (round 15), and their design is open.
 2. **Function, then level.** The function picks a role template (function list is open, see section 6). The questionnaire then sets the level: **Head**, **Manager** or **Staff**.
 3. **Baseline.** Every employee starts on the **Staff default duties** (round 15): see and edit own records (profile, attendance, leave and expense requests); log own time and tasks; use chat and notifications. These are low risk.
-4. **Twelve yes/no questions and one scope choice** (section 1), answered by the founder or onboarding owner for each employee (round 13).
+4. **Twelve yes/no questions and one scope choice** (section 1), answered by HR, the founder or the onboarding owner for each employee (round 13; round 25 item a).
 5. **Mapping** (section 2) suggests a level and extra duties. **Nothing takes effect until a named confirmer confirms it.** The person being mapped cannot confirm their own level.
 6. **Sensitive permissions are never defaults.** Approvals, payroll, bank, user administration, company-wide data and statutory rules each need an explicit request, a named approver and a conflict check (round 14, item 1). A reviewer then confirms, adds or removes, with a reason and the rule version (section 4).
 7. **Least access when unclear.** A missing or unclear answer is treated as "no", and the case is flagged for the reviewer.
@@ -30,7 +30,7 @@ Step B, function (single choice, not counted): one function from the list in sec
 
 ### Yes/no questions (12)
 
-| #   | Task wording (shown to the founder or onboarding owner)                                                         | Attribute or duty it flips                                                          | Sensitive review?                                                 |
+| #   | Task wording (shown to HR, the founder or the onboarding owner)                                                 | Attribute or duty it flips                                                          | Sensitive review?                                                 |
 | --- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Q1  | Does this person set the work and priorities of other people?                                                   | Level: at least **Manager**                                                         | No                                                                |
 | Q2  | Does this person lead more than one team, or a whole function?                                                  | Level: **Head** (only together with Q1 yes)                                         | No                                                                |

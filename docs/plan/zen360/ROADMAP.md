@@ -182,7 +182,7 @@ Parallel where the docs allow: Wave 5 interface work; Wave 4 operations moved af
 - IT owner: a level assignment at onboarding. The name is not recorded.
 - Expense receipt storage location: object storage on the own server, deferred. The own-server location is provisional (round 18b).
 - D-11 numbers after the one-month measurement.
-- Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14). Both are for the internal finance head.
+- Legal checks, the Resend data-hosting check and the chat-retention counsel check (D-14), no longer block any build or the first outside user (round 25 item g). Both are for the internal finance head.
 - Still open after round 18b (DECISIONS.md, 2026-10-11): hosting, caching and routing (after Phase 1), and the other items listed in DECISIONS.md round 18b.
 
 ### 5b. Risks from ORDERED-PLAN.md
