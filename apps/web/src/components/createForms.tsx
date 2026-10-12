@@ -284,7 +284,7 @@ export function NewLedgerAccount({ open, onClose }: { open: boolean; onClose: ()
           name: v.name,
           accountType: v.accountType,
           displayReference: v.displayReference || null,
-          openingBalance: rupeesOnWire(v.openingBalance),
+          openingBalance: v.openingBalance === undefined ? undefined : rupeesOnWire(v.openingBalance),
           openingDate: v.openingDate,
           ledgerGroup: v.accountType === 'card' || v.accountType === 'loan' ? 'liability' : 'asset',
         })
@@ -440,7 +440,7 @@ export function NewVendorBill({ open, onClose }: { open: boolean; onClose: () =>
           billDate: v.billDate,
           dueDate: v.dueDate || null,
           subtotal: rupeesOnWire(v.subtotal),
-          taxAmount: rupeesOnWire(v.taxAmount),
+          taxAmount: v.taxAmount === undefined ? undefined : rupeesOnWire(v.taxAmount),
           categoryId: v.categoryId || null,
           division: v.division,
         })
@@ -1608,7 +1608,7 @@ export function NewAsset({ open, onClose }: { open: boolean; onClose: () => void
           name: v.name,
           purchaseDate: v.purchaseDate,
           cost: rupeesOnWire(v.cost),
-          salvageValue: rupeesOnWire(v.salvageValue),
+          salvageValue: v.salvageValue === undefined ? undefined : rupeesOnWire(v.salvageValue),
           usefulLifeMonths: v.usefulLifeMonths,
           method: v.method,
           division: v.division,

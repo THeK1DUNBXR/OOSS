@@ -53,10 +53,12 @@ const GROUPED_WHOLE_RUPEES = /^-?(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3})
  * form that forgets to validate has nothing to send.
  */
 export function moneyField({ positive = false, optional = false }: { positive?: boolean; optional?: boolean } = {}) {
-  return z.string().transform((text, ctx): bigint => {
+  return z.string().transform((text, ctx): bigint | undefined => {
     const typed = text.trim();
     if (typed === '') {
-      if (optional) return 0n;
+      // A blank optional field is not entered. Returning 0n here would make it a
+      // recorded zero, and the API would store that figure as if it had been typed.
+      if (optional) return undefined;
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter an amount' });
       return z.NEVER;
     }
