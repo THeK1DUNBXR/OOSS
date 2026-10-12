@@ -14,6 +14,7 @@ import {
   type InferenceRegion,
   type TenantConfig,
   type TenantFeature,
+  type TenantOnboardingState,
   type TenantTier,
 } from '@kaizen/shared';
 
@@ -110,7 +111,16 @@ export interface TenantRuntimePolicy {
   onboardingComplete: boolean;
 }
 
-export function resolveTenantRuntimePolicy(config: Partial<TenantConfig> | null | undefined): TenantRuntimePolicy {
+/**
+ * `onboardingState` is the tenant's onboarding run (domains/onboarding.ts), which
+ * is what says whether setup is finished. The JSON status this used to read is
+ * no longer written; the run was backfilled from it, so the answer is unchanged
+ * for every tenant that had one.
+ */
+export function resolveTenantRuntimePolicy(
+  config: Partial<TenantConfig> | null | undefined,
+  onboardingState: TenantOnboardingState | null = null,
+): TenantRuntimePolicy {
   const tier = resolveTenantTier(config);
   const featureGates = CONFIGURED_TENANT_FEATURE_GATES(config, tier);
   const residency = config?.dataResidency ?? 'india';
@@ -124,8 +134,7 @@ export function resolveTenantRuntimePolicy(config: Partial<TenantConfig> | null 
         ? (inferenceRegion as InferenceRegion)
         : null,
     featureGates,
-    onboardingComplete:
-      !!config?.onboardingComplete || (!!config?.onboarding?.status && config.onboarding.status === 'active'),
+    onboardingComplete: !!config?.onboardingComplete || onboardingState === 'active',
   };
 }
 
@@ -133,7 +142,9 @@ export async function syncTenantPolicy(
   tenantId: string,
   config: Partial<TenantConfig> | null | undefined,
 ): Promise<TenantRuntimePolicy> {
-  const runtime = resolveTenantRuntimePolicy(config);
+  const { prisma } = await import('./db.js');
+  const run = await prisma.tenantOnboardingRun.findUnique({ where: { tenantId }, select: { state: true } });
+  const runtime = resolveTenantRuntimePolicy(config, (run?.state as TenantOnboardingState | undefined) ?? null);
   const nextConfig = {
     ...(config ?? {}),
     tier: runtime.tier,
@@ -142,7 +153,6 @@ export async function syncTenantPolicy(
     featureGates: runtime.featureGates,
   } as TenantConfig;
 
-  const { prisma } = await import('./db.js');
   await prisma.tenant.update({
     where: { id: tenantId },
     data: { config: nextConfig as never },
