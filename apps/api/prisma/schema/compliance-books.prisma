@@ -145,7 +145,12 @@ model JournalLine {
   baseAmountMinor BigInt
   fxRate          Decimal?      @db.Decimal(18, 8)
   division        String?
+  /// Composite with tenantId, as lineId is: a line can only name a cost centre of
+  /// its own tenant. Null on lines that carry no cost-centre dimension, which
+  /// the composite key does not check (MATCH SIMPLE). Before this FK the column
+  /// was a plain string, so a line could name a cost centre that did not exist.
   costCentreId    String?
+  costCentre      CostCentre?   @relation(fields: [tenantId, costCentreId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
   projectId       String?
   partyId         String?
   taxCodeId       String?
@@ -158,6 +163,7 @@ model JournalLine {
   @@index([tenantId, accountId, entryId])
   @@index([tenantId, partyId])
   @@index([tenantId, lineId])
+  @@index([tenantId, costCentreId])
   @@map("journal_lines")
 }
 

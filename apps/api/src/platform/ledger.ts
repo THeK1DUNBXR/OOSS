@@ -125,6 +125,65 @@ function validatePostInput(input: PostInput): bigint {
 }
 
 /**
+ * Why a line may not name a cost centre. `missing` covers an unknown id and
+ * another tenant's centre alike: the lookup is tenant-scoped, so both come back
+ * absent, and the composite foreign key refuses the same two cases in the
+ * database (journal_line_cost_centre_fk).
+ */
+export type CostCentreRefusalReason = 'missing' | 'inactive' | 'mismatched';
+
+export class CostCentreRefusedError extends ApiError {
+  constructor(
+    readonly reason: CostCentreRefusalReason,
+    costCentreId: string,
+  ) {
+    super(422, 'COST_CENTRE_REFUSED', `Cost centre ${costCentreId} cannot take this line (${reason}).`, {
+      reason,
+      costCentreId,
+    });
+    this.name = 'CostCentreRefusedError';
+  }
+}
+
+/**
+ * A reversal mirrors the lines it reverses (reverse() copies each one with its
+ * amount negated), so a reversal line is accepted for a centre only when the
+ * original carries the same account, centre and opposite amount. That is what
+ * lets a correction name a centre retired after the original was posted, since
+ * a correction must always be possible (CLAUDE.md rule 2), and it stops a
+ * reversal from attaching a centre its original never had.
+ */
+async function assertCostCentres(tx: DbTx, tenantId: string, input: PostInput) {
+  const named = input.lines.filter((line): line is JournalLineInput & { costCentreId: string } => !!line.costCentreId);
+  if (named.length === 0) return;
+
+  const centres = await tx.costCentre.findMany({
+    where: { tenantId, id: { in: [...new Set(named.map((line) => line.costCentreId))] } },
+    select: { id: true, deletedAt: true },
+  });
+  const byId = new Map(centres.map((centre) => [centre.id, centre]));
+  const original = input.reversalOfId
+    ? await tx.journalLine.findMany({
+        where: { tenantId, entryId: input.reversalOfId },
+        select: { accountId: true, amountMinor: true, costCentreId: true },
+      })
+    : [];
+
+  for (const line of named) {
+    const centre = byId.get(line.costCentreId);
+    if (!centre) throw new CostCentreRefusedError('missing', line.costCentreId);
+    const mirrors =
+      !!input.reversalOfId &&
+      original.some(
+        (o) =>
+          o.accountId === line.accountId && o.costCentreId === line.costCentreId && o.amountMinor === -line.amountMinor,
+      );
+    if (centre.deletedAt && !mirrors) throw new CostCentreRefusedError('inactive', line.costCentreId);
+    if (input.reversalOfId && !mirrors) throw new CostCentreRefusedError('mismatched', line.costCentreId);
+  }
+}
+
+/**
  * Writes one entry inside the caller's transaction, in the order CLAUDE.md
  * rule 5 names: the rows, then the audit record, then the event. A reversal
  * also writes its link row and the original's audit line, in the same unit.
@@ -194,6 +253,8 @@ async function writeEntry(tx: DbTx, input: PostInput, tenantId: string, partyId:
     });
     if (link) throw ApiError.conflict('A journal entry can only be reversed once.');
   }
+
+  await assertCostCentres(tx, tenantId, input);
 
   const created = await tx.journalEntry.create({
     data: {
