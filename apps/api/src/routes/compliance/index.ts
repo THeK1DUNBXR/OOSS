@@ -11,6 +11,7 @@ import payroll from './payroll.routes.js';
 import labour from './labour.routes.js';
 import privacy from './privacy.routes.js';
 import corporate from './corporate.routes.js';
+import statutory from './statutory.routes.js';
 
 const router = Router();
 router.use('/calendar', calendar);
@@ -21,5 +22,6 @@ router.use('/payroll', payroll);
 router.use('/labour', labour);
 router.use('/privacy', privacy);
 router.use('/corporate', corporate);
+router.use('/statutory', statutory);
 
 export default router;
