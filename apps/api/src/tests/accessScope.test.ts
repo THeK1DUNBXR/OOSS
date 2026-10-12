@@ -232,4 +232,33 @@ describe('PR11b scope: vertical access grants', () => {
     });
     expect(listed).toEqual([]);
   });
+
+  it('T5: a unit-narrowed grant denies a record in that unit, as its list does', async () => {
+    // No resource carries a unit binding yet (O6), so a unit-narrowed grant reaches nothing:
+    // the record check and the list filter must both say no.
+    const resource = resourceName();
+    const v = await makeVertical(tid, 'shared');
+    await makeResourceBinding(tid, resource, 'field', { column: 'division' });
+    const head = await makePerson(tid, 'Unit head');
+    const auth = authOf(tid, head.id);
+    await grantVertical({
+      tenantId: tid,
+      partyId: head.id,
+      resource,
+      verbs: ['view'],
+      scope: 'all',
+      verticalCode: v.code,
+      unitCode: 'U-1',
+    });
+    const decision = await asPrincipal(auth, () =>
+      evaluate({
+        resource,
+        verb: 'view',
+        record: { ownerPartyId: head.id, verticalCode: v.code, unitCode: 'U-1' },
+        auth,
+      }),
+    );
+    expect(decision.allowed).toBe(false);
+    expect(decision.deniedBy).toBe('WHERE');
+  });
 });

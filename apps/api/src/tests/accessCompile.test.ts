@@ -155,7 +155,7 @@ describe('PR11b compile: the reach matrix (design test 5)', () => {
     }
   });
 
-  it('5b: a unit placement reaches its unit inside the vertical and nothing outside it', async () => {
+  it('5b: a unit placement reaches nothing until a resource carries a unit binding', async () => {
     const m = await isolatedTenant();
     const resource = `mu_${uniqCode('')}`;
     await makeResourceBinding(m.tid, resource, 'field', { column: 'division' });
@@ -175,7 +175,9 @@ describe('PR11b compile: the reach matrix (design test 5)', () => {
           auth,
         }),
       );
-    expect((await decide('U-1')).allowed).toBe(true);
+    // A unit placement reaches nothing until a resource carries a unit binding (O6), so
+    // the record in its own unit is denied too, and the list filter agrees.
+    expect((await decide('U-1')).allowed).toBe(false);
     expect((await decide('U-2')).allowed).toBe(false);
     expect((await decide(undefined)).allowed).toBe(false);
   });
@@ -299,5 +301,29 @@ describe('PR11b compile: unions and no leak across assignments (design test 11)'
     expect((await decide({ ownerPartyId: holder.id, verticalCode: ov.code })).allowed).toBe(true);
     expect((await decide({ ownerPartyId: other.id, verticalCode: ov.code })).allowed).toBe(false);
     expect((await decide({ ownerPartyId: holder.id, verticalCode: outside.code })).allowed).toBe(false);
+  });
+});
+
+describe('PR11b: a company placement names no unit (owner fix 2)', () => {
+  it('suggest refuses a company placement with a unit (422) and writes nothing', async () => {
+    // Company reach is company-wide; a unit on it would be silently dropped by the compile,
+    // so the refusal is at suggestion, where the author can see it.
+    const suggester = await makeSuggester();
+    const v = await makeVertical(tid, 'shared');
+    const company = await makeLevel(tid, 'company');
+    const person = await makePerson(tid, 'Company unit');
+    const err = await asPrincipal(authOf(tid, suggester), () =>
+      expectReject(() =>
+        suggestAssignment({
+          personId: person.id,
+          identityType: 'employee',
+          placements: [{ verticalCode: v.code, levelCode: company.code, unitCode: 'U-9' }],
+          reason: 'PR11b company unit',
+        }),
+      ),
+    );
+    expect(err.status).toBe(422);
+    expect(err.message).toContain('a company placement cannot name a unit');
+    expect(await unscopedPrisma.accessAssignment.count({ where: { tenantId: tid, personId: person.id } })).toBe(0);
   });
 });

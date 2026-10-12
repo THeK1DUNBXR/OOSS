@@ -378,12 +378,14 @@ function checkVerticalScope(
   auth: AuthContext,
   binding: ResolvedBinding | null,
 ): boolean {
+  // A unit-narrowed grant reaches nothing. No resource carries a unit binding yet (O6),
+  // so there is no column to read the unit from; the list filter (verticalWhere) leaves
+  // these grants out, and the record check must agree with it.
+  if (typeof grant.conditions.unitCode === 'string') return false;
   if (!binding || (binding.kind !== 'field' && binding.kind !== 'fixed')) return false;
   const recordVertical = binding.kind === 'fixed' ? binding.verticalCode : (record.verticalCode ?? null);
   const wanted = typeof grant.conditions.verticalCode === 'string' ? grant.conditions.verticalCode : null;
   if (recordVertical === null || wanted === null || recordVertical !== wanted) return false;
-  const unit = typeof grant.conditions.unitCode === 'string' ? grant.conditions.unitCode : null;
-  if (unit !== null && record.unitCode !== unit) return false;
   if (grant.scope === 'all') return true;
   if (grant.scope === 'own') {
     const owner = ownerOf(record);

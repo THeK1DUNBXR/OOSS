@@ -12,7 +12,7 @@
 
 ## API domains
 
-**`apps/api/src/domains/access/assignments.ts`** (453 lines) — ConfirmAssignmentInput:50 · PlacementInput:61 · DutyInput:68 · SuggestAssignmentInput:73 · suggestAssignment:252 · confirmAssignment:330 · expireAssignment:412
+**`apps/api/src/domains/access/assignments.ts`** (461 lines) — ConfirmAssignmentInput:50 · PlacementInput:61 · DutyInput:68 · SuggestAssignmentInput:73 · suggestAssignment:260 · confirmAssignment:338 · expireAssignment:420
 
 **`apps/api/src/domains/access/compile.ts`** (216 lines) — CompileRule:26 · CompilePlacement:31 · CompileInput:40 · GrantRowSpec:47 · compileRows:64 · loadCompileInput:90 · compileAssignmentTx:134 · removeCompiledGrantsTx:164 · recompileAssignment:190 · listUnboundVerticalGrants:202
 
@@ -330,7 +330,7 @@
 
 **`apps/api/src/platform/periodLock.ts`** (138 lines) — lockLegacyPeriod:99 · lockLegacyPeriods:124
 
-**`apps/api/src/platform/permissions.ts`** (720 lines) — ResolvedGrant:38 · invalidateGrantCache:64 · resolveGrants:68 · ScopedRecord:115 · EvaluateInput:132 · evaluate:150 · ResolvedBinding:316 · resolveAuthorityCeiling:413 · resolveAuthorityCeilingPaise:424 · assertCan:434 · can:444 · holdsScopeResolver:458 · scopeFor:470 · matchNothing:485 · scopeWhere:493 · assertScopeAll:529 · visibilityWhere:556 · FilterResult:617 · FilterOptions:622 · FIELD_PURPOSES:643 · applyFieldVisibility:664 · canSeeMoney:715
+**`apps/api/src/platform/permissions.ts`** (722 lines) — ResolvedGrant:38 · invalidateGrantCache:64 · resolveGrants:68 · ScopedRecord:115 · EvaluateInput:132 · evaluate:150 · ResolvedBinding:316 · resolveAuthorityCeiling:415 · resolveAuthorityCeilingPaise:426 · assertCan:436 · can:446 · holdsScopeResolver:460 · scopeFor:472 · matchNothing:487 · scopeWhere:495 · assertScopeAll:531 · visibilityWhere:558 · FilterResult:619 · FilterOptions:624 · FIELD_PURPOSES:645 · applyFieldVisibility:666 · canSeeMoney:717
 
 **`apps/api/src/platform/postingRoles.ts`** (94 lines) — PostingRoleUnmappedError:27 · resolvePostingAccount:52 · PostingRoleRef:71 · resolvePostingAccounts:82
 
