@@ -43,6 +43,40 @@ describe('single writer lint rule', () => {
     expect(msgs.length).toBeGreaterThan(0);
   });
 
+  it('flags a plain string that inserts into a journal table in a job', async () => {
+    // A string, not a template: the template rule above never sees it, so a
+    // write assembled from a plain literal passed lint.
+    const msgs = await restricted(
+      "export async function f(tx: any) { await tx.$executeRawUnsafe('INSERT INTO \"journal_lines\" (\"id\") VALUES (1)'); }\n",
+      'apps/api/src/jobs/fixture.ts',
+    );
+    expect(msgs.length).toBe(1);
+  });
+
+  it('flags a plain string that updates a journal table in a domain module', async () => {
+    const msgs = await restricted(
+      "export async function f(tx: any) { await tx.$executeRawUnsafe('UPDATE journal_entries SET status = \\'void\\''); }\n",
+      'apps/api/src/domains/fixture.ts',
+    );
+    expect(msgs.length).toBe(1);
+  });
+
+  it('allows a read-only string that names a journal table outside the ledger', async () => {
+    const msgs = await restricted(
+      "export async function f(tx: any) { return tx.$queryRawUnsafe('SELECT count(*) FROM journal_lines'); }\n",
+      'apps/api/src/domains/reports/fixture.ts',
+    );
+    expect(msgs).toEqual([]);
+  });
+
+  it('allows the posting service to hold a plain journal write string', async () => {
+    const msgs = await restricted(
+      "export async function f(tx: any) { await tx.$executeRawUnsafe('INSERT INTO journal_lines (id) VALUES (1)'); }\n",
+      'apps/api/src/platform/ledger.ts',
+    );
+    expect(msgs).toEqual([]);
+  });
+
   it('allows reads of the journal outside the ledger', async () => {
     const msgs = await restricted(
       'export async function f(tx: any) { return tx.journalLine.aggregate({ where: {} }); }\n',
