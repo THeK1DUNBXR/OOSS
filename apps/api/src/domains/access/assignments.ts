@@ -28,6 +28,7 @@ import { governedWrite } from '../../platform/governedWrite.js';
 import { uncoveredGrants } from '../../platform/roleAssignment.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { reasonOf } from '../businessLines.js';
+import { HR_CASE_SLA_HOURS } from '../hcm/engagement.js';
 import { grantedAfterConfirmTx, overriddenPairCodesTx, sodFindings } from './sod.js';
 import {
   checkConfirmRules,
@@ -90,9 +91,6 @@ export interface SuggestAssignmentInput {
    */
   hrCaseId?: string | null;
 }
-
-/** The normal-priority HR SLA in hours (engagement.ts:645). An access mapping is not urgent by default. */
-const ACCESS_MAPPING_SLA_HOURS = 96;
 
 /** The fields a confirmation or expiry is judged and audited on. */
 function stateOf(row: Partial<AccessAssignment>): Record<string, unknown> {
@@ -317,7 +315,7 @@ export async function suggestAssignment(input: SuggestAssignmentInput): Promise<
           subject: 'Access mapping',
           raisedByPartyId: auth.partyId as string,
           confidential: true,
-          slaDueAt: new Date(now.getTime() + ACCESS_MAPPING_SLA_HOURS * 3_600_000),
+          slaDueAt: new Date(now.getTime() + HR_CASE_SLA_HOURS.normal! * 3_600_000),
         },
       });
       hrCaseId = opened.id;
