@@ -12,7 +12,7 @@
 
 ## API domains
 
-**`apps/api/src/domains/access/assignments.ts`** (379 lines) — PlacementInput:46 · DutyInput:53 · SuggestAssignmentInput:58 · suggestAssignment:184 · confirmAssignment:261 · expireAssignment:319 · compileConfirmedAssignment:366 · removeCompiledGrants:375
+**`apps/api/src/domains/access/assignments.ts`** (392 lines) — PlacementInput:46 · DutyInput:53 · SuggestAssignmentInput:58 · suggestAssignment:197 · confirmAssignment:274 · expireAssignment:332 · compileConfirmedAssignment:379 · removeCompiledGrants:388
 
 **`apps/api/src/domains/access/rules.ts`** (100 lines) — IDENTITY_TYPES:12 · IdentityType:13 · REACHES:15 · Reach:16 · DUTY_SENSITIVITY:23 · PlacementFact:33 · ConfirmContext:38 · ConfirmRule:54 · ConfirmViolation:56 · checkConfirmRules:69 · expiryWithinCap:94
 
