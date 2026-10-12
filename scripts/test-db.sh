@@ -44,6 +44,7 @@ cd "${ROOT}/apps/api"
 DATABASE_URL="${APP_URL}" MIGRATION_DATABASE_URL="${OWNER_URL}" npx prisma migrate deploy >/dev/null
 DATABASE_URL="${OWNER_URL}" MIGRATION_DATABASE_URL="${OWNER_URL}" UNSCOPED_DATABASE_URL="${OWNER_URL}" \
   NODE_ENV=test JWT_SECRET="test-only-secret-not-used-anywhere-else-0123456789" \
+  FIELD_ENCRYPTION_KEY="test-only-field-encryption-key-not-used-anywhere-else-0123456789" \
   npx tsx src/tests/fixtures/run.ts >/dev/null
 echo "${DB} ready  ->  owner ${OWNER_URL}"
 echo "                app   ${APP_URL}"

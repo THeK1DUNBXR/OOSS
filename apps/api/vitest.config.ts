@@ -40,6 +40,10 @@ export default defineConfig({
       // Not a fallback: the API has none any more, so the suite supplies its
       // own. Long enough to satisfy the same rule production is held to.
       JWT_SECRET: 'test-only-secret-not-used-anywhere-else-0123456789',
+      // Must match the value the seed and fixtures were encrypted with
+      // (scripts/test-db.sh, .github/workflows/ci.yml): the suite decrypts what
+      // they wrote, so a different key here fails the regulated-field tests.
+      FIELD_ENCRYPTION_KEY: 'test-only-field-encryption-key-not-used-anywhere-else-0123456789',
       JOBS_ENABLED: 'false',
     },
   },

@@ -15,6 +15,7 @@ const valid = {
   NODE_ENV: 'test',
   DATABASE_URL: 'postgresql://u:p@127.0.0.1:5432/db?schema=public',
   JWT_SECRET: 'x'.repeat(32),
+  FIELD_ENCRYPTION_KEY: 'y'.repeat(32),
 } satisfies NodeJS.ProcessEnv;
 
 describe('environment config', () => {
@@ -114,17 +115,28 @@ describe('field encryption key and marketing unsubscribe secret', () => {
     // The dev key is a public constant in privacy.ts. Under it, every PAN and
     // bank value written by a production deploy is encrypted with a key anyone
     // with the source can compute, so the encryption protects nothing.
-    expect(() => parseEnv({ ...valid, NODE_ENV: 'production' })).toThrow(ConfigError);
+    const { FIELD_ENCRYPTION_KEY: _omitted, ...withoutKey } = valid;
+    expect(() => parseEnv({ ...withoutKey, NODE_ENV: 'production' })).toThrow(ConfigError);
     try {
-      parseEnv({ ...valid, NODE_ENV: 'production' });
+      parseEnv({ ...withoutKey, NODE_ENV: 'production' });
     } catch (err) {
       expect((err as ConfigError).message).toContain('FIELD_ENCRYPTION_KEY');
     }
   });
 
-  it('allows an absent FIELD_ENCRYPTION_KEY outside production, so development still boots', () => {
-    expect(() => parseEnv({ ...valid, NODE_ENV: 'development' })).not.toThrow();
-    expect(() => parseEnv({ ...valid, NODE_ENV: 'test' })).not.toThrow();
+  it('refuses an absent FIELD_ENCRYPTION_KEY in development and test too, and names it', () => {
+    // Outside production this used to fall back to a constant printed in
+    // privacy.ts. Encryption under a public key protects nothing, so every
+    // environment supplies its own key; dev and CI do so in their own config.
+    const { FIELD_ENCRYPTION_KEY: _omitted, ...withoutKey } = valid;
+    for (const NODE_ENV of ['development', 'test']) {
+      expect(() => parseEnv({ ...withoutKey, NODE_ENV })).toThrow(ConfigError);
+      try {
+        parseEnv({ ...withoutKey, NODE_ENV });
+      } catch (err) {
+        expect((err as ConfigError).message).toContain('FIELD_ENCRYPTION_KEY');
+      }
+    }
   });
 
   it('does not sign marketing unsubscribe tokens with the literal dev-secret-change-me', async () => {

@@ -45,6 +45,14 @@ wait_for() {
   return 1
 }
 
+# The API refuses to boot without FIELD_ENCRYPTION_KEY (G5), and a checkout whose
+# apps/api/.env predates that rule has none. Without this check the only sign is
+# a 45-second wait and "did not come up; see the log".
+field_key_set() {
+  [ -n "${FIELD_ENCRYPTION_KEY:-}" ] && return 0
+  grep -Eq '^FIELD_ENCRYPTION_KEY=.+' "${ROOT}/apps/api/.env" 2>/dev/null
+}
+
 stop() {
   for pid in $(api_pids) $(web_pids); do kill -9 "$pid" 2>/dev/null || true; done
   sleep 1
@@ -54,7 +62,10 @@ stop() {
 start() {
   start_db
 
-  if [ -z "$(api_pids)" ]; then
+  if [ -z "$(api_pids)" ] && ! field_key_set; then
+    echo "api       not started: FIELD_ENCRYPTION_KEY is not set"
+    echo "          run scripts/setup.sh, or add one to apps/api/.env (openssl rand -base64 48)"
+  elif [ -z "$(api_pids)" ]; then
     (cd "${ROOT}/apps/api" && nohup npx tsx src/server.ts > "${API_LOG}" 2>&1 &) >/dev/null 2>&1
     wait_for "http://localhost:4000/health" "api      "
   else

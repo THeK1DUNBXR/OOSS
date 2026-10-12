@@ -83,8 +83,13 @@ jobs:
       # diffs the result against the schema. Created below in the same server.
       SHADOW_DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_shadow?schema=public
       NODE_ENV: test
-      # Supplied, never defaulted: the API has no fallback secret any more.
+      # Supplied, never defaulted: the API has no fallback secret any more, and
+      # refuses to boot without the field key in any environment (G5).
       JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
+      # The seed encrypts PAN and bank values with this key and the suite reads
+      # them back, so every step here, vitest.config.ts and scripts/test-db.sh
+      # must agree on the value.
+      FIELD_ENCRYPTION_KEY: test-only-field-encryption-key-not-used-anywhere-else-0123456789
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -145,6 +150,10 @@ jobs:
       TEST_DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public
       NODE_ENV: test
       JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
+      # The replayed red tests boot the API and read seeded PAN and bank values,
+      # so this job needs the test job's key: without it the API refuses to boot
+      # (G5) and every replay fails for the wrong reason.
+      FIELD_ENCRYPTION_KEY: test-only-field-encryption-key-not-used-anywhere-else-0123456789
     steps:
       - uses: actions/checkout@v4
         with:
@@ -217,6 +226,8 @@ jobs:
       UNSCOPED_DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen?schema=public
       NODE_ENV: development
       JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
+      # The API boots only with this set; the seed and the server share it.
+      FIELD_ENCRYPTION_KEY: test-only-field-encryption-key-not-used-anywhere-else-0123456789
       # The suite signs in as a real account; the seed reads these names, so the
       # password is known rather than generated and printed once.
       OWNER_EMAIL: chairman@kaizen.co.in
