@@ -4,6 +4,10 @@
  * It logs the outbound message to stdout and returns a fabricated
  * provider message id, so campaign/send flows can be exercised end-to-end
  * without a real provider account.
+ *
+ * It never runs in production, whatever the env var says. The body is the
+ * message itself, which carries personal data, and stdout in a production
+ * container ends up in log shipping that no tenant agreed to.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -28,11 +32,23 @@ export class ConsoleAdapter implements ChannelAdapter {
     readonly kind: ChannelKind,
   ) {}
 
+  /**
+   * NODE_ENV is read here rather than from `config` (platform/config.ts): that
+   * object is parsed once at import, so a process that changes NODE_ENV after
+   * boot — a test, mainly — would not see it. Same source, read at call time.
+   */
   isConfigured(): boolean {
+    if (process.env.NODE_ENV === 'production') return false;
     return process.env[envVarFor(this.kind)] === 'console';
   }
 
   async send(msg: OutboundMessage): Promise<SendResult> {
+    if (process.env.NODE_ENV === 'production') {
+      return {
+        status: 'not_configured',
+        error: 'Console adapter refused: NODE_ENV is production, and this adapter would print message bodies to stdout',
+      };
+    }
     if (!this.isConfigured()) {
       return { status: 'not_configured', error: `Console adapter not enabled: set ${envVarFor(this.kind)}=console` };
     }
