@@ -815,6 +815,10 @@ export const EVENTS = {
   STATUTORY_RULE_DRAFTED: 'kz.cmp.statutory_rule.drafted',
   STATUTORY_RULE_APPROVED: 'kz.cmp.statutory_rule.approved',
   STATUTORY_RULE_HELD: 'kz.cmp.statutory_rule.held',
+  // Duty holders (round 27 c). The statutory approver is whoever holds the duty at
+  // the instant of approval, so a change of holder is a fact the record must show.
+  DUTY_ASSIGNED: 'kz.cmp.duty_assignment.assigned',
+  DUTY_ENDED: 'kz.cmp.duty_assignment.ended',
 
   // --- Technology (docs/plan/cio.md) ----------------------------------------
   // A. Assets and devices
