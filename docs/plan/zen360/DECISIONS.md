@@ -1027,3 +1027,9 @@ Owner ruling: one webhook secret and one encryption key now, because the company
 - No CLAUDE.md, code, schema, CI or `.env.example` change. The OPEN items in b and e are for the Phase 0 session.
 - Not ruled, and not decided here: the order of items 1.5 and 1.6 (e, tension); whether the founder's payment step (round 23 item b, point 6) changes (not in this batch); the statutory approver and the DRAFT-row holder (round 23 item d) remain TBD at onboarding.
 - `docs/plan/MAP.md` is not regenerated. The branch changes documents only.
+
+### Round 24 follow-up (recorded 2026-10-12): money migration order
+
+Owner ruling: the money helper and the money columns come first. `ORDERED-PLAN.md` principle 1, "money before ledger", stands. This resolves the open tension recorded in round 24 item e, where the owner's wording was "ledger first". The ledger-first wording is not the order. Money work (`money.ts`, then the `Decimal(18,2)` money columns to bigint paise, then `round2` removal at `finance.ts:150`) lands before the ledger schema work that depends on it.
+
+Still open, unchanged by this ruling: which columns hold money (the round 23 item f count of 253 `Decimal(` declarations is not all money, and is UNVERIFIED).

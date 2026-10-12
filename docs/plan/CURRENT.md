@@ -39,7 +39,7 @@ Retired: the "pending CI on the PR" line (the branch is an ancestor of `origin/m
 
 ## Remaining Phase 0 money work (round 24 item e)
 
-- Migrate the roughly 250 `Decimal(18,2)` money columns outside the ledger to bigint paise before Phase 0 closes: items 1.5 (cashbook, `model Transaction`) and 1.6 (`round2`, `finance.ts:150`), with trial-balance assertions. Owner wording: "ledger first". OPEN: ORDERED principle 1 says money before ledger.
+- Migrate the roughly 250 `Decimal(18,2)` money columns outside the ledger to bigint paise before Phase 0 closes: items 1.5 (cashbook, `model Transaction`) and 1.6 (`round2`, `finance.ts:150`), with trial-balance assertions. Owner wording: "ledger first". RULED 2026-10-12: money comes first; ORDERED principle 1 (money before ledger) stands (see DECISIONS.md, round 24 follow-up).
 
 ## Exit criteria (Wave 0)
 
