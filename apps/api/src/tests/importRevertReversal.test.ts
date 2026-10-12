@@ -550,3 +550,75 @@ describe('a pay record a batch matched rather than created is not voided by that
     assertTrialBalance(await asUser(CHAIRMAN, () => journalTrialBalance(ALL_TIME)));
   });
 });
+
+describe('an employee row that matched a person on file does not soft-delete that person on revert', () => {
+  it('a person entered by hand is matched by the staff import; reverting that batch leaves them live', async () => {
+    const name = uniqueName('EMPMATCH');
+    // Entered by hand, so no earlier import batch carries the name: staging
+    // would refuse a second batch naming a person an import already made.
+    const handPerson = await unscopedPrisma.person.create({
+      data: {
+        tenantId: TENANT,
+        recordCode: uniqueTag('PER'),
+        fullName: name,
+        source: 'manual',
+      },
+    });
+
+    const csv = [
+      'Name,Designation,Employee Code',
+      `${name},Analyst,KD/S/2026/${String(Math.floor(Math.random() * 9000) + 1000)}`,
+    ].join('\n');
+    const staged = await asUser(CHAIRMAN, () =>
+      stageImport({ fileName: `${uniqueTag('EMPMATCH')}.csv`, buffer: Buffer.from(csv, 'utf8') }),
+    );
+    const committed = await asUser(CHAIRMAN, () => commitImport(staged.batchId));
+    expect(committed.errors).toEqual([]);
+    expect(committed.created.person ?? 0).toBe(0);
+    expect((await rowsFor(staged.batchId)).map((r) => [r.status, r.entityId])).toEqual([['matched', handPerson.id]]);
+
+    await asUser(CHAIRMAN, () => revertImport(staged.batchId));
+
+    const after = await unscopedPrisma.person.findUniqueOrThrow({ where: { id: handPerson.id } });
+    expect(after.deletedAt).toBeNull();
+    expect(after.fullName).toBe(name);
+    expect((await batchFor(staged.batchId)).status).toBe('reverted');
+  });
+});
+
+describe('a contact row that matched a person on file does not soft-delete that person on revert', () => {
+  it('a contact matched by email to a person entered by hand is left live when its batch reverts', async () => {
+    const name = uniqueName('CONTACT');
+    const email = `${uniqueTag('contact').toLowerCase()}@w5rev.example.in`;
+    const handPerson = await unscopedPrisma.person.create({
+      data: {
+        tenantId: TENANT,
+        recordCode: uniqueTag('PER'),
+        fullName: name,
+        primaryEmail: email,
+        primaryEmailNormalised: email,
+        source: 'manual',
+      },
+    });
+
+    const csv = ['Contact name,Phone,Email,Organisation', `${name},9840011223,${email},`].join('\n');
+    const staged = await asUser(CHAIRMAN, () =>
+      stageImport({
+        fileName: `${uniqueTag('CONTACT')}.csv`,
+        buffer: Buffer.from(csv, 'utf8'),
+        kindOverride: 'template_contacts',
+      }),
+    );
+    const committed = await asUser(CHAIRMAN, () => commitImport(staged.batchId));
+    expect(committed.errors).toEqual([]);
+    expect(committed.created.person ?? 0).toBe(0);
+    expect((await rowsFor(staged.batchId)).map((r) => [r.status, r.entityId])).toEqual([['matched', handPerson.id]]);
+
+    await asUser(CHAIRMAN, () => revertImport(staged.batchId));
+
+    const after = await unscopedPrisma.person.findUniqueOrThrow({ where: { id: handPerson.id } });
+    expect(after.deletedAt).toBeNull();
+    expect(after.fullName).toBe(name);
+    expect((await batchFor(staged.batchId)).status).toBe('reverted');
+  });
+});
