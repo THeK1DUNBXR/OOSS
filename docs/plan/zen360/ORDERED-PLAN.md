@@ -124,6 +124,7 @@ Moved to "After Phase 1: hosting and operations (deferred)" below. The non-owner
   - ~~BLOCKED-BY 3.1 sign-off.~~ **Superseded by round 21b, item 4 (round 22 item d repeats it):** 3.1 sign-off is not a blocker for the onboarding state machine, matching round 19a (c). Statutory rules stay gated until the accountant approves them.
 - Level-based access system, assigned at onboarding. Stays in Phase 0 Wave 6 (round 22 item c).
 - Level mapping (questionnaire, suggestion until confirmed) stays in Phase 0 Wave 6 (round 22 item c).
+- **Payment approval step.** Adds a `payments:approve` gate to the payment flow, so a payment needs a second person's approval before it counts. It goes after Wave 6 PR12, in the finance path, with its own ledger tests including the trial-balance assertion. Owner-approved, 2026-10-12.
 - Thresholds, reserved matters and alternates are entered as data during onboarding ("tbd during onboard").
 - Account recovery goes through the founder or the IT admin. SMS to employees' phones is NOT a recovery method (round 22 item e: owner chose this over SMS; reason noted: SIM-swap risk on a finance system).
 - Delegation and the 24-hour absence test are owned by Phase 1A, not this wave (round 22 item b).
@@ -246,6 +247,8 @@ Levels are split by stakeholder type:
 - Board and investors.
 
 The level template ships with the app. ~~Editable per tenant at onboarding.~~ **Per-tenant editing is DEFERRED (round 18b, item 1).** Each person holds one level, plus named extra duties. Exact duties per level and read scope are not yet defined (DECISIONS.md, round 10).
+
+- `payment_create_approve` blocks only granting both permissions; no code gates `payments:approve`, so the pair does not stop any payment until the approval step lands (owner, 2026-10-12).
 
 ---
 
