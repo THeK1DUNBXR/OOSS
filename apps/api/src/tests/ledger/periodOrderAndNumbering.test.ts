@@ -222,4 +222,119 @@ describe('a month with no period row under a closed month counts as closed', () 
     expect(err.status).toBe(422);
     expect(await unscopedPrisma.accountingPeriod.count({ where: { tenantId: f.tid, period: '2040-02' } })).toBe(0);
   });
+
+  // requestClosePeriod creates the row it is asked about when there is none (ensurePeriod).
+  // The same rule applies there: no open row beneath a closed month.
+  it('a close request for it is refused with the same reason, and no open row is created', async () => {
+    const f = await freshTenant('request-no-row-under-closed');
+    await openMonth(f.tid, '2040-03');
+    await closeInOrder(f.tid, '2040-03');
+
+    const thrown: unknown = await requestClose(f.tid, '2040-02').then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(thrown).toMatchObject({
+      status: 422,
+      message: expect.stringContaining('2040-02'),
+      details: { period: '2040-02', reasonCode: 'accounting_period_closed' },
+    });
+    expect(await unscopedPrisma.accountingPeriod.count({ where: { tenantId: f.tid, period: '2040-02' } })).toBe(0);
+  });
+});
+
+/** How many transactions are queued behind this tenant's period-row advisory lock (platform/periodLock.ts lockPeriodRows). */
+async function waitersOnPeriodRowsLock(tid: string): Promise<number> {
+  const rows = await unscopedPrisma.$queryRaw<Array<{ n: number }>>`
+    WITH k AS (SELECT hashtext('cmp_accounting_periods:' || ${tid})::bigint AS v)
+    SELECT count(*)::int AS n FROM pg_locks l, k
+    WHERE l.locktype = 'advisory' AND NOT l.granted AND l.objsubid = 1
+      AND l.classid::bigint = ((k.v >> 32) & 4294967295)
+      AND l.objid::bigint = (k.v & 4294967295)`;
+  return rows[0]?.n ?? 0;
+}
+
+/**
+ * Holds the tenant's period-row advisory lock in one transaction and closes `period`
+ * inside it, the way a close commits. The transaction ends only when `release` is called.
+ */
+function holdCloseOf(tid: string, period: string) {
+  let markHeld!: () => void;
+  const held = new Promise<void>((resolve) => {
+    markHeld = resolve;
+  });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const done = unscopedPrisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('cmp_accounting_periods:' || ${tid}))`;
+      await tx.accountingPeriod.updateMany({ where: { tenantId: tid, period }, data: { status: 'closed' } });
+      markHeld();
+      await gate;
+    },
+    { timeout: 30_000 },
+  );
+  return { held, release, done };
+}
+
+/** Resolves once a transaction is queued on the tenant's period-row lock. Fails if none ever queues. */
+async function untilQueuedOnPeriodRows(tid: string): Promise<void> {
+  for (let i = 0; i < 250; i += 1) {
+    if ((await waitersOnPeriodRowsLock(tid)) > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error('No transaction queued on the period-row advisory lock: a period row was created without it.');
+}
+
+describe('a period row created while a later month closes is taken under the period-row lock', () => {
+  // A creation inserts an uncommitted row, and under READ COMMITTED the close's FOR UPDATE
+  // on the rows up to its month cannot see it. Without the advisory lock, a close of March
+  // and a write that creates February (no row) can both pass their checks: the write sees
+  // March still open and inserts February open, and the close freezes March without it.
+  // The lock serialises the two: the creation waits for the close to commit, then sees
+  // March closed and refuses.
+  it('the creation waits for the close to commit, then is refused, and no open row lands beneath the closed month', async () => {
+    const f = await freshTenant('create-races-close');
+    await openMonth(f.tid, '2040-03');
+
+    const hold = holdCloseOf(f.tid, '2040-03');
+    await hold.held;
+    const waiter: Promise<unknown> = asSystem(f.tid, () =>
+      prisma.$transaction((tx) => lockLegacyPeriod(tx, f.tid, new Date('2040-02-15T06:00:00Z'))),
+    ).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    try {
+      await untilQueuedOnPeriodRows(f.tid);
+    } finally {
+      hold.release();
+      await hold.done;
+    }
+    const outcome = await waiter;
+    expect(outcome).toMatchObject({ status: 422 });
+    expect(await unscopedPrisma.accountingPeriod.count({ where: { tenantId: f.tid, period: '2040-02' } })).toBe(0);
+    expect(await statusOf(f.tid, '2040-03')).toBe('closed');
+  });
+
+  it('a posting into a month that already has its row does not wait on the period-row lock', async () => {
+    const f = await freshTenant('existing-row-not-queued');
+    await openMonth(f.tid, '2040-02');
+    await openMonth(f.tid, '2040-03');
+
+    const hold = holdCloseOf(f.tid, '2040-03');
+    await hold.held;
+    try {
+      const id = await asSystem(f.tid, () =>
+        prisma.$transaction((tx) => lockLegacyPeriod(tx, f.tid, new Date('2040-02-15T06:00:00Z'))),
+      );
+      expect(typeof id).toBe('string');
+      expect(await waitersOnPeriodRowsLock(f.tid)).toBe(0);
+    } finally {
+      hold.release();
+      await hold.done;
+    }
+  });
 });
