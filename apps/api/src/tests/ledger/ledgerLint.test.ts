@@ -47,7 +47,7 @@ describe('single writer lint rule', () => {
     // A string, not a template: the template rule above never sees it, so a
     // write assembled from a plain literal passed lint.
     const msgs = await restricted(
-      "export async function f(tx: any) { await tx.$executeRawUnsafe('INSERT INTO \"journal_lines\" (\"id\") VALUES (1)'); }\n",
+      'export async function f(tx: any) { await tx.$executeRawUnsafe(\'INSERT INTO "journal_lines" ("id") VALUES (1)\'); }\n',
       'apps/api/src/jobs/fixture.ts',
     );
     expect(msgs.length).toBe(1);
