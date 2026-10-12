@@ -155,7 +155,7 @@ describe('PR11b compile: the reach matrix (design test 5)', () => {
     }
   });
 
-  it('5b: a unit placement reaches its unit inside the vertical and nothing outside it', async () => {
+  it('5b: a unit placement reaches nothing until a resource carries a unit binding', async () => {
     const m = await isolatedTenant();
     const resource = `mu_${uniqCode('')}`;
     await makeResourceBinding(m.tid, resource, 'field', { column: 'division' });
@@ -175,7 +175,9 @@ describe('PR11b compile: the reach matrix (design test 5)', () => {
           auth,
         }),
       );
-    expect((await decide('U-1')).allowed).toBe(true);
+    // A unit placement reaches nothing until a resource carries a unit binding (O6), so
+    // the record in its own unit is denied too, and the list filter agrees.
+    expect((await decide('U-1')).allowed).toBe(false);
     expect((await decide('U-2')).allowed).toBe(false);
     expect((await decide(undefined)).allowed).toBe(false);
   });
