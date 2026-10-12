@@ -63,11 +63,11 @@ What exists in the repository today is noted per gate, so the owner can see how 
 
 ### G5. Boot refusal for missing or weak secrets
 
-- **Checks:** a test starts the config loader in a child process once per required variable, with that variable removed, and asserts (i) a non-zero exit and (ii) an error message that names the variable. A second case sets `JWT_SECRET` to 31 characters and expects refusal. Required set: `JWT_SECRET` (minimum 32), `DATABASE_URL`, `NODE_ENV` (phase-0 0.1); and `FIELD_ENCRYPTION_KEY` (FX-60; DECISIONS round 2, D-14: "boot refuses to start without it"). A source scan asserts that no fallback literal such as `dev-secret-change-me` remains (phase-0 0.1 names `apps/api/src/lib/auth.ts:31`).
+- **Checks:** a test starts the config loader in a child process once per required variable, with that variable removed, and asserts (i) a non-zero exit and (ii) an error message that names the variable. A second case sets `JWT_SECRET` to 31 characters and expects refusal. Required set: `JWT_SECRET` (minimum 32), `DATABASE_URL`, `NODE_ENV` (phase-0 0.1); and `FIELD_ENCRYPTION_KEY` (FX-60; DECISIONS round 2, D-14: "boot refuses to start without it"; round 24 item b: in every environment, not only production). A source scan asserts that no fallback literal such as `dev-secret-change-me` remains (phase-0 0.1 names `apps/api/src/lib/auth.ts:31`).
 - **Fails the build:** a process that starts with a missing or weak secret, or an error that does not name the variable, or a fallback literal found in source.
 - **Protects:** docs/plan/archive/phase-0-stabilise.md 0.1; FX-60; D-14 (round 2); CLAUDE.md "Never" (no flag removes the boot assertions).
 - **Exists today:** `apps/api/src/platform/config.ts` exists (checked). Its contents were not read in this pass; FX-60 cites it at `platform/config.ts:54-93` (cited from FIXES.md). UNVERIFIED that the boot refusal is enforced.
-- **Not verified:** whether CI's `test` job sets `FIELD_ENCRYPTION_KEY`. `ci.yml` sets `JWT_SECRET` and `NODE_ENV` only, as far as this pass read. Once the boot refusal lands, the job must supply the key. UNVERIFIED.
+- **Not verified:** whether CI's `test` job sets `FIELD_ENCRYPTION_KEY`. `ci.yml` sets `JWT_SECRET` and `NODE_ENV` only, as far as this pass read. Once the boot refusal lands, the job must supply the key. Ruling (round 24 item b): CI supplies a key. `ci.yml:78,149` does not set one yet (OPEN for the Phase 0 session).
 - **First mandatory:** Wave A.
 
 ### G6. Failing-test-first evidence for FX fixes

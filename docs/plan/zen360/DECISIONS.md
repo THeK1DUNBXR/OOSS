@@ -11,7 +11,7 @@ Statutory and legal items are flagged for professional sign-off, not decided her
 | D-03 | Ledger cutover, money type and payments scope (agents 07 D1/D2/D4/D10)                                                                                                            | Cutover: route every flow to `post()` in Phase 1.5 and retire `Transaction` as the reporting source, or mirror and keep both. Money: bigint paise end to end vs Decimal in storage. Payments: statement feeds and reconciliation only, or initiate bank payments in release 1. Imports into closed periods: allow or require reopen.                                                                                                                                                                                          | Cut over now; bigint paise in application code (Decimal only at the DB boundary); statement feeds first, payment initiation deferred; no imports into closed periods, use reopen with reason. Until cutover, do not present TB, P&L or cash as statutory. Reason: `post()` has no caller and every report reads the legacy table.                                                                                                                                                                                                                                                               | GRP 21, EDU 15, FND 03, MED 03, FIN 02/05, REC 13, INT 03/05/06; P1.5, P1.6; Done-means 1, 2, 6                                                                          | Phase 1 start (money helper first)                         |
 | D-04 | First-release scope, pilot, sequencing and build-vs-integrate (agents 01 D2, 12 R-1/R-3/P-1/P-3/P-11; 11 D3)                                                                      | Scope: adopt or reject the defer list (CCTV, pantry, MSP, hybrid desk booking, ventures platform, logistics). Sequencing: plan Phase 0-8 vs proposal Phase 0-4 (conflict on meaning of Phase 1; plan Phase 0 is nine defects, proposal Phase 0 is discovery). Build vs integrate per capability: payroll engine, e-signature, IdP, storage, mailbox and WhatsApp provider, accounting system of record, commission engine.                                                                                                    | Ledger first with the proposal's operating gate added to every phase; run a time-limited discovery pilot, then plan Phase 0 defects; rename proposal phases R0-R4. Adopt the defer list. Record build-vs-integrate per row with quotes (TCO). Pilot on collections and delivery (proposal p61).                                                                                                                                                                                                                                                                                                 | GRP 07, CON 01, FND 04, MED 04, CRM 11, HRM 07, DOC 04, SHR 18, INT 02/04; P0-P4 ordering; INT rows; scope of every "L" row                                              | Phase 0 (before funding Phase 1)                           |
 | D-05 | Product intent and resourcing (README decision C; agents 12 S-1/S-2)                                                                                                              | Tenant-zero (hardcode Tamil Nadu, faster) vs product (PT per local body, versioned statutory packs, onboarding state machine, ~25% more work). Staffing: plan assumes one senior plus AI-assisted developers; proposal assumes 4-6 FTE. Funding: all at once vs phase by phase with a stop rule.                                                                                                                                                                                                                              | Plan assumes product; confirm it. Fund phase by phase with a stop rule and a standalone-value test for Phase 1; measure productive hours before committing the staffing model. Reason: decides Phase 3 and Phase 7 shape and whether the extra 25% is funded.                                                                                                                                                                                                                                                                                                                                   | FND 05, MED 05, SHR 20, INT 08; P3, P7; CAP-SHR-20; usage budgets                                                                                                        | Phase 1 start                                              |
-| D-06 | E-invoicing route: GSP vs direct IRP, and applicability (README decision B; agent 07 D5)                                                                                          | GSP (commercial, monthly cost) vs direct NIC access (static IPs per GSTIN, ~5 lakh all-in) vs not enabling until applicability confirmed.                                                                                                                                                                                                                                                                                                                                                                                     | GSP, per README. Accountant confirms whether and when each tenant must report and the reporting window before any e-invoice rule is enabled; the window is a `StatutoryRule` row. Reason: unconfirmed applicability must not be coded.                                                                                                                                                                                                                                                                                                                                                          | FND 06, MED 05/06, FIN 24; CAP-FIN-24; P3.2                                                                                                                              | Phase 3                                                    |
+| D-06 | E-invoicing route: direct to the IRP (round 25 item f), and applicability (README decision B; agent 07 D5)                                                                        | GSP (commercial, monthly cost) vs direct NIC access (static IPs per GSTIN, ~5 lakh all-in) vs not enabling until applicability confirmed.                                                                                                                                                                                                                                                                                                                                                                                     | Direct to the government e-invoice portal (IRP), not a GSP (owner answers, rounds 2, 11 and 25). Accountant confirms whether and when each tenant must report and the reporting window before any e-invoice rule is enabled; the window is a `StatutoryRule` row. Reason: unconfirmed applicability must not be coded.                                                                                                                                                                                                                                                                          | FND 06, MED 05/06, FIN 24; CAP-FIN-24; P3.2                                                                                                                              | Phase 3                                                    |
 | D-07 | Identity, party and tenancy architecture (agents 02 D6, 06 D6, 11 D1, 12 R-2)                                                                                                     | Cross-company identity: one identity with per-company grants, or one user per tenant with a linked principal. Party supertype vs separate Person/Organization tables. IdP/SSO choice. Cross-tenant sharing: aggregate snapshots only, or `ProjectionGrant` record exchange. Tenancy hardening: plan Phase 7 vs proposal Phase 0 (before external exposure).                                                                                                                                                                   | Linked principals per tenant (keeps rule 6 and clear audit) plus explicit `ProjectionGrant` for any cross-tenant read; defer the Party supertype unless an Affiliation must point at an Organization; pick the IdP in the pilot; pull tenant and access checks forward of any external exposure. Reason: shared-services staff, portals and group views all depend on it.                                                                                                                                                                                                                       | GRP 10, FND 07, MED 07, TEC 11, SHR 08/10/20, INT 01, PRV 01; CAP-GRP-10, CAP-SHR-08/10/20, CAP-INT-01, CAP-PRV-01; P7 ordering                                          | Phase 2 (before any external user)                         |
 | D-08 | External users and portals at launch: customers, institutions, learners, guardians, clients, auditors (agents 03 #9, 05 D4, 09 #3, 10 D4, 12 R-4)                                 | None at launch (staff-assisted intake, internal team records external decisions). Read-only status portal. Full portal with approvals.                                                                                                                                                                                                                                                                                                                                                                                        | None at launch; capture through one staff-assisted record. Build a portal as a separate product after Phase 4 and D-07, with a leakage fuzzer and negative tests. Reason: there is no external-user identity or permission model, and the plan has no phase for it.                                                                                                                                                                                                                                                                                                                             | FND 08, MED 08, DEL 15; CAP-DEL-15/16, CAP-MED-08, CAP-CON/SEC client acceptance; Done-means 5                                                                           | Phase 4                                                    |
 | D-09 | Authority model: DoA matrix, delegation, alternates and reserved matters (agents 10 D1/D2/D8/D9, 03 #7, 02 D9, 01 D10, 12 P-5)                                                    | Thresholds and alternates per decision class; which classes are founder-only (proposal implies none for routine work); one delegation store (retire decision `Delegation` `main.prisma:905`, keep HR `DelegationOfAuthority`, or a new `DelegationLog`); single approvals inbox vs separate; who names reserved matters; who may publish a public correction or customer status.                                                                                                                                              | One delegation model; union inbox read model; no founder default routing (`decisions.ts:62`); directors enter thresholds as data with a named alternate per class; reserved matters owned by the board via Resolution. Reason: the 24-hour absence test cannot pass otherwise; no number is hardcoded.                                                                                                                                                                                                                                                                                          | GRP 14, FND 09, MED 07/09, TEC 11, DEC 04/05/06/08; CAP-DEC-04/05/06/08, CAP-GRP-11/14, CAP-MED-07, CAP-TEC-11; CEO-5                                                    | CEO-office Phase 5 (before the absence test)               |
@@ -826,3 +826,265 @@ This removes the licence caveats only. Nothing else changes. CLAUDE.md still app
 `MAIL-PROVENANCE.md` stays as a plain engineering record of what was copied from where. It is not a legal control.
 
 Still open, unchanged: mail hosting against the "hosting after Phase 1" deferral; the domain and DNS owner; mailbox limits and retention; access rules for reading other people's mail; DPDP duties (needs counsel). The mail item stays OPEN and not estimated.
+
+### Round 22 second clarification, appended clarification (recorded 2026-10-12, round 23 item c)
+
+"Personal use" in the statement above means licences only. It does not mean one person. The app is for internal company use, and the company runs as one tenant for now (round 18b). Internal company use and the multi-tenant design (rounds 1, 4 and 21) stand unchanged. The licence removal above applies to internal company use only, and this clarification does not extend it beyond that.
+
+## Owner answers, round 23 (recorded 2026-10-12): audit rulings
+
+Append-only. These are the owner's answers to a read-only audit of the plan and the decision register against the code, run on 2026-10-12. The audit reports are not in the repository. The register in item e cites them by ID only. Where this section supersedes an earlier round, it says so. No code, schema, CI or CLAUDE.md file changed with these rulings.
+
+### a) C-019 and C-020: the plan follows the code
+
+Owner ruling: the plan follows the code. Built items are marked done in the plan. The Phase 0 session continues in its current order.
+
+- Done in the plan, each re-checked on 2026-10-12 with one grep or ls: 0.7 (`ls scripts/genmap.mjs docs/plan/MAP.md`); 0.2 (`grep -n "jti" apps/api/prisma/schema/main.prisma`); helmet, CORS, rate limit and pino (`grep -n '"helmet"\|"cors"\|"express-rate-limit"\|"pino"' apps/api/package.json`); 0.5 scheduler (`ls apps/api/src/jobs/schedule.ts`); time helpers (`ls packages/shared/src/time.ts`); 0.8 ESLint and Prettier (`grep -n "format:check" .github/workflows/ci.yml`); 0.8 migration baseline (`grep -n "db:drift" .github/workflows/ci.yml`); 0.1 config (`grep -n "envSchema" apps/api/src/platform/config.ts`); FX-01, FX-03, FX-04, FX-05, FX-21, FX-70, FX-71, FX-72 and the task-complete fix (`grep -n "assertCan" apps/api/src/platform/approvals.ts`, and the other cites in ORDERED-PLAN.md); 1.3 posting (`grep -n "export async function post" apps/api/src/platform/ledger.ts`); 1.1 ledger models (`grep -n "model JournalLine" apps/api/prisma/schema/compliance-books.prisma`); Wave 6 spine and access tables (`ls` on the migrations listed in ORDERED-PLAN.md Wave 6).
+- Left open, with the reason: 0.1 FX-60 refusal scope (C-003); 0.8 dead classes (not confirmed) and `db push` in `apps/api/docker-entrypoint.sh:30`; 0.3 and 0.4 error-leak fix and G11 redaction test (not located); 0.5 croner licence check (not done); 0.6 SERIALIZABLE wording (code uses ReadCommitted, see ORDERED-PLAN.md 0.6); 1.1 and 1.2 sub-checks (bigint, two-line minimum, `set_config`, not checked); 1.4 L1 to L3 scope (the file's L1 differs from CI-GATES L1); 1.5 cashbook (`model Transaction` still present); 1.6 `round2` (still at `packages/shared/src/finance.ts:150`); FX-02 (transition path not confirmed); FX-22, FX-24, FX-50, FX-61, FX-80 (no check, or commit evidence only); FX-06, FX-07, FX-62 to FX-65; FX-73 (no liability posting); onboarding per-state packs; level mapping; account recovery holder.
+- CURRENT.md: the "pending CI on the PR" line is removed (the branch is an ancestor of `origin/main`). The "Prettier reformat deferred" line is removed (`.github/workflows/ci.yml:47` runs `pnpm format:check`).
+- CI-GATES-DRAFT.md wave labels: NOT changed. The mapping from "Wave A / B / C" to ORDERED-PLAN wave numbers is ambiguous. Wave B is "Phase 0 new or replace items" and spans ORDERED waves 1 to 5 (for example G10 is "from B, with 3.1" while 3.1 sits in Wave 1 and 0.6 sits in Wave 2, and G12 is "n/a until Phase 4" while ORDERED Wave 5 names the gate). Still open; the owner or the Phase 0 session sets the mapping.
+
+### b) C-006 and C-005: the founder is exempt
+
+Owner ruling: round 10 stands. The founder may self-approve, and the blocked pairs in round 14 do not bind the founder.
+
+This SUPERSEDES, for the founder specifically, the round 14 "founder override with logged reason" (round 14 item 3, DECISIONS.md:462). The founder needs neither an override nor a logged reason for a blocked pair. The other person in a blocked pair remains bound by it. Round 14 item 2, "only the founder may approve their own access", is consistent with this ruling and stands.
+
+Plainly: this is a segregation-of-duties risk. The plan already names it at `docs/plan/zen360/ORDERED-PLAN.md:268` ("The founder's exemption from maker-checker is a segregation-of-duties risk for founder-only classes (payroll run, large payments, statutory filings)") and at `docs/plan/zen360/ROADMAP.md:192`. The owner has accepted the risk by this ruling.
+
+Places where code or plan assume something other than the ruling. These are OPEN follow-ups for the Phase 0 session. No code was changed.
+
+1. `apps/api/src/platform/approvals.ts:367`: "The Self-Dealing Bar is unconditional: a requester may never approve their own step." `decideApprovalStep` (`approvals.ts:330`) has no founder exemption. Also the comment at `approvals.ts:168` ("unconditional, with no override path"). This is the approvals engine, and it conflicts with the ruling.
+2. `apps/api/src/domains/access/assignments.ts:16`, `:60` and `:213`: the founder override with a reason, and the founder sole-confirmer rule. This is the access path, separate from (1). Its wording follows round 14, so it should be checked against this ruling.
+3. `apps/api/src/tests/accessSod.test.ts:2` and `:7`: the tests pin the founder's recorded override. They need to match this ruling.
+4. `docs/plan/zen360/ORDERED-PLAN.md:149` ("The founder is exempt") and `docs/plan/zen360/ROADMAP.md:46`: these match the ruling. The 1A test "maker equals checker is refused" must exempt the founder level, which the approvals code in (1) would fail.
+5. `docs/plan/zen360/QUESTIONNAIRE-DRAFT.md:84` and `:91`: "founder exempt", consistent with the ruling. `:106`: the blocked-pair table; check it against the founder exemption.
+6. Payments. Round 14 item 2 blocks "create and approve payments" for one person. With the exemption, a founder can create and approve a payment alone. The payment approval gate (item below) says "a payment needs a second person's approval". For founder-created payments those two statements conflict. OPEN: the owner must say whether this is intended.
+
+Payment approval step (C-005), recorded as the owner's decision dated 2026-10-12. The plan says, at `docs/plan/zen360/ORDERED-PLAN.md:127`: "Adds a `payments:approve` gate to the payment flow, so a payment needs a second person's approval before it counts. It goes after Wave 6 PR12, in the finance path, with its own ledger tests including the trial-balance assertion. Owner-approved, 2026-10-12." Status: NOT BUILT. `payments:approve` appears only in `apps/api/src/tests/accessSod.test.ts`. Open: point 6 above.
+
+### c) C-012: "personal use" means licences only
+
+Owner ruling: in round 22b, "personal use" means licences only. Internal company use and the tenant model stand. The wording is fixed by the appended clarification at the end of the round 22 second clarification (above), which precedes this section.
+
+`docs/plan/zen360/README.md:64` said "Do not build it in-house" without saying what the mail exception covers. That line is updated on this branch to point to round 21, the round 22 clarifications, and round 23. No README line calls the app "personal use". C-013 (the mail copy decision itself) remains OPEN, see item e.
+
+### d) C-007 and C-011: the statutory approver and who enters DRAFT rows are decided at onboarding
+
+Owner ruling: TBD at onboarding. Nothing is decided now.
+
+- "The internal finance head", "the qualified holder" and "the accountant" are provisional wordings for the statutory sign-off holder. They are not known to be one person. Until onboarding decides it, the holder is TBD.
+- Who enters DRAFT rows, and when, is TBD at onboarding.
+- Rate rows stay DRAFT until a holder approves them. No row becomes APPROVED by default.
+- ORDERED-PLAN.md:23 and :65, and ACCESS-MODEL-PLAN.md:287 and :285, keep their wording until onboarding closes this item. Read them as provisional.
+
+### e) Open register: remaining conflicts C-001 to C-032
+
+Every conflict not covered by items a) to d). Severity and order follow the audit's checklist, then ID order. Status is OPEN for all rows. Source is the read-only audit of 2026-10-12, report ID only; the report is not in the repository.
+
+| ID    | One-line claim (quoted or summarised)                                                                                                                                                                          | Severity      | Status                     | Source        |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | -------------------------- | ------------- |
+| C-013 | "Do not build it in-house. Exception: employee company mailboxes" (zen360 README) against round 21 mail and the round 22 copy decision. README wording updated on this branch; the copy decision is not ruled. | misleads      | OPEN - owner ruling needed | audit-1 C-013 |
+| C-008 | "Each person holds one level" (round 10) against identity-first and one level per placement (round 14, round 19a(f)).                                                                                          | blocks coding | OPEN - owner ruling needed | audit-1 C-008 |
+| C-009 | "The function picks a role template" (round 14, 18a(c)) against "The access model is level x vertical, not a job-role model" (round 19a(d)).                                                                   | blocks coding | OPEN - owner ruling needed | audit-1 C-009 |
+| C-002 | "Expense receipts are stored on the company's own server disk and are included in the backups" (round 12) against backups deferred (round 18b).                                                                | blocks coding | OPEN - owner ruling needed | audit-1 C-002 |
+| C-015 | "No employees or roles are set up through hardcode" (round 19a(b)) against the founder-created IT owner stopgap grant; recovery holder unnamed.                                                                | blocks coding | OPEN - owner ruling needed | audit-1 C-015 |
+| C-003 | "Boot refuses to start without it" for `FIELD_ENCRYPTION_KEY`, in all environments (round 2), against production only (`apps/api/src/platform/config.ts:150`).                                                 | blocks coding | OPEN - owner ruling needed | audit-1 C-003 |
+| C-004 | "Inbound webhooks are authenticated with a per-tenant HMAC" (round 2) and "One key per tenant" (round 5) against the round 18b single secret.                                                                  | misleads      | OPEN - owner ruling needed | audit-1 C-004 |
+| C-016 | "The registry and its foreign keys land in Waves 2-3, before the ledger" (round 20, 10-10) absent from ORDERED-PLAN; a `business_line_units` migration already exists.                                         | blocks coding | OPEN - owner ruling needed | audit-1 C-016 |
+| C-017 | "Money is bigint paise end to end, including in database storage" (round 1) against the `Decimal(18,2)` columns with no migration item in ORDERED-PLAN.                                                        | blocks coding | OPEN - owner ruling needed | audit-1 C-017 |
+| C-014 | "Contractors see their own tasks and timesheets only" (round 12) against guest accounts deferred and "employees only" (round 16).                                                                              | blocks coding | OPEN - owner ruling needed | audit-1 C-014 |
+| C-030 | LiveKit on "the Indian VPS plan" and "the own server" (rounds 5, 6) against "where the server runs is a hosting decision for after Phase 1" (round 18b); Resend "processes data outside India" (round 5).      | blocks coding | OPEN - owner ruling needed | audit-1 C-030 |
+| C-031 | "No external email or WhatsApp provider" (round 4, COM-02) against company mail that sends and reads (round 21).                                                                                               | blocks coding | OPEN - owner ruling needed | audit-1 C-031 |
+| C-001 | "A reverse proxy and network protection must be chosen" (round 6) against no named owner for TLS and rate-limit front after the Worker was removed (round 19b).                                                | misleads      | OPEN - owner ruling needed | audit-1 C-001 |
+| C-010 | "The questionnaire is answered by the founder or the onboarding owner" (round 13) against "HR answers the stakeholder-mapping questionnaire" (round 19a(a)); QUESTIONNAIRE-DRAFT.md still says founder.        | misleads      | OPEN - owner ruling needed | audit-1 C-010 |
+| C-018 | Two sections titled "round 20" and out-of-order dating of 10-10 sections.                                                                                                                                      | cosmetic      | OPEN - owner ruling needed | audit-1 C-018 |
+| C-021 | G7 "expected to fail ... until FX-51 lands" (FX-51 is merged) and "twelve checks" (eleven mandatory).                                                                                                          | misleads      | OPEN - owner ruling needed | audit-1 C-021 |
+| C-022 | "`post()` has no non-test caller" (zen360 README:54). Not settled by the audit; the lint rule and `balances.ts` suggest it may be out of date.                                                                 | misleads      | OPEN - owner ruling needed | audit-1 C-022 |
+| C-023 | The zen360 README Z-track sequence ("Z2 runs parallel to Phase 1", week counts) superseded by ROADMAP.                                                                                                         | misleads      | OPEN - owner ruling needed | audit-1 C-023 |
+| C-024 | "Before the first outside user" (round 7) against an unqualified BLOCKED-BY in ORDERED Feature 1 Wave 3.                                                                                                       | misleads      | OPEN - owner ruling needed | audit-1 C-024 |
+| C-025 | `deploy/Caddyfile` states a hosting decision and a DPDP cross-border reason as fact, while hosting is "undecided until after Phase 1".                                                                         | misleads      | OPEN - owner ruling needed | audit-1 C-025 |
+| C-026 | Round 11 "own-server operations ... are in Phase 0" against round 18b moving them, without naming round 11.                                                                                                    | cosmetic      | OPEN - owner ruling needed | audit-1 C-026 |
+| C-027 | "Until it is confirmed, the hire holds the Staff default duties" (round 18a(d)) against "fail closed" if undefined (ACCESS-MODEL-PLAN).                                                                        | misleads      | OPEN - owner ruling needed | audit-1 C-027 |
+| C-028 | "No founder default routing" (round 1, D-09) against founder-only approval classes (round 7).                                                                                                                  | cosmetic      | OPEN - owner ruling needed | audit-1 C-028 |
+| C-029 | "No external users at launch" (round 2) against guest accounts (round 15), deferred (round 16).                                                                                                                | cosmetic      | OPEN - owner ruling needed | audit-1 C-029 |
+| C-032 | "GSP, per README" (D-06 row) against "direct to the government e-invoice portal (IRP), not a GSP" (rounds 2, 11).                                                                                              | cosmetic      | OPEN - owner ruling needed | audit-1 C-032 |
+
+**Status note, round 24 (recorded 2026-10-12).** C-001, C-002, C-003, C-004, C-008, C-013, C-014, C-015, C-016, C-017, C-030 and C-031 are RULED in round 24 (see the round 24 section below). The rows above are unchanged. The other rows remain OPEN.
+
+**Status note, round 25 (recorded 2026-10-12).** C-009, C-010, C-024, C-025, C-026, C-027, C-028, C-029 and C-032 are RULED in round 25 (see the round 25 section below). The rows above are unchanged. C-018, C-021, C-022 and C-023 are cleanup items with no owner ruling needed (round 25 section, below). The other rows remain OPEN.
+
+Items a) to d) cover C-019, C-020, C-005, C-006, C-007, C-011 and C-012. Those rows are closed by the rulings above, except where the item says otherwise.
+
+### f) Audit findings, not yet ruled (code side)
+
+Each was re-checked on 2026-10-12 with `grep -n`, or is marked UNVERIFIED. These were not in the audit reports read for this round; they were found with grep, so they carry no audit ID.
+
+1. **Money in Decimal columns outside the ledger.** `apps/api/prisma/schema` has 253 `Decimal(` column declarations (grep count). Examples: `apps/api/prisma/schema/main.prisma:3250` (`gstRate Decimal`), `:5315` (`tdsRate Decimal?`). Which of them hold money is UNVERIFIED. Relates to C-017 and CLAUDE.md rule 1.
+2. **Statutory rates in separate rate tables, not `StatutoryRule`.** `apps/api/prisma/schema/compliance-payroll.prisma:13` `model PfRateTable`, with `employeeRate Decimal` at `:20`. Re-checked: the table exists. Whether its rows are statutory values under CLAUDE.md rule 4 is UNVERIFIED. The `tdsRate` column at `main.prisma:5315` is the same question.
+3. **Platform `StatutoryRule` rows invisible to tenant RLS.** `apps/api/prisma/schema/compliance-statutory.prisma:17` `tenantId String?`. The policy at `apps/api/prisma/migrations/20261010235900_tenant_rls/migration.sql:72-74` is `USING ("tenantId" = current_setting('app.tenant_id', true))`, so a row with a NULL `tenantId` cannot match a tenant session. Whether platform rows are stored with NULL is UNVERIFIED (not read in the seeds).
+4. **Agent unknown-tool fallback: checked, not present.** `apps/api/src/agents/index.ts:93-99` now returns `blocked(... 'AUTONOMOUS_WITHIN_POLICY' ...)` for an undeclared tool. Audit-6 agrees (P-022). Not carried as open.
+5. **Seed wipe truncation.** `apps/api/src/seed/wipe.ts:59`: `TRUNCATE TABLE ... RESTART IDENTITY CASCADE` through `unscopedPrisma.$executeRawUnsafe`. Whether a production guard exists was not read: UNVERIFIED.
+6. **`db push` in the container entrypoint.** `apps/api/docker-entrypoint.sh:30`: `./node_modules/.bin/prisma db push --skip-generate`. CONFIRMED by grep. This conflicts with CLAUDE.md ("never `db push`") and ORDERED 0.8. (The file is under `apps/api/`, not the repository root.)
+7. **CLAUDE.md stale lines.** See item g.
+
+### g) CLAUDE.md stale lines: owner decision item
+
+CLAUDE.md is not changed on this branch. Owner decision: correct it, or confirm the lines below are to stay. Each line was re-checked on 2026-10-12.
+
+- Rule 1: "The money helper is not yet written ... `packages/shared/src/money.ts` ... must be created". The file exists (`packages/shared/src/money.ts`), and `allocate` is at `:97`. "`num()` at `apps/api/src/platform/db.ts:150`" is now `db.ts:302`.
+- Rule 2: "The lint rule is planned and not yet in `eslint.config.js`". It is present at `eslint.config.js:97-119`.
+- Rule 5: "`auditWrite` silently no-ops on an unregistered `subjectType` (`isGoverned`, `:134`)". It throws (`apps/api/src/platform/audit.ts:416-421`). `isGoverned` is at `:55`, `registerGovernedEntities` at `:43`, and `AUDIT_ACTIONS` at `:20` (not `:17`).
+- Rule 7: "`Metric` ... does not enforce it". The `MetricProps` discriminated union is at `apps/web/src/components/ui.tsx:145-146`, and the function at `:153`. CLAUDE.md cites `:136` and `:132-135`.
+- "Never": "`imports/commit.ts:721` does [hard-delete]". `:721` is inside `DIVISION_NAMES`. There is no hard delete in `apps/api/src/imports/commit.ts`; the revert is by reversal at `:1181-1190`.
+- Not in CLAUDE.md but stale in CURRENT.md: `post()` at `platform/ledger.ts:61` is now `:351`.
+
+### Owner answers, round 23: what was not done
+
+- No CLAUDE.md, code, schema or CI change. `docs/plan/MAP.md` is not regenerated (it is generated only for exports and schema changes; the branch changes docs only).
+- Not ruled, and not decided here: the founder payment question (b, point 6); the copy decision for mail (C-013); onboarding decisions (d); every item in the open register (e).
+
+## Owner answers, round 24 (recorded 2026-10-12): audit rulings, second batch
+
+Append-only. These are the owner's answers to the second batch of the read-only audit of 2026-10-12 (the round 23 item e register). The audit report is not in the repository and is cited by ID only. Where this section supersedes an earlier round, it says so. No CLAUDE.md, code, schema or CI file changed with these rulings. The register rows are ruled in the status note under the round 23 register.
+
+### a) C-008: level model
+
+Owner ruling: rounds 14 and 19a stand. Identity type is decided first. Level is stored as an attribute. A person holds one level per placement, and may hold placements in more than one vertical or unit (round 19a(f)). Round 10's "one level per person" and "levels by stakeholder type" are retired.
+
+Edited on this branch: `ORDERED-PLAN.md` (access model section) and `ROADMAP.md` (section 3, access-level assignment).
+
+### b) C-003: FIELD_ENCRYPTION_KEY boot refusal applies in every environment
+
+Owner ruling: the boot refusal for `FIELD_ENCRYPTION_KEY` applies in every environment, as round 2 says. Dev uses a dummy key from `.env.example`. CI supplies one.
+
+Edited on this branch: `CI-GATES-DRAFT.md` G5, `ORDERED-PLAN.md` 0.1 and `CURRENT.md`.
+
+OPEN follow-up for the Phase 0 session. No code was changed here.
+
+1. `apps/api/src/platform/config.ts:150` refuses only when `NODE_ENV === 'production'`.
+2. `.github/workflows/ci.yml:78` and `:149` set `JWT_SECRET` only. No `FIELD_ENCRYPTION_KEY` is set in CI.
+3. `apps/api/.env.example:17` has `# FIELD_ENCRYPTION_KEY=` commented out. There is no dummy key to copy yet. The dummy value is added with the config change.
+
+### c) C-015: recovery holder until onboarding names an IT admin
+
+Owner ruling: until onboarding names an IT admin, the recovery holder is the founder. The founder may also create a stopgap IT owner grant, tagged `to_migrate`. The stopgap is allowed. It is replaced at onboarding.
+
+Tension, stated plainly. Round 19a(b) (line 572 above) says no employees or roles are set up outside onboarding: "No employees or roles are set up through hardcode; they are set up only during onboarding." The audit cited this as "19b(b)". Round 19b has no item (b). The reference is to 19a(b). The owner has chosen to allow the stopgap anyway, as an exception to 19a(b) until onboarding. Round 22 item e (account recovery through the founder or the IT admin) and `ACCESS-MODEL-PLAN.md` "Wave 4 IT-owner conflict" are the sources the stopgap rests on.
+
+### d) C-016: BusinessLine registry and cost-centre foreign key are built
+
+Owner ruling: the BusinessLine registry, with `lineId` and `costCentreId` on `JournalLine`, is already built. The owner asked only for a plan update: `ORDERED-PLAN.md` item 1.1 and Wave 6 record it as done, and it is removed from the open lists.
+
+Checked on 2026-10-12 with grep and ls before marking:
+
+- `apps/api/prisma/schema/business-lines.prisma:11` `model BusinessLine`.
+- `apps/api/prisma/schema/compliance-books.prisma:134` `model JournalLine`. `:152-153` `costCentreId` with a composite foreign key to `CostCentre(tenantId, id)`. `:160-161` `lineId` with a composite foreign key to `BusinessLine(tenantId, id)`.
+- Migrations `20261010235800_business_lines`, `20261013110000_business_line_units` and `20261013205000_journal_line_cost_centre_fk` exist under `apps/api/prisma/migrations/`.
+
+Edited on this branch: `ORDERED-PLAN.md` 1.1 and Wave 6, and the round 20 row of `ACCESS-MODEL-PLAN.md`.
+
+### e) C-017: money columns outside the ledger move to bigint paise before Phase 0 closes
+
+Owner ruling: the roughly 250 `Decimal(18,2)` money columns outside the ledger are migrated to bigint paise before Phase 0 closes. Items 1.5 (cashbook, `model Transaction` at `apps/api/prisma/schema/main.prisma:5205`) and 1.6 (`round2` at `packages/shared/src/finance.ts:150`) stay in Phase 0. The owner's wording is "ledger first", with trial-balance assertions. The owner says Phase 0 is almost done and wants this finished before it closes. Recorded in `ORDERED-PLAN.md` 1.6 and `CURRENT.md` as the remaining Phase 0 money work.
+
+Tension, not resolved here. `ORDERED-PLAN.md` principle 1 says "money before ledger" (`money.ts` lands before the ledger schema). The owner's "ledger first" points the other way. OPEN: the owner states which order applies. The round 23 item f count (253 `Decimal(` declarations) is not all money. Which columns hold money is UNVERIFIED.
+
+### f) C-014: contractor timesheets and tasks are employee-only. DEFAULT, not an owner decision
+
+No owner preference was given. The following is a DEFAULT applied in the plan, and it is labelled as one. Contractors' timesheets and tasks are employee-only until guest accounts are designed. Round 12 item 4 (contractors see their own tasks and timesheets only) remains the rule for when guests exist. The round 16 deferral stands. The owner may override the default.
+
+Edited on this branch: "Guests" is removed from the Phase 1 row of `ACCESS-MODEL-PLAN.md` (the access-model Phase 1 row).
+
+### g) C-031 and C-013 (widened): shared inboxes, and copying open-source code for any feature
+
+g1. **Shared inboxes.** A shared inbox is one mailbox that several employees open, for example support@, with assignment and internal notes. It may receive AND send to external addresses. Round 4 COM-02 ("internal-only, no external email provider") is superseded. Customer-facing sends keep the human-approval rule (CLAUDE.md, "Never": no agent emails a customer without human approval).
+
+g2. **Copying open-source code is approved for any feature.** Copying code from open-source projects is an approved way to build ANY feature, from any project, not only mail. Licences are set aside for now (round 22 second clarification). This supersedes the "read and learn only, never copy" rule (round 5, D-04; `ORDERED-PLAN.md` principle 9 and "Open-source use") for every part of the app. Copied code still follows CLAUDE.md (round 22 item vi).
+
+g3. **Provenance.** `docs/plan/zen360/MAIL-PROVENANCE.md` is kept under the same name. It now covers any copied code, not only mail.
+
+g4. **Limit.** This is for open-source code only. Reverse engineering, or copying proprietary or paid software, is not part of the plan. For those products only public documentation and feature lists are used.
+
+Edited on this branch: `ORDERED-PLAN.md` principle 9, "Open-source use" and 1E COM-02; `zen360/README.md:64`; `MAIL-PROVENANCE.md` header; `ROADMAP.md` 1E and the shared-inbox row.
+
+### h) C-001 and C-030: local only until hosting is decided
+
+Owner ruling: until hosting is decided after Phase 1, the app runs LOCAL ONLY. There is no non-local deployment and no outside user. Residency for LiveKit media and for Resend is decided together with the hosting choice, not before.
+
+Implication, not an owner statement: while no non-local deployment exists, C-001 (an interim owner for TLS, DDoS and rate-limit) does not arise. The Caddyfile and the DPDP line (C-025) are not changed by this ruling.
+
+### i) C-002: receipt storage and backups are decided with hosting
+
+Owner ruling: the receipt storage location and backups are decided with hosting, after Phase 1. Nothing in Phase 1F waits on them.
+
+Edited on this branch: the 1F "BLOCKED-BY the receipt storage location" line in `ORDERED-PLAN.md`.
+
+### j) C-004: single webhook secret and one encryption key, confirmed deferral
+
+Owner ruling: one webhook secret and one encryption key now, because the company is one tenant. Per-tenant versions come with multi-tenant work. This confirms the deferral. It supersedes round 2 (per-tenant HMAC, D-13) and round 5 item 6 (one key per tenant) for the present.
+
+### Owner answers, round 24: what was not done
+
+- No CLAUDE.md, code, schema, CI or `.env.example` change. The OPEN items in b and e are for the Phase 0 session.
+- Not ruled, and not decided here: the order of items 1.5 and 1.6 (e, tension); whether the founder's payment step (round 23 item b, point 6) changes (not in this batch); the statutory approver and the DRAFT-row holder (round 23 item d) remain TBD at onboarding.
+- `docs/plan/MAP.md` is not regenerated. The branch changes documents only.
+
+### Round 24 follow-up (recorded 2026-10-12): money migration order
+
+Owner ruling: the money helper and the money columns come first. `ORDERED-PLAN.md` principle 1, "money before ledger", stands. This resolves the open tension recorded in round 24 item e, where the owner's wording was "ledger first". The ledger-first wording is not the order. Money work (`money.ts`, then the `Decimal(18,2)` money columns to bigint paise, then `round2` removal at `finance.ts:150`) lands before the ledger schema work that depends on it.
+
+Still open, unchanged by this ruling: which columns hold money (the round 23 item f count of 253 `Decimal(` declarations is not all money, and is UNVERIFIED).
+
+## Owner answers, round 25 (recorded 2026-10-12): audit rulings, third batch
+
+Append-only. These are the owner's answers to the third batch of the round 23 item e register (C-009, C-010, C-018, C-021 to C-029, C-032). Source: the read-only audit of 2026-10-12, cited by ID only. The audit report is not in the repository.
+
+a. **C-010, who answers onboarding (owner ruling).** HR and the founder (or the onboarding owner) may both answer the onboarding mapping questions. The vertical Head confirms placements. Confirmation rules are unchanged: the person being mapped cannot confirm their own level. Wording fixed in `ACCESS-MODEL-PLAN.md` (section 1 row 4, and the confirmer flag) and `QUESTIONNAIRE-DRAFT.md` (lines 13, 16 and 33).
+
+b. **C-009, starter template (owner ruling).** One editable starter template ships, unassigned. There is no job-role catalogue, no role-to-grant matrix and no seeded roles. Not edited in this round, and still to fix: "the function picks a role template" at `QUESTIONNAIRE-DRAFT.md:14`, `:29` and `:168`, and "function and vertical role templates" at `ROADMAP.md:150`. These contradict this ruling and need a separate edit.
+
+c. **C-027, Staff defaults (owner ruling).** Staff defaults apply to a new hire. A level above Staff that the tenant has not defined fails closed. `ACCESS-MODEL-PLAN.md` section 6 and the open-question row 5 now say this. The "fail closed if undefined" wording for the baseline row itself is unchanged, and is still OPEN 5.
+
+d. **C-028, founder routing (owner ruling).** Founder-only approval classes (payroll run, large payments, statutory filings) stand. Everything else routes by assignment, not to the founder by default. No wording edit in this round.
+
+e. **C-029, external users (owner ruling).** No external users in Phase 0 or Phase 1. Contractors and freelancers, external auditors and accountants, and board and investors have no accounts. Guest accounts are designed later. The identity-type list in `ORDERED-PLAN.md` (Access model) now says this. `ROADMAP.md` already defers guest accounts (round 16).
+
+f. **C-032, e-invoicing route (owner ruling).** E-invoicing goes directly to the government invoice portal (IRP). The GSP route is dropped. The D-06 row above (line 14) is edited to match. This is the one edit to an existing row in this file; it is made because the owner asked for it. No statutory value is added. Whether and when e-invoicing applies is still for the accountant and the tax adviser (D-02). GSP wording not edited in this round: `CAPABILITIES.md:343` (CAP-FIN-24, "through a GSP"), `zen360/evidence/07-crm-finance-recon.md:253` (D5, "accountant or GSP provider"), `zen360/evidence/11-architecture-security-ai.md:158` and `zen360/evidence/12-rollout-acceptance-decisions.md:240`, and `docs/plan/README.md` decision B (cited at line 384 above).
+
+g. **C-024, legal checks (owner ruling: "bypass all legal checks").** The chat-retention counsel check (D-14) and the Resend data-hosting check no longer block any build or the first outside user. Legal checks are set aside as gates for now. This extends round 22b beyond licences. The consequences below are stated as consequences, not as new decisions:
+
+i. CLAUDE.md engineering rules were not changed by this ruling and still bind the code: DPDP personal-data handling, tenant scope, audit, human approval before agents email customers, and "statutory uncertainty: stop and flag" in payroll.
+
+ii. A payroll or tax value that is wrong still produces wrong payslips, regardless of legal checks.
+
+Wording replaced in this round: the Wave 3 build block on the chat-retention check (`ORDERED-PLAN.md`, Feature 1, Wave 3), the COM-15 Resend block (`ORDERED-PLAN.md`, 1E), and the "before the first outside user" gating lines in `ORDERED-PLAN.md` (the round 10 open list) and `ROADMAP.md` (the Phase 0 open list). Each now points to this ruling. Dated "still open" history lines are kept.
+
+Not changed, and open for the owner: `ORDERED-PLAN.md:165` ("BLOCKED-BY the CAP-HRM-32 legal check") and `zen360/README.md:94` ("D-14 ... need legal owners before any capture work"). Both are legal checks the owner did not name. The owner should say whether they are set aside too.
+
+h. **C-025 and C-026, hosting (owner ruling).** Round 18b stands and supersedes round 11's own-server operations in Phase 0. Hosting is deferred until after Phase 1. The owner chose to remove the hosting-specific deploy files. That removal is on branch `chore/remove-deploy-files` (from `origin/main`). It is not merged in this round. The DPDP cross-border line in `deploy/Caddyfile` (C-025) was not sourced and goes with that file. Per round 18b, `docker-entrypoint.sh` and the Dockerfile are not touched by that branch.
+
+### Still unruled after round 25: cleanup, no owner ruling needed
+
+These are recorded so they are not lost. None is a decision.
+
+- **C-018, round numbering and dating.** Two sections titled "round 20", and sections dated 10-10 placed after 10-11 rounds. Cosmetic. Not changed.
+- **C-021, G7 text in `CI-GATES-DRAFT.md:96`.** "Expected to fail ... until FX-51 lands": FX-51 is merged (`ROADMAP.md:28`; migration `20261010235900_tenant_rls` exists). The fix is not unambiguous. The sentence's "expected to fail" for tables other than the four ledger tables depends on the catalogue coverage, which is UNVERIFIED in that same paragraph. The "twelve checks" line (`CI-GATES-DRAFT.md:298`) matches its own list of G1 to G12, so it is not changed. Not changed in this round. Proposal: rewrite once the loop's table list has been read.
+- **C-022, `post()` callers.** "`post()` has no non-test caller" (`zen360/README.md:54`). Only a code check settles this, and none was run in this round. Not changed.
+- **C-023, zen360 README Z-track sequence.** `zen360/README.md:73` (Z0 "1-2 wks"), `:75` ("runs parallel to Phase 1 for non-money parts") and `:76` (Z3 "Phases 2-3"). `ROADMAP.md:172` already says non-money parts of Z2 run alongside Phase 1. `ROADMAP.md` states no Z0 duration. Only the README's week counts and the 24-hour test under Z2 are stale, and their replacement cannot be read from the text. Not changed. Proposal: the owner gives the Z0 and Z2 durations, or the README sequence points to ROADMAP.md.
+
+### Owner answers, round 25: what was not done
+
+- No CLAUDE.md, code, schema, CI or `.env.example` change. No `deploy/` change on this branch (see h).
+- `docs/plan/MAP.md` is not regenerated. The branch changes documents only.
+- Not ruled, and not decided here: the CAP-HRM-32 and D-14 legal checks in the README (g, above); the GSP wording in the capability and evidence files (f); the role-template wording (b).
+
+### Round 25 follow-up (recorded 2026-10-12): legal checks are warnings
+
+Owner ruling: all legal checks are warning only. They are bypassed as gates and never block a build, a merge or an outside user. This extends item g above, which covered the chat-retention and Resend checks, to every legal check. Where the plan listed a legal check as a gate or blocker, the wording now reads "warning only (round 25)": `ORDERED-PLAN.md:165` (CAP-HRM-32) and `zen360/README.md:94` (D-13 and D-14).
+
+CLAUDE.md engineering rules are unchanged by this ruling. Personal-data handling, tenant scope, audit, human approval before agents act, and "statutory uncertainty: stop and flag" still bind the code.
+
+Wording fixes made in this follow-up, with no change to the rulings they cite (see b and f above): the function-picks-a-template wording in `QUESTIONNAIRE-DRAFT.md` (lines 14, 29, 168) and `ROADMAP.md` (line 150), now one editable starter template with no job-role catalogue (C-009); and the GSP wording in `zen360/CAPABILITIES.md` (CAP-FIN-24) and `zen360/evidence/07`, `11` and `12`, now direct to the IRP (C-032).
+
+Not changed: the dated history sections of this file. The Phase 1 prerequisite note at line 139 ("legal review before Phase B") sits in the 2026-10-10 phase-definition section and is a record of that date. Read it as superseded by this ruling.

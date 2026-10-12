@@ -1,6 +1,6 @@
 # Current work
 
-**Active phase:** owner Phase 0, **Wave 0: foundations.**
+**Active phase:** owner Phase 0, **Wave 0: foundations** (not yet closed; see Status). The Phase 0 session continues in the order below (DECISIONS round 23, item a).
 **Source:** [`zen360/ORDERED-PLAN.md`](zen360/ORDERED-PLAN.md), Wave 0. Stop rule: [`zen360/ROADMAP.md`](zen360/ROADMAP.md) section 1a.
 
 ## Wave 0 items
@@ -11,22 +11,39 @@ Work in this order.
 2. **0.1 Config and secrets.** `platform/config.ts` with Zod validation at load. Remove the fallback at `auth.ts:31` and `TENANT_ENFORCE_MODE` at `context.ts:94`. Add the FX-60 boot refusal at `privacy.ts:944-954`.
 3. **Time helpers.** `packages/shared/src/time.ts`. Used for FX-40, FX-41 and FX-42 (see ORDERED-PLAN for the file lines).
 4. **0.8 CI.** ESLint and Prettier. Remove the dead classes at `Start.tsx:100,109` and `People.tsx:56`. Build identity. Replace `db push` with a migration baseline.
-   Not active: the Cloudflare Worker removal is done and stands (DECISIONS.md, round 19b, item 2). **Hosting** (server, reverse proxy, caching, routing) is undecided until after Phase 1 (round 18b, item 3). See [`zen360/ORDERED-PLAN.md`](zen360/ORDERED-PLAN.md), "After Phase 1: hosting and operations (deferred)".
+   Not active: the Cloudflare Worker removal is done and stands (DECISIONS.md, round 19b, item 2). **Hosting** (server, reverse proxy, caching, routing) is undecided until after Phase 1 (round 18b, item 3). Until hosting is decided the app runs local only: no non-local deployment and no outside user (round 24 item h). See [`zen360/ORDERED-PLAN.md`](zen360/ORDERED-PLAN.md), "After Phase 1: hosting and operations (deferred)".
 
-## Status (2026-10-10)
+## Status (2026-10-12, round 23)
 
-Implemented on `claude/laughing-maxwell-kmxu5l`, pending CI on the PR:
+Checked against the code on 2026-10-12. The plan follows the code (DECISIONS.md, round 23, item a). Item-level status is in [`zen360/ORDERED-PLAN.md`](zen360/ORDERED-PLAN.md), with a status tag on each checked item.
 
-- 0.7: schema split, genmap and scoped tests were already done. Added `db:validate` and the `db:drift` no-drift check.
-- 0.1: `FIELD_ENCRYPTION_KEY` is required in production (FX-60). The marketing unsubscribe secret has no literal fallback. `TENANT_ENFORCE_MODE` and the `auth.ts` fallback were already gone (the file is `lib/auth.ts`).
-- Time: FX-40, FX-41 and FX-42 are fixed, plus about 20 further UTC-derived periods. Month and FY bounds and the period-close snapshot now start at IST midnight.
-- 0.8: the dead classes and the build identity were already fixed. A migration baseline replaces `db push`. The three earlier hand-written migrations had never been applied anywhere, because `db push` ignores them. Their ledger and audit immutability triggers are now live. Their RLS block was a syntax error and never live; FX-51 replaced it with `prisma/migrations/20261010235900_tenant_rls`, which covers every tenant table. FX-51 is merged (#33); extra proof deferred (round 19b, item 1); this migration is not extended.
-- Hosting (undecided until after Phase 1, round 18b): the Worker removal stands (round 19b, item 2). See `deploy/Caddyfile` and `WEB_DIST_DIR`. Not active work.
-- Deferred to the end of Wave 1: a Prettier reformat of 555 files and a `format:check` step in CI. Reformatting now would conflict with every in-flight branch.
+Built and checked:
+
+- 0.7: schema split, `scripts/genmap.mjs`, `docs/plan/MAP.md`, `db:validate` and `db:drift` (CI runs both: `.github/workflows/ci.yml:42` and `:91`).
+- 0.1: `platform/config.ts` loads through a Zod schema. The `lib/auth.ts` fallback is gone and `TENANT_ENFORCE_MODE` is absent from source. Open: the FX-60 refusal applies only in production today (`platform/config.ts:150`). Ruled in round 24 item b: it applies in every environment. The code change belongs to the Phase 0 session.
+- Time helpers: `packages/shared/src/time.ts`, used for FX-40, FX-41 and FX-42.
+- 0.8 (part): ESLint; Prettier (CI runs `pnpm format:check`, `ci.yml:47`); build identity; migration baseline.
+- 0.2: sessions with `jti`, 15-minute access token, hashed refresh token.
+- 0.3 and 0.4: helmet, CORS allowlist, express-rate-limit with a Postgres store, pino.
+
+Open in Wave 0:
+
+- 0.8: dead classes at `Start.tsx:100,109` and `People.tsx:56` are not confirmed. `db push` still runs in `apps/api/docker-entrypoint.sh:30`.
+- 0.1: FX-60 refusal in every environment (round 24 item b). The code still checks production only (`config.ts:150`). The dev key is commented out in `apps/api/.env.example:17`.
+- 0.3 and 0.4: error-leak fix and G11 redaction test not located.
+- 0.5 scheduler is built; the croner licence check is still open.
+- CI does not set `FIELD_ENCRYPTION_KEY` (`.github/workflows/ci.yml`), so G5's "CI must supply" requirement is not met (round 24 item b: CI must supply one).
+- G6 and G10 are not built.
+
+Retired: the "pending CI on the PR" line (the branch is an ancestor of `origin/main`), and the "Prettier reformat deferred" line (`format:check` runs in CI).
+
+## Remaining Phase 0 money work (round 24 item e)
+
+- Migrate the roughly 250 `Decimal(18,2)` money columns outside the ledger to bigint paise before Phase 0 closes: items 1.5 (cashbook, `model Transaction`) and 1.6 (`round2`, `finance.ts:150`), with trial-balance assertions. Owner wording: "ledger first". RULED 2026-10-12: money comes first; ORDERED principle 1 (money before ledger) stands (see DECISIONS.md, round 24 follow-up).
 
 ## Exit criteria (Wave 0)
 
-- Boot without `JWT_SECRET` exits, naming the variable. Production without `FIELD_ENCRYPTION_KEY` throws.
+- Boot without `JWT_SECRET` exits, naming the variable. Without `FIELD_ENCRYPTION_KEY` the process refuses to boot, in every environment (round 24 item b).
 - `fyOf(2026-03-31T19:00Z) === '2026-27'` passes.
 - `prisma validate` and the migration no-drift check pass.
 - Gates G1, G2 and G3 run in CI.
