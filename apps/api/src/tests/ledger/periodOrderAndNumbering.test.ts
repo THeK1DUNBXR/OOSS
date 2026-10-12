@@ -21,9 +21,10 @@
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { unscopedPrisma } from '../../platform/db.js';
+import { prisma, unscopedPrisma } from '../../platform/db.js';
 import { asSystem } from '../../platform/context.js';
 import { post } from '../../platform/ledger.js';
+import { lockLegacyPeriod } from '../../platform/periodLock.js';
 import { closePeriod, reopenPeriod, requestClosePeriod } from '../../domains/compliance/books.js';
 import { expectReject } from '../helpers.js';
 
@@ -202,5 +203,23 @@ describe('accounting periods close in order and reopen in reverse order', () => 
     await reopenMonth(f.tid, '2040-02');
     expect(await statusOf(f.tid, '2040-02')).toBe('reopened');
     expect(await statusOf(f.tid, '2040-03')).toBe('reopened');
+  });
+});
+
+describe('a month with no period row under a closed month counts as closed', () => {
+  // The legacy cashbook write creates a month's row when it has none (lockLegacyPeriod).
+  // Under a closed later month that creation would put an open row beneath a closed
+  // one, which the order rule forbids: a later reopen of the month would then sit
+  // under a closed month it should never have been written into.
+  it('a legacy write into it is refused, and no open row is created under the closed month', async () => {
+    const f = await freshTenant('no-row-under-closed');
+    await openMonth(f.tid, '2040-03');
+    await closeInOrder(f.tid, '2040-03');
+
+    const err = await expectReject(() =>
+      asSystem(f.tid, () => prisma.$transaction((tx) => lockLegacyPeriod(tx, f.tid, new Date('2040-02-15T06:00:00Z')))),
+    );
+    expect(err.status).toBe(422);
+    expect(await unscopedPrisma.accountingPeriod.count({ where: { tenantId: f.tid, period: '2040-02' } })).toBe(0);
   });
 });
