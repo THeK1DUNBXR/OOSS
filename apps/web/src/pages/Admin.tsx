@@ -1034,6 +1034,23 @@ export function Audit() {
 // Platform model
 // ---------------------------------------------------------------------------
 
+/**
+ * A threshold figure as the wire carries it. Currency arrives as paise in a digit
+ * string and is shown in rupees with Indian grouping, from BigInt so a large
+ * figure is not rounded; other units are whole numbers.
+ */
+function thresholdFigure(t: { unit: string; valueMinor: string | null; valueInt: number | null }): string {
+  if (t.unit === 'currency') {
+    if (t.valueMinor === null) return NOT_MEASURED;
+    const paise = BigInt(t.valueMinor);
+    const magnitude = paise < 0n ? -paise : paise;
+    const rupees = (magnitude / 100n).toLocaleString('en-IN');
+    const fraction = magnitude % 100n;
+    return `${paise < 0n ? '-' : ''}${rupees}${fraction ? `.${fraction.toString().padStart(2, '0')}` : ''}`;
+  }
+  return t.valueInt === null ? NOT_MEASURED : t.valueInt.toLocaleString('en-IN');
+}
+
 export function PlatformModel() {
   const { data: thresholds = [], isLoading } = useQuery({
     queryKey: ['thresholds'],
@@ -1063,7 +1080,7 @@ export function PlatformModel() {
                   {t.description}
                 </span>
                 <span className="shrink-0 text-xs tabular-nums text-ink-100">
-                  {t.value.toLocaleString('en-IN')} <span className="text-2xs text-ink-500">{t.unit}</span>
+                  {thresholdFigure(t)} <span className="text-2xs text-ink-500">{t.unit}</span>
                 </span>
               </div>
             </li>

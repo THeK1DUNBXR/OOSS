@@ -40,6 +40,7 @@ import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { raiseException } from '../platform/exceptions.js';
 import { ApiError } from '../platform/errors.js';
+import { lockAssignableParty } from './ownership.js';
 
 registerGovernedEntities('gov', ['case']);
 
@@ -108,7 +109,11 @@ interface Change {
   to: CaseState;
   eventName: string;
   data?: Prisma.CaseUncheckedUpdateManyInput;
+  /** Set on a reassignment, so the new owner is locked and checked before the row moves. */
+  newOwnerPartyId?: string;
   reason: string | null;
+  /** The caller's transaction, for a handover that writes inside the exit's. Absent, the write opens its own. */
+  tx?: DbTx;
 }
 
 export async function openCase(input: OpenCaseInput): Promise<Case> {
@@ -123,6 +128,7 @@ export async function openCase(input: OpenCaseInput): Promise<Case> {
   if (backup) await assertPersonInTenant(backup);
 
   return governedWrite(async (tx) => {
+    await lockAssignableParty(tx, auth.tenantId, input.ownerPartyId);
     const recordCode = await nextRecordCode('CAS', new Date(), tx);
     const row = await tx.case.create({
       data: {
@@ -285,6 +291,39 @@ export async function raiseExceptionFromCase(id: string): Promise<{ case: Case; 
  * case above the caller's ceiling is not returned, the same as the evaluator
  * would refuse it row by row.
  */
+/**
+ * The states in which a case still has work for its owner. `resolved` is open
+ * because it is answered but not yet closed, and the owner still closes it.
+ */
+export const OPEN_CASE_STATES: readonly CaseState[] = ['open', 'acknowledged', 'resolved'];
+
+/** The grant a handover needs for cases. Checked outside the exit's transaction, as every grant check here is. */
+export async function authoriseCaseHandover(): Promise<void> {
+  await assertCan({ resource: 'cases', verb: 'edit' });
+}
+
+/**
+ * The exit handover's write for one open case, inside the exit's transaction: the
+ * row, its CaseEvent, the audit row and the event, the same governed path as a
+ * reassignment. The caller has locked the row and checked the grant.
+ */
+export async function handOverCaseInTx(tx: DbTx, row: Case, successorPartyId: string, reason: string): Promise<Case> {
+  if (!OPEN_CASE_STATES.includes(row.state as CaseState)) {
+    throw ApiError.conflict(`A ${row.state} case cannot be handed over.`, { state: row.state });
+  }
+  assertOwnerIsNotBackup(successorPartyId, row.backupPartyId);
+  const note = `owner ${row.ownerPartyId} -> ${successorPartyId}: ${reason}`;
+  return applyChange({
+    row,
+    to: row.state as CaseState,
+    eventName: EVENTS.CASE_REASSIGNED,
+    data: { ownerPartyId: successorPartyId },
+    newOwnerPartyId: successorPartyId,
+    reason: note,
+    tx,
+  });
+}
+
 export async function listCases(filter: CaseFilter = {}): Promise<Case[]> {
   const auth = currentAuth();
   await assertCan({ resource: 'cases', verb: 'view' });
@@ -382,11 +421,12 @@ async function humanMove(id: string, to: CaseState, reason: string | null): Prom
  * got there first leaves this one with a 409 rather than a silent overwrite.
  */
 async function applyChange(change: Change): Promise<Case> {
-  const { row, to, eventName, data = {}, reason } = change;
+  const { row, to, eventName, data = {}, newOwnerPartyId, reason, tx: outer } = change;
   const auth = currentAuth();
   const actorPartyId = auth.partyId ?? null;
 
-  return governedWrite(async (tx: DbTx) => {
+  const work = async (tx: DbTx): Promise<Case> => {
+    if (newOwnerPartyId !== undefined) await lockAssignableParty(tx, auth.tenantId, newOwnerPartyId);
     const { count } = await tx.case.updateMany({
       where: { id: row.id, state: row.state },
       data: { ...data, state: to },
@@ -430,7 +470,8 @@ async function applyChange(change: Change): Promise<Case> {
       tx,
     });
     return after;
-  });
+  };
+  return outer ? work(outer) : governedWrite(work);
 }
 
 /**
@@ -461,7 +502,7 @@ async function canReach(row: Case, verb: 'view' | 'edit'): Promise<boolean> {
 }
 
 /** The tiers at or below a ceiling, in the rank order the evaluator uses. */
-function tiersClearedBy(ceiling: SensitivityClass): SensitivityClass[] {
+export function tiersClearedBy(ceiling: SensitivityClass): SensitivityClass[] {
   return SENSITIVITY_CLASSES.filter((tier) => SENSITIVITY_RANK[tier] <= SENSITIVITY_RANK[ceiling]);
 }
 

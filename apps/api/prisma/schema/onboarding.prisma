@@ -1,0 +1,53 @@
+// The tenant onboarding run (Wave 6 PR10; SPINE-CONTRACT 1.8, item 10).
+//
+// The run holds where a tenant is in setup, and OnboardingTransition holds every
+// move it has made. Until this table, the state lived in `Tenant.config.onboarding`
+// and was rewritten on read; that column is no longer written, and migration
+// 20261013140000_onboarding_run backfills one run per tenant from it.
+//
+// What Prisma cannot express is raw SQL in that migration: the state list, the
+// append-only trigger on onboarding_transitions, the grants, and the backfill.
+// The transition table is TENANT_ONBOARDING_TRANSITIONS in @kaizen/shared, and the
+// command that applies it is advanceOnboarding in domains/onboarding.ts.
+
+model TenantOnboardingRun {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// draft | company_profile | statutory_configured | openings_imported | verified | active | blocked.
+  state    String @default("draft")
+  /// Counts every change of state. It orders the history, so a resume can read
+  /// the state the run was blocked from without trusting the clock.
+  revision Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transitions OnboardingTransition[]
+
+  @@unique([tenantId])
+  @@unique([tenantId, id])
+  @@map("tenant_onboarding_runs")
+}
+
+/// One row per change of state. Append-only: a trigger refuses UPDATE and DELETE
+/// for every role, so a correction is a new row.
+model OnboardingTransition {
+  id       String @id @default(cuid())
+  tenantId String
+  runId    String
+
+  /// The command's event, e.g. START or BLOCK. The event name on the wire is in EVENTS.
+  event     String
+  fromState String
+  toState   String
+  revision  Int
+  actorPartyId String?
+  reason       String?
+  at           DateTime @default(now())
+
+  run TenantOnboardingRun @relation(fields: [tenantId, runId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenantId, runId, revision])
+  @@map("onboarding_transitions")
+}

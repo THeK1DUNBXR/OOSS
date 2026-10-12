@@ -885,7 +885,9 @@ model Decision {
   subjectLabel String?
 
   authorityBasis         String
-  requiredAuthorityValue Decimal? @db.Decimal(18, 2)
+  /// Paise. Was Decimal(18,2) until 20261013150000_decision_links_money, which
+  /// converted it in place; a Decimal would be rounded by the first float that touched it.
+  requiredAuthorityMinor BigInt?
   currency               String?
   routedToPartyId        String?
   routedToRole           String?
@@ -918,8 +920,12 @@ model Decision {
   updatedAt DateTime  @updatedAt
 
   delegations Delegation[]
+  links       DecisionLink[]
 
   @@unique([tenantId, recordCode])
+  /// Lets a child row name its decision with a composite foreign key, so a link
+  /// cannot point at another tenant's decision even if the domain check is bypassed.
+  @@unique([tenantId, id])
   @@index([tenantId, state, raisedAt])
   @@index([tenantId, routedToPartyId, state])
   @@map("decisions")
@@ -949,6 +955,27 @@ model Delegation {
 
   @@index([tenantId, toPartyId, state])
   @@map("delegations")
+}
+
+/// What a decision is tied to: a task, commitment, case, exception or document.
+/// Append-only. A link that was wrong is left in place and an unlink, if one is
+/// ever wanted, is a new row; the database refuses UPDATE and DELETE for every role.
+/// The target's existence in this tenant is checked by the domain, because the
+/// target is one of several tables and cannot be a single foreign key.
+model DecisionLink {
+  id       String @id @default(cuid())
+  tenantId String
+
+  decisionId String
+  linkType   String
+  linkId     String
+  createdByPartyId String?
+  createdAt        DateTime @default(now())
+
+  decision Decision @relation(fields: [tenantId, decisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([tenantId, decisionId, linkType, linkId])
+  @@map("decision_links")
 }
 
 // ===========================================================================
@@ -1247,6 +1274,10 @@ model Principal {
   id           String    @id @default(cuid())
   email        String    @unique
   passwordHash String
+  /// Set when an account recovery issued a one-time password. While it is set,
+  /// every authenticated route but change-password and logout refuses with
+  /// PASSWORD_CHANGE_REQUIRED (lib/http.ts). Cleared by changePassword.
+  mustChangePassword Boolean @default(false)
   status       String    @default("active") // active | suspended
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
@@ -2163,6 +2194,13 @@ model Task {
   relatedInteractionId String?
   relatedType          String?
   relatedId            String?
+
+  // The typed source (TASK_SOURCE_KINDS in packages/shared/src/tasks.ts). The
+  // kind is a CHECK in the migration; sourceId is required unless the kind is
+  // manual. No foreign key: the target table depends on the kind, so existence
+  // is checked in domains/tasks.ts at the write boundary.
+  sourceKind String  @default("manual")
+  sourceId   String?
 
   escalatedAt       DateTime?
   overdueNotifiedAt DateTime?
@@ -4324,7 +4362,11 @@ model Threshold {
   tenantId String
 
   thresholdKey String
-  value        Float
+  // Typed by unit (see packages/shared/src/thresholds.ts): a currency threshold is
+  // bigint paise in valueMinor, every other unit is a whole number in valueInt.
+  // The CHECK in 20261013160000_threshold_minor holds exactly one of them set.
+  valueMinor   BigInt?
+  valueInt     Int?
   unit         String  @default("count")
   description  String?
 

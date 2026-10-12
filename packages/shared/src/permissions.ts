@@ -361,6 +361,15 @@ export const RESOURCES = [
   // ceiling must clear, so a non-founder without the tier sees neither the row
   // nor its existence.
   'cases',
+  // Recovering a locked-out account (ORDERED-PLAN Wave 6). Its only verb is
+  // `approve`: the founder and the IT desk may recover someone's sign-in, and
+  // nothing else in the users resource is theirs to change this way.
+  'account_recovery',
+  // Wave 6 (OP:120). The founder's read across the five things that need a
+  // person: exceptions, missed commitments, awaiting decisions, pending approvals
+  // and overdue cases. Only the chairman holds it (seed/grants.ts), and the view
+  // still checks view on each source, so holding this alone shows no rows.
+  'founder_view',
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];

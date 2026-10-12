@@ -26,6 +26,7 @@ export const testUser: SessionUser = {
   grants: [],
   authorityGrants: [],
   branch: null,
+  mustChangePassword: false,
 };
 
 export const testNav: NavNodeView[] = [

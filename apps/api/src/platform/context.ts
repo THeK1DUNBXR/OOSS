@@ -41,6 +41,13 @@ export interface RequestContext {
   causationId: string | null;
   auth: AuthContext | null;
   /**
+   * Set when the principal behind a valid token must change its password first.
+   * `auth` stays null for every route except change-password and logout, so
+   * nothing else can read the tenant; `requireAuth` answers 403
+   * PASSWORD_CHANGE_REQUIRED instead of 401 (lib/http.ts).
+   */
+  passwordChangeRequired?: boolean;
+  /**
    * When true the tenant-scope guard logs a query it would have rejected
    * instead of blocking it. Used for the one-release warn-mode bake before the
    * enforce-mode flip.

@@ -18,11 +18,22 @@
  * four admission gates below), and dead numbers (every widget declares actions).
  */
 
-import { AUTOMATION_CLASSES, EVENTS, SEVERITY_RANK, type DeltaItem, type SeverityCode } from '@kaizen/shared';
+import {
+  AUTOMATION_CLASSES,
+  EVENTS,
+  SEVERITY_RANK,
+  compare,
+  parseMinor,
+  type DeltaItem,
+  type NotMeasuredFigure,
+  type SeverityCode,
+} from '@kaizen/shared';
 import { createHash } from 'node:crypto';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
+import { wireInt } from '../platform/wire.js';
 import { latestPulse } from './health.js';
+import { findThreshold } from './thresholds.js';
 
 /** Why an item sits where it does in the queue, in words rather than codes. */
 const SEVERITY_REASON: Record<string, string> = {
@@ -55,22 +66,55 @@ const ADMITTED_EVENT_NAMES = new Set<string>([
   EVENTS.AGENT_AUTHORITY_SHORTFALL,
 ]);
 
-async function materialityFloor(): Promise<number> {
-  const auth = currentAuth();
-  const t = await prisma.threshold.findFirst({
-    where: { tenantId: auth.tenantId, thresholdKey: 'command_center.materiality_floor' },
-  });
-  return t?.value ?? 100_000;
+const MATERIALITY_KEY = 'command_center.materiality_floor';
+const WINDOW_KEY = 'command_center.narrative_window_hours';
+
+/**
+ * The materiality floor in paise, or null when the row is absent. Null is not a
+ * default: the caller reports the figure as not measured, so a floor nobody set
+ * is never quietly a number.
+ */
+export async function materialityFloorMinor(): Promise<bigint | null> {
+  const t = await findThreshold(MATERIALITY_KEY);
+  return t?.valueMinor ?? null;
 }
 
-async function narrativeWindowHours(): Promise<number> {
-  const auth = currentAuth();
-  const t = await prisma.threshold.findFirst({
-    where: { tenantId: auth.tenantId, thresholdKey: 'command_center.narrative_window_hours' },
-  });
-  // Shipped as a THRESHOLD row from day one rather than a hardcoded constant,
-  // because the source flags it as unvalidated.
-  return t?.value ?? 72;
+/** Hours, from the integer column, or null when the row is absent. Shipped as a THRESHOLD row because the source flags the figure as unvalidated. */
+export async function narrativeWindowHours(): Promise<number | null> {
+  const t = await findThreshold(WINDOW_KEY);
+  return t?.valueInt ?? null;
+}
+
+function notConfigured(figure: NotMeasuredFigure['figure'], thresholdKey: string): NotMeasuredFigure {
+  return { figure, thresholdKey, reason: `threshold ${thresholdKey} is not configured` };
+}
+
+/**
+ * A materiality from an event's impact JSON, as paise, or null when it is not
+ * measured. Writers put rupees there as a JavaScript number (finance.ts,
+ * invoicing.ts and others), so the value is read from its String form.
+ * parseMinor refuses a third decimal; that value is a writer's unit mistake to
+ * leave visible, not an amount to round.
+ */
+export function measuredMinor(raw: unknown): bigint | null {
+  if (typeof raw !== 'number' && typeof raw !== 'string') return null;
+  try {
+    return parseMinor(String(raw));
+  } catch {
+    return null;
+  }
+}
+
+/** Whether an impact clears the floor. An impact that is not measured does not clear it. */
+export function clearsMaterialityFloor(raw: unknown, floor: bigint): boolean {
+  const paise = measuredMinor(raw);
+  return paise !== null && paise >= floor;
+}
+
+/** The wire form: paise as a digit string, or null when the impact is not measured. */
+function materialityWire(raw: unknown): string | null {
+  const paise = measuredMinor(raw);
+  return paise === null ? null : wireInt(paise);
 }
 
 /**
@@ -122,8 +166,11 @@ export async function whatChanged() {
   const auth = currentAuth();
   const watermark = await watermarkFor();
   const since = watermark?.lastSeenAt ?? new Date(Date.now() - 24 * 3_600_000);
-  const floor = await materialityFloor();
+  const floor = await materialityFloorMinor();
   const windowHours = await narrativeWindowHours();
+  const notMeasured: NotMeasuredFigure[] = [];
+  if (floor === null) notMeasured.push(notConfigured('materiality_floor', MATERIALITY_KEY));
+  if (windowHours === null) notMeasured.push(notConfigured('narrative_window', WINDOW_KEY));
 
   const events = await prisma.eventRecord.findMany({
     where: { tenantId: auth.tenantId, recordedAt: { gt: since }, legacyName: null },
@@ -143,13 +190,14 @@ export async function whatChanged() {
       continue;
     }
 
-    const materiality = (e.impactMateriality as { value?: number } | null)?.value ?? null;
+    const rawMateriality = (e.impactMateriality as { value?: unknown } | null)?.value;
     const severity = e.impactSeverity as SeverityCode | null;
 
     // Materiality floor: an item with neither material value nor a severity of
-    // S2 or higher does not earn a place on this surface.
+    // S2 or higher does not earn a place on this surface. With no floor set the
+    // materiality leg cannot be applied, so only the severity leg admits.
     const passesFloor =
-      (materiality !== null && materiality >= floor) ||
+      (floor !== null && clearsMaterialityFloor(rawMateriality, floor)) ||
       (severity !== null && SEVERITY_RANK[severity] >= SEVERITY_RANK.S2_WARNING);
     if (!passesFloor) {
       suppressed += 1;
@@ -164,7 +212,7 @@ export async function whatChanged() {
       detail: detailFor(e),
       domain: e.impactDomains[0] ?? 'crm',
       severity,
-      materiality,
+      materiality: materialityWire(rawMateriality),
       newToView: reachChanged,
       // Resolved without Chairman involvement — links through to the automation
       // digest rather than duplicating detail here.
@@ -174,7 +222,7 @@ export async function whatChanged() {
   }
 
   const elapsed = (Date.now() - since.getTime()) / 3_600_000;
-  const narrativeWindowElapsed = elapsed >= windowHours;
+  const narrativeWindowElapsed = windowHours === null ? null : elapsed >= windowHours;
 
   return {
     watermark: since.toISOString(),
@@ -182,7 +230,9 @@ export async function whatChanged() {
     narrativeWindowElapsed,
     narrative: narrativeWindowElapsed ? await buildNarrative(items, since) : null,
     items: items.slice(0, 50),
-    suppressedBelowMateriality: suppressed,
+    // Not measured without a floor: the count of what the floor held back does not exist.
+    suppressedBelowMateriality: floor === null ? null : suppressed,
+    notMeasured,
   };
 }
 
@@ -218,8 +268,8 @@ async function buildNarrative(items: DeltaItem[], since: Date) {
 
   const bySeverity = items.filter((i) => i.severity && SEVERITY_RANK[i.severity] >= SEVERITY_RANK.S3_HIGH_RISK);
   const byValue = items
-    .filter((i) => i.materiality && i.materiality > 0)
-    .sort((a, b) => (b.materiality ?? 0) - (a.materiality ?? 0));
+    .filter((i) => i.materiality !== null && BigInt(i.materiality) > 0n)
+    .sort((a, b) => compare(BigInt(b.materiality!), BigInt(a.materiality!)));
 
   const claims: string[] = [];
   if (bySeverity.length) {
@@ -228,7 +278,9 @@ async function buildNarrative(items: DeltaItem[], since: Date) {
     );
   }
   if (byValue.length) {
-    claims.push(`The largest movement by value was ${byValue[0].headline} at ${formatMoney(byValue[0].materiality!)}.`);
+    claims.push(
+      `The largest movement by value was ${byValue[0].headline} at ${formatMoney(BigInt(byValue[0].materiality!))}.`,
+    );
   }
   const handled = items.filter((i) => i.handledWithoutYou).length;
   if (handled)
@@ -415,7 +467,7 @@ export async function liveAndHandled(windowHours = 24) {
       detail: detailFor(e),
       domain: e.impactDomains[0] ?? 'crm',
       severity: e.impactSeverity as SeverityCode | null,
-      materiality: (e.impactMateriality as { value?: number } | null)?.value ?? null,
+      materiality: materialityWire((e.impactMateriality as { value?: unknown } | null)?.value),
       newToView: false,
       handledWithoutYou: e.actorType !== 'human',
       drillPath: drillPathFor(e.subjectEntityType, e.subjectEntityId),
@@ -599,7 +651,10 @@ function detailFor(e: { newState: unknown; reason: unknown; subjectEntityType: s
   if (state.status) parts.push(`status ${state.status}`);
   if (state.band) parts.push(`band ${state.band}`);
   if (state.severity) parts.push(String(state.severity));
-  if (state.commercialValue) parts.push(formatMoney(Number(state.commercialValue)));
+  // The event's commercial value is rupees as a JavaScript number, like the impact
+  // materiality; an unmeasured or zero value adds no part, as it did before.
+  const commercialPaise = measuredMinor(state.commercialValue);
+  if (commercialPaise !== null && commercialPaise !== 0n) parts.push(formatMoney(commercialPaise));
   return parts.length ? parts.join(' · ') : e.subjectEntityType;
 }
 
@@ -636,7 +691,9 @@ function humaniseClass(cls: string): string {
   return cls.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 }
 
-function formatMoney(n: number): string {
+/** Display only: the comparisons that chose this figure ran on the bigint paise. */
+function formatMoney(paise: bigint): string {
+  const n = Number(paise) / 100;
   if (Math.abs(n) >= 10_000_000) return `₹${(n / 10_000_000).toFixed(2)} Cr`;
   if (Math.abs(n) >= 100_000) return `₹${(n / 100_000).toFixed(2)} L`;
   return `₹${n.toLocaleString('en-IN')}`;

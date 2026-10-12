@@ -26,6 +26,7 @@ import { assertCanWriteGrant } from '../platform/roleAssignment.js';
 import { agentRoster, decideAgentAction, pauseAgent, revokeAuthority, propose } from '../agents/index.js';
 import { ALL_JOBS, runManualJobs } from '../jobs/scheduler.js';
 import { replayDeadLetter } from '../platform/outbox.js';
+import { setThreshold } from '../domains/thresholds.js';
 
 const router = Router();
 
@@ -530,15 +531,7 @@ router.get(
 
 router.patch(
   '/thresholds/:key',
-  handler(async (req) => {
-    await assertCan({ resource: 'policies', verb: 'edit' });
-    const auth = currentAuth();
-    const schema = z.object({ value: z.number() });
-    return prisma.threshold.update({
-      where: { tenantId_thresholdKey: { tenantId: auth.tenantId, thresholdKey: req.params.key } },
-      data: { value: schema.parse(req.body).value },
-    });
-  }),
+  handler(async (req) => setThreshold(req.params.key, req.body)),
 );
 
 router.get(

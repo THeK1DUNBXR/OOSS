@@ -9,6 +9,7 @@ import { useSurface } from './lib/surface.js';
 import { Shell } from './components/Shell.js';
 import { Loading } from './components/ui.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
+import { ChangePassword } from './pages/ChangePassword.js';
 const Login = lazy(() => import('./pages/Login.js').then((m) => ({ default: m.Login })));
 import { PortalShell } from './portal/PortalShell.js';
 const Holdings = lazy(() => import('./portal/pages/Holdings.js').then((m) => ({ default: m.Holdings })));
@@ -36,6 +37,7 @@ const Filings = lazy(() => import('./pages/equity/Filings.js').then((m) => ({ de
 const Sh4Sheet = lazy(() => import('./pages/equity/Sh4Sheet.js').then((m) => ({ default: m.Sh4Sheet })));
 const MyOptions = lazy(() => import('./pages/MyOptions.js').then((m) => ({ default: m.MyOptions })));
 const CommandCenter = lazy(() => import('./pages/CommandCenter.js').then((m) => ({ default: m.CommandCenter })));
+const FounderView = lazy(() => import('./pages/FounderView.js').then((m) => ({ default: m.FounderView })));
 const Workspace = lazy(() => import('./pages/Workspace.js').then((m) => ({ default: m.Workspace })));
 const Exceptions = lazy(() => import('./pages/Workspace.js').then((m) => ({ default: m.Exceptions })));
 const Pipeline = lazy(() => import('./pages/Pipeline.js').then((m) => ({ default: m.Pipeline })));
@@ -310,10 +312,13 @@ function PortalRouted() {
 }
 
 function Routed() {
-  const { user, loading } = useSession();
+  const { user, loading, passwordChangeRequired } = useSession();
   const surface = useSurface(user);
 
   if (loading) return <Loading label="Resolving your session" />;
+  // Before the shell and before sign-in: a recovered one-time password opens
+  // nothing else, and the token it holds is kept for the change to use.
+  if (passwordChangeRequired) return <ChangePassword />;
   if (!user)
     return (
       <Suspense fallback={<Loading label="Opening sign-in" />}>
@@ -334,6 +339,7 @@ function Routed() {
 
           <Route path="/command" element={<CommandCenter />} />
           <Route path="/command/decisions" element={<Decisions />} />
+          <Route path="/command/founder-view" element={<FounderView />} />
           <Route path="/command/health/:domainCode" element={<CommandCenter />} />
           <Route path="/workspace" element={<Workspace />} />
           <Route path="/exceptions" element={<Exceptions />} />

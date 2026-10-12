@@ -117,9 +117,11 @@ model CostCentre {
   updatedAt DateTime  @updatedAt
 
   lineDistributions LineDistribution[]
+  /// Journal lines name a cost centre through the composite key (tenantId, costCentreId).
+  journalLines      JournalLine[]
 
   @@unique([tenantId, code])
-  /// Target of the composite key from LineDistribution. Carries no line of its own:
+  /// Target of the composite keys from LineDistribution and JournalLine. Carries no line of its own:
   /// a cost centre's line comes from its dated distribution.
   @@unique([tenantId, id])
   @@map("hcm_workforce_cost_centres")

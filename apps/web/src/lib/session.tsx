@@ -11,11 +11,13 @@ import type { EntitySelectionResponse, NavNodeView, SessionUser, Verb } from '@k
 import {
   ApiClientError,
   api,
+  changePassword as apiChangePassword,
   chooseEntity as apiChooseEntity,
   getToken,
   restoreSession,
   login as apiLogin,
   logout as apiLogout,
+  onPasswordChangeRequired,
   onUnauthorized,
   setToken,
   switchContext as apiSwitch,
@@ -37,9 +39,14 @@ interface SessionState {
   /** Set once a sign-in (or an entity choice) gets `{ mfaRequired: true }`
    *  back — the login screen shows the code prompt while this is non-null. */
   mfaChallengeToken: string | null;
+  /** True while a recovered one-time password is the only thing that opens the
+   *  app: the shell is replaced by the change-password screen until it is
+   *  replaced. The token is kept, because the change needs it. */
+  passwordChangeRequired: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   chooseEntity: (tenantId: string) => Promise<void>;
   verifyMfa: (code: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   signOut: () => void;
   switchTo: (affiliationId: string, stepUpPassword?: string) => Promise<void>;
   switchEntity: (tenantId: string) => Promise<void>;
@@ -67,6 +74,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [pendingSelection, setPendingSelection] = useState<EntitySelectionResponse | null>(null);
   const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
+  const [passwordChangeRequired, setPasswordChangeRequired] = useState(false);
 
   const loadNav = useCallback(async () => {
     try {
@@ -75,6 +83,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setNav([]);
     }
   }, []);
+
+  /**
+   * Takes a session the server has just issued. A sign-in whose password is a
+   * recovered one-time password goes no further than the change screen: nav is
+   * not loaded, because every nav call would be refused until the change is made.
+   */
+  const adopt = useCallback(
+    async (issued: SessionUser) => {
+      setUser(issued);
+      setPasswordChangeRequired(issued.mustChangePassword);
+      if (!issued.mustChangePassword) await loadNav();
+    },
+    [loadNav],
+  );
 
   const refresh = useCallback(async () => {
     // A page load has no token in memory; the refresh cookie is the way back in.
@@ -91,17 +113,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
     try {
       const me = await api.get<SessionUser>('/auth/me');
+      setPasswordChangeRequired(false);
       setUser(me);
       await loadNav();
     } catch (err) {
       // Only a refused token ends the session. A dropped connection or a 5xx on
-      // /auth/me used to clear the token here, signing the user out for a blip.
-      if (!(err instanceof ApiClientError && err.status === 401)) {
+      // /auth/me clears nothing, so a blip does not sign the user out. A reload of
+      // a recovered sign-in is refused with PASSWORD_CHANGE_REQUIRED: the session is
+      // still owed a change, so the token stays and the change screen opens.
+      if (err instanceof ApiClientError && err.code === 'PASSWORD_CHANGE_REQUIRED') {
+        setPasswordChangeRequired(true);
+      } else if (!(err instanceof ApiClientError && err.status === 401)) {
         setError('Could not reach the server. Check your connection and reload.');
+        setUser(null);
       } else {
         setToken(null);
+        setUser(null);
       }
-      setUser(null);
     } finally {
       setLoading(false);
     }
@@ -128,14 +156,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           setMfaChallengeToken(res.challengeToken);
           return;
         }
-        setUser(res.user);
-        await loadNav();
+        await adopt(res.user);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Sign-in failed');
         throw err;
       }
     },
-    [loadNav],
+    [adopt],
   );
 
   /** Completes sign-in once the picker shown for `pendingSelection` names an
@@ -151,14 +178,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           setMfaChallengeToken(res.challengeToken);
           return;
         }
-        setUser(res.user);
-        await loadNav();
+        await adopt(res.user);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not open that entity');
         throw err;
       }
     },
-    [pendingSelection, loadNav],
+    [pendingSelection, adopt],
   );
 
   const verifyMfa = useCallback(
@@ -168,14 +194,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       try {
         const res = await apiVerifyMfa(mfaChallengeToken, code);
         setMfaChallengeToken(null);
-        setUser(res.user);
-        await loadNav();
+        await adopt(res.user);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'That code is not correct.');
         throw err;
       }
     },
-    [mfaChallengeToken, loadNav],
+    [mfaChallengeToken, adopt],
+  );
+
+  /**
+   * Replaces the one-time password, then re-reads the session, which the gate
+   * now lets through. A refusal (wrong current password, a weak new one) throws
+   * the server's message to the screen and leaves the session as it was.
+   */
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      await apiChangePassword(currentPassword, newPassword);
+      const me = await api.get<SessionUser>('/auth/me');
+      setUser(me);
+      setPasswordChangeRequired(false);
+      await loadNav();
+    },
+    [loadNav],
   );
 
   const signOut = useCallback(() => {
@@ -183,6 +224,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setNav([]);
     setPendingSelection(null);
+    setPasswordChangeRequired(false);
   }, []);
 
   // A 401 from any endpoint but sign-in itself means the token this browser
@@ -193,9 +235,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setNav([]);
       setPendingSelection(null);
+      setPasswordChangeRequired(false);
       setNotice('Your session ended. Sign in again.');
     });
     return () => onUnauthorized(null);
+  }, []);
+
+  useEffect(() => {
+    onPasswordChangeRequired(() => setPasswordChangeRequired(true));
+    return () => onPasswordChangeRequired(null);
   }, []);
 
   /**
@@ -229,10 +277,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setMfaChallengeToken(res.challengeToken);
         return;
       }
-      setUser(res.user);
-      await loadNav();
+      await adopt(res.user);
     },
-    [loadNav],
+    [adopt],
   );
 
   const can = useCallback(
@@ -264,9 +311,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       notice,
       pendingSelection,
       mfaChallengeToken,
+      passwordChangeRequired,
       signIn,
       chooseEntity,
       verifyMfa,
+      changePassword,
       signOut,
       switchTo,
       switchEntity,
@@ -281,9 +330,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       notice,
       pendingSelection,
       mfaChallengeToken,
+      passwordChangeRequired,
       signIn,
       chooseEntity,
       verifyMfa,
+      changePassword,
       signOut,
       switchTo,
       switchEntity,

@@ -196,6 +196,10 @@ export const EVENTS = {
   /// employment here (§1.10). Never fires on the founding-account seed path.
   SIGN_IN_CREATED: 'kz.idn.sign_in.created',
   SIGN_IN_RESET: 'kz.idn.sign_in.reset',
+  /// A locked-out account's sign-in was recovered by the founder or the IT desk:
+  /// password rotated, live sessions revoked, optionally TOTP cleared. Carries no
+  /// secret. The domain is `idn` because the grammar admits two to four letters.
+  ACCOUNT_RECOVERED: 'kz.idn.account.recovered',
   /// A principal chose which entity to continue in, after `login()` returned
   /// more than one. Written in the target tenant only — switching carries no
   /// cross-tenant event, the same way the token it issues carries no
@@ -214,6 +218,15 @@ export const EVENTS = {
   TENANT_SPIN_OUT_PREVIEWED: 'kz.sys.spin_out.previewed',
   TENANT_SPIN_OUT_COMMITTED: 'kz.sys.spin_out.committed',
   TENANT_SPIN_OUT_REVERTED: 'kz.sys.spin_out.reverted',
+  // The onboarding run (PR10). One name per state reached, in the past tense the grammar
+  // requires. `activated` is the ACTIVATE self-loop's name too: a re-confirmation is a fact.
+  ONBOARDING_COMPANY_PROFILE_RECORDED: 'kz.sys.onboarding.company_profile_recorded',
+  ONBOARDING_STATUTORY_CONFIGURED: 'kz.sys.onboarding.statutory_configured',
+  ONBOARDING_OPENINGS_IMPORTED: 'kz.sys.onboarding.openings_imported',
+  ONBOARDING_VERIFIED: 'kz.sys.onboarding.verified',
+  ONBOARDING_ACTIVATED: 'kz.sys.onboarding.activated',
+  ONBOARDING_BLOCKED: 'kz.sys.onboarding.blocked',
+  ONBOARDING_RESUMED: 'kz.sys.onboarding.resumed',
 
   // --- CRM: organisation specialisations ------------------------------------
   CRM_ORGANIZATION_CREATED: 'kz.crm.organization.created',
@@ -380,6 +393,7 @@ export const EVENTS = {
   DECISION_DELEGATED: 'kz.gov.decision.delegated',
   DECISION_DEFERRED: 'kz.gov.decision.deferred',
   DECISION_EVIDENCE_REQUESTED: 'kz.gov.decision.evidence_requested',
+  DECISION_LINKED: 'kz.gov.decision.linked',
   // A commitment's state changes. `missed` is also written by the scheduled job,
   // so a subscriber must not assume a person did it: the actor is null then.
   COMMITMENT_PROPOSED: 'kz.gov.commitment.proposed',
@@ -395,6 +409,9 @@ export const EVENTS = {
   CASE_ACKNOWLEDGED: 'kz.gov.case.acknowledged',
   CASE_RESOLVED: 'kz.gov.case.resolved',
   CASE_CLOSED: 'kz.gov.case.closed',
+  // An open case handed to a successor when its owner exits (SPINE-CONTRACT 1.7).
+  // Not a state change, so the state the subscriber reads is unchanged.
+  CASE_REASSIGNED: 'kz.gov.case.reassigned',
   CASE_WITHDRAWN: 'kz.gov.case.withdrawn',
   CASE_MARKED_OVERDUE: 'kz.gov.case.marked_overdue',
   CASE_EXCEPTION_RAISED: 'kz.gov.case.exception_raised',
@@ -429,6 +446,9 @@ export const EVENTS = {
   EMPLOYMENT_RELATIONSHIP_ENDED: 'kz.hr.employment.ended',
   ONBOARDING_INITIATED: 'kz.hr.onboarding.initiated',
   OFFBOARDING_INITIATED: 'kz.hr.offboarding.initiated',
+  // An exit went ahead with open rows left with the leaver, under a recorded
+  // override. The rows and the reason are on the audit row; this says it happened.
+  OFFBOARDING_HANDOVER_OVERRIDE_RECORDED: 'kz.hr.offboarding.handover_override_recorded',
   REQUISITION_CREATED: 'kz.hr.requisition.created',
   APPLICATION_CREATED: 'kz.hr.application.created',
   ASSIGNMENT_CREATED: 'kz.hr.assignment.created',
@@ -564,6 +584,9 @@ export const EVENTS = {
   NO_DUES_ISSUED: 'kz.hr.no_dues.issued',
   // WS11 assets
   ASSET_ASSIGNED: 'kz.hr.asset.assigned',
+  // Custody moved from a leaver to a successor: the old spell is closed and a new
+  // one opened, and the asset stays assigned throughout.
+  ASSET_TRANSFERRED: 'kz.hr.asset.transferred',
   ASSET_RETURNED: 'kz.hr.asset.returned',
   TRAVEL_REQUEST_SUBMITTED: 'kz.hr.travel_request.submitted',
   TRAVEL_REQUEST_APPROVED: 'kz.hr.travel_request.approved',
@@ -928,6 +951,10 @@ export const EVENTS = {
   UNIT_OPENED: 'kz.org.unit.opened',
   UNIT_CLOSED: 'kz.org.unit.closed',
   UNIT_MOVED: 'kz.org.unit.moved',
+
+  // --- Organisation: tunable thresholds (SPINE-CONTRACT s.1.10). Emitted by
+  // apps/api/src/domains/thresholds.ts, one per governed write.
+  THRESHOLD_UPDATED: 'kz.org.threshold.updated',
 } as const;
 
 /**

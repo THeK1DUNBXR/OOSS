@@ -28,6 +28,7 @@ import { governedWrite } from '../platform/governedWrite.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
+import { lockAssignableParty } from './ownership.js';
 
 registerGovernedEntities('gov', ['commitment']);
 
@@ -46,6 +47,12 @@ export const COMMITMENT_TRANSITIONS: Record<CommitmentState, readonly Commitment
   met: [],
   cancelled: [],
 };
+
+/**
+ * Where the owner still has to act. `missed` is open, because it can still become
+ * `met`; only `met` and `cancelled` close a promise, as reassignCommitment refuses them.
+ */
+export const OPEN_COMMITMENT_STATES: readonly CommitmentState[] = ['proposed', 'confirmed', 'missed'];
 
 /** Where a promise came from. A model's suggestion is `agent`, whatever the sourceId. */
 export const COMMITMENT_SOURCE_TYPES = ['manual', 'agent', 'decision', 'exception', 'interaction'] as const;
@@ -84,9 +91,13 @@ interface Change {
   to: CommitmentState;
   eventName: string;
   data?: Prisma.CommitmentUncheckedUpdateManyInput;
+  /** Set on a reassignment, so the new owner is locked and checked before the row moves. */
+  newOwnerPartyId?: string;
   reason: string | null;
   /** The job's guard: a row moves only if its due instant is before this. */
   dueBefore?: Date;
+  /** The caller's transaction, for a handover that writes inside the exit's. Absent, the write opens its own. */
+  tx?: DbTx;
 }
 
 export async function proposeCommitment(input: ProposeCommitmentInput): Promise<Commitment> {
@@ -99,6 +110,7 @@ export async function proposeCommitment(input: ProposeCommitmentInput): Promise<
   if (backup) await assertPersonInTenant(backup);
 
   return governedWrite(async (tx) => {
+    await lockAssignableParty(tx, auth.tenantId, input.ownerPartyId);
     const recordCode = await nextRecordCode('CMT', new Date(), tx);
     const row = await tx.commitment.create({
       data: {
@@ -203,7 +215,40 @@ export async function reassignCommitment(
       to: row.state as CommitmentState,
       eventName: EVENTS.COMMITMENT_REASSIGNED,
       data: { ownerPartyId },
+      newOwnerPartyId: ownerPartyId,
       reason: note,
+    }),
+  );
+}
+
+/** The grant a handover needs for commitments. Checked outside the exit's transaction, as every grant check here is. */
+export async function authoriseCommitmentHandover(): Promise<void> {
+  await assertCan({ resource: 'commitments', verb: 'edit' });
+}
+
+/**
+ * The exit handover's write for one open commitment, inside the exit's transaction:
+ * the row, its CommitmentEvent, the audit row and the event, the same governed
+ * path as a reassignment made by a person. The caller has locked the row and
+ * checked the grant.
+ */
+export async function handOverCommitmentInTx(
+  tx: DbTx,
+  row: Commitment,
+  successorPartyId: string,
+  reason: string,
+): Promise<Commitment> {
+  assertOwnerIsNotBackup(successorPartyId, row.backupPartyId);
+  const note = `owner ${row.ownerPartyId} -> ${successorPartyId}: ${reason}`;
+  return unwrap(
+    await applyChange({
+      row,
+      to: row.state as CommitmentState,
+      eventName: EVENTS.COMMITMENT_REASSIGNED,
+      data: { ownerPartyId: successorPartyId },
+      newOwnerPartyId: successorPartyId,
+      reason: note,
+      tx,
     }),
   );
 }
@@ -267,11 +312,12 @@ async function humanMove(id: string, to: CommitmentState, reason: string | null)
  * the job), so the two callers get different answers.
  */
 async function applyChange(change: Change): Promise<Commitment | null> {
-  const { row, to, eventName, data = {}, reason, dueBefore } = change;
+  const { row, to, eventName, data = {}, newOwnerPartyId, reason, dueBefore, tx: outer } = change;
   const auth = currentAuth();
   const actorPartyId = auth.partyId ?? null;
 
-  return governedWrite(async (tx: DbTx) => {
+  const work = async (tx: DbTx): Promise<Commitment | null> => {
+    if (newOwnerPartyId !== undefined) await lockAssignableParty(tx, auth.tenantId, newOwnerPartyId);
     const { count } = await tx.commitment.updateMany({
       where: {
         id: row.id,
@@ -321,7 +367,8 @@ async function applyChange(change: Change): Promise<Commitment | null> {
       tx,
     });
     return after;
-  });
+  };
+  return outer ? work(outer) : governedWrite(work);
 }
 
 async function loadOrNotFound(id: string): Promise<Commitment> {

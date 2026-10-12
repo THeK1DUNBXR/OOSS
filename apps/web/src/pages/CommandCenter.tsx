@@ -12,7 +12,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CommandCenterResponse, DecisionView, ExceptionView, HealthScoreView } from '@kaizen/shared';
-import { api, money, relative, titleCase } from '../lib/api.js';
+import { api, money, moneyMinor, relative, titleCase } from '../lib/api.js';
 import { NOT_MEASURED, domainAsks, domainName, words } from '../lib/words.js';
 import {
   BandChip,
@@ -56,6 +56,9 @@ export function CommandCenter() {
         subtitle="How the business is doing, and what needs you."
         actions={
           <>
+            <Link to="/command/founder-view" className="btn-ghost">
+              Founder view
+            </Link>
             <button className="btn-ghost" onClick={() => recompute.mutate()} disabled={recompute.isPending}>
               {recompute.isPending ? 'Refreshing…' : 'Refresh the numbers'}
             </button>
@@ -455,8 +458,8 @@ function DecisionModal({ decision, onClose }: { decision: DecisionView | null; o
           <p className="text-sm font-medium text-ink-50">{decision.question}</p>
           <p className="mt-1 text-2xs text-ink-500">
             {decision.subjectLabel} · {words(decision.authorityBasis)}
-            {decision.requiredAuthorityValue &&
-              ` · ${money(decision.requiredAuthorityValue, decision.currency ?? 'INR')}`}
+            {decision.requiredAuthorityMinor !== null &&
+              ` · ${moneyMinor(decision.requiredAuthorityMinor, decision.currency ?? 'INR')}`}
           </p>
         </div>
 
@@ -615,7 +618,11 @@ function WhatChanged({ data, onSeen }: { data: CommandCenterResponse['whatChange
   return (
     <Card
       title="What changed"
-      subtitle={`Since you last looked, ${new Date(data.watermark).toLocaleString('en-IN')}. ${data.suppressedBelowMateriality} smaller changes are not listed — they were too minor to be worth your time.`}
+      subtitle={`Since you last looked, ${new Date(data.watermark).toLocaleString('en-IN')}. ${
+        data.suppressedBelowMateriality === null
+          ? 'Smaller changes are not counted: no materiality floor is set.'
+          : `${data.suppressedBelowMateriality} smaller changes are not listed — they were too minor to be worth your time.`
+      }`}
       actions={
         <button className="btn-ghost" onClick={onSeen}>
           I have read this
@@ -629,6 +636,16 @@ function WhatChanged({ data, onSeen }: { data: CommandCenterResponse['whatChange
               flourish. Every claim below resolves to an admitted delta item. */}
           <p className="text-xs font-medium text-ink-100">{data.narrative.reconciliationLine}</p>
           <p className="mt-1.5 text-2xs leading-relaxed text-ink-400">{data.narrative.body}</p>
+        </div>
+      )}
+
+      {data.notMeasured.length > 0 && (
+        <div className="border-b border-ink-800 p-4">
+          {data.notMeasured.map((n) => (
+            <p key={n.thresholdKey} className="text-2xs text-ink-400">
+              {n.reason}
+            </p>
+          ))}
         </div>
       )}
 
@@ -657,7 +674,7 @@ function WhatChanged({ data, onSeen }: { data: CommandCenterResponse['whatChange
                   </div>
                   <p className="mt-0.5 text-2xs text-ink-400">
                     {d.detail} · {relative(d.occurredAt)}
-                    {d.materiality !== null && ` · ${money(d.materiality)}`}
+                    {d.materiality !== null && ` · ${money(Number(d.materiality) / 100)}`}
                   </p>
                 </div>
                 <Link to={d.drillPath} className="shrink-0 text-2xs text-accent-soft hover:underline">

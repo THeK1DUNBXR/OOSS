@@ -350,6 +350,8 @@ export const ALL_RESOURCES = [
   'authority_delegations', // WS13 workflow
   'commitments', // Wave 6 (OP:115); kept in lockstep with RESOURCES in shared/permissions.ts
   'cases', // Wave 6 (OP:116); kept in lockstep with RESOURCES in shared/permissions.ts
+  'account_recovery', // Wave 6 (ORDERED-PLAN); kept in lockstep with RESOURCES in shared/permissions.ts
+  'founder_view', // Wave 6 (OP:120); kept in lockstep with RESOURCES in shared/permissions.ts
 ] as const;
 
 /** Everything, at every scope, with no exceptions. */
@@ -434,6 +436,13 @@ const hrOpsManager: GrantSpec[] = [
   { resource: 'policies', cell: '-' },
   { resource: 'agents', cell: '-' },
   { resource: 'users', cell: '-' },
+  // The IT desk is the Operations Head's to run (docs/plan/cio.md, header:
+  // "with the Operations Head running the desk"), and there is no IT-admin
+  // role in ROLE_SLUGS yet. So the desk's recovery grant sits here, as a
+  // role grant. Level-based IT-admin assignment (DECISIONS round 10) replaces
+  // it later. `approve` only: recovering a sign-in is one act on a person, not
+  // a record to browse or edit.
+  { resource: 'account_recovery', cell: 'approve' },
   { resource: 'restricted_interactions', cell: '-' },
 
   // The register and the board are the company secretary's and the finance
@@ -738,6 +747,7 @@ const financeHead: GrantSpec[] = [
   { resource: 'agents', cell: '-' },
   { resource: 'jobs', cell: '-' },
   { resource: 'users', cell: '-' },
+  { resource: 'account_recovery', cell: '-' },
 
   // ---- Equity & board (§3.4) ---------------------------------------------
   // The books referenced by an allotment's consideration are the finance
@@ -948,6 +958,9 @@ const financeHead: GrantSpec[] = [
  * says `@all` and says so on purpose.
  */
 const employee: GrantSpec[] = [
+  // An employee recovers nobody's sign-in, their own included: that is the
+  // founder's or the IT desk's act, which is the point of the grant.
+  { resource: 'account_recovery', cell: '-' },
   // Their own record and its moving parts.
   { resource: 'leave', cell: 'VCE@own' },
   { resource: 'attendance', cell: 'VC@own' },
@@ -1198,6 +1211,7 @@ const employee: GrantSpec[] = [
 // ---------------------------------------------------------------------------
 
 const shareholder: GrantSpec[] = [
+  { resource: 'account_recovery', cell: '-' },
   { resource: 'holdings', cell: 'V@own' },
   { resource: 'share_certificates', cell: 'V@own' },
   // A shareholder-facing document set is company-wide once granted — the
@@ -1260,6 +1274,7 @@ const director: GrantSpec[] = [
 ];
 
 const companySecretary: GrantSpec[] = [
+  { resource: 'account_recovery', cell: '-' },
   { resource: 'cap_table', cell: 'VCEX@all' },
   { resource: 'share_classes', cell: 'VCE@all' },
   { resource: 'holders', cell: 'VCE@all' },
