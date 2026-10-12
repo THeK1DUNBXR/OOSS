@@ -12,14 +12,25 @@
  * assigned to someone in notice (ownership.ts), so a row that exists at the exit
  * was opened before the resignation, as it would be in practice.
  */
-import { beforeAll, describe, expect, it } from 'vitest';
-import { asUser, prisma, tenantId, unscopedPrisma, withFixtureRole } from './helpers.js';
+import type { Server } from 'node:http';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  asUser,
+  prisma,
+  sessionToken,
+  tenantId,
+  unscopedPrisma,
+  withFixtureRole,
+  type TestPrincipal,
+} from './helpers.js';
 import { hire, transitionEmployment, transitionOffboarding } from '../domains/employment.js';
 import { proposeCommitment } from '../domains/commitments.js';
 import { openCase } from '../domains/cases.js';
 import { createLead, reassignLead } from '../domains/leads.js';
 import { assignAsset, createAsset } from '../domains/hcm/assets.js';
 import { nextRecordCode } from '../platform/recordCode.js';
+import { Prisma, type DbTx } from '../platform/db.js';
+import { createApp } from '../server.js';
 
 const HR = 'hr@kaizen.co.in';
 const CHAIRMAN = 'chairman@kaizen.co.in';
@@ -526,5 +537,208 @@ describe('an exited person cannot be given new open rows', () => {
     );
 
     expect(err.status).toBe(422);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// What the 409 shows, and the lock that keeps a late assignment out of the gate.
+// ---------------------------------------------------------------------------
+
+/** The grants a caller needs to settle an exit, and to view each kind the gate can name, except leads when withLeads is false. */
+function viewerGrants(withLeads: boolean) {
+  return [
+    { resource: 'employees', verbs: ['edit'] },
+    { resource: 'commitments', verbs: ['view'] },
+    { resource: 'cases', verbs: ['view'] },
+    { resource: 'asset_assignments', verbs: ['view'] },
+    ...(withLeads ? [{ resource: 'leads', verbs: ['view'] }] : []),
+  ];
+}
+
+describe('the 409 shows the caller only the blockers they may view', () => {
+  let server: Server;
+  let base: string;
+
+  beforeAll(() => {
+    server = createApp().listen(0);
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    base = `http://127.0.0.1:${port}/api`;
+  });
+
+  afterAll(() => {
+    server?.close();
+  });
+
+  /** The exit over HTTP, through the route a client calls. The caller's own token, not a service call. */
+  async function exitOverHttp(offboardingId: string, caller: TestPrincipal) {
+    const token = await sessionToken({
+      userId: caller.userId,
+      tenantId: caller.tenantId,
+      affiliationId: caller.affiliationId,
+      stepUp: true,
+    });
+    const res = await fetch(`${base}/hr/offboardings/${offboardingId}/transition`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ event: 'DISBURSE', note: 'Final settlement paid.' }),
+    });
+    return { status: res.status, body: (await res.json()) as { error?: { details?: { blockers?: unknown[] } } } };
+  }
+
+  it('a caller without leads:view is shown the lead as a count, with no id or code, and the exit is still refused', async () => {
+    const l = await leaver('http-withheld', ['commitment', 'lead']);
+    const commitment = await unscopedPrisma.commitment.findUniqueOrThrow({ where: { id: must(l.rows.commitmentId) } });
+    const lead = await unscopedPrisma.lead.findUniqueOrThrow({ where: { id: must(l.rows.leadId) } });
+
+    await withFixtureRole({ slug: 'w6_no_lead_view', grants: viewerGrants(false) }, async (caller) => {
+      const res = await exitOverHttp(l.offboardingId, caller);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error?.details?.blockers).toEqual([
+        { kind: 'commitment', id: commitment.id, recordCode: commitment.recordCode },
+        { kind: 'lead', count: 1, withheld: true },
+      ]);
+      const wire = JSON.stringify(res.body);
+      expect(wire).not.toContain(lead.id);
+      if (lead.recordCode) expect(wire).not.toContain(lead.recordCode);
+    });
+    expect(await offboardingStatus(l.offboardingId)).toBe('FFSettlementPending');
+  });
+
+  it('a caller with leads:view is shown the lead by id and code', async () => {
+    const l = await leaver('http-visible', ['lead']);
+    const lead = await unscopedPrisma.lead.findUniqueOrThrow({ where: { id: must(l.rows.leadId) } });
+
+    await withFixtureRole({ slug: 'w6_lead_view', grants: viewerGrants(true) }, async (caller) => {
+      const res = await exitOverHttp(l.offboardingId, caller);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error?.details?.blockers).toEqual([{ kind: 'lead', id: lead.id, recordCode: lead.recordCode }]);
+    });
+    expect(await offboardingStatus(l.offboardingId)).toBe('FFSettlementPending');
+  });
+});
+
+/** The outcome of a call that may reject: the value, or the rejection with its status and details. */
+type Outcome<T> = { ok: true; value: T } | { ok: false; err: Rejection };
+
+function settle<T>(p: Promise<T>): Promise<Outcome<T>> {
+  return p.then(
+    (value): Outcome<T> => ({ ok: true, value }),
+    (err: Rejection): Outcome<T> => ({ ok: false, err }),
+  );
+}
+
+function rejectedWith<T>(o: Outcome<T>): Rejection {
+  if (o.ok) throw new Error('Expected the call to be refused, but it succeeded.');
+  return o.err;
+}
+
+/**
+ * Backends in this database that are waiting on a lock. A transaction parked behind another
+ * shows here. The database is read through pg_stat_activity: a transactionid wait has no
+ * database of its own in pg_locks, and the other suites share the server.
+ */
+async function lockWaiters(): Promise<number> {
+  const rows = await unscopedPrisma.$queryRaw<{ n: number }[]>(
+    Prisma.sql`SELECT count(*)::int AS n FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid WHERE NOT l.granted AND a.datname = current_database()`,
+  );
+  return rows[0].n;
+}
+
+async function until(cond: () => Promise<boolean> | boolean, what: string, timeoutMs = 20_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await cond())) {
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${what}.`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+describe('a commitment assigned while the leaver is still active cannot outlive the exit', () => {
+  it('the exit waits for the assignment, which the gate then sees; the settlement and the new open commitment never both land', async () => {
+    // A leaver with no rows yet, and an employment still Active: the assignment's check passes.
+    const fx = await hiredAndActive('race-assign');
+
+    let releaseHolder!: () => void;
+    const released = new Promise<void>((resolve) => (releaseHolder = resolve));
+    let signalHeld!: () => void;
+    const heldNow = new Promise<void>((resolve) => (signalHeld = resolve));
+    // Connection H takes the commitment sequence row. The assignment takes the same row after
+    // its check and before its insert, so it parks there holding its FOR SHARE on the leaver.
+    const holder = unscopedPrisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.tenant_id', ${TENANT}, true)`;
+        await asUser(CHAIRMAN, () => nextRecordCode('CMT', new Date(), tx as unknown as DbTx));
+        signalHeld();
+        await released;
+      },
+      { timeout: 120_000, maxWait: 10_000 },
+    );
+
+    try {
+      // Without this the assignment can run to completion before H holds the row, and nothing parks.
+      await Promise.race([heldNow, holder]);
+
+      const assigned = settle(
+        asUser(CHAIRMAN, () =>
+          proposeCommitment({
+            title: 'Assigned while the leaver is still active',
+            ownerPartyId: fx.personId,
+            dueAt: new Date(Date.now() + 14 * DAY),
+            sourceType: 'manual',
+            subjectType: 'employment_relationship',
+            subjectId: fx.employmentId,
+          }),
+        ),
+      );
+      // Parked on the sequence row, not finished: if it settled first, the test has not set up the race.
+      await Promise.race([
+        until(async () => (await lockWaiters()) >= 1, 'the assignment to park on the sequence row'),
+        assigned.then((o) => {
+          throw new Error(`The assignment settled before reaching the sequence row: ${o.ok ? 'ok' : o.err.message}`);
+        }),
+      ]);
+
+      // The leaver resigns and is cleared while the assignment is parked.
+      const offboardingId = await settledButNotExited(fx.employmentId);
+
+      // The exit starts while the assignment holds its FOR SHARE. It must wait for it, or the
+      // gate would run before the assignment's row exists and settle the leaver anyway.
+      let exitSettled = false;
+      const exitP = settle(exit(offboardingId)).then((o) => {
+        exitSettled = true;
+        return o;
+      });
+      await until(async () => exitSettled || (await lockWaiters()) >= 2, 'the exit to wait or settle');
+
+      releaseHolder();
+      const [assignedOutcome, exitOutcome] = await Promise.all([assigned, exitP]);
+
+      expect(
+        assignedOutcome.ok && exitOutcome.ok,
+        'the settlement completed while the leaver owned the new open commitment',
+      ).toBe(false);
+
+      if (assignedOutcome.ok) {
+        const err = rejectedWith(exitOutcome);
+        expect(err.status).toBe(409);
+        expect(blockersOf(err)).toEqual([
+          {
+            kind: 'commitment',
+            id: assignedOutcome.value.id,
+            recordCode: assignedOutcome.value.recordCode,
+          },
+        ]);
+        expect(await offboardingStatus(offboardingId)).toBe('FFSettlementPending');
+      } else {
+        expect(exitOutcome.ok).toBe(true);
+        expect(rejectedWith(assignedOutcome).status).toBe(422);
+        expect(await offboardingStatus(offboardingId)).toBe('FFSettlementCompleted');
+      }
+    } finally {
+      releaseHolder();
+      await holder;
+    }
   });
 });
