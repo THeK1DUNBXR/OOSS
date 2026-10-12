@@ -160,6 +160,11 @@ model AccessAssignment {
   /// (CLAUDE.md rule 3; the domain counts the days, the CHECK is a backstop).
   expiresAt DateTime?
   reason    String
+  /// The founder's reason for confirming an assignment they answered, when no other
+  /// eligible confirmer exists (owner answer O7). Null otherwise; a CHECK in the
+  /// migration keeps it null unless the row was confirmed. ACCESS-MODEL-PLAN s.8 asks
+  /// that the overlap be recorded with a compensating reviewer, which is why it is logged.
+  soleConfirmerReason String?
 
   placements AccessPlacement[]
   duties     AccessDuty[]

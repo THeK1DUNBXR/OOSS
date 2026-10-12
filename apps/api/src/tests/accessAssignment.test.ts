@@ -299,6 +299,194 @@ describe('PR11a confirm', () => {
   });
 });
 
+describe('PR11a sole confirmer (owner answer O7)', () => {
+  /** A suggestion the founder answered, in a vertical no one else heads. */
+  async function founderAnswered(): Promise<{ id: string; vertical: string }> {
+    const v = await makeVertical(tid, 'shared');
+    const subject = await makePerson(tid);
+    const row = await asUser(CHAIRMAN, () =>
+      suggestAssignment({
+        personId: subject.id,
+        identityType: 'employee',
+        placements: [plc(v.code, staffLevel)],
+        reason: 'sole suggestion',
+      }),
+    );
+    return { id: row.id, vertical: v.code };
+  }
+
+  it('(a) the founder answered and is the only possible confirmer: confirms with a reason, which is stored and audited', async () => {
+    const { id } = await founderAnswered();
+    const reason = 'Only the founder can confirm this vertical.';
+    const done = await asUser(CHAIRMAN, () =>
+      confirmAssignment({ assignmentId: id, reason: 'founder confirms', soleConfirmerReason: reason }),
+    );
+    expect(done.status).toBe('confirmed');
+    expect(done.soleConfirmerReason).toBe(reason);
+    const audit = await unscopedPrisma.auditRecord.findFirstOrThrow({
+      where: { tenantId: tid, subjectType: 'access_assignment', subjectId: id, action: 'update' },
+    });
+    expect(JSON.stringify(audit.diff)).toContain(reason);
+  });
+
+  it('(b) no reason, or a blank one: refused and the state is unchanged', async () => {
+    const { id } = await founderAnswered();
+    const none = await asUser(CHAIRMAN, () =>
+      expectReject(() => confirmAssignment({ assignmentId: id, reason: 'no reason given' })),
+    );
+    expect(none.status).toBe(403);
+    const blank = await asUser(CHAIRMAN, () =>
+      expectReject(() => confirmAssignment({ assignmentId: id, reason: 'blank reason', soleConfirmerReason: '   ' })),
+    );
+    expect(blank.status).toBe(403);
+    const after = await unscopedPrisma.accessAssignment.findUniqueOrThrow({ where: { id } });
+    expect(after.status).toBe('suggested');
+    expect(after.soleConfirmerReason).toBeNull();
+  });
+
+  it('(c) another eligible confirmer (the Head of the vertical) refuses the founder-answerer even with a reason', async () => {
+    const { id, vertical } = await founderAnswered();
+    const head = await makePerson(tid, 'Head');
+    const headVertical = await unscopedPrisma.accessVertical.findUniqueOrThrow({
+      where: { tenantId_code: { tenantId: tid, code: vertical } },
+    });
+    await makeConfirmedPlacement(tid, head.id, headVertical.id, headLevelId);
+    const err = await asUser(CHAIRMAN, () =>
+      expectReject(() =>
+        confirmAssignment({
+          assignmentId: id,
+          reason: 'founder confirms',
+          soleConfirmerReason: 'Only the founder can confirm.',
+        }),
+      ),
+    );
+    expect(err.status).toBe(403);
+    const after = await unscopedPrisma.accessAssignment.findUniqueOrThrow({ where: { id } });
+    expect(after.status).toBe('suggested');
+  });
+
+  it('(d) the founder who is the subject is refused even with a reason', async () => {
+    const v = await makeVertical(tid, 'shared');
+    const row = await asUser(CHAIRMAN, () =>
+      suggestAssignment({
+        personId: founderId,
+        identityType: 'founder',
+        placements: [plc(v.code, staffLevel)],
+        reason: 'founder for himself',
+      }),
+    );
+    const err = await asUser(CHAIRMAN, () =>
+      expectReject(() =>
+        confirmAssignment({
+          assignmentId: row.id,
+          reason: 'founder confirms self',
+          soleConfirmerReason: 'Only the founder can confirm.',
+        }),
+      ),
+    );
+    expect(err.status).toBe(403);
+    const after = await unscopedPrisma.accessAssignment.findUniqueOrThrow({ where: { id: row.id } });
+    expect(after.status).toBe('suggested');
+  });
+
+  it('(e) a reason when the confirmer did not answer is refused, and the state is unchanged', async () => {
+    const subject = await makePerson(tid);
+    const row = await asHr(() =>
+      suggestAssignment({
+        personId: subject.id,
+        identityType: 'employee',
+        placements: [plc(staffVertical, staffLevel)],
+        reason: 'HR answers',
+      }),
+    );
+    const err = await asUser(CHAIRMAN, () =>
+      expectReject(() =>
+        confirmAssignment({
+          assignmentId: row.id,
+          reason: 'founder confirms HR answer',
+          soleConfirmerReason: 'Founder is the only confirmer.',
+        }),
+      ),
+    );
+    expect(err.status).toBe(403);
+    const after = await unscopedPrisma.accessAssignment.findUniqueOrThrow({ where: { id: row.id } });
+    expect(after.status).toBe('suggested');
+    expect(after.soleConfirmerReason).toBeNull();
+  });
+});
+
+describe('PR11a cross-tenant references (T10; design O13 and the no-FK decision)', () => {
+  /** The rows a suggestion could write in tenant A, counted before and after a refused call. */
+  async function accessRowCounts(t: string): Promise<number[]> {
+    return Promise.all([
+      unscopedPrisma.accessAssignment.count({ where: { tenantId: t } }),
+      unscopedPrisma.accessPlacement.count({ where: { tenantId: t } }),
+      unscopedPrisma.accessVertical.count({ where: { tenantId: t } }),
+    ]);
+  }
+
+  it('T10a: a person who exists only in another tenant is refused, and nothing is written', async () => {
+    const other = await unscopedPrisma.tenant.create({
+      data: { name: 'Other tenant', slug: `access-x-${uniqCode('').toLowerCase()}` },
+    });
+    const foreign = await makePerson(other.id, 'Foreign');
+    const before = await accessRowCounts(tid);
+    const err = await asUser(CHAIRMAN, () =>
+      expectReject(() =>
+        suggestAssignment({
+          personId: foreign.id,
+          identityType: 'employee',
+          placements: [plc(staffVertical, staffLevel)],
+          reason: 'T10a foreign person',
+        }),
+      ),
+    );
+    expect(err.status).toBe(404);
+    expect(await accessRowCounts(tid)).toEqual(before);
+  });
+
+  it('T10b: a vertical whose business line belongs to another tenant is refused, and nothing is written', async () => {
+    const other = await unscopedPrisma.tenant.create({
+      data: { name: 'Other line', slug: `access-y-${uniqCode('').toLowerCase()}` },
+    });
+    const foreignLine = await unscopedPrisma.businessLine.create({
+      data: {
+        tenantId: other.id,
+        code: uniqCode('B'),
+        name: 'Foreign line',
+        payerKind: 'x',
+        revenueModel: 'x',
+        effectiveFrom: new Date('2026-04-01T00:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    const code = uniqCode('V');
+    await unscopedPrisma.accessVertical.create({
+      data: {
+        tenantId: tid,
+        code,
+        name: 'Vertical on a foreign line',
+        kind: 'business',
+        businessLineId: foreignLine.id,
+      },
+    });
+    const subject = await makePerson(tid);
+    const before = await accessRowCounts(tid);
+    const err = await asUser(CHAIRMAN, () =>
+      expectReject(() =>
+        suggestAssignment({
+          personId: subject.id,
+          identityType: 'employee',
+          placements: [plc(code, staffLevel)],
+          reason: 'T10b foreign line',
+        }),
+      ),
+    );
+    expect(err.status).toBe(422);
+    expect(await accessRowCounts(tid)).toEqual(before);
+  });
+});
+
 describe('PR11a database invariants', () => {
   it('T6: row-level security isolates the eight new tables (the app role)', async () => {
     const other = `tenant-b-${uniqCode('')}`;

@@ -3,8 +3,10 @@
  * s.4, s.5, s.11; P11-DESIGN c, e tests 5, 7-11).
  *
  * Real Postgres, real contexts, no mocks. Confirmations go through confirmAssignment
- * as the people who would make them. Red on the base: the confirm seam writes nothing,
- * so the grants these tests look for are never there.
+ * as the people who would make them. The reach matrix (5, 5b) runs in its own tenant:
+ * it creates company-reach holders, and vitest runs files in parallel, so in the shared
+ * tenant those holders would be read as eligible confirmers by the founder's
+ * sole-confirmer test (accessAssignment.test.ts).
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -54,6 +56,21 @@ async function suggestAs(suggesterId: string, personId: string, verticalCode: st
 /** Runs `fn` in a request context without clearing the grant cache, as a second request would see it. */
 function withoutCacheReset<T>(auth: ReturnType<typeof authOf>, fn: () => Promise<T>): Promise<T> {
   return runWithContext(newRequestContext({ auth }), fn);
+}
+
+/**
+ * A tenant of its own, with one person who may recompile. The reach matrix creates
+ * company-reach holders, which must not be visible to the shared tenant's tests.
+ */
+async function isolatedTenant(): Promise<{ tid: string; admin: string }> {
+  const stamp = uniqCode('').toLowerCase();
+  const t = await unscopedPrisma.tenant.create({
+    data: { name: `PR11b matrix ${stamp}`, slug: `pr11b-matrix-${stamp}` },
+    select: { id: true },
+  });
+  const admin = await makePerson(t.id, 'Matrix admin');
+  await grantIndividual(t.id, admin.id, 'access_assignments', ['view', 'create', 'edit', 'approve'], 'all');
+  return { tid: t.id, admin: admin.id };
 }
 
 async function taggedGrants(assignmentId: string) {
@@ -109,19 +126,20 @@ describe('PR11b compile: pure rows (design test 7)', () => {
 
 describe('PR11b compile: the reach matrix (design test 5)', () => {
   it('5: each reach grants exactly the records AMP s.4 says it reaches', async () => {
+    const m = await isolatedTenant();
     const resource = `mx_${uniqCode('')}`;
-    await makeResourceBinding(tid, resource, 'field', { column: 'division' });
+    await makeResourceBinding(m.tid, resource, 'field', { column: 'division' });
     for (const reach of ['own', 'team', 'unit', 'vertical', 'company'] as const) {
-      const v = await makeVertical(tid, 'shared');
-      const other = await makeVertical(tid, 'shared');
-      const level = await makeLevel(tid, reach);
-      await makeCapabilityRule(tid, v.id, level.id, resource, ['view']);
-      const holder = await makePerson(tid, 'Holder');
-      const stranger = await makePerson(tid, 'Stranger');
-      const { assignmentId } = await makeConfirmedPlacement(tid, holder.id, v.id, level.id);
-      await asUser(CHAIRMAN, () => recompileAssignment(assignmentId));
+      const v = await makeVertical(m.tid, 'shared');
+      const other = await makeVertical(m.tid, 'shared');
+      const level = await makeLevel(m.tid, reach);
+      await makeCapabilityRule(m.tid, v.id, level.id, resource, ['view']);
+      const holder = await makePerson(m.tid, 'Holder');
+      const stranger = await makePerson(m.tid, 'Stranger');
+      const { assignmentId } = await makeConfirmedPlacement(m.tid, holder.id, v.id, level.id);
+      await asPrincipal(authOf(m.tid, m.admin), () => recompileAssignment(assignmentId));
 
-      const auth = authOf(tid, holder.id);
+      const auth = authOf(m.tid, holder.id);
       for (const inVertical of [true, false]) {
         for (const mine of [true, false]) {
           const record = {
@@ -138,15 +156,16 @@ describe('PR11b compile: the reach matrix (design test 5)', () => {
   });
 
   it('5b: a unit placement reaches its unit inside the vertical and nothing outside it', async () => {
+    const m = await isolatedTenant();
     const resource = `mu_${uniqCode('')}`;
-    await makeResourceBinding(tid, resource, 'field', { column: 'division' });
-    const v = await makeVertical(tid, 'shared');
-    const level = await makeLevel(tid, 'vertical');
-    await makeCapabilityRule(tid, v.id, level.id, resource, ['view'], 'U-1');
-    const holder = await makePerson(tid, 'Unit holder');
-    const { assignmentId } = await makeConfirmedPlacement(tid, holder.id, v.id, level.id, 'U-1');
-    await asUser(CHAIRMAN, () => recompileAssignment(assignmentId));
-    const auth = authOf(tid, holder.id);
+    await makeResourceBinding(m.tid, resource, 'field', { column: 'division' });
+    const v = await makeVertical(m.tid, 'shared');
+    const level = await makeLevel(m.tid, 'vertical');
+    await makeCapabilityRule(m.tid, v.id, level.id, resource, ['view'], 'U-1');
+    const holder = await makePerson(m.tid, 'Unit holder');
+    const { assignmentId } = await makeConfirmedPlacement(m.tid, holder.id, v.id, level.id, 'U-1');
+    await asPrincipal(authOf(m.tid, m.admin), () => recompileAssignment(assignmentId));
+    const auth = authOf(m.tid, holder.id);
     const decide = (unitCode?: string) =>
       asPrincipal(auth, () =>
         evaluate({
