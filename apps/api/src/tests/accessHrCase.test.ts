@@ -25,19 +25,22 @@ const CHAIRMAN = 'chairman@kaizen.co.in';
 
 let tid: string;
 let hrId: string;
+let founderId: string;
 let staffVertical: string;
 let staffLevel: string;
 
-/** The HR role. Its auth carries the role slug, so the suggestion is recognised as HR's. */
-const hrAuth = () => ({ ...authOf(tid, hrId), roleSlug: 'hr_ops_manager' });
-const asHr = <T>(fn: () => Promise<T>) => asPrincipal(hrAuth(), fn);
+/**
+ * HR's auth carries no role slug. Nothing classifies the answerer: every suggestion
+ * opens or links an access_mapping case (O9 A), so the case must exist whoever answers.
+ */
+const asHr = <T>(fn: () => Promise<T>) => asPrincipal(authOf(tid, hrId), fn);
 const asFounder = <T>(fn: () => Promise<T>) => asUser(CHAIRMAN, async () => fn());
 const plc = (verticalCode: string, levelCode: string) => ({ verticalCode, levelCode, unitCode: null });
 
 beforeAll(async () => {
   tid = await tenantId();
   await addMissingGrants(tid);
-  const founderId = (await principalFor(CHAIRMAN)).partyId;
+  founderId = (await principalFor(CHAIRMAN)).partyId;
   await makeFounderPlacement(tid, founderId);
 
   const sv = await makeVertical(tid, 'shared');
@@ -89,7 +92,8 @@ describe('PR12 HR mapping case (design test 4)', () => {
     expect(stillCase.confidential).toBe(true);
   });
 
-  it('a suggestion by someone other than HR carries no HR case', async () => {
+  it('a suggestion by a person with no HR role still opens an access_mapping case, raised by that answerer', async () => {
+    // The founder answers here. The chairman role is not HR, and the case still opens.
     const subject = await makePerson(tid);
     const row = await asFounder(() =>
       suggestAssignment({
@@ -99,7 +103,65 @@ describe('PR12 HR mapping case (design test 4)', () => {
         reason: 'founder maps directly',
       }),
     );
-    expect(row.hrCaseId).toBeNull();
+    expect(row.hrCaseId).toBeTruthy();
+    const opened = await unscopedPrisma.hrCase.findUniqueOrThrow({ where: { id: row.hrCaseId! } });
+    expect(opened.category).toBe('access_mapping');
+    expect(opened.confidential).toBe(true);
+    expect(opened.raisedByPartyId).toBe(founderId);
+  });
+
+  it('a link to a case of the same tenant but another category is refused with 422, and a case of another tenant is not found', async () => {
+    const subject = await makePerson(tid);
+    const payroll = await unscopedPrisma.hrCase.create({
+      data: {
+        tenantId: tid,
+        recordCode: `CASE-PR12X-${subject.id.slice(-6)}`,
+        category: 'payroll',
+        subject: 'Another category',
+        raisedByPartyId: hrId,
+        slaDueAt: new Date(Date.now() + 96 * 3_600_000),
+      },
+    });
+    const other = await unscopedPrisma.tenant.create({
+      data: { name: 'PR12 HR other tenant', slug: `pr12-hr-${subject.id.slice(-6).toLowerCase()}` },
+    });
+    const foreign = await unscopedPrisma.hrCase.create({
+      data: {
+        tenantId: other.id,
+        recordCode: `CASE-PR12F-${subject.id.slice(-6)}`,
+        category: 'access_mapping',
+        subject: 'Foreign mapping',
+        raisedByPartyId: hrId,
+        confidential: true,
+        slaDueAt: new Date(Date.now() + 96 * 3_600_000),
+      },
+    });
+    const before = await unscopedPrisma.accessAssignment.count({ where: { tenantId: tid, personId: subject.id } });
+    const wrongCategory = await asHr(() =>
+      expectReject(() =>
+        suggestAssignment({
+          personId: subject.id,
+          identityType: 'employee',
+          placements: [plc(staffVertical, staffLevel)],
+          reason: 'wrong category',
+          hrCaseId: payroll.id,
+        }),
+      ),
+    );
+    expect(wrongCategory.status).toBe(422);
+    const foreignLink = await asHr(() =>
+      expectReject(() =>
+        suggestAssignment({
+          personId: subject.id,
+          identityType: 'employee',
+          placements: [plc(staffVertical, staffLevel)],
+          reason: 'foreign case',
+          hrCaseId: foreign.id,
+        }),
+      ),
+    );
+    expect(foreignLink.status).toBe(404);
+    expect(await unscopedPrisma.accessAssignment.count({ where: { tenantId: tid, personId: subject.id } })).toBe(before);
   });
 
   it('a suggestion may link an existing access_mapping case, and refuses a case of another category', async () => {

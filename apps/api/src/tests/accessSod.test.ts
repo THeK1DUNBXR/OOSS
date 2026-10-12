@@ -304,6 +304,43 @@ describe('PR12 founder override', () => {
     expect(exception).toBeDefined();
   });
 
+  it('the founder cannot override a pair on their own assignment: 403, and nothing is written', async () => {
+    // The founder is the subject here. Nobody accepts their own overlap, as nobody confirms their own access.
+    const row = await asFounder(() =>
+      suggestAssignment({
+        personId: founderId,
+        identityType: 'founder',
+        placements: [plc(staffVertical, staffLevel)],
+        reason: 'PR12 self-override',
+      }),
+    );
+    const auditBefore = await unscopedPrisma.auditRecord.count({
+      where: { tenantId: tid, subjectType: 'access_sod_override' },
+    });
+    const eventsBefore = await unscopedPrisma.eventRecord.count({
+      where: { tenantId: tid, eventName: 'kz.gov.access_sod_override.recorded' },
+    });
+
+    const err = await asFounder(() =>
+      expectReject(() =>
+        recordSodOverride({ assignmentId: row.id, pairCode: 'payment_create_approve', reason: 'my own overlap' }),
+      ),
+    );
+    expect(err.status).toBe(403);
+    expect(await overrideCount(row.id)).toBe(0);
+    expect(
+      await unscopedPrisma.exceptionRecord.count({
+        where: { tenantId: tid, subjectType: 'access_assignment', subjectId: row.id },
+      }),
+    ).toBe(0);
+    expect(await unscopedPrisma.auditRecord.count({ where: { tenantId: tid, subjectType: 'access_sod_override' } })).toBe(
+      auditBefore,
+    );
+    expect(
+      await unscopedPrisma.eventRecord.count({ where: { tenantId: tid, eventName: 'kz.gov.access_sod_override.recorded' } }),
+    ).toBe(eventsBefore);
+  });
+
   it('a confirm with an override passes, for the overridden pair only', async () => {
     const subject = await makePerson(tid);
     // Two pairs: payments create+approve, and payroll edit+approve.
