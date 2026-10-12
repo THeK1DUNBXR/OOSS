@@ -219,7 +219,7 @@ describe('FV-002 — rows from each source appear, each with its drillTo', () =>
         subjectType: 'mou',
         subjectId: `subject-${uniq()}`,
         authorityBasis: 'founder_view.test',
-        requiredAuthorityValue: null,
+        requiredAuthorityMinor: null,
         routedToRole: 'chairman',
       });
       ids.decision = decision.id;
