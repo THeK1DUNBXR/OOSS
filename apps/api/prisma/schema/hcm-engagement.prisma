@@ -175,7 +175,7 @@ model HrCase {
 
   recordCode String
 
-  /// payroll | leave | policy | it | grievance | other
+  /// payroll | leave | policy | it | grievance | other | access_mapping (PR12; code-only, no DB enum)
   category String
   /// low | normal | high | urgent
   priority String @default("normal")
@@ -197,7 +197,11 @@ model HrCase {
   updatedAt DateTime @updatedAt
 
   messages HrCaseMessage[]
+  /// Access mappings this case records (PR12, ACCESS-MODEL-PLAN s.7). The subject link
+  /// for an access_mapping case; the case stays an HR ticket.
+  accessAssignments AccessAssignment[]
 
+  @@unique([tenantId, id])
   @@index([tenantId, status, confidential])
   @@index([tenantId, raisedByPartyId])
   @@map("hcm_engagement_hr_cases")

@@ -78,7 +78,9 @@ describe('PR12 HR mapping case (design test 4)', () => {
       'suggested',
     );
 
-    const confirmed = await asFounder(() => confirmAssignment({ assignmentId: row.id, reason: 'founder confirms HR mapping' }));
+    const confirmed = await asFounder(() =>
+      confirmAssignment({ assignmentId: row.id, reason: 'founder confirms HR mapping' }),
+    );
     expect(confirmed.status).toBe('confirmed');
     expect(confirmed.confirmedById).not.toBe(hrId);
 
@@ -147,6 +149,8 @@ describe('PR12 HR mapping case (design test 4)', () => {
       ),
     );
     expect(err.status).toBe(422);
-    expect(await unscopedPrisma.accessAssignment.count({ where: { tenantId: tid, personId: subject.id } })).toBe(before);
+    expect(await unscopedPrisma.accessAssignment.count({ where: { tenantId: tid, personId: subject.id } })).toBe(
+      before,
+    );
   });
 });

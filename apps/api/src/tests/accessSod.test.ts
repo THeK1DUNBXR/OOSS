@@ -132,22 +132,50 @@ describe('PR12 sodFindings (pure)', () => {
   it('a pair fires only when both sides are held', () => {
     const payroll = BUILT_IN_SOD_PAIRS.find((p) => p.pairCode === 'payroll_run_approve')!;
     expect(sodFindings([payroll], granted([['payroll', 'edit']]))).toEqual([]);
-    expect(sodFindings([payroll], granted([['payroll', 'edit'], ['payroll', 'approve']]))).toEqual([
-      { pairCode: 'payroll_run_approve' },
-    ]);
+    expect(
+      sodFindings(
+        [payroll],
+        granted([
+          ['payroll', 'edit'],
+          ['payroll', 'approve'],
+        ]),
+      ),
+    ).toEqual([{ pairCode: 'payroll_run_approve' }]);
   });
 
   it('a side matches when the person holds ANY of its verbs', () => {
     const access = BUILT_IN_SOD_PAIRS.find((p) => p.pairCode === 'access_manage_approve')!;
-    expect(sodFindings([access], granted([['access_model', 'edit'], ['access_assignments', 'approve']]))).toEqual([
-      { pairCode: 'access_manage_approve' },
-    ]);
-    expect(sodFindings([access], granted([['access_model', 'view'], ['access_assignments', 'approve']]))).toEqual([]);
+    expect(
+      sodFindings(
+        [access],
+        granted([
+          ['access_model', 'edit'],
+          ['access_assignments', 'approve'],
+        ]),
+      ),
+    ).toEqual([{ pairCode: 'access_manage_approve' }]);
+    expect(
+      sodFindings(
+        [access],
+        granted([
+          ['access_model', 'view'],
+          ['access_assignments', 'approve'],
+        ]),
+      ),
+    ).toEqual([]);
   });
 
   it('the same verb on a different resource does not form a pair', () => {
     const statutory = BUILT_IN_SOD_PAIRS.find((p) => p.pairCode === 'statutory_rule_change_signoff')!;
-    expect(sodFindings([statutory], granted([['rate_tables', 'edit'], ['payroll', 'approve']]))).toEqual([]);
+    expect(
+      sodFindings(
+        [statutory],
+        granted([
+          ['rate_tables', 'edit'],
+          ['payroll', 'approve'],
+        ]),
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -159,7 +187,9 @@ describe('PR12 confirm refuses a blocked pair', () => {
       for (const g of minimalGrants(pair)) await grantIndividual(tid, subject.id, g.resource, [g.verb]);
       const row = await suggestFor(subject.id, `PR12 ${pairCode}`);
 
-      const err = await asFounder(() => expectReject(() => confirmAssignment({ assignmentId: row.id, reason: 'pair' })));
+      const err = await asFounder(() =>
+        expectReject(() => confirmAssignment({ assignmentId: row.id, reason: 'pair' })),
+      );
       expect(err.status).toBe(409);
       expect(err.message).toContain(pairCode);
 
@@ -176,7 +206,14 @@ describe('PR12 confirm refuses a blocked pair', () => {
       select: { id: true },
     });
     await unscopedPrisma.grant.create({
-      data: { tenantId: tid, principalType: 'role', roleId: role.id, resource: 'payments', verbs: ['create'], scope: 'all' },
+      data: {
+        tenantId: tid,
+        principalType: 'role',
+        roleId: role.id,
+        resource: 'payments',
+        verbs: ['create'],
+        scope: 'all',
+      },
     });
     const subject = await makePerson(tid);
     await unscopedPrisma.affiliation.create({
@@ -212,9 +249,7 @@ describe('PR12 founder override', () => {
 
     for (const reason of ['', '   ']) {
       const err = await asFounder(() =>
-        expectReject(() =>
-          recordSodOverride({ assignmentId: row.id, pairCode: 'payment_create_approve', reason }),
-        ),
+        expectReject(() => recordSodOverride({ assignmentId: row.id, pairCode: 'payment_create_approve', reason })),
       );
       expect(err.status).toBe(400);
     }
@@ -279,11 +314,17 @@ describe('PR12 founder override', () => {
     const row = await suggestFor(subject.id, 'PR12 override then confirm');
 
     await asFounder(() =>
-      recordSodOverride({ assignmentId: row.id, pairCode: 'payment_create_approve', reason: 'Accepted for the small team' }),
+      recordSodOverride({
+        assignmentId: row.id,
+        pairCode: 'payment_create_approve',
+        reason: 'Accepted for the small team',
+      }),
     );
 
     // The payroll pair is not overridden, so the confirm still refuses, and names only that pair.
-    const err = await asFounder(() => expectReject(() => confirmAssignment({ assignmentId: row.id, reason: 'partial' })));
+    const err = await asFounder(() =>
+      expectReject(() => confirmAssignment({ assignmentId: row.id, reason: 'partial' })),
+    );
     expect(err.status).toBe(409);
     expect(err.message).toContain('payroll_run_approve');
     expect(err.message).not.toContain('payment_create_approve');
@@ -325,6 +366,6 @@ describe('PR12 RLS isolation for access_sod_overrides', () => {
         await tx.$executeRaw`SELECT set_config('app.tenant_id', ${other.id}, true)`;
         await tx.$executeRaw`INSERT INTO "access_sod_overrides" ("id","tenantId","assignmentId","pairCode","reason","overriddenById","overriddenAt") VALUES (${`rls-${uniqCode('')}`}, ${tid}, ${row.id}, 'payment_create_approve', 'x', ${founderId}, CURRENT_TIMESTAMP)`;
       }),
-    ).rejects.toThrow(/row-level security|permission denied|foreign key/i);
+    ).rejects.toThrow(/row-level security|permission denied/i);
   });
 });

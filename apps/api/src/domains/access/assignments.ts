@@ -11,10 +11,13 @@
  * Confirming compiles the assignment into tagged Grant rows (compile.ts), inside the
  * confirm transaction, and only after checking the confirmer holds every grant it
  * would write. Expiring removes those rows in its own transaction.
+ *
+ * Between the two, the confirm refuses a person who would hold both halves of a blocked
+ * separation-of-duties pair, unless the founder recorded an override (sod.ts, PR12).
  */
 
 import type { AccessAssignment } from '@prisma/client';
-import { EVENTS } from '@kaizen/shared';
+import { BUILT_IN_SOD_PAIRS, EVENTS } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
@@ -23,7 +26,9 @@ import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { emit } from '../../platform/eventBus.js';
 import { governedWrite } from '../../platform/governedWrite.js';
 import { uncoveredGrants } from '../../platform/roleAssignment.js';
+import { nextRecordCode } from '../../platform/recordCode.js';
 import { reasonOf } from '../businessLines.js';
+import { grantedAfterConfirmTx, overriddenPairCodesTx, sodFindings } from './sod.js';
 import {
   checkConfirmRules,
   DUTY_SENSITIVITY,
@@ -78,7 +83,18 @@ export interface SuggestAssignmentInput {
   /** An ISO instant. Required for a non-employee; at most twelve months out (IST). */
   expiresAt?: string | null;
   reason: string;
+  /**
+   * An existing HR case of category access_mapping that records this mapping. Left out,
+   * an answer by HR opens one (O9 A).
+   */
+  hrCaseId?: string | null;
 }
+
+/** The role slug of HR's answerer (ROLE_SLUGS, permissions.ts:409). Its mappings are recorded in an HR case. */
+const HR_ANSWERER_ROLE = 'hr_ops_manager';
+
+/** The normal-priority HR SLA in hours (engagement.ts:645). An access mapping is not urgent by default. */
+const ACCESS_MAPPING_SLA_HOURS = 96;
 
 /** The fields a confirmation or expiry is judged and audited on. */
 function stateOf(row: Partial<AccessAssignment>): Record<string, unknown> {
@@ -276,7 +292,39 @@ export async function suggestAssignment(input: SuggestAssignmentInput): Promise<
     throw ApiError.unprocessable('A non-employee needs an expiry no more than twelve months from today (IST).');
   }
 
+  // A new case is numbered before the transaction, as createHrCase does (engagement.ts:667).
+  const newCaseCode = auth.roleSlug === HR_ANSWERER_ROLE && !input.hrCaseId ? await nextRecordCode('CASE') : null;
+
   return governedWrite(async (tx) => {
+    let hrCaseId: string | null = null;
+    if (input.hrCaseId) {
+      const linked = await tx.hrCase.findFirst({
+        where: { tenantId: auth.tenantId, id: input.hrCaseId },
+        select: { id: true, category: true },
+      });
+      if (!linked) throw ApiError.notFound('HR case');
+      if (linked.category !== 'access_mapping') {
+        throw ApiError.unprocessable('An access mapping can only be recorded on an access_mapping HR case.');
+      }
+      hrCaseId = linked.id;
+    } else if (newCaseCode) {
+      // Confidential: a mapping names who holds what, and the general HR listing must not show it.
+      const opened = await tx.hrCase.create({
+        data: {
+          tenantId: auth.tenantId,
+          recordCode: newCaseCode,
+          category: 'access_mapping',
+          priority: 'normal',
+          status: 'open',
+          subject: 'Access mapping',
+          raisedByPartyId: auth.partyId as string,
+          confidential: true,
+          slaDueAt: new Date(now.getTime() + ACCESS_MAPPING_SLA_HOURS * 3_600_000),
+        },
+      });
+      hrCaseId = opened.id;
+    }
+
     const row = await tx.accessAssignment.create({
       data: {
         tenantId: auth.tenantId,
@@ -287,6 +335,7 @@ export async function suggestAssignment(input: SuggestAssignmentInput): Promise<
         suggestedAt: now,
         expiresAt,
         reason,
+        hrCaseId,
       },
     });
     await tx.accessPlacement.createMany({
@@ -390,6 +439,22 @@ export async function confirmAssignment(input: ConfirmAssignmentInput): Promise<
     if (gaps.length > 0) {
       const names = gaps.map((g) => `${g.verb} on ${g.resource}`).join(', ');
       throw ApiError.forbidden(`You cannot confirm access you do not hold: ${names}.`);
+    }
+    // Separation of duties (PR12): the subject must not hold both halves of a built-in pair
+    // once this compiles, except a pair the founder has overridden on this assignment.
+    // Read here, not before the transaction, so the grants are the ones this confirm sees.
+    const formed = sodFindings(
+      BUILT_IN_SOD_PAIRS,
+      await grantedAfterConfirmTx(tx, auth.tenantId, row.personId, row.id, now),
+    );
+    const overridden = await overriddenPairCodesTx(tx, auth.tenantId, row.id);
+    const blocked = formed.map((f) => f.pairCode).filter((code) => !overridden.has(code));
+    if (blocked.length > 0) {
+      throw ApiError.conflict(
+        `This would give one person both halves of a blocked pair: ${blocked.join(', ')}. ` +
+          'Remove a duty, or the founder records an override with a reason.',
+        { pairCodes: blocked },
+      );
     }
     await compileAssignmentTx(tx, row.id);
     await auditWrite({

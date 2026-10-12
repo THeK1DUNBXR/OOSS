@@ -650,7 +650,8 @@ const HR_CASE_SLA_HOURS: Record<string, number> = {
 };
 
 export interface HrCaseInput {
-  category: 'payroll' | 'leave' | 'policy' | 'it' | 'grievance' | 'other';
+  /** access_mapping is opened by an access assignment answered by HR (PR12, access/assignments.ts). */
+  category: 'payroll' | 'leave' | 'policy' | 'it' | 'grievance' | 'other' | 'access_mapping';
   priority?: 'low' | 'normal' | 'high' | 'urgent';
   subject: string;
   body: string;
