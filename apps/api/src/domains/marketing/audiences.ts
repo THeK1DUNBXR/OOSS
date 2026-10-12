@@ -33,6 +33,7 @@ import { assertCan } from '../../platform/permissions.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 
 registerGovernedEntities('mkt', ['audience', 'audience_member']);
 
@@ -570,12 +571,28 @@ export async function removeAudienceMember(audienceId: string, memberId: string)
   });
   if (!member) throw ApiError.notFound('Audience member');
 
-  await prisma.marketingAudienceMember.update({
-    where: { id: memberId },
-    data: { deletedAt: new Date(), updatedById: auth.partyId },
+  await governedWrite(async (tx) => {
+    await tx.marketingAudienceMember.update({
+      where: { id: memberId },
+      data: { deletedAt: new Date(), updatedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'delete',
+      subjectType: 'audience_member',
+      subjectId: memberId,
+      before: { audienceId, entityType: member.entityType },
+      tx,
+    });
+    const memberCount = await tx.marketingAudienceMember.count({ where: { audienceId, deletedAt: null } });
+    await tx.marketingAudience.update({ where: { id: audienceId }, data: { memberCount } });
+    await emit({
+      name: EVENTS.MKT_AUDIENCE_MEMBER_REMOVED,
+      subject: { entityType: 'audience_member', entityId: memberId },
+      related: [{ relation: 'for', entityType: 'audience', entityId: audienceId }],
+      newState: { removed: true, memberCount },
+      tx,
+    });
   });
-  const memberCount = await prisma.marketingAudienceMember.count({ where: { audienceId, deletedAt: null } });
-  await prisma.marketingAudience.update({ where: { id: audienceId }, data: { memberCount } });
   return { id: memberId, removed: true };
 }
 

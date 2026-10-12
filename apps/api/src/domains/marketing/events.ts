@@ -25,6 +25,7 @@ import {
 import { prisma, num, type DbTx } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
@@ -231,22 +232,40 @@ export async function updateEvent(id: string, patch: Partial<EventInput>) {
   if (patch.institutionId) await assertInstitution(patch.institutionId, auth.tenantId);
   if (patch.campaignId) await assertCampaign(patch.campaignId, auth.tenantId);
 
-  const updated = await prisma.marketingEvent.update({
-    where: { id },
-    data: {
-      ...(patch.name !== undefined ? { name: patch.name } : {}),
-      ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
-      ...(patch.campaignId !== undefined ? { campaignId: patch.campaignId } : {}),
-      ...(patch.institutionId !== undefined ? { institutionId: patch.institutionId } : {}),
-      ...(patch.venue !== undefined ? { venue: patch.venue } : {}),
-      ...(patch.isOnline !== undefined ? { isOnline: patch.isOnline } : {}),
-      ...(patch.startAt !== undefined ? { startAt: patch.startAt } : {}),
-      ...(patch.endAt !== undefined ? { endAt: patch.endAt } : {}),
-      ...(patch.capacity !== undefined ? { capacity: patch.capacity } : {}),
-      ...(patch.costPlanned !== undefined ? { costPlanned: patch.costPlanned } : {}),
-      ...(patch.division !== undefined ? { division: patch.division } : {}),
-      updatedById: auth.partyId,
-    } as never,
+  const updated = await governedWrite(async (tx) => {
+    const row = await tx.marketingEvent.update({
+      where: { id },
+      data: {
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
+        ...(patch.campaignId !== undefined ? { campaignId: patch.campaignId } : {}),
+        ...(patch.institutionId !== undefined ? { institutionId: patch.institutionId } : {}),
+        ...(patch.venue !== undefined ? { venue: patch.venue } : {}),
+        ...(patch.isOnline !== undefined ? { isOnline: patch.isOnline } : {}),
+        ...(patch.startAt !== undefined ? { startAt: patch.startAt } : {}),
+        ...(patch.endAt !== undefined ? { endAt: patch.endAt } : {}),
+        ...(patch.capacity !== undefined ? { capacity: patch.capacity } : {}),
+        ...(patch.costPlanned !== undefined ? { costPlanned: patch.costPlanned } : {}),
+        ...(patch.division !== undefined ? { division: patch.division } : {}),
+        updatedById: auth.partyId,
+      } as never,
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_event',
+      subjectId: id,
+      before: { status: event.status, name: event.name },
+      after: { status: row.status, name: row.name },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_EVENT_UPDATED,
+      subject: { entityType: 'marketing_event', entityId: id, recordCode: event.recordCode },
+      previousState: { name: event.name },
+      newState: { name: row.name },
+      tx,
+    });
+    return row;
   });
 
   return updated;
