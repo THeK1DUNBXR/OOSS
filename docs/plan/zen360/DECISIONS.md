@@ -1139,3 +1139,70 @@ j. **One consolidated PR replaces #53, #56 and #57.**
 - No code, schema, test, CI or `.env.example` change. The five follow-ups in item a are for the Phase 0 session.
 - `docs/plan/MAP.md` is not regenerated. No export or schema moved.
 - Not decided here: the `docs/plan/archive/` GSP text (kept as history).
+
+## Owner answers, round 27 (recorded 2026-10-13): statutory rule data, L2 fixtures and G10
+
+Append-only. Sources: audit 7 (statutory pack 3.1 and rate data) and audit 8 (L2 fixtures and G10), both read against `origin/main` on 2026-10-12. Code cites were re-checked on `origin/main` for this round. Two audit cites were stale and are corrected in item d.
+
+### a) Statutory pack 3.1 and the PF, ESI, PT and TDS rule data stay DRAFT
+
+Owner ruling: the statutory pack (ORDERED-PLAN 3.1) and the PF, ESI, PT and TDS rule data stay DRAFT. The owner treats them as founder signed off as draft.
+
+- This is a status, not an approval. Nothing is presented as law. No row becomes APPROVED by this ruling.
+- The repo held no written founder sign-off before this round. This ruling records the owner's statement. It adds no approval.
+- The approver role is decided during onboarding and is never hard-coded. Round 23 item d stands.
+- The code does not yet enforce DRAFT. See item d(i).
+
+### b) L2 fixtures (CI-GATES-DRAFT open question 9)
+
+- Phase 0 builds the harness and `cashbookToJournal` now (archive/phase-1-ledger.md 1.5). Phase 0 must not claim that L2 passed on synthetic data.
+- The real fixture is a frozen export of the Kaizen cashbook for 1 February to 27 August 2026. A named human confirms the figures (1,123 vouchers, 66 ledger accounts, a gap of about 40,500) against the source books at onboarding, and the confirmation is recorded in DECISIONS.md.
+- The mapping CSV (`ledgerGroup` to `accountType`) is reviewed at onboarding by the holder of the 1.5 account-mapping review duty. That duty is a level duty (round 9), so the file names no person.
+- The questionnaire samples A, B and C (QUESTIONNAIRE-DRAFT.md:136-160) are access-mapping fixtures. They are not L2 inputs.
+- L2 stays blocked until both steps are done.
+
+### c) G10 is role-based (CI-GATES-DRAFT open question 10)
+
+Owner ruling: G10 is rewritten as role-based. It checks structure, never values. The approver is resolved from a tenant-level duty, not named in code.
+
+- Check (c), approval, has five parts:
+  1. No literal holder name, person id, email or role label (`internal finance head`, `finance_head`, `accountant`, `chairman`) outside the seed folder, in finance, HCM or compliance paths.
+  2. The approver of a statutory row is resolved at runtime from the tenant-level duty assignment. A tenant with no holder gets zero APPROVED rows. Each statutory feature fails closed with "awaiting the accountant's setup".
+  3. Every seed and migration row is DRAFT. A test asserts that no seed row is APPROVED.
+  4. The approver is not the enterer or editor of the row. Round 23 item b (the founder exemption) still applies, and this check does not bind the founder.
+  5. Each approval is audited with the resolved approver, the time and the rule version.
+- "Internal finance head" stays only as interim wording (round 3, D-02; round 12 item 1). Round 23 item d supersedes it for permanence. The stale line that said the values "stay with the internal finance head" is removed.
+
+### d) Code follow-ups for the Phase 0 session (recorded, not built)
+
+These are audit findings, not verified facts. They are UNVERIFIED against official gazettes. The official sites epfindia.gov.in, esic.gov.in and incometax.gov.in refused fetching, so every figure in item d(v) rests on secondary sources. None is built in this PR.
+
+i. DRAFT has no effect on computation. The live readers for PF, ESI, PT, LWF, TDS, slabs and GST read typed rate tables that have no status column (`apps/api/src/domains/compliance/payroll.ts:94, 114, 143, 165`, `apps/api/src/domains/compliance/tax.ts:133-135, 733`, `apps/api/src/domains/compliance/gst.ts:831`). `ruleAt()` (`apps/api/src/domains/statutory.ts:88`), the only APPROVED-only resolver, has no non-test caller.
+
+ii. Seeded `StatutoryRule` rows have no `createdBy` (`apps/api/src/seed/compliance/statutory.ts`), so `approveStatutoryRule` refuses them (`apps/api/src/domains/statutory.ts:8-12`). Their `source` values are briefs, such as "Phase 3 brief" (`statutory.ts:19, 26, 33, 40, 47`), not notification references.
+
+iii. Figures are hard-coded in the seeds, and the seeds are exists-checks (`apps/api/src/seed/compliance/payroll.ts:11-12`, `apps/api/src/seed/compliance/tax.ts:127`). A corrected value never reaches an existing tenant. This contradicts ORDERED-PLAN 3.1: "Figures are NOT reproduced in the repository."
+
+iv. Approval ladders hard-code role names. The access plan records `resolveApprover` taking the first affiliation with the role (`docs/plan/zen360/ACCESS-MODEL-PLAN.md:142`). The IT licence ladder is `['finance_head', 'chairman']` (`apps/api/src/seed/bootstrap.ts:2123, 2130`). No statutory ladder was found in this check. The approval code path is not traced, and round 23 item d forbids a hard-coded holder for statutory approval.
+
+v. Candidate stale or contested values, for the approver to verify at onboarding:
+
+- PF wage ceiling is seeded at 15,000 (`apps/api/src/seed/compliance/payroll.ts:21`). Secondary sources report 25,000 from 17 Sep 2026 (S.O. 5109(E)).
+- 194H is seeded at 5% with a 15,000 threshold (`apps/api/src/seed/compliance/tax.ts:55-59`). Secondary sources report 2% and 20,000 from 1 Apr 2025. Audit 7 cited `:41-43`; on `origin/main` the 194H row is at `:55-59`.
+- Tamil Nadu PT is seeded as 135, 315, 690, 1,025 and 1,250 half-yearly (`apps/api/src/seed/compliance/payroll.ts:49-56`). The spec (archive/phase-3-statutory.md 3.1) and the Greater Chennai table give 100, 235, 510, 760 and 1,095.
+- The PF wage base is basic plus DA (`packages/shared/src/compliance/payroll.ts:42`). Secondary sources report the 50% wage-definition rule from 21 Nov 2025.
+- TDS section labels use 1961 numbering (`apps/api/src/seed/compliance/tax.ts:27-86`). Secondary sources report Income-tax Act 2025 numbering from 1 Apr 2026.
+- Surcharge is not modelled. `IncomeTaxSlabTable` holds only a cess percentage (`apps/api/prisma/schema/compliance-tax.prisma:151-170`).
+
+### e) Document edits in this PR
+
+- `CI-GATES-DRAFT.md`: open questions 9 and 10 are marked answered. The G10 section is rewritten as role-based, with check (c). The L2 reviewer sentence and gate status are updated.
+- `ORDERED-PLAN.md`: the "waiting on" wording for 1.5, 3.1, the PF, ESI, PT and TDS blocker, and the statutory sign-off open item now points to this round.
+- `CURRENT.md`: no change. It lists no statutory or L2 item as waiting on the owner.
+
+### Round 27: what was not done
+
+- No code, schema, seed, test or CI change. Items d(i) to d(v) are for the Phase 0 session.
+- No seed value is changed and no value is verified.
+- Not decided: the holder's name and the duty key name for statutory approval. Both are set at onboarding (round 23 item d).
+- The Kaizen figures are not confirmed, and no named human has confirmed them.

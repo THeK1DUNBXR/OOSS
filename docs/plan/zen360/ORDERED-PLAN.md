@@ -6,7 +6,7 @@ Round 18b (DECISIONS.md, 2026-10-11) defers tenancy and all hosting. Items marke
 
 Effort: no effort estimate is stated in the docs. Phase 0 is mostly new build, and the owner accepted that. Each phase ends at a stop rule, not at a week count.
 
-Statutory values: none appear in this plan. Statutory values stay unverified and DRAFT until a qualified person signs them off (see DECISIONS.md, round 10, still open).
+Statutory values: none appear in this plan. Statutory values stay unverified and DRAFT until a qualified holder, set at onboarding, signs them off (see DECISIONS.md, round 23 item d and round 27 item a).
 
 Markers: `BLOCKED-BY` marks a work item that cannot start until the named condition is met.
 
@@ -20,7 +20,7 @@ Markers: `BLOCKED-BY` marks a work item that cannot start until the named condit
 4. The audit registry (FX-20) lands before features that register subjects.
 5. Every write follows the same sequence: `assertCan`, write, `auditWrite`, `emit`.
 6. Every stop-ship fix starts with a failing test on the old code, in a separate first commit.
-7. Statutory values are date-effective `StatutoryRule` rows, seeded DRAFT until sign-off. The interim sign-off holder is the internal finance head.
+7. Statutory values are date-effective `StatutoryRule` rows, seeded DRAFT until sign-off. The interim sign-off holder is the internal finance head (wording provisional; the holder is set at onboarding, round 23 item d).
 8. Statutory uncertainty means stop and flag it. Do not guess.
 9. Open source: copying code from open-source projects is an approved way to build any feature (round 24 item g; the round 22 clarification extended it from mail). Each copied file is logged in `docs/plan/zen360/MAIL-PROVENANCE.md`. Proprietary or paid software is not copied or reverse-engineered; only public docs and feature lists are used. Licences are set aside for now (round 22, second clarification).
 
@@ -63,7 +63,7 @@ Stop rule for each wave: the wave's listed items are merged, and the gates named
 - **3.1 Statutory master pack.** The owner overrides the "do not reorder" rule for this item.
   - Contents: an EXCLUDE constraint on the date range via `btree_gist`, written as hand-written SQL. Status values DRAFT, APPROVED and HOLD. A citation on every row. Good and bad fixtures.
   - Figures are NOT reproduced in the repository.
-  - Not BLOCKED-BY statutory sign-off (round 22, item d; round 19a(c)). Rows stay DRAFT until the accountant approves them in the guided setup.
+  - Not BLOCKED-BY statutory sign-off (round 22, item d; round 19a(c)). Rows stay DRAFT until the holder set at onboarding approves them (round 23 item d; round 27 item a).
 
 ### Wave 2: scheduler and audit correctness
 
@@ -86,8 +86,8 @@ Stop rule for each wave: the wave's listed items are merged, and the gates named
 - **1.3 Posting.** `post()` is the sole writer (enforced by a lint rule). Idempotency key. A reversal refuses to reverse a reversal (`books.ts:264`). **Status 2026-10-12: DONE.** `post` at `apps/api/src/platform/ledger.ts:351`, `postInTx` at :394; the reversal refusal is at `ledger.ts:253` (the cite `books.ts:264` is stale); the lint rule is at `eslint.config.js:97-119`.
 - **1.4 Balances.** Derived balances and a nightly drift check. Ledger gate tests L1 to L3. FX-30 to FX-35. **Status 2026-10-12: BUILT, open.** `apps/api/src/platform/balances.ts`; ledger gates in `apps/api/src/tests/ledger/ledgerGates.test.ts` (L1 :139, L2 :164, L3 :244). OPEN: the file's L1 is an unbalanced-entry refusal, while CI-GATES L1 is the ten-thousand-operation property test. The scopes differ.
 - **1.5 Cashbook migration, then delete `model Transaction`.** **Status 2026-10-12: NOT DONE.** `model Transaction` is still at `apps/api/prisma/schema/main.prisma:5205`; used in 10 non-test files.
-  - BLOCKED-BY internal finance head review of the mapping.
-  - BLOCKED-BY confirmation of the Kaizen figures: 1,123 vouchers, 66 accounts, a gap of about 40,500. UNVERIFIED.
+  - BLOCKED-BY the 1.5 account-mapping review, held by the level duty holder set at onboarding (round 27 item b).
+  - BLOCKED-BY confirmation of the Kaizen figures: 1,123 vouchers, 66 accounts, a gap of about 40,500. UNVERIFIED. Awaiting a named human at onboarding (round 27 item b).
   - Cutover at a financial year start (1 April), after the trial balance ties to the paisa.
 
 ### Wave 4: operations (own server) — moved after Phase 1 (superseded by round 18b)
@@ -100,7 +100,7 @@ Moved to "After Phase 1: hosting and operations (deferred)" below. The non-owner
 - **FX-71.** Reversal, not hard delete (`commit.ts:714-746`). **Status 2026-10-12: DONE.** Commit `2b30fbf`; revert by reversal at `apps/api/src/imports/commit.ts:1181-1190`. The cite `commit.ts:714-746` is stale; the file has no hard delete.
 - **FX-72.** Imports via `recordTransaction` in chunks of 500 rows. **Status 2026-10-12: DONE.** Commit `54295b9`, 500-row transactions.
 - **FX-73.** Payroll posts liabilities (`payrollops.ts:414-455`). **Status 2026-10-12: OPEN.** Payroll does not post liabilities. `apps/api/src/domains/hcm/payrollops.ts:13-16` says so; `:414-455` is a read path. FX-73a (commit `2d68f74`) posts net pay in paise.
-  - BLOCKED-BY statutory sign-off for PF, ESI, PT and TDS.
+  - BLOCKED-BY statutory sign-off for PF, ESI, PT and TDS. The holder is set at onboarding; the rule data stays DRAFT (round 27 item a).
 - **P4 interface, in this order:**
   1. `MetricProps` discriminated union.
   2. Code splitting.
@@ -260,7 +260,7 @@ The level template ships with the app. ~~Editable per tenant at onboarding.~~ **
 ## Risks and open items
 
 - Still open after round 10, from `docs/plan/zen360/DECISIONS.md`:
-  - Statutory sign-off by a qualified person. Values stay DRAFT.
+  - Statutory sign-off holder, set at onboarding (round 23 item d). Values stay DRAFT (round 27 item a).
   - Duties per level, and read scope of the non-employee levels.
   - IT owner, as a level assignment at onboarding.
   - Expense receipt storage location.
