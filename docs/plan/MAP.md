@@ -68,6 +68,8 @@
 
 **`apps/api/src/domains/compliance/calendar.ts`** (392 lines) — resolveOwnerPartyId:44 · GenerateResult:83 · generateObligations:96 · ObligationFilter:185 · listTypes:192 · listObligations:198 · obligationDetail:214 · MarkFiledInput:229 · markFiled:244 · waive:309 · summary:355
 
+**`apps/api/src/domains/compliance/cashbookToJournal.ts`** (292 lines) — LEDGER_ACCOUNT_CLASSES:30 · LedgerAccountClass:31 · CashbookLeg:34 · CashbookVoucher:40 · MappingRow:48 · MappingTable:56 · DraftLine:58 · EntryDraft:66 · RefusalReason:74 · Refusal:76 · MapReport:82 · parseMappingCsv:95 · mapVouchers:147 · ApplyContext:220 · ApplyReport:228 · applyDrafts:239
+
 **`apps/api/src/domains/compliance/corporate/board.ts`** (179 lines) — listBoardMeetings:21 · getBoardMeeting:31 · createBoardMeeting:42 · updateBoardMeetingMinutes:75 · recordBoardMeeting:97 · addBoardResolution:121
 
 **`apps/api/src/domains/compliance/corporate/certificates.ts`** (155 lines) — listCertificates:35 · issueCertificate:44 · verifyCertificate:102 · revokeCertificate:132
