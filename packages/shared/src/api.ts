@@ -368,24 +368,38 @@ export interface DeltaItem {
   detail: string;
   domain: string;
   severity: SeverityCode | null;
-  materiality: number | null;
+  /** Paise as a digit string, or null when the event carried no measured amount. */
+  materiality: string | null;
   /** Distinguishes "new to your view" from "changed in the world". */
   newToView: boolean;
   handledWithoutYou: boolean;
   drillPath: string;
 }
 
+/**
+ * A figure the Command Center could not measure, with the reason. Not measured
+ * is not zero: the page shows the reason where the figure would be.
+ */
+export interface NotMeasuredFigure {
+  figure: 'materiality_floor' | 'narrative_window';
+  thresholdKey: string;
+  reason: string;
+}
+
 export interface WhatChangedResponse {
   watermark: string;
   reachSignature: string;
-  narrativeWindowElapsed: boolean;
+  /** Null when the narrative window threshold is not configured. */
+  narrativeWindowElapsed: boolean | null;
   /** Rendered only past the narrative window; every claim resolves to an admitted delta item. */
   narrative: {
     reconciliationLine: string;
     body: string;
   } | null;
   items: DeltaItem[];
-  suppressedBelowMateriality: number;
+  /** Null when the materiality floor is not configured: the count does not exist. */
+  suppressedBelowMateriality: number | null;
+  notMeasured: NotMeasuredFigure[];
 }
 
 export interface ExceptionView {

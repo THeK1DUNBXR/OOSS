@@ -950,6 +950,10 @@ export const EVENTS = {
   UNIT_OPENED: 'kz.org.unit.opened',
   UNIT_CLOSED: 'kz.org.unit.closed',
   UNIT_MOVED: 'kz.org.unit.moved',
+
+  // --- Organisation: tunable thresholds (SPINE-CONTRACT s.1.10). Emitted by
+  // apps/api/src/domains/thresholds.ts, one per governed write.
+  THRESHOLD_UPDATED: 'kz.org.threshold.updated',
 } as const;
 
 /**

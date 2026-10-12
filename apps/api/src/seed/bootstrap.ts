@@ -72,76 +72,82 @@ const TENANT_KIND = process.env.TENANT_KIND || undefined;
 
 async function seedThresholds() {
   const tenantId = (await currentTenant()).id;
-  const rows = [
+  const rows: Array<{
+    thresholdKey: string;
+    unit: string;
+    description: string;
+    valueMinor?: bigint;
+    valueInt?: number;
+  }> = [
     {
       thresholdKey: 'command_center.materiality_floor',
-      value: 100_000,
+      valueMinor: 10_000_000n, // 100_000 rupees
       unit: 'currency',
       description: 'Changes smaller than this are not worth reporting.',
     },
     {
       thresholdKey: 'command_center.narrative_window_hours',
-      value: 72,
+      valueInt: 72,
       unit: 'hours',
       description: 'After being away this long, you get a summary of what happened instead of a list.',
     },
     {
       thresholdKey: 'command_center.absence_reset_days',
-      value: 14,
+      valueInt: 14,
       unit: 'days',
       description: 'After being away this long, "what changed" starts fresh.',
     },
     {
       thresholdKey: 'win_loss_review.value_threshold',
-      value: 500_000,
+      valueMinor: 50_000_000n, // 500_000 rupees
       unit: 'currency',
       description: 'A deal worth more than this always needs a win/loss review.',
     },
     {
       thresholdKey: 'merge_candidate.stale_days',
-      value: 14,
+      valueInt: 14,
       unit: 'days',
       description: 'A possible duplicate left this long is raised as a problem.',
     },
     {
       thresholdKey: 'lead.untouched_days',
-      value: 3,
+      valueInt: 3,
       unit: 'days',
       description: 'A lead with no contact for this long is raised as a problem.',
     },
     {
       thresholdKey: 'proposal.stalled_business_days',
-      value: 5,
+      valueInt: 5,
       unit: 'days',
       description: 'A proposal with no movement for this many working days is chased.',
     },
     {
       thresholdKey: 'h_com.quarter_target',
-      value: 20_000_000,
+      valueMinor: 2_000_000_000n, // 20_000_000 rupees
       unit: 'currency',
       description: 'The sales target the pipeline is scored against.',
     },
     {
       thresholdKey: 'people.k_anonymity_floor',
-      value: 5,
+      valueInt: 5,
       unit: 'count',
       description: 'A people figure covering fewer than this many is withheld, so nobody is identifiable.',
     },
     {
       thresholdKey: 'routing.tie_break_margin_points',
-      value: 5,
+      valueInt: 5,
       unit: 'points',
       description: 'Scores this close count as a tie, and are shared out in turn.',
     },
     {
       thresholdKey: 'approval.escalation_grace_business_days',
-      value: 3,
+      valueInt: 3,
       unit: 'days',
       description: 'An approval left this long moves up to the next person.',
     },
     {
       thresholdKey: 'document.record_of_record_ttl_seconds',
-      value: 60,
+      valueInt: 60,
       unit: 'seconds',
       description: 'How long a link to a sensitive document stays valid.',
     },
