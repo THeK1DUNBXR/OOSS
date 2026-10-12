@@ -80,6 +80,8 @@ What exists in the repository today is noted per gate, so the owner can see how 
 - **Protects:** CLAUDE.md "Working" ("Before claiming a defect is fixed, write the test that fails on the old code"); docs/plan/archive/phase-0-stabilise.md, gate line ("every item below has a test that fails on the old code and passes on the new"); the "Test that must fail on old code" column in `zen360/FIXES.md`.
 - **Exists today:** no.
 - **First mandatory:** Wave A.
+- **Red-Test trailer (implemented, Wave 7 W7-D, `scripts/ci/fail-first.mjs`):** a red commit carries `Red-Test: <test path>`, repeated per file. CI runs each named file on the commit's parent with only that file overlaid, where it must fail, and at the head, where it must pass.
+- **Required** when the PR title or a commit subject cites an FX id, a commit subject starts `fix(` or `fix:`, or the PR has the label `needs-red-test`. Otherwise the gate passes with a notice. Old-code runs use the head's `node_modules` and database schema (see the header comment in the script).
 
 ### G7. Tenant isolation and row-level security negative tests (DEFERRED, round 18b)
 

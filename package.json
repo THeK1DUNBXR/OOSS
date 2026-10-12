@@ -23,6 +23,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "map:check": "node scripts/genmap.mjs --check",
+    "gates:fail-first:test": "node --test 'scripts/ci/*.test.mjs'",
     "jobs:run": "pnpm --filter @kaizen/api jobs:run",
     "setup": "pnpm install && pnpm --filter @kaizen/shared build && pnpm --filter @kaizen/semantic build && pnpm db:push && pnpm db:seed",
     "db:wipe": "pnpm --filter @kaizen/api wipe"
