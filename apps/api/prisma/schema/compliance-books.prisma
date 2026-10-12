@@ -95,8 +95,10 @@ model LedgerEntity {
   baseCurrency String             @default("INR")
   periods      AccountingPeriod[]
   entries      JournalEntry[]
+  employments  EmploymentRelationship[]
 
   @@unique([tenantId, code])
+  @@unique([tenantId, id])
   @@map("ledger_entities")
 }
 
