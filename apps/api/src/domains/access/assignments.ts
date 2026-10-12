@@ -27,6 +27,7 @@ import {
   DUTY_SENSITIVITY,
   expiryWithinCap,
   IDENTITY_TYPES,
+  type ConfirmContext,
   type ConfirmViolation,
   type IdentityType,
   type Reach,
@@ -42,6 +43,17 @@ registerGovernedEntities('gov', [
   'access_placement',
   'access_duty',
 ]);
+
+export interface ConfirmAssignmentInput {
+  assignmentId: string;
+  reason: string;
+  /**
+   * The founder's reason for confirming an assignment they answered, when no other
+   * eligible confirmer exists (owner answer O7). Accepted only in that case; given
+   * anywhere else it is refused, with the state unchanged.
+   */
+  soleConfirmerReason?: string | null;
+}
 
 export interface PlacementInput {
   verticalCode: string;
@@ -77,6 +89,7 @@ function stateOf(row: Partial<AccessAssignment>): Record<string, unknown> {
     expiredById: row.expiredById ?? null,
     expiredAt: row.expiredAt ?? null,
     expiresAt: row.expiresAt ?? null,
+    soleConfirmerReason: row.soleConfirmerReason ?? null,
   };
 }
 
@@ -145,21 +158,58 @@ function resolveDuties(inputs: DutyInput[]) {
   });
 }
 
-/** What the confirmer already holds, from its own confirmed placements that have not expired. */
-async function reachOf(partyId: string, now: Date): Promise<{ company: boolean; verticalCodes: string[] }> {
+type HeldReach = { company: boolean; verticalCodes: string[] };
+
+/**
+ * What each person may confirm, from their confirmed placements that have not
+ * expired. Only company and vertical reach can confirm anything beyond the person's
+ * own access, so only those placements are read. A person absent from the map holds
+ * no such reach and cannot confirm.
+ */
+async function reachByPerson(now: Date): Promise<Map<string, HeldReach>> {
   const rows = await prisma.accessPlacement.findMany({
     where: {
-      personId: partyId,
+      level: { reach: { in: ['vertical', 'company'] } },
       assignment: { status: 'confirmed', OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
     },
-    select: { vertical: { select: { code: true } }, level: { select: { reach: true } } },
+    select: { personId: true, vertical: { select: { code: true } }, level: { select: { reach: true } } },
   });
-  return {
-    company: rows.some((r) => r.level.reach === 'company'),
-    verticalCodes: rows
-      .filter((r) => r.level.reach === 'vertical' || r.level.reach === 'company')
-      .map((r) => r.vertical.code),
-  };
+  const byPerson = new Map<string, HeldReach>();
+  for (const r of rows) {
+    const held = byPerson.get(r.personId) ?? { company: false, verticalCodes: [] };
+    if (r.level.reach === 'company') held.company = true;
+    held.verticalCodes.push(r.vertical.code);
+    byPerson.set(r.personId, held);
+  }
+  return byPerson;
+}
+
+/**
+ * Whether anyone other than the subject, the confirmer and the answerer could confirm
+ * this assignment: the same rules applied to every person who holds reach, read from
+ * tenant data. This is the fact that decides whether the founder's sole-confirmer
+ * exception applies (owner answer O7).
+ */
+function otherEligibleConfirmerExists(
+  base: Omit<
+    ConfirmContext,
+    'confirmerPersonId' | 'confirmerReach' | 'otherEligibleConfirmerExists' | 'soleConfirmerReason'
+  >,
+  confirmerId: string,
+  reach: Map<string, HeldReach>,
+): boolean {
+  for (const [personId, held] of reach) {
+    if (personId === confirmerId) continue;
+    const violations = checkConfirmRules({
+      ...base,
+      confirmerPersonId: personId,
+      confirmerReach: held,
+      otherEligibleConfirmerExists: false,
+      soleConfirmerReason: null,
+    });
+    if (violations.length === 0) return true;
+  }
+  return false;
 }
 
 async function loadAssignment(id: string) {
@@ -185,6 +235,8 @@ function refusalText(violations: ConfirmViolation[]): string {
         return 'a Head placement or a sensitive duty needs the founder to confirm';
       case 'vertical_head_required':
         return `a placement in ${v.verticalCode} needs the Head of that vertical or the founder`;
+      case 'sole_confirmer_reason_not_needed':
+        return 'a sole-confirmer reason applies only when the founder answered and no one else can confirm';
     }
   });
   return `This assignment cannot be confirmed by you: ${parts.join('; ')}.`;
@@ -269,9 +321,10 @@ export async function suggestAssignment(input: SuggestAssignmentInput): Promise<
 
 /**
  * Confirms a suggested assignment. The confirmer must be someone other than the
- * person and the answerer, and must hold the reach the placements need (rules.ts).
+ * person, and must hold the reach the placements need (rules.ts). The answerer may not
+ * confirm, except the founder as sole confirmer with a reason (owner answer O7).
  */
-export async function confirmAssignment(input: { assignmentId: string; reason: string }): Promise<AccessAssignment> {
+export async function confirmAssignment(input: ConfirmAssignmentInput): Promise<AccessAssignment> {
   await assertCan({ resource: 'access_assignments', verb: 'approve' });
   const auth = currentAuth();
   if (!auth.partyId) throw ApiError.forbidden('Only a person can confirm an access assignment.');
@@ -282,13 +335,23 @@ export async function confirmAssignment(input: { assignmentId: string; reason: s
   }
 
   const now = new Date();
-  const violations = checkConfirmRules({
+  const soleReason = input.soleConfirmerReason?.trim() ? input.soleConfirmerReason.trim() : null;
+  const reach = await reachByPerson(now);
+  const base = {
     subjectPersonId: row.personId,
     answererPersonId: row.suggestedById,
-    confirmerPersonId: auth.partyId,
     placements: row.placements.map((p) => ({ verticalCode: p.vertical.code, reach: p.level.reach as Reach })),
     hasSensitiveDuty: row.duties.some((d) => d.sensitive),
-    confirmerReach: await reachOf(auth.partyId, now),
+  };
+  // Read only when a reason is given: with none, the exception cannot apply, so the
+  // answer does not change.
+  const other = soleReason !== null && otherEligibleConfirmerExists({ ...base }, auth.partyId, reach);
+  const violations = checkConfirmRules({
+    ...base,
+    confirmerPersonId: auth.partyId,
+    confirmerReach: reach.get(auth.partyId) ?? { company: false, verticalCodes: [] },
+    otherEligibleConfirmerExists: other,
+    soleConfirmerReason: soleReason,
   });
   if (violations.length > 0) throw ApiError.forbidden(refusalText(violations));
   if (!expiryWithinCap(row.identityType as IdentityType, now, row.expiresAt)) {
@@ -299,7 +362,7 @@ export async function confirmAssignment(input: { assignmentId: string; reason: s
   const result = await governedWrite(async (tx) => {
     const { count } = await tx.accessAssignment.updateMany({
       where: { id: row.id, status: 'suggested' },
-      data: { status: 'confirmed', confirmedById: confirmerId, confirmedAt: now },
+      data: { status: 'confirmed', confirmedById: confirmerId, confirmedAt: now, soleConfirmerReason: soleReason },
     });
     if (count !== 1) throw ApiError.conflict('This assignment changed while you were confirming it. Reload it first.');
     const after = await tx.accessAssignment.findUniqueOrThrow({ where: { id: row.id } });

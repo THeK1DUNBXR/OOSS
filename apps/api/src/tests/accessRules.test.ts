@@ -69,11 +69,17 @@ describe('checkConfirmRules (AMP s.7; design O7, O12)', () => {
     });
 
     it('(c) another eligible confirmer, a second founder, refuses the founder-answerer even with a reason', () => {
-      expect(rulesOf(sole({ otherEligibleConfirmerExists: true }))).toEqual(['answerer']);
+      expect(rulesOf(sole({ otherEligibleConfirmerExists: true }))).toEqual([
+        'answerer',
+        'sole_confirmer_reason_not_needed',
+      ]);
     });
 
-    it('(c) the Head of the vertical is also another eligible confirmer for a staff placement', () => {
-      expect(rulesOf(sole({ otherEligibleConfirmerExists: true, confirmerReach: FOUNDER }))).toEqual(['answerer']);
+    it('(c) an input saying another eligible confirmer exists refuses it (the command computes that from data; see the DB test)', () => {
+      expect(rulesOf(sole({ otherEligibleConfirmerExists: true, confirmerReach: FOUNDER }))).toEqual([
+        'answerer',
+        'sole_confirmer_reason_not_needed',
+      ]);
     });
 
     it('(d) the founder who is the subject is refused even with a reason', () => {
