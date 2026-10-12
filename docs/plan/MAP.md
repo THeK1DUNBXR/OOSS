@@ -312,7 +312,7 @@
 
 **`apps/api/src/platform/outbox.ts`** (340 lines) — OUTBOX_MAX_ATTEMPTS:33 · DrainOptions:46 · DrainResult:55 · drainOutbox:82 · backoffMs:105 · dispatchDueOutbox:227 · replayDeadLetter:259 · startOutboxDispatcher:318 · stopOutboxDispatcher:336
 
-**`apps/api/src/platform/periodLock.ts`** (79 lines) — lockLegacyPeriod:39
+**`apps/api/src/platform/periodLock.ts`** (138 lines) — lockLegacyPeriod:99 · lockLegacyPeriods:124
 
 **`apps/api/src/platform/permissions.ts`** (580 lines) — ResolvedGrant:38 · invalidateGrantCache:52 · resolveGrants:56 · ScopedRecord:102 · EvaluateInput:115 · evaluate:133 · resolveAuthorityCeiling:325 · resolveAuthorityCeilingPaise:336 · assertCan:346 · can:356 · holdsScopeResolver:370 · scopeFor:382 · matchNothing:395 · scopeWhere:403 · assertScopeAll:432 · visibilityWhere:459 · FilterResult:477 · FilterOptions:482 · FIELD_PURPOSES:503 · applyFieldVisibility:524 · canSeeMoney:575
 
@@ -340,7 +340,7 @@
 
 **`apps/api/src/imports/classify.ts`** (113 lines) — LedgerClass:15 · classifyLedger:18 · isAccountName:81 · divisionFor:92 · JOURNAL_ACCOUNT_NAME:111 · JOURNAL_ACCOUNT_TYPE:112
 
-**`apps/api/src/imports/commit.ts`** (1916 lines) — CommitResult:41 · commitImport:187 · revertImport:972
+**`apps/api/src/imports/commit.ts`** (1954 lines) — CommitResult:42 · commitImport:188 · revertImport:1010
 
 **`apps/api/src/imports/detect.ts`** (320 lines) — ImportKind:18 · Detection:47 · findHeaderRow:73 · detectGrid:106 · detectWorkbook:236 · isTallyLedgerSheet:286 · countLedgers:290 · detectSourceFormat:303
 

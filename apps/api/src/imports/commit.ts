@@ -21,6 +21,7 @@ import { ApiError } from '../platform/errors.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { emit } from '../platform/eventBus.js';
 import { auditWrite } from '../platform/audit.js';
+import { lockLegacyPeriods } from '../platform/periodLock.js';
 import { writeTransactionMinor, assertPeriodPostableInTx } from '../domains/books.js';
 import { EVENTS, DIVISION_LABELS, DIVISIONS, parseMinor, type Division } from '@kaizen/shared';
 import { matchFailure, matchPerson } from './matchName.js';
@@ -288,8 +289,16 @@ async function commitUnderLock(id: string): Promise<CommitResult> {
  */
 async function commitChunk(rows: ImportRow[], kind: string, options: Record<string, unknown>, tally: Tally) {
   const chunk: Tally = { created: {}, skipped: 0, errors: [] };
+  const { tenantId } = currentAuth();
+  const writeDates = rows.flatMap((row) => chunkWriteDates(row, kind, options));
   await prisma.$transaction(
     async (tx) => {
+      // Every month this chunk writes into is locked before the first write or audit row,
+      // in ascending order (platform/periodLock.ts). A chunk that reached its second month
+      // only after writing its first would hold the audit lock while it waited for that
+      // month's row, and a close of that month would wait for the audit lock: a deadlock.
+      // It refuses nothing here. Each row below still refuses a closing or closed month.
+      await lockLegacyPeriods(tx, tenantId, writeDates);
       for (const row of rows) await commitRowInChunk(tx, row, kind, options, chunk);
     },
     { timeout: CHUNK_TIMEOUT_MS, maxWait: 10_000 },
@@ -297,6 +306,35 @@ async function commitChunk(rows: ImportRow[], kind: string, options: Record<stri
   for (const [k, n] of Object.entries(chunk.created)) tally.created[k] = (tally.created[k] ?? 0) + n;
   tally.skipped += chunk.skipped;
   tally.errors.push(...chunk.errors);
+}
+
+/**
+ * The IST date a chunk row writes a legacy row into, or none if it writes none. It
+ * mirrors the early returns of commitLedgerRow and commitBankRow, so a row that writes
+ * nothing creates no period. A row whose date or amount does not read is left out here.
+ * The row then fails on its own, as it did before the chunk lock. The row is opened here
+ * only to read its date and amount. commitRowInChunk opens it again for the domain.
+ */
+function chunkWriteDates(row: ImportRow, kind: string, options: Record<string, unknown>): Date[] {
+  const data = openStagedNormalised(row.normalised);
+  if (!data) return [];
+  let writes: boolean;
+  if (kind === 'tally_ledger') {
+    let amount: bigint;
+    try {
+      amount = paiseOf(data.amount);
+    } catch {
+      return [];
+    }
+    writes = String(data.ledger ?? '') !== '' && amount !== 0n;
+  } else if (kind === 'bank_statement' || kind === 'transactions') {
+    writes = data.openingBalance === undefined && String(options.accountId ?? '') !== '';
+  } else {
+    writes = false;
+  }
+  if (!writes) return [];
+  const txnDate = new Date(String(data.txnDate));
+  return Number.isNaN(txnDate.getTime()) ? [] : [txnDate];
 }
 
 async function commitRowInChunk(

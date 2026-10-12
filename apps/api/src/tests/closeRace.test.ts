@@ -408,7 +408,10 @@ const CSV_HEADER = 'Date,Narration,Withdrawal,Deposit,Reference';
 const EVENT_CHAIN_NAMESPACE = 4711;
 
 /** Stages a bank statement with one line in each given IST month, mid-month, for the test bank account. */
-async function stageBankStatement(tag: string, rows: Array<{ month: string; amount: string; direction: 'in' | 'out' }>) {
+async function stageBankStatement(
+  tag: string,
+  rows: Array<{ month: string; amount: string; direction: 'in' | 'out' }>,
+) {
   const body = rows.map((r, i) => {
     const [year, month] = r.month.split('-');
     const withdrawal = r.direction === 'out' ? r.amount : '';
@@ -427,14 +430,15 @@ async function stageBankStatement(tag: string, rows: Array<{ month: string; amou
 }
 
 /**
- * Backends queued on a lock in this database. pg_locks, not pg_stat_activity: the
- * application role's sessions show no wait event to the superuser test client, so
- * a waiting chunk would otherwise never be counted.
+ * Backends queued behind another transaction in this database. pg_locks, not
+ * pg_stat_activity: the application role's sessions show no wait event to the test
+ * client. A row-lock waiter shows as a `tuple` lock it holds while it waits for the
+ * row's transaction, and an advisory-lock waiter as an ungranted request.
  */
 async function lockWaiters(): Promise<number> {
   const rows = await unscopedPrisma.$queryRaw<Array<{ n: number }>>`
     SELECT count(DISTINCT pid)::int AS n FROM pg_locks
-    WHERE NOT granted
+    WHERE (NOT granted OR locktype = 'tuple')
       AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`;
   return rows[0]?.n ?? 0;
 }
