@@ -195,7 +195,13 @@ async function assembleEvidencePack(input: RaiseDecisionInput) {
  * The states a decision is still waiting in. Shared with the founder view
  * (OP:120), so the queue and the view never disagree about what is awaiting.
  */
-export const OPEN_DECISION_STATES = ['Raised', 'Analysing', 'AwaitingAuthority', 'EvidenceRequested', 'Deferred'] as const;
+export const OPEN_DECISION_STATES = [
+  'Raised',
+  'Analysing',
+  'AwaitingAuthority',
+  'EvidenceRequested',
+  'Deferred',
+] as const;
 
 export async function decisionQueue() {
   const auth = currentAuth();

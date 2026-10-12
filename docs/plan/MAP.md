@@ -98,7 +98,7 @@
 
 **`apps/api/src/domains/courses.ts`** (495 lines) — CourseFeePlanInput:33 · CourseAddonInput:38 · CourseInput:46 · listCourses:67 · createCourse:186 · updateCourse:263 · retireCourse:367 · AssignCourseInput:436 · assignCourse:464
 
-**`apps/api/src/domains/decisions.ts`** (646 lines) — RaiseDecisionInput:47 · raiseDecision:62 · OPEN_DECISION_STATES:198 · decisionQueue:200 · DispositionInput:248 · disposeDecision:260 · linkDecision:478 · listDecisionLinks:537 · reviewDecision:576 · decisionCalibration:621
+**`apps/api/src/domains/decisions.ts`** (652 lines) — RaiseDecisionInput:47 · raiseDecision:62 · OPEN_DECISION_STATES:198 · decisionQueue:206 · DispositionInput:254 · disposeDecision:266 · linkDecision:484 · listDecisionLinks:543 · reviewDecision:582 · decisionCalibration:627
 
 **`apps/api/src/domains/documents.ts`** (536 lines) — DOCUMENT_EVENTS:39 · DOCUMENT_LIFECYCLE:47 · DocumentLifecycleStatus:48 · DOCUMENT_SOURCES:50 · DocumentSource:51 · DOCUMENT_TRANSITIONS:58 · MAX_DOCUMENT_BYTES:69 · sha256Hex:75 · RegisterUploadInput:222 · registerUpload:239 · AddVersionInput:282 · addVersion:294 · ChangeLifecycleInput:371 · changeLifecycleStatus:383 · SetRetentionInput:420 · setRetentionClass:432 · getDocument:485 · DocumentFilter:491 · listDocuments:502 · readContent:525
 
@@ -114,7 +114,7 @@
 
 **`apps/api/src/domains/finance.ts`** (591 lines) — issueFeeInstalments:78 · recordPayment:115 · reversePayment:219 · allocatePayment:275 · issueCreditNote:473 · rehydrateReceivables:536 · detectOverduePayments:544
 
-**`apps/api/src/domains/founderView.ts`** (313 lines) — FounderSource:47 · FOUNDER_SOURCES:253 · founderView:299
+**`apps/api/src/domains/founderView.ts`** (307 lines) — FounderSource:41 · FOUNDER_SOURCES:247 · founderView:293
 
 **`apps/api/src/domains/group.ts`** (1499 lines) — lastCompleteMonthKey:116 · buildEntitySnapshot:246 · publishEntitySnapshot:389 · publishNow:503 · refreshGroup:516 · groupStructure:536 · groupHolders:624 · groupFinancials:759 · groupCompliance:854 · entitySnapshotView:906 · aoc1:963 · aoc1Export:1067 · groupBenCandidates:1360 · benCandidatesExport:1419 · publishDirtySnapshots:1472 · publishNightlySnapshot:1482 · markSnapshotDirty:1489
 
@@ -586,7 +586,7 @@
 
 **`apps/web/src/pages/Leads.tsx`** (489 lines) — Leads:33 · LeadDetail:322
 
-**`apps/web/src/pages/Login.tsx`** (282 lines) — Login:35
+**`apps/web/src/pages/Login.tsx`** (286 lines) — Login:35
 
 **`apps/web/src/pages/MyOptions.tsx`** (7 lines) — MyOptions:4
 
@@ -830,4 +830,4 @@
 
 Generated or lock files. Nothing in them answers a question worth the tokens.
 
-- `pnpm-lock.yaml` (5293 lines)
+- `pnpm-lock.yaml` (6082 lines)

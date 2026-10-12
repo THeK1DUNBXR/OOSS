@@ -15,6 +15,7 @@
 
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { z } from 'zod';
 import {
   BLOOD_GROUPS,
   DELIVERY_LOCATIONS,
@@ -44,6 +45,7 @@ import {
 } from '@kaizen/shared';
 import { api, titleCase } from '../lib/api.js';
 import { CreateModal, MoneyInput, Row, SelectInput, TextArea, TextInput } from './forms.js';
+import { Field, MoneyField, moneyField, rupeesOnWire, useZodForm } from './zodForm.js';
 import { AgeBasisFields, ageBasisBody, type AgeBasisValues } from './learnerAge.js';
 
 /**
@@ -101,6 +103,19 @@ function useGroupEntities(enabled = true) {
 // Money
 // ---------------------------------------------------------------------------
 
+const transactionSchema = z.object({
+  direction: z.enum(['in', 'out']),
+  txnDate: z.string().min(1, 'Pick the date it happened'),
+  amount: moneyField({ positive: true }),
+  accountId: z.string().min(1, 'Choose the account it went through'),
+  categoryId: z.string(),
+  division: z.string(),
+  counterparty: z.string(),
+  reference: z.string(),
+  note: z.string(),
+  intercompanyTenantId: z.string(),
+});
+
 /**
  * A movement of money.
  *
@@ -113,17 +128,22 @@ export function NewTransaction({ open, onClose }: { open: boolean; onClose: () =
   const accounts = useAccounts(open);
   const categories = useCategories(open);
   const groupEntities = useGroupEntities(open);
-
-  const [direction, setDirection] = useState<'out' | 'in'>('out');
-  const [txnDate, setTxnDate] = useState(today());
-  const [amount, setAmount] = useState('');
-  const [accountId, setAccountId] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [division, setDivision] = useState('');
-  const [counterparty, setCounterparty] = useState('');
-  const [reference, setReference] = useState('');
-  const [note, setNote] = useState('');
-  const [intercompanyTenantId, setIntercompanyTenantId] = useState('');
+  const form = useZodForm(transactionSchema, {
+    direction: 'out',
+    txnDate: today(),
+    amount: '',
+    accountId: '',
+    categoryId: '',
+    division: '',
+    counterparty: '',
+    reference: '',
+    note: '',
+    intercompanyTenantId: '',
+  });
+  const {
+    register,
+    formState: { errors },
+  } = form;
 
   return (
     <CreateModal
@@ -132,87 +152,124 @@ export function NewTransaction({ open, onClose }: { open: boolean; onClose: () =
       submitLabel="Record it"
       onClose={onClose}
       invalidate={[['transactions'], ['cash'], ['books']]}
-      onSubmit={() =>
+      form={form}
+      onSubmit={(v) =>
         api.post('/books/transactions', {
-          txnDate,
-          direction,
-          amount: Number(amount),
-          accountId,
-          categoryId: categoryId || null,
-          division: division || null,
-          counterparty: counterparty || null,
-          reference: reference || null,
-          note: note || null,
-          intercompanyTenantId: intercompanyTenantId || null,
+          txnDate: v.txnDate,
+          direction: v.direction,
+          amount: rupeesOnWire(v.amount),
+          accountId: v.accountId,
+          categoryId: v.categoryId || null,
+          division: v.division || null,
+          counterparty: v.counterparty || null,
+          reference: v.reference || null,
+          note: v.note || null,
+          intercompanyTenantId: v.intercompanyTenantId || null,
         })
       }
     >
       <Row>
-        <SelectInput
-          label="Which way"
-          required
-          value={direction}
-          onChange={(v) => setDirection(v as 'in' | 'out')}
-          options={[
-            { value: 'out', label: 'Money out — we paid somebody' },
-            { value: 'in', label: 'Money in — somebody paid us' },
-          ]}
-        />
-        <TextInput label="Date" type="date" required value={txnDate} onChange={setTxnDate} />
+        <Field label="Which way" required>
+          {(c) => (
+            <select className="input" required {...register('direction')} {...c}>
+              <option value="out">Money out — we paid somebody</option>
+              <option value="in">Money in — somebody paid us</option>
+            </select>
+          )}
+        </Field>
+        <Field label="Date" required error={errors.txnDate?.message}>
+          {(c) => <input className="input" type="date" required {...register('txnDate')} {...c} />}
+        </Field>
       </Row>
       <Row>
-        <MoneyInput label="Amount" required value={amount} onChange={setAmount} />
-        <SelectInput
-          label="Account"
-          required
-          value={accountId}
-          onChange={setAccountId}
-          placeholder={accounts.rows.length ? 'Which account' : 'No accounts yet — add one first'}
-          options={accounts.rows.map((a) => ({ value: a.id, label: `${a.name} (${a.accountType})` }))}
-        />
+        <MoneyField label="Amount" required field={register('amount')} error={errors.amount?.message} />
+        <Field label="Account" required error={errors.accountId?.message}>
+          {(c) => (
+            <select className="input" required {...register('accountId')} {...c}>
+              <option value="">{accounts.rows.length ? 'Which account' : 'No accounts yet — add one first'}</option>
+              {accounts.rows.map((a) => (
+                <option key={a.id} value={a.id}>{`${a.name} (${a.accountType})`}</option>
+              ))}
+            </select>
+          )}
+        </Field>
       </Row>
       <Row>
-        <SelectInput
-          label="What for"
-          value={categoryId}
-          onChange={setCategoryId}
-          placeholder="Uncategorised"
-          options={categories.rows.map((c) => ({ value: c.id, label: c.name }))}
-        />
-        <SelectInput
-          label="Division"
-          hint="which business"
-          value={division}
-          onChange={setDivision}
-          placeholder="From the category"
-          options={DIVISIONS}
-        />
+        <Field label="What for">
+          {(c) => (
+            <select className="input" {...register('categoryId')} {...c}>
+              <option value="">Uncategorised</option>
+              {categories.rows.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+        <Field label="Division" hint="which business">
+          {(c) => (
+            <select className="input" {...register('division')} {...c}>
+              <option value="">From the category</option>
+              {DIVISIONS.map((d) => (
+                <option key={d.value} value={d.value}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
       </Row>
       <Row>
-        <TextInput label="Who" value={counterparty} onChange={setCounterparty} placeholder="Supplier or customer" />
-        <TextInput label="Reference" value={reference} onChange={setReference} placeholder="Cheque or UTR number" />
+        <Field label="Who">
+          {(c) => <input className="input" placeholder="Supplier or customer" {...register('counterparty')} {...c} />}
+        </Field>
+        <Field label="Reference">
+          {(c) => <input className="input" placeholder="Cheque or UTR number" {...register('reference')} {...c} />}
+        </Field>
       </Row>
       {groupEntities.rows.length > 0 && (
-        <SelectInput
+        <Field
           label="Group entity counterparty"
           hint="only when the other side is the holding or a sibling/child entity"
-          value={intercompanyTenantId}
-          onChange={setIntercompanyTenantId}
-          placeholder="Not inter-company"
-          options={groupEntities.rows.map((e) => ({ value: e.tenantId, label: e.name }))}
-        />
+        >
+          {(c) => (
+            <select className="input" {...register('intercompanyTenantId')} {...c}>
+              <option value="">Not inter-company</option>
+              {groupEntities.rows.map((e) => (
+                <option key={e.tenantId} value={e.tenantId}>
+                  {e.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
       )}
-      <TextArea label="Note" value={note} onChange={setNote} rows={2} />
+      <Field label="Note">{(c) => <textarea className="input" rows={2} {...register('note')} {...c} />}</Field>
     </CreateModal>
   );
 }
 
+const accountSchema = z.object({
+  name: z.string().min(1, 'Give the account a name'),
+  accountType: z.enum(['bank', 'cash', 'card', 'wallet', 'loan']),
+  displayReference: z.string(),
+  openingBalance: moneyField({ optional: true }),
+  openingDate: z.string(),
+});
+
 export function NewLedgerAccount({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [name, setName] = useState('');
-  const [accountType, setAccountType] = useState('bank');
-  const [displayReference, setDisplayReference] = useState('');
-  const [openingBalance, setOpeningBalance] = useState('0');
-  const [openingDate, setOpeningDate] = useState(today());
+  const form = useZodForm(accountSchema, {
+    name: '',
+    accountType: 'bank',
+    displayReference: '',
+    openingBalance: '0',
+    openingDate: today(),
+  });
+  const {
+    register,
+    formState: { errors },
+  } = form;
 
   return (
     <CreateModal
@@ -221,43 +278,51 @@ export function NewLedgerAccount({ open, onClose }: { open: boolean; onClose: ()
       submitLabel="Add it"
       onClose={onClose}
       invalidate={[['ledger-accounts'], ['cash']]}
-      onSubmit={() =>
+      form={form}
+      onSubmit={(v) =>
         api.post('/books/accounts', {
-          name,
-          accountType,
-          displayReference: displayReference || null,
-          openingBalance: Number(openingBalance || 0),
-          openingDate,
-          ledgerGroup: accountType === 'card' || accountType === 'loan' ? 'liability' : 'asset',
+          name: v.name,
+          accountType: v.accountType,
+          displayReference: v.displayReference || null,
+          openingBalance: v.openingBalance === undefined ? undefined : rupeesOnWire(v.openingBalance),
+          openingDate: v.openingDate,
+          ledgerGroup: v.accountType === 'card' || v.accountType === 'loan' ? 'liability' : 'asset',
         })
       }
     >
-      <TextInput label="Name" required autoFocus value={name} onChange={setName} placeholder="Current Account — Axis" />
+      <Field label="Name" required error={errors.name?.message}>
+        {(c) => (
+          <input
+            className="input"
+            autoFocus
+            required
+            placeholder="Current Account — Axis"
+            {...register('name')}
+            {...c}
+          />
+        )}
+      </Field>
       <Row>
-        <SelectInput
-          label="Kind"
-          required
-          value={accountType}
-          onChange={setAccountType}
-          options={[
-            { value: 'bank', label: 'Bank account' },
-            { value: 'cash', label: 'Cash box' },
-            { value: 'card', label: 'Credit card' },
-            { value: 'wallet', label: 'Wallet' },
-            { value: 'loan', label: 'Loan account' },
-          ]}
-        />
-        <TextInput
-          label="Last four digits"
-          hint="never the full number"
-          value={displayReference}
-          onChange={setDisplayReference}
-          placeholder="4821"
-        />
+        <Field label="Kind" required error={errors.accountType?.message}>
+          {(c) => (
+            <select className="input" required {...register('accountType')} {...c}>
+              <option value="bank">Bank account</option>
+              <option value="cash">Cash box</option>
+              <option value="card">Credit card</option>
+              <option value="wallet">Wallet</option>
+              <option value="loan">Loan account</option>
+            </select>
+          )}
+        </Field>
+        <Field label="Last four digits" hint="never the full number" error={errors.displayReference?.message}>
+          {(c) => <input className="input" placeholder="4821" {...register('displayReference')} {...c} />}
+        </Field>
       </Row>
       <Row>
-        <MoneyInput label="Opening balance" value={openingBalance} onChange={setOpeningBalance} />
-        <TextInput label="As at" type="date" value={openingDate} onChange={setOpeningDate} />
+        <MoneyField label="Opening balance" field={register('openingBalance')} error={errors.openingBalance?.message} />
+        <Field label="As at" error={errors.openingDate?.message}>
+          {(c) => <input className="input" type="date" {...register('openingDate')} {...c} />}
+        </Field>
       </Row>
     </CreateModal>
   );
@@ -332,16 +397,33 @@ export function NewCategory({ open, onClose }: { open: boolean; onClose: () => v
  * same shape" premise of this file was no longer true.
  */
 
+const vendorBillSchema = z.object({
+  vendorName: z.string().min(1, 'Name the supplier'),
+  billNumber: z.string(),
+  billDate: z.string().min(1, 'Pick the bill date'),
+  dueDate: z.string(),
+  subtotal: moneyField(),
+  taxAmount: moneyField({ optional: true }),
+  categoryId: z.string(),
+  division: z.string(),
+});
+
 export function NewVendorBill({ open, onClose }: { open: boolean; onClose: () => void }) {
   const categories = useCategories(open);
-  const [vendorName, setVendorName] = useState('');
-  const [billNumber, setBillNumber] = useState('');
-  const [billDate, setBillDate] = useState(today());
-  const [dueDate, setDueDate] = useState('');
-  const [subtotal, setSubtotal] = useState('');
-  const [taxAmount, setTaxAmount] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [division, setDivision] = useState('shared');
+  const form = useZodForm(vendorBillSchema, {
+    vendorName: '',
+    billNumber: '',
+    billDate: today(),
+    dueDate: '',
+    subtotal: '',
+    taxAmount: '',
+    categoryId: '',
+    division: 'shared',
+  });
+  const {
+    register,
+    formState: { errors },
+  } = form;
 
   return (
     <CreateModal
@@ -350,54 +432,88 @@ export function NewVendorBill({ open, onClose }: { open: boolean; onClose: () =>
       submitLabel="Record it"
       onClose={onClose}
       invalidate={[['vendor-bills'], ['payables']]}
-      onSubmit={() =>
+      form={form}
+      onSubmit={(v) =>
         api.post('/books/vendor-bills', {
-          vendorName,
-          billNumber: billNumber || null,
-          billDate,
-          dueDate: dueDate || null,
-          subtotal: Number(subtotal),
-          taxAmount: Number(taxAmount || 0),
-          categoryId: categoryId || null,
-          division,
+          vendorName: v.vendorName,
+          billNumber: v.billNumber || null,
+          billDate: v.billDate,
+          dueDate: v.dueDate || null,
+          subtotal: rupeesOnWire(v.subtotal),
+          taxAmount: v.taxAmount === undefined ? undefined : rupeesOnWire(v.taxAmount),
+          categoryId: v.categoryId || null,
+          division: v.division,
         })
       }
     >
       <Row>
-        <TextInput label="Supplier" required autoFocus value={vendorName} onChange={setVendorName} />
-        <TextInput label="Their bill number" value={billNumber} onChange={setBillNumber} />
+        <Field label="Supplier" required error={errors.vendorName?.message}>
+          {(c) => <input className="input" autoFocus required {...register('vendorName')} {...c} />}
+        </Field>
+        <Field label="Their bill number">{(c) => <input className="input" {...register('billNumber')} {...c} />}</Field>
       </Row>
       <Row>
-        <TextInput label="Bill date" type="date" required value={billDate} onChange={setBillDate} />
-        <TextInput label="Due by" type="date" value={dueDate} onChange={setDueDate} />
+        <Field label="Bill date" required error={errors.billDate?.message}>
+          {(c) => <input className="input" type="date" required {...register('billDate')} {...c} />}
+        </Field>
+        <Field label="Due by">{(c) => <input className="input" type="date" {...register('dueDate')} {...c} />}</Field>
       </Row>
       <Row>
-        <MoneyInput label="Amount before tax" required value={subtotal} onChange={setSubtotal} />
-        <MoneyInput label="Tax" value={taxAmount} onChange={setTaxAmount} />
+        <MoneyField label="Amount before tax" required field={register('subtotal')} error={errors.subtotal?.message} />
+        <MoneyField label="Tax" field={register('taxAmount')} error={errors.taxAmount?.message} />
       </Row>
       <Row>
-        <SelectInput
-          label="What for"
-          value={categoryId}
-          onChange={setCategoryId}
-          placeholder="Uncategorised"
-          options={categories.rows.map((c) => ({ value: c.id, label: c.name }))}
-        />
-        <SelectInput label="Division" value={division} onChange={setDivision} options={DIVISIONS} />
+        <Field label="What for">
+          {(c) => (
+            <select className="input" {...register('categoryId')} {...c}>
+              <option value="">Uncategorised</option>
+              {categories.rows.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+        <Field label="Division">
+          {(c) => (
+            <select className="input" {...register('division')} {...c}>
+              {DIVISIONS.map((d) => (
+                <option key={d.value} value={d.value}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
       </Row>
     </CreateModal>
   );
 }
 
+const paymentSchema = z.object({
+  amount: moneyField({ positive: true }),
+  receivedAt: z.string().min(1, 'Pick the day it arrived'),
+  method: z.string(),
+  payerOrganizationId: z.string(),
+  gatewayReference: z.string().min(1, 'Enter the UTR or cheque number'),
+  note: z.string(),
+});
+
 export function NewPayment({ open, onClose }: { open: boolean; onClose: () => void }) {
   const organizations = useList<Named>('organizations', '/crm/organizations', open);
-
-  const [amount, setAmount] = useState('');
-  const [receivedAt, setReceivedAt] = useState(today());
-  const [method, setMethod] = useState('bank_transfer');
-  const [payerOrganizationId, setPayer] = useState('');
-  const [gatewayReference, setReference] = useState('');
-  const [note, setNote] = useState('');
+  const form = useZodForm(paymentSchema, {
+    amount: '',
+    receivedAt: today(),
+    method: 'bank_transfer',
+    payerOrganizationId: '',
+    gatewayReference: '',
+    note: '',
+  });
+  const {
+    register,
+    formState: { errors },
+  } = form;
 
   return (
     <CreateModal
@@ -406,55 +522,63 @@ export function NewPayment({ open, onClose }: { open: boolean; onClose: () => vo
       submitLabel="Record it"
       onClose={onClose}
       invalidate={[['payments'], ['receivables'], ['invoices']]}
-      onSubmit={() =>
+      form={form}
+      onSubmit={(v) =>
         api.post('/finance/payments', {
-          amount: Number(amount),
-          receivedAt,
-          method,
-          payerOrganizationId: payerOrganizationId || null,
-          gatewayReference: gatewayReference || null,
-          note: note || null,
+          amount: rupeesOnWire(v.amount),
+          receivedAt: v.receivedAt,
+          method: v.method,
+          payerOrganizationId: v.payerOrganizationId || null,
+          gatewayReference: v.gatewayReference,
+          note: v.note || null,
         })
       }
     >
       <Row>
-        <MoneyInput label="Amount" required value={amount} onChange={setAmount} />
-        <TextInput label="Received on" type="date" required value={receivedAt} onChange={setReceivedAt} />
+        <MoneyField label="Amount" required field={register('amount')} error={errors.amount?.message} />
+        <Field label="Received on" required error={errors.receivedAt?.message}>
+          {(c) => <input className="input" type="date" required {...register('receivedAt')} {...c} />}
+        </Field>
       </Row>
       <Row>
-        <SelectInput
-          label="From"
-          value={payerOrganizationId}
-          onChange={setPayer}
-          placeholder="Not linked to a customer"
-          options={organizations.rows.map((o) => ({ value: o.id, label: o.name }))}
-        />
-        <SelectInput
-          label="How"
-          value={method}
-          onChange={setMethod}
-          options={[
-            { value: 'bank_transfer', label: 'Bank transfer' },
-            { value: 'upi', label: 'UPI' },
-            { value: 'cheque', label: 'Cheque' },
-            { value: 'cash', label: 'Cash' },
-            { value: 'card', label: 'Card' },
-          ]}
-        />
+        <Field label="From">
+          {(c) => (
+            <select className="input" {...register('payerOrganizationId')} {...c}>
+              <option value="">Not linked to a customer</option>
+              {organizations.rows.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+        <Field label="How">
+          {(c) => (
+            <select className="input" {...register('method')} {...c}>
+              <option value="bank_transfer">Bank transfer</option>
+              <option value="upi">UPI</option>
+              <option value="cheque">Cheque</option>
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+            </select>
+          )}
+        </Field>
       </Row>
-      <TextInput
-        label="Reference"
-        value={gatewayReference}
-        onChange={setReference}
-        placeholder="UTR or cheque number"
-      />
-      <TextArea
-        label="Note"
-        value={note}
-        onChange={setNote}
-        rows={2}
-        hint="which invoice it settles is matched separately"
-      />
+      <Field label="Reference" required error={errors.gatewayReference?.message}>
+        {(c) => (
+          <input
+            className="input"
+            required
+            placeholder="UTR or cheque number"
+            {...register('gatewayReference')}
+            {...c}
+          />
+        )}
+      </Field>
+      <Field label="Note" hint="which invoice it settles is matched separately">
+        {(c) => <textarea className="input" rows={2} {...register('note')} {...c} />}
+      </Field>
     </CreateModal>
   );
 }
@@ -1446,14 +1570,30 @@ export function NewInteraction({ open, onClose }: { open: boolean; onClose: () =
 // Assets, loans and the budget
 // ---------------------------------------------------------------------------
 
+const assetSchema = z.object({
+  name: z.string().min(1, 'Name the thing you bought'),
+  purchaseDate: z.string().min(1, 'Pick the day you bought it'),
+  cost: moneyField({ positive: true }),
+  usefulLifeMonths: z.coerce.number().int('Enter whole months').positive('Enter how many months it lasts'),
+  salvageValue: moneyField({ optional: true }),
+  method: z.enum(['straight_line', 'wdv']),
+  division: z.string(),
+});
+
 export function NewAsset({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [name, setName] = useState('');
-  const [purchaseDate, setPurchaseDate] = useState(today());
-  const [cost, setCost] = useState('');
-  const [usefulLifeMonths, setLife] = useState('60');
-  const [salvageValue, setSalvage] = useState('0');
-  const [method, setMethod] = useState('straight_line');
-  const [division, setDivision] = useState('shared');
+  const form = useZodForm(assetSchema, {
+    name: '',
+    purchaseDate: today(),
+    cost: '',
+    usefulLifeMonths: 60,
+    salvageValue: '0',
+    method: 'straight_line',
+    division: 'shared',
+  });
+  const {
+    register,
+    formState: { errors },
+  } = form;
 
   return (
     <CreateModal
@@ -1462,45 +1602,56 @@ export function NewAsset({ open, onClose }: { open: boolean; onClose: () => void
       submitLabel="Record it"
       onClose={onClose}
       invalidate={[['assets']]}
-      onSubmit={() =>
+      form={form}
+      onSubmit={(v) =>
         api.post('/books/assets', {
-          name,
-          purchaseDate,
-          cost: Number(cost),
-          salvageValue: Number(salvageValue || 0),
-          usefulLifeMonths: Number(usefulLifeMonths),
-          method,
-          division,
+          name: v.name,
+          purchaseDate: v.purchaseDate,
+          cost: rupeesOnWire(v.cost),
+          salvageValue: v.salvageValue === undefined ? undefined : rupeesOnWire(v.salvageValue),
+          usefulLifeMonths: v.usefulLifeMonths,
+          method: v.method,
+          division: v.division,
         })
       }
     >
-      <TextInput label="What it is" required autoFocus value={name} onChange={setName} placeholder="Air conditioner" />
+      <Field label="What it is" required error={errors.name?.message}>
+        {(c) => (
+          <input className="input" autoFocus required placeholder="Air conditioner" {...register('name')} {...c} />
+        )}
+      </Field>
       <Row>
-        <MoneyInput label="What it cost" required value={cost} onChange={setCost} />
-        <TextInput label="Bought on" type="date" required value={purchaseDate} onChange={setPurchaseDate} />
+        <MoneyField label="What it cost" required field={register('cost')} error={errors.cost?.message} />
+        <Field label="Bought on" required error={errors.purchaseDate?.message}>
+          {(c) => <input className="input" type="date" required {...register('purchaseDate')} {...c} />}
+        </Field>
       </Row>
       <Row>
-        <TextInput
-          label="Useful life (months)"
-          type="number"
-          required
-          value={usefulLifeMonths}
-          onChange={setLife}
-          hint="60 is five years"
-        />
-        <MoneyInput label="Worth at the end" value={salvageValue} onChange={setSalvage} />
+        <Field label="Useful life (months)" hint="60 is five years" required error={errors.usefulLifeMonths?.message}>
+          {(c) => <input className="input" type="number" required {...register('usefulLifeMonths')} {...c} />}
+        </Field>
+        <MoneyField label="Worth at the end" field={register('salvageValue')} error={errors.salvageValue?.message} />
       </Row>
       <Row>
-        <SelectInput
-          label="How it depreciates"
-          value={method}
-          onChange={setMethod}
-          options={[
-            { value: 'straight_line', label: 'Straight line — the same each month' },
-            { value: 'wdv', label: 'Written down value — more at the start' },
-          ]}
-        />
-        <SelectInput label="Division" value={division} onChange={setDivision} options={DIVISIONS} />
+        <Field label="How it depreciates">
+          {(c) => (
+            <select className="input" {...register('method')} {...c}>
+              <option value="straight_line">Straight line — the same each month</option>
+              <option value="wdv">Written down value — more at the start</option>
+            </select>
+          )}
+        </Field>
+        <Field label="Division">
+          {(c) => (
+            <select className="input" {...register('division')} {...c}>
+              {DIVISIONS.map((d) => (
+                <option key={d.value} value={d.value}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
       </Row>
     </CreateModal>
   );
@@ -1554,12 +1705,25 @@ export function NewLoan({ open, onClose }: { open: boolean; onClose: () => void 
   );
 }
 
+const budgetLineSchema = z.object({
+  categoryId: z.string().min(1, 'Choose the category this is for'),
+  amount: moneyField(),
+  division: z.string(),
+  note: z.string(),
+});
+
 export function NewBudgetLine({ open, onClose, period }: { open: boolean; onClose: () => void; period: string }) {
   const categories = useCategories(open);
-  const [categoryId, setCategoryId] = useState('');
-  const [amount, setAmount] = useState('');
-  const [division, setDivision] = useState('shared');
-  const [note, setNote] = useState('');
+  const form = useZodForm(budgetLineSchema, {
+    categoryId: '',
+    amount: '',
+    division: 'shared',
+    note: '',
+  });
+  const {
+    register,
+    formState: { errors },
+  } = form;
 
   return (
     <CreateModal
@@ -1568,29 +1732,46 @@ export function NewBudgetLine({ open, onClose, period }: { open: boolean; onClos
       submitLabel="Set it"
       onClose={onClose}
       invalidate={[['budget'], ['budget-variance']]}
-      onSubmit={() =>
+      form={form}
+      onSubmit={(v) =>
         api.post('/books/budget', {
           period,
-          categoryId,
-          amount: Number(amount),
-          division,
-          note: note || null,
+          categoryId: v.categoryId,
+          amount: rupeesOnWire(v.amount),
+          division: v.division,
+          note: v.note || null,
         })
       }
     >
-      <SelectInput
-        label="What for"
-        required
-        value={categoryId}
-        onChange={setCategoryId}
-        placeholder={categories.rows.length ? 'Choose a category' : 'No categories yet'}
-        options={categories.rows.map((c) => ({ value: c.id, label: c.name }))}
-      />
+      <Field label="What for" required error={errors.categoryId?.message}>
+        {(c) => (
+          <select className="input" required {...register('categoryId')} {...c}>
+            <option value="">{categories.rows.length ? 'Choose a category' : 'No categories yet'}</option>
+            {categories.rows.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </Field>
       <Row>
-        <MoneyInput label="Planned" required value={amount} onChange={setAmount} />
-        <SelectInput label="Division" value={division} onChange={setDivision} options={DIVISIONS} />
+        <MoneyField label="Planned" required field={register('amount')} error={errors.amount?.message} />
+        <Field label="Division">
+          {(c) => (
+            <select className="input" {...register('division')} {...c}>
+              {DIVISIONS.map((d) => (
+                <option key={d.value} value={d.value}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
       </Row>
-      <TextArea label="Why this number" value={note} onChange={setNote} rows={2} />
+      <Field label="Why this number">
+        {(c) => <textarea className="input" rows={2} {...register('note')} {...c} />}
+      </Field>
       <p className="text-2xs text-ink-500">Spend is summed when you look, so a late entry moves the variance.</p>
     </CreateModal>
   );

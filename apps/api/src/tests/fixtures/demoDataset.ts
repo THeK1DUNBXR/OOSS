@@ -2592,7 +2592,7 @@ async function seedDecisions(people: SeededPerson[]) {
         subjectId: contract.id,
         subjectLabel: `${contract.recordCode} — ${contract.title}`,
         authorityBasis: 'contract_approval',
-        requiredAuthorityValue: 5_400_000,
+        requiredAuthorityMinor: 540000000n,
         currency: 'INR',
         routedToPartyId: chairman.id,
         routedToRole: 'chairman',
