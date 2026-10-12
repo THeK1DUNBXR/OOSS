@@ -64,7 +64,7 @@
 
 **`apps/api/src/domains/companyProfile.ts`** (320 lines) — CompanyProfileInput:38 · companyProfile:90 · updateCompanyProfile:108 · documentPrefix:266 · documentNumbering:277 · supplyingParty:292 · assertRegistered:311
 
-**`apps/api/src/domains/compliance/books.ts`** (1275 lines) — listPeriods:83 · periodStatus:149 · periodRefusesEntries:170 · openAccountingDate:179 · requestClosePeriod:232 · closePeriod:267 · reopenPeriod:369 · sweepRetention:479 · retentionReport:549 · statementForFy:612 · classifyAssetClass:709 · depreciationReport:742 · trialBalance:858 · trialBalanceCsv:930 · generalLedgerCsv:938 · tallyExportXml:976 · BankLineInput:1025 · importBankStatement:1056 · matchBankLines:1143 · reconciliationReport:1222 · fingerprint:1272
+**`apps/api/src/domains/compliance/books.ts`** (1277 lines) — listPeriods:83 · periodStatus:151 · periodRefusesEntries:172 · openAccountingDate:181 · requestClosePeriod:234 · closePeriod:269 · reopenPeriod:371 · sweepRetention:481 · retentionReport:551 · statementForFy:614 · classifyAssetClass:711 · depreciationReport:744 · trialBalance:860 · trialBalanceCsv:932 · generalLedgerCsv:940 · tallyExportXml:978 · BankLineInput:1027 · importBankStatement:1058 · matchBankLines:1145 · reconciliationReport:1224 · fingerprint:1274
 
 **`apps/api/src/domains/compliance/calendar.ts`** (392 lines) — resolveOwnerPartyId:44 · GenerateResult:83 · generateObligations:96 · ObligationFilter:185 · listTypes:192 · listObligations:198 · obligationDetail:214 · MarkFiledInput:229 · markFiled:244 · waive:309 · summary:355
 
