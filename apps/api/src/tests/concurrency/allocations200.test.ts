@@ -45,11 +45,12 @@ import { DOCUMENT_SERIES, nextDocumentNumber } from '../../platform/documentNumb
 
 const EMAIL = 'latha@kaizen.co.in';
 
-const N = Number(process.env.L3_CONCURRENCY ?? 50);
-const RUNS = Number(process.env.L3_RUNS ?? 1);
-const BASE_SEED = Number(process.env.L3_SEED ?? 20261012);
+const N = parseInt(process.env.L3_CONCURRENCY ?? '50', 10);
+const RUNS = parseInt(process.env.L3_RUNS ?? '1', 10);
+const BASE_SEED = parseInt(process.env.L3_SEED ?? '20261012', 10);
 // Owner decision, CI-GATES-DRAFT section 5 question 8, 2026-10-12: the full run fails above a 2 s p95.
-const P95_CEILING_MS = process.env.L3_P95_CEILING_MS === undefined ? undefined : Number(process.env.L3_P95_CEILING_MS);
+const P95_CEILING_MS =
+  process.env.L3_P95_CEILING_MS === undefined ? undefined : parseFloat(process.env.L3_P95_CEILING_MS);
 
 if (!Number.isInteger(N) || N < 1) throw new Error(`L3_CONCURRENCY must be a positive integer, got ${N}`);
 if (!Number.isInteger(RUNS) || RUNS < 1) throw new Error(`L3_RUNS must be a positive integer, got ${RUNS}`);
@@ -152,7 +153,7 @@ async function oneRun(seed: number) {
 
     const receipts = await prisma.receipt.findMany({ where: { paymentId: payment.id } });
     const persistedSum = receipts.reduce((s, r) => s + parseMinor(r.allocatedAmount.toFixed(2)), 0n);
-    const seqOf = (code: string) => Number(code.split('/').pop());
+    const seqOf = (code: string) => parseInt(code.split('/').pop() ?? '', 10);
     const seqs = accepted.map((o) => seqOf(o.recordCode)).sort((a, b) => a - b);
 
     // Refusals are the insufficient-balance error. Anything else, including a
@@ -173,7 +174,7 @@ async function oneRun(seed: number) {
       serverErrors,
       refusedWithOtherCode,
       seqs,
-      consumed: Number(after.split('/').pop()) - Number(before.split('/').pop()) - 1,
+      consumed: parseInt(after.split('/').pop() ?? '', 10) - parseInt(before.split('/').pop() ?? '', 10) - 1,
       latencies: outcomes.map((o) => o.ms).sort((a, b) => a - b),
       wallMs,
       trialBalance: tb,
