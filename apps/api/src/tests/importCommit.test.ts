@@ -16,17 +16,21 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { EVENTS, parseMinor } from '@kaizen/shared';
-import { asUser, tenantId, unscopedPrisma } from './helpers.js';
+import { asUser, booksTenant, closeThrough, reopenLatestFirst, unscopedPrisma, type BooksTenant } from './helpers.js';
 import { stageImport, setImportOptions } from '../imports/service.js';
 import { commitImport } from '../imports/commit.js';
-import { requestClosePeriod, closePeriod } from '../domains/compliance/books.js';
+import { requestClosePeriod } from '../domains/compliance/books.js';
 import { assertTrialBalance, journalTrialBalance } from '../platform/balances.js';
 
-const FINANCE = 'finance@kaizen.co.in';
-const CHAIRMAN = 'chairman@kaizen.co.in';
+// Every month this file closes is closed in a books tenant of its own, so no other file's
+// writes are frozen by it. The months are in 2013, far from the demo dataset.
+let FIXTURE: BooksTenant;
+let FINANCE: string;
+let CHAIRMAN: string;
 
-// Periods in 2013 are far from the demo dataset and from the 2016-2017 periods
-// the books tests use. They outlive a run, so each is closed only if still open.
+// The rows below are dated in 2013-07, 2013-08 and 2013-09. Test A closes 2013-07 with 2013-08
+// open; test B closes 2013-08 and leaves 2013-09 closing, since the order rule (books.ts
+// requestClosePeriod) refuses a close while an earlier month is open.
 const CLOSED = '2013-07';
 const CLOSING = '2013-09';
 const ALL_TIME = new Date('9999-12-31T00:00:00.000Z');
@@ -44,19 +48,13 @@ let TENANT: string;
 let BANK_ACCOUNT_ID: string;
 
 beforeAll(async () => {
-  TENANT = await tenantId();
-  BANK_ACCOUNT_ID = (
-    await unscopedPrisma.ledgerAccount.findFirstOrThrow({
-      where: { tenantId: TENANT, accountType: 'bank', deletedAt: null },
-    })
-  ).id;
-
-  const statusOf = async (period: string) =>
-    (await unscopedPrisma.accountingPeriod.findFirst({ where: { tenantId: TENANT, period } }))?.status ?? 'open';
-
-  if ((await statusOf(CLOSED)) === 'open') await asUser(FINANCE, () => requestClosePeriod(CLOSED));
-  if ((await statusOf(CLOSED)) === 'closing') await asUser(CHAIRMAN, () => closePeriod(CLOSED));
-  if ((await statusOf(CLOSING)) === 'open') await asUser(FINANCE, () => requestClosePeriod(CLOSING));
+  FIXTURE = await booksTenant('import-commit-test');
+  TENANT = FIXTURE.tenantId;
+  BANK_ACCOUNT_ID = FIXTURE.bankAccountId;
+  FINANCE = FIXTURE.finance;
+  CHAIRMAN = FIXTURE.chairman;
+  // A run that stopped inside a window leaves its months closed; the windows below expect none.
+  await reopenLatestFirst(FIXTURE, 'Test fixture reset at the start of the run');
 });
 
 afterAll(async () => {
@@ -128,42 +126,65 @@ async function accountNetPaise(accountId: string): Promise<bigint> {
   }, 0n);
 }
 
+/** Runs `probe` with every unclosed month up to `period` closed in the fixture tenant, then reopens them. */
+async function inClosedWindow<T>(period: string, probe: () => Promise<T>): Promise<T> {
+  await closeThrough(FIXTURE, period);
+  try {
+    return await probe();
+  } finally {
+    await reopenLatestFirst(FIXTURE, 'Commit probe finished; reopening the months it closed');
+  }
+}
+
 describe('a row in a closed or closing period is a row error, and the rest of the batch commits', () => {
   it('a row dated in a closed period is refused, and the rows in open months commit', async () => {
-    const tag = uniqueTag('CLOSED');
-    const staged = await stageStatement(tag, [
-      { date: '20/08/2013', amount: '1500.00', direction: 'out' },
-      { date: '20/07/2013', amount: '900.25', direction: 'in' },
-      { date: '21/08/2013', amount: '75.10', direction: 'in' },
-    ]);
+    await inClosedWindow(CLOSED, async () => {
+      const tag = uniqueTag('CLOSED');
+      const staged = await stageStatement(tag, [
+        { date: '20/08/2013', amount: '1500.00', direction: 'out' },
+        { date: '20/07/2013', amount: '900.25', direction: 'in' },
+        { date: '21/08/2013', amount: '75.10', direction: 'in' },
+      ]);
 
-    const result = await asUser(CHAIRMAN, () => commitImport(staged.batchId));
+      const result = await asUser(CHAIRMAN, () => commitImport(staged.batchId));
 
-    expect(result.errors.map((e) => e.rowNumber)).toEqual([3]);
-    expect(result.errors[0].message).toContain(CLOSED);
-    expect(await countFor(tag)).toBe(2);
-    expect(
-      await unscopedPrisma.transaction.findFirst({ where: { tenantId: TENANT, note: { contains: `${tag} line 2` } } }),
-    ).toBeNull();
+      expect(result.errors.map((e) => e.rowNumber)).toEqual([3]);
+      expect(result.errors[0].message).toContain(CLOSED);
+      expect(await countFor(tag)).toBe(2);
+      expect(
+        await unscopedPrisma.transaction.findFirst({
+          where: { tenantId: TENANT, note: { contains: `${tag} line 2` } },
+        }),
+      ).toBeNull();
 
-    const rows = await rowsFor(staged.batchId);
-    expect(rows.map((r) => [r.rowNumber, r.status])).toEqual([
-      [2, 'committed'],
-      [3, 'error'],
-      [4, 'committed'],
-    ]);
+      const rows = await rowsFor(staged.batchId);
+      expect(rows.map((r) => [r.rowNumber, r.status])).toEqual([
+        [2, 'committed'],
+        [3, 'error'],
+        [4, 'committed'],
+      ]);
+    });
   });
 
   it('a period that is being closed refuses its rows too', async () => {
-    const tag = uniqueTag('CLOSING');
-    const staged = await stageStatement(tag, [{ date: '20/09/2013', amount: '100.00', direction: 'out' }]);
+    // A close is only requested once every earlier month is closed, so 2013-08 closes first and
+    // 2013-09 is requested after it. The window ends by closing 2013-09 and reopening the months.
+    await closeThrough(FIXTURE, '2013-08');
+    try {
+      await asUser(FINANCE, () => requestClosePeriod(CLOSING));
+      const tag = uniqueTag('CLOSING');
+      const staged = await stageStatement(tag, [{ date: '20/09/2013', amount: '100.00', direction: 'out' }]);
 
-    const result = await asUser(CHAIRMAN, () => commitImport(staged.batchId));
+      const result = await asUser(CHAIRMAN, () => commitImport(staged.batchId));
 
-    expect(result.errors).toHaveLength(1);
-    // The wording is the period lock's (platform/periodLock.ts), the same one every legacy write gets.
-    expect(result.errors[0].message).toContain('closing accounting period');
-    expect(await countFor(tag)).toBe(0);
+      expect(result.errors).toHaveLength(1);
+      // The wording is the period lock's (platform/periodLock.ts), the same one every legacy write gets.
+      expect(result.errors[0].message).toContain('closing accounting period');
+      expect(await countFor(tag)).toBe(0);
+    } finally {
+      await closeThrough(FIXTURE, CLOSING);
+      await reopenLatestFirst(FIXTURE, 'Commit probe finished; reopening the months it closed');
+    }
   });
 });
 

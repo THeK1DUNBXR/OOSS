@@ -6,30 +6,41 @@
  * original date as `valueDate`, and raises EX-FIN-007 for the accountant. A
  * payment a member of staff enters is still refused in a closed period.
  *
- * Real Postgres. Periods are closed here and reopened after, as in the other
- * period suites.
+ * Real Postgres. The file runs in a books tenant of its own (booksTenant), so
+ * the months it closes are not read by any other file. Its closes are windows:
+ * closeThrough closes the months a probe needs in ascending order, and
+ * reopenLatestFirst reopens them latest first when the window ends.
  */
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { monthKey } from '@kaizen/shared';
-import { asUser, expectReject, tenantId, unscopedPrisma } from './helpers.js';
+import {
+  asUser,
+  booksTenant,
+  closeThrough,
+  expectReject,
+  reopenLatestFirst,
+  unscopedPrisma,
+  type BooksTenant,
+} from './helpers.js';
 import { recordPayment } from '../domains/finance.js';
 import { runWithContext, systemContext } from '../platform/context.js';
-import { requestClosePeriod, closePeriod, reopenPeriod } from '../domains/compliance/books.js';
 
 const CLOSED = '2017-10';
-const FINANCE = 'finance@kaizen.co.in';
-const CHAIRMAN = 'chairman@kaizen.co.in';
 
+let FIXTURE: BooksTenant;
 let TENANT: string;
 
 beforeAll(async () => {
-  TENANT = await tenantId();
-  const row = await unscopedPrisma.accountingPeriod.findFirst({ where: { tenantId: TENANT, period: CLOSED } });
-  if (row?.status !== 'closed') {
-    await asUser(FINANCE, () => requestClosePeriod(CLOSED));
-    await asUser(CHAIRMAN, () => closePeriod(CLOSED));
-  }
+  FIXTURE = await booksTenant('gateway-payment-period');
+  TENANT = FIXTURE.tenantId;
+  // A run that stopped inside a close window leaves months closed. Reopen them before this run writes.
+  await reopenLatestFirst(FIXTURE, 'Test fixture reset at the start of the run');
+  await closeThrough(FIXTURE, CLOSED);
+});
+
+afterAll(async () => {
+  await reopenLatestFirst(FIXTURE, 'Gateway payment period tests finished; reopening the months they closed');
 });
 
 /** A gateway webhook: the system principal, no human behind it. */
@@ -64,8 +75,7 @@ describe('Money received — a gateway payment is never refused by a closed peri
 
   it('a gateway payment received while this month is closed is recorded in a later open month', async () => {
     const today = monthKey(new Date());
-    await asUser(FINANCE, () => requestClosePeriod(today));
-    await asUser(CHAIRMAN, () => closePeriod(today));
+    await closeThrough(FIXTURE, today);
     try {
       const payment = await asGateway(() =>
         recordPayment({ amount: 800, gatewayReference: unique('W2 gateway today') }),
@@ -74,7 +84,7 @@ describe('Money received — a gateway payment is never refused by a closed peri
       expect(payment.receivedAt.getTime()).toBeGreaterThan(new Date().getTime() - 60_000);
       expect(valueDateOf(payment)).not.toBeNull();
     } finally {
-      await asUser(CHAIRMAN, () => reopenPeriod(today, 'W2 probe finished; reopening the current month'));
+      await reopenLatestFirst(FIXTURE, 'W2 probe finished; reopening the months it closed');
     }
   });
 
@@ -92,10 +102,15 @@ describe('Money received — a gateway payment is never refused by a closed peri
 });
 
 describe('Money received — a payment a member of staff enters is still refused', () => {
+  beforeAll(async () => {
+    // The probe needs the closed month closed; the test above reopens every month its window closed.
+    await closeThrough(FIXTURE, CLOSED);
+  });
+
   it('a staff payment dated in the closed period is refused, and no payment row is written', async () => {
     const reference = unique('W2 staff closed');
     const err = await expectReject(() =>
-      asUser(FINANCE, () =>
+      asUser(FIXTURE.finance, () =>
         recordPayment({ amount: 500, gatewayReference: reference, receivedAt: new Date('2017-10-15T06:00:00Z') }),
       ),
     );

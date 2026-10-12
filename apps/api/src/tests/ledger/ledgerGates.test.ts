@@ -17,7 +17,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { unscopedPrisma } from '../../platform/db.js';
 import { post, reverse } from '../../platform/ledger.js';
 import { closePeriod } from '../../domains/compliance/books.js';
-import { asUser, expectReject, tenantId } from '../helpers.js';
+import { asUser, booksTenant, closeThrough, expectReject, reopenLatestFirst, type BooksTenant } from '../helpers.js';
 
 const APP_URL =
   process.env.TEST_APP_DATABASE_URL ??
@@ -26,7 +26,10 @@ const APP_URL =
     '//kaizen_app:kaizen_app@',
   );
 
-const CHAIRMAN = 'chairman@kaizen.co.in';
+// The gates run in a books tenant of their own: the close in L3 freezes months, and no other file's
+// rows may sit in them.
+let FIX: BooksTenant;
+let CHAIRMAN: string;
 const app = new PrismaClient({ datasourceUrl: APP_URL });
 
 let tid: string;
@@ -87,7 +90,9 @@ async function postSale(amount = 10000n, key?: string) {
 }
 
 beforeAll(async () => {
-  tid = await tenantId();
+  FIX = await booksTenant('ledger-gates-test');
+  tid = FIX.tenantId;
+  CHAIRMAN = FIX.chairman;
   const other = await unscopedPrisma.tenant.create({
     data: { name: 'Ledger gates other tenant', slug: `lgate-other-${randomUUID().slice(0, 8)}` },
   });
@@ -132,7 +137,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await app.$disconnect();
   // Posted entries are not deleted (CLAUDE.md rule 2). The fixture tenant
-  // here is the shared kaizen tenant and the other tenant is a throwaway.
+  // here is a books tenant of its own (booksTenant) and the other tenant is a throwaway.
   await unscopedPrisma.tenant.deleteMany({ where: { id: otherTid } });
 });
 
@@ -264,31 +269,40 @@ describe('L3: a period admits postings only while it is open or reopened', () =>
   });
 
   it('a close waits for a posting that holds the period lock, and a post after close refuses', async () => {
-    const p = await period('2030-07', 'closing');
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => (release = resolve));
-    const holding = app.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tid}, true)`;
-      await tx.$queryRaw`SELECT "id" FROM "cmp_accounting_periods" WHERE "id" = ${p.id} FOR SHARE`;
-      await gate;
-    });
-    await new Promise((r) => setTimeout(r, 150));
+    // 2030-07 closes only after 2030-06 is closed (books.ts requestClosePeriod). The window's end
+    // closes 2030-08, which the gate fixtures above left closing, so that every month this file
+    // closed or fixtured can be reopened latest first and postable again for the tests below.
+    await closeThrough(FIX, '2030-06');
+    try {
+      const p = await period('2030-07', 'closing');
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const holding = app.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tid}, true)`;
+        await tx.$queryRaw`SELECT "id" FROM "cmp_accounting_periods" WHERE "id" = ${p.id} FOR SHARE`;
+        await gate;
+      });
+      await new Promise((r) => setTimeout(r, 150));
 
-    let settled = false;
-    const closing = asUser('chairman@kaizen.co.in', () => closePeriod('2030-07')).then((row) => {
-      settled = true;
-      return row;
-    });
-    await new Promise((r) => setTimeout(r, 400));
-    expect(settled).toBe(false);
+      let settled = false;
+      const closing = asUser(CHAIRMAN, () => closePeriod('2030-07')).then((row) => {
+        settled = true;
+        return row;
+      });
+      await new Promise((r) => setTimeout(r, 400));
+      expect(settled).toBe(false);
 
-    release();
-    await holding;
-    const closed = await closing;
-    expect(closed.status).toBe('closed');
+      release();
+      await holding;
+      const closed = await closing;
+      expect(closed.status).toBe('closed');
 
-    const e = await expectReject(() => postSale_in('2030-07-15'));
-    expect(e.status).toBe(422);
+      const e = await expectReject(() => postSale_in('2030-07-15'));
+      expect(e.status).toBe(422);
+    } finally {
+      await closeThrough(FIX, '2030-08');
+      await reopenLatestFirst(FIX, 'Ledger gates close probe finished; reopening the months it closed');
+    }
   });
 });
 
