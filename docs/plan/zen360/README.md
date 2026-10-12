@@ -91,7 +91,7 @@ The proposal's Phases 0–4 collide by name with plan Phases 0–8 (its "Phase 1
 
 ## 5. Decisions needed (full register in `DECISIONS.md`)
 
-These block work. **D-01** (multi-entity), **D-03** (ledger cutover and money type) and **D-09** (authority matrix) block Z1/Z2 and must be taken first. **D-13** (communications and recording) and **D-14** (privacy, retention and erasure vs 8-year retention) need legal owners before any capture work. **D-15** (AI claim and autonomy) should be taken now, because the README makes a claim the code does not support.
+These block work. **D-01** (multi-entity), **D-03** (ledger cutover and money type) and **D-09** (authority matrix) block Z1/Z2 and must be taken first. **D-13** (communications and recording) and **D-14** (privacy, retention and erasure vs 8-year retention) need legal owners. Their legal checks are warning only (round 25) and do not gate any capture work. **D-15** (AI claim and autonomy) should be taken now, because the README makes a claim the code does not support.
 
 ## 6. Plan drift found during the review
 

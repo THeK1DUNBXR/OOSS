@@ -162,7 +162,7 @@ Stop rule for each sub-phase: its items are merged and its listed tests pass. Te
 - Overlap check.
 - Self-approval refused.
 - Backup approver.
-- BLOCKED-BY the CAP-HRM-32 legal check.
+- Legal check on CAP-HRM-32: warning only (round 25). It does not block.
 
 ### 1C. Time and projects (CON-09, DEL-07, DEL-01, DEL-02)
 

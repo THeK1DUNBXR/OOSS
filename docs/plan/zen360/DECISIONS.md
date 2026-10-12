@@ -1078,3 +1078,13 @@ These are recorded so they are not lost. None is a decision.
 - No CLAUDE.md, code, schema, CI or `.env.example` change. No `deploy/` change on this branch (see h).
 - `docs/plan/MAP.md` is not regenerated. The branch changes documents only.
 - Not ruled, and not decided here: the CAP-HRM-32 and D-14 legal checks in the README (g, above); the GSP wording in the capability and evidence files (f); the role-template wording (b).
+
+### Round 25 follow-up (recorded 2026-10-12): legal checks are warnings
+
+Owner ruling: all legal checks are warning only. They are bypassed as gates and never block a build, a merge or an outside user. This extends item g above, which covered the chat-retention and Resend checks, to every legal check. Where the plan listed a legal check as a gate or blocker, the wording now reads "warning only (round 25)": `ORDERED-PLAN.md:165` (CAP-HRM-32) and `zen360/README.md:94` (D-13 and D-14).
+
+CLAUDE.md engineering rules are unchanged by this ruling. Personal-data handling, tenant scope, audit, human approval before agents act, and "statutory uncertainty: stop and flag" still bind the code.
+
+Wording fixes made in this follow-up, with no change to the rulings they cite (see b and f above): the function-picks-a-template wording in `QUESTIONNAIRE-DRAFT.md` (lines 14, 29, 168) and `ROADMAP.md` (line 150), now one editable starter template with no job-role catalogue (C-009); and the GSP wording in `zen360/CAPABILITIES.md` (CAP-FIN-24) and `zen360/evidence/07`, `11` and `12`, now direct to the IRP (C-032).
+
+Not changed: the dated history sections of this file. The Phase 1 prerequisite note at line 139 ("legal review before Phase B") sits in the 2026-10-10 phase-definition section and is a record of that date. Read it as superseded by this ruling.

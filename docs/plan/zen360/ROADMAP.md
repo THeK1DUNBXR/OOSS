@@ -147,7 +147,7 @@ These are tenant setup data. They are entered as data at onboarding, not hardcod
 - **Head and Manager default duties** (round 12). Entered as data per tenant.
 - **Staff default duties** (round 15). **Resolved:** see and edit own records (profile, attendance, leave and expense requests); log own time and tasks; use chat and notifications. Company directory read is not a default.
 - **New-hire prompt** (round 18a). Creating a hire raises a task for the onboarding owner (HR) to run the stakeholder-mapping questionnaire. Until it is confirmed, the hire holds Staff default duties only.
-- **Function and vertical role templates** (round 18a). Access differs by vertical as well as level. For example, a telecalling Staff and a trainer Staff get different templates. The function list is open.
+- **Access by vertical, and one starter template** (round 18a; round 25 item b). Access differs by vertical as well as level. For example, a telecalling Staff and a trainer Staff get different grants. There is one editable starter template, unassigned, and no job-role catalogue. The function list is open.
 - **Questionnaire content and mapping rules** (round 13). The questions and the rules that map answers to levels and duties. Not yet designed.
 - **Statutory sign-off holder** (round 12). A level duty, named per tenant at onboarding.
 - **Per-tenant practice labels, careers model and client-file summary rules** (D-18). Also deferred (round 5).
