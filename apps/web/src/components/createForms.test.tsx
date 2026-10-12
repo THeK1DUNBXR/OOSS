@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { expectNoAxeViolations } from '../test/axe.js';
-import { NewTransaction } from './createForms.js';
+import { NewTransaction, NewVendorBill } from './createForms.js';
 
 /**
  * The Books transaction form, driven the way a person drives it: type, choose,
@@ -23,6 +23,7 @@ function stubBooksApi() {
     '/api/books/categories': [{ id: 'cat-1', name: 'Software subscriptions', kind: 'expense' }],
     '/api/books/group-entities': [],
     '/api/books/transactions': { id: 'txn-1' },
+    '/api/books/vendor-bills': { id: 'bill-1' },
   };
   const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async (input) => {
     const path = String(input);
@@ -123,5 +124,58 @@ describe('NewTransaction', () => {
     await screen.findByText(AMOUNT_ERROR);
 
     await expectNoAxeViolations(document.body);
+  });
+});
+
+function renderVendorBill() {
+  const onClose = vi.fn();
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <NewVendorBill open onClose={onClose} />
+    </QueryClientProvider>,
+  );
+  return { onClose };
+}
+
+/**
+ * An optional money field that was never typed is not a recorded zero. The
+ * payload must leave the key out, so the API applies its own default; a zero
+ * the person typed is still sent as zero.
+ */
+describe('NewVendorBill optional tax', () => {
+  async function fillBill(user: ReturnType<typeof userEvent.setup>, tax: string | null) {
+    await user.type(screen.getByRole('textbox', { name: /^Supplier/ }), 'Acme Traders');
+    await user.type(screen.getByRole('textbox', { name: /^Amount before tax/ }), '1000');
+    if (tax !== null) await user.type(screen.getByRole('textbox', { name: /^Tax/ }), tax);
+    await user.click(screen.getByRole('button', { name: 'Record it' }));
+  }
+
+  it('omits taxAmount from the payload when tax was left blank', async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubBooksApi();
+    const { onClose } = renderVendorBill();
+
+    await fillBill(user, null);
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const [post] = postsOf(fetchMock);
+    expect(post?.path).toBe('/api/books/vendor-bills');
+    expect(post?.body).toHaveProperty('subtotal', 1000);
+    expect(post?.body).not.toHaveProperty('taxAmount');
+  });
+
+  it('sends taxAmount as 0 when the person typed zero', async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubBooksApi();
+    const { onClose } = renderVendorBill();
+
+    await fillBill(user, '0');
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const [post] = postsOf(fetchMock);
+    expect(post?.body).toHaveProperty('taxAmount', 0);
   });
 });
