@@ -1,6 +1,6 @@
 /**
  * The API serves the built client itself when WEB_DIST_DIR is set, replacing
- * the Cloudflare Worker that used to do it (see deploy/Caddyfile).
+ * the Cloudflare Worker that used to do it.
  *
  * Two properties matter and they pull against each other. A client route such
  * as /people/employees must return index.html so the router can take it from

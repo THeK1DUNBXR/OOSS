@@ -19,7 +19,7 @@ const router = Router();
 
 // 30 submissions a minute per address, the limit the in-memory version held.
 // Keyed on req.ip, not on the first X-Forwarded-For value: under trust proxy
-// (server.ts) Express walks the chain from the rightmost entry Caddy appended,
+// (server.ts) Express walks the chain from the rightmost entry the reverse proxy appended,
 // so a caller cannot rotate its way past the limit by writing the header.
 const captureLimit = rateLimit({
   windowMs: 60_000,
