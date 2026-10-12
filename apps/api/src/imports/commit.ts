@@ -29,6 +29,13 @@ import { filedReturnFor } from '../domains/invoicing.js';
 // no module has registered. The student_profile registration is in that module, so
 // it must be loaded here rather than only wherever the routes happen to load it.
 import '../domains/students.js';
+// The revert writes six subject types through auditWrite, which throws on a subject
+// no loaded module registered (audit.ts:419). Their registrations sit in these three
+// modules, so they are loaded here, not left to whichever route or job loads them first.
+// FX-22 in auditRegistry.test.ts pins this.
+import '../domains/employment.js';
+import '../domains/leave.js';
+import '../domains/compliance/books.js';
 import { EVENTS, DIVISION_LABELS, DIVISIONS, parseMinor, type Division } from '@kaizen/shared';
 import { matchFailure, matchPerson } from './matchName.js';
 import { classifyLedger, divisionFor, isAccountName, JOURNAL_ACCOUNT_NAME, JOURNAL_ACCOUNT_TYPE } from './classify.js';
