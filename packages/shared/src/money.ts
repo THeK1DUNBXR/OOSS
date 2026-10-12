@@ -66,6 +66,73 @@ export function formatMinor(amount: bigint): string {
 }
 
 /**
+ * A Prisma Decimal, or anything else that prints a fixed number of places.
+ * Structural, so this file needs no Prisma import.
+ */
+export interface DecimalLike {
+  toFixed(digits: number): string;
+}
+
+/**
+ * A Decimal money column as paise. Read through its own two-place string, never
+ * through a JavaScript number: a number that reached here has already been
+ * rounded by whoever made it, and a rounded float is what paise exists to avoid.
+ */
+export function decimalToMinor(value: DecimalLike): bigint {
+  if (typeof value === 'number') {
+    throw new TypeError('decimalToMinor takes a Decimal, not a JavaScript number');
+  }
+  return parseMinor(value.toFixed(2));
+}
+
+/** What String() prints for a finite double: sign, digits, optional fraction, optional exponent. */
+const SHORTEST_DECIMAL = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]\d+))?$/;
+
+/**
+ * A JavaScript number as paise, rounded half away from zero to two places,
+ * without float arithmetic.
+ *
+ * It starts from String(n), which is the shortest decimal that reads back as the
+ * same double, so the digits are the ones a person typed. Multiplying by 100 in
+ * floating point is what made 1.005 fall to 1.00 on the plain copies: the double
+ * for 1.005 is a hair under the tie. Here the tie is read as a tie.
+ *
+ * Refuses NaN and the infinities, and anything that does not fit the 64-bit
+ * range a paise column can hold. String() switches to exponent form outside
+ * 1e-6 .. 1e21, so both forms are handled.
+ */
+export function toMinorHalfUp(n: number): bigint {
+  if (typeof n !== 'number' || !Number.isFinite(n)) {
+    throw new RangeError(`toMinorHalfUp takes a finite number, got ${String(n)}`);
+  }
+  const match = SHORTEST_DECIMAL.exec(String(n));
+  if (!match) throw new SyntaxError(`unexpected number form: ${String(n)}`);
+  const [, sign, whole, fraction = '', exponent = '0'] = match;
+  const digits = whole! + fraction;
+  // Digits before the decimal point, once the exponent is applied, and then the
+  // two places that turn rupees into paise.
+  const pointAtPaise = whole!.length + parseInt(exponent, 10) + 2;
+  let integerDigits: string;
+  let dropped: string;
+  if (pointAtPaise >= digits.length) {
+    integerDigits = digits + '0'.repeat(pointAtPaise - digits.length);
+    dropped = '';
+  } else if (pointAtPaise <= 0) {
+    integerDigits = '0';
+    dropped = '0'.repeat(-pointAtPaise) + digits;
+  } else {
+    integerDigits = digits.slice(0, pointAtPaise);
+    dropped = digits.slice(pointAtPaise);
+  }
+  let magnitude = BigInt(integerDigits);
+  // The first dropped digit decides the tie: 5 or more is at least half a paisa,
+  // and half away from zero rounds that up in magnitude.
+  if (dropped.length > 0 && dropped[0]! >= '5') magnitude += 1n;
+  if (magnitude > INT64_MAX) throw new RangeError(`amount out of the 64-bit range: ${String(n)}`);
+  return sign === '-' ? -magnitude : magnitude;
+}
+
+/**
  * Multiplies by num/den and rounds half away from zero. Written as an integer
  * remainder test rather than adding half the denominator first, because the
  * latter rounds -5/2 to -2 once the sign is folded in.

@@ -7,6 +7,8 @@
  * from the last one. Each is checked without touching a row.
  */
 
+import { round2 } from '../finance.js';
+
 export const HCM_PAYROLLOPS_MODULE = 'payrollops' as const;
 
 export const PAY_ITEM_KINDS = ['earning', 'deduction', 'reimbursement', 'employer_contribution'] as const;
@@ -20,11 +22,6 @@ export type ArrearState = (typeof ARREAR_STATES)[number];
 
 export const PAYROLL_QUERY_STATES = ['Open', 'Responded', 'Closed'] as const;
 export type PayrollQueryState = (typeof PAYROLL_QUERY_STATES)[number];
-
-/** Rounds to paise the same way the rest of the platform's money arithmetic does. */
-function round2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
-}
 
 // ---------------------------------------------------------------------------
 // Journal — a division's gross/net split, turned into a balanced double entry.
