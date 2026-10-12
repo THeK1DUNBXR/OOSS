@@ -54,16 +54,73 @@ export const POSTABLE_PERIOD_STATUSES: readonly string[] = ['open', 'reopened'];
 
 const ENTRY_INCLUDE = { lines: { orderBy: { lineNo: 'asc' } } } as const;
 
-async function allocateEntryNumber(tx: DbTx, tenantId: string, entryDate: Date): Promise<string> {
+/**
+ * The next journal entry number for one legal entity in one financial year.
+ *
+ * Numbers are gapless per entity per year (JournalEntry is unique on
+ * entityId + entryNumber, so a tenant-wide series left a gap in each entity's
+ * list). The sequence is keyed by entity with no schema change: the entity id
+ * rides in RecordSequence.entityType as `JRN:<entityId>`. That table has no scope
+ * column, and adding one would be a migration for this one caller.
+ *
+ * Numbers issued before this rule came from the tenant-wide 'JRN' series and
+ * are not contiguous per entity. They stay as they are; the gaps in them stay
+ * too. A new entity-year row starts after the highest number the entity already
+ * holds, so the first post under the new rule cannot collide with one of them.
+ */
+async function allocateEntryNumber(tx: DbTx, tenantId: string, entityId: string, entryDate: Date): Promise<string> {
   const fy = istFinancialYear(entryDate);
   const year = Number(fy.slice(2, 6));
-  const sequence = await tx.recordSequence.upsert({
-    where: { tenantId_entityType_year: { tenantId, entityType: 'JRN', year } },
-    create: { tenantId, entityType: 'JRN', year, nextSequence: 2 },
+  const key = { tenantId, entityType: `JRN:${entityId}`, year };
+
+  // The common case: the row exists, and one UPDATE takes the next number. The read
+  // only decides whether the create path below needs the highest-number floor.
+  const existing = await tx.recordSequence.findUnique({
+    where: { tenantId_entityType_year: key },
+    select: { nextSequence: true },
+  });
+  if (existing) {
+    const row = await tx.recordSequence.update({
+      where: { tenantId_entityType_year: key },
+      data: { nextSequence: { increment: 1 } },
+      select: { nextSequence: true },
+    });
+    return formatRecordCode('JRN', year, row.nextSequence - 1);
+  }
+
+  // Create-if-missing, as before: two first-of-year posts for one entity race on
+  // the unique key, and the second one's upsert takes the update branch on the
+  // row the first one wrote. The create value below is only used by the winner.
+  // The row stores the next number plus one, so creating it at max + 2 issues max + 1.
+  const floor = await highestEntryNumber(tx, tenantId, entityId, year);
+  const row = await tx.recordSequence.upsert({
+    where: { tenantId_entityType_year: key },
+    create: { ...key, nextSequence: floor + 2 },
     update: { nextSequence: { increment: 1 } },
     select: { nextSequence: true },
   });
-  return formatRecordCode('JRN', year, sequence.nextSequence - 1);
+  return formatRecordCode('JRN', year, row.nextSequence - 1);
+}
+
+/**
+ * The largest sequence number the entity already holds in the year, 0 when none.
+ * Read from the entries, one read per entity per year, and only on the first post
+ * of that year. A numeric tail that does not parse is skipped: it cannot equal a
+ * number this allocator issues, so it cannot collide.
+ */
+async function highestEntryNumber(tx: DbTx, tenantId: string, entityId: string, year: number): Promise<number> {
+  const prefix = `JRN-${year}-`;
+  const rows = await tx.journalEntry.findMany({
+    where: { tenantId, entityId, entryNumber: { startsWith: prefix } },
+    select: { entryNumber: true },
+  });
+  let highest = 0;
+  for (const row of rows) {
+    const tail = row.entryNumber.slice(prefix.length);
+    if (!/^\d+$/.test(tail)) continue;
+    highest = Math.max(highest, Number(tail));
+  }
+  return highest;
 }
 
 /**
@@ -265,7 +322,7 @@ async function writeEntry(tx: DbTx, input: PostInput, tenantId: string, partyId:
       tenantId,
       entityId: input.entityId,
       periodId: period.id,
-      entryNumber: await allocateEntryNumber(tx, tenantId, input.entryDate),
+      entryNumber: await allocateEntryNumber(tx, tenantId, input.entityId, input.entryDate),
       entryDate: input.entryDate,
       postedAt: new Date(),
       status: 'posted',
