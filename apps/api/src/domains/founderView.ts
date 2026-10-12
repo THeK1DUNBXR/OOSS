@@ -19,13 +19,7 @@
  */
 
 import { Prisma } from '@prisma/client';
-import type {
-  FounderRow,
-  FounderSourceKind,
-  FounderSourceStatus,
-  FounderViewResponse,
-  Resource,
-} from '@kaizen/shared';
+import type { FounderRow, FounderSourceKind, FounderSourceStatus, FounderViewResponse, Resource } from '@kaizen/shared';
 import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { can, visibilityWhere } from '../platform/permissions.js';
