@@ -57,7 +57,7 @@ async function signIn(page) {
   if (json.mfaRequired || !json.token) throw new Error('sign-in did not start a session (MFA or no token)');
   await page.goto(`${BASE}/`);
   // Same flag the e2e helpers set: the one-off orientation modal, dismissed as a user would.
-  await page.evaluate(() => window.localStorage.setItem('kaizen.seenIntro', '1'));
+  await page.evaluate("window.localStorage.setItem('kaizen.seenIntro', '1')");
   await page.goto(`${BASE}/`);
   await page.getByRole('link', { name: 'Getting Started' }).waitFor({ state: 'visible', timeout: 30_000 });
 }
