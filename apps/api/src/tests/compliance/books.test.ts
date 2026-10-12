@@ -2,8 +2,18 @@
  * Compliance — books and audit (docs/plan/compliance.md, D).
  */
 
-import { beforeAll, describe, expect, it } from 'vitest';
-import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from '../helpers.js';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  asUser,
+  booksTenant,
+  closeThrough,
+  expectReject,
+  prisma,
+  reopenLatestFirst,
+  tenantId,
+  unscopedPrisma,
+  type BooksTenant,
+} from '../helpers.js';
 import { recordTransaction, reverseTransaction, profitAndLoss } from '../../domains/books.js';
 import {
   requestClosePeriod,
@@ -22,7 +32,7 @@ import {
   reconciliationReport,
 } from '../../domains/compliance/books.js';
 import { extractTallyXml } from '../../imports/tallyXml.js';
-import { istEndOfDay, round2 } from '@kaizen/shared';
+import { istEndOfDay, monthKey, round2 } from '@kaizen/shared';
 
 /**
  * Writes to an audit record as an operator with database access would. The
@@ -44,9 +54,19 @@ async function tamperAuditRecordBypassingTrigger(id: string, data: Record<string
 }
 
 let TENANT: string;
+// The describes that close periods (CMP-AUD-003, IST boundaries) run in a books tenant of
+// their own, so a close here does not freeze months that the other describes write into.
+let FIXTURE: BooksTenant;
 
 beforeAll(async () => {
   TENANT = await tenantId();
+  FIXTURE = await booksTenant('compliance-books-test');
+  // A run that stopped inside a close window leaves months closed. Reopen them before this run writes.
+  await reopenLatestFirst(FIXTURE, 'Test fixture reset at the start of the run');
+});
+
+afterAll(async () => {
+  await reopenLatestFirst(FIXTURE, 'Compliance books period tests finished; reopening the months they closed');
 });
 
 async function bankAccount() {
@@ -254,31 +274,29 @@ describe('CMP-AUD-003 — a closed accounting period vetoes new or edited entrie
   const closedPeriod = '2019-06';
 
   it('the proposer cannot also approve the close (two-party)', async () => {
-    await asUser('finance@kaizen.co.in', () => requestClosePeriod(closedPeriod));
-    const err = await expectReject(() => asUser('finance@kaizen.co.in', () => closePeriod(closedPeriod)));
+    await asUser(FIXTURE.finance, () => requestClosePeriod(closedPeriod));
+    const err = await expectReject(() => asUser(FIXTURE.finance, () => closePeriod(closedPeriod)));
     expect(err.status).toBe(403);
 
     const row = await unscopedPrisma.accountingPeriod.findFirstOrThrow({
-      where: { tenantId: TENANT, period: closedPeriod },
+      where: { tenantId: FIXTURE.tenantId, period: closedPeriod },
     });
     expect(row.status).toBe('closing');
 
-    const closed = await asUser('chairman@kaizen.co.in', () => closePeriod(closedPeriod));
+    const closed = await asUser(FIXTURE.chairman, () => closePeriod(closedPeriod));
     expect(closed.status).toBe('closed');
     expect(closed.closedById).not.toBe(closed.requestedById);
   });
 
   it('a transaction dated inside the closed period is rejected', async () => {
-    const account = await bankAccount();
-    const category = await categoryNamed('General Expenses');
     const err = await expectReject(() =>
-      asUser('finance@kaizen.co.in', () =>
+      asUser(FIXTURE.finance, () =>
         recordTransaction({
           txnDate: new Date(Date.UTC(2019, 5, 15)),
           direction: 'out',
           amount: 100,
-          accountId: account.id,
-          categoryId: category.id,
+          accountId: FIXTURE.bankAccountId,
+          categoryId: FIXTURE.categoryId,
         }),
       ),
     );
@@ -286,39 +304,37 @@ describe('CMP-AUD-003 — a closed accounting period vetoes new or edited entrie
   });
 
   it('reversing an entry from before the period existed still posts, dated today rather than backdated', async () => {
-    const account = await bankAccount();
-    const category = await categoryNamed('General Expenses');
     // Recorded in an open period, then the period it is reversed in is today's — open.
-    const txn = await asUser('finance@kaizen.co.in', () =>
+    const txn = await asUser(FIXTURE.finance, () =>
       recordTransaction({
         txnDate: new Date(),
         direction: 'out',
         amount: 88,
-        accountId: account.id,
-        categoryId: category.id,
+        accountId: FIXTURE.bankAccountId,
+        categoryId: FIXTURE.categoryId,
       }),
     );
-    const reversal = await asUser('finance@kaizen.co.in', () => reverseTransaction(txn.id, 'CMP-AUD-003'));
+    const reversal = await asUser(FIXTURE.finance, () => reverseTransaction(txn.id, 'CMP-AUD-003'));
     const today = new Date().toISOString().slice(0, 10);
     expect(reversal.txnDate.toISOString().slice(0, 10)).toBe(today);
   });
 
   it('reopening needs a reason, and is itself audited', async () => {
-    await expect(asUser('chairman@kaizen.co.in', () => reopenPeriod(closedPeriod, ''))).rejects.toBeTruthy();
-    const reopened = await asUser('chairman@kaizen.co.in', () =>
+    await expect(asUser(FIXTURE.chairman, () => reopenPeriod(closedPeriod, ''))).rejects.toBeTruthy();
+    const reopened = await asUser(FIXTURE.chairman, () =>
       reopenPeriod(closedPeriod, 'Auditor found a misposted entry'),
     );
     expect(reopened.status).toBe('reopened');
 
     const record = await unscopedPrisma.auditRecord.findFirst({
-      where: { tenantId: TENANT, subjectType: 'accounting_period', subjectId: reopened.id, action: 'update' },
+      where: { tenantId: FIXTURE.tenantId, subjectType: 'accounting_period', subjectId: reopened.id, action: 'update' },
       orderBy: { timestamp: 'desc' },
     });
     expect(record).not.toBeNull();
 
-    // Put it back how the rest of the suite found it, closed.
-    await asUser('finance@kaizen.co.in', () => requestClosePeriod(closedPeriod));
-    await asUser('chairman@kaizen.co.in', () => closePeriod(closedPeriod));
+    // Closed again, as the window leaves it; afterAll reopens the window.
+    await asUser(FIXTURE.finance, () => requestClosePeriod(closedPeriod));
+    await asUser(FIXTURE.chairman, () => closePeriod(closedPeriod));
   });
 });
 
@@ -456,6 +472,10 @@ describe('Bank reconciliation', () => {
   it('matches an imported statement line to the transaction it corresponds to', async () => {
     const account = await bankAccount();
     const category = await categoryNamed('General Expenses');
+    // A reference of this run's own. A fixed one is shared with every earlier run's
+    // unreconciled entries on a database that outlives the run, and two entries that fit
+    // one line make the matcher refuse it (matchBankLines: ambiguous).
+    const reference = `CHQ-${Math.random().toString(36).slice(2, 10)}`;
     const txn = await asUser('finance@kaizen.co.in', () =>
       recordTransaction({
         txnDate: new Date(),
@@ -463,12 +483,12 @@ describe('Bank reconciliation', () => {
         amount: 12_345,
         accountId: account.id,
         categoryId: category.id,
-        reference: 'CHQ-9911',
+        reference,
       }),
     );
 
     await asUser('finance@kaizen.co.in', () =>
-      importBankStatement(account.id, [{ date: new Date(), amount: 12_345, direction: 'out', reference: 'CHQ-9911' }]),
+      importBankStatement(account.id, [{ date: new Date(), amount: 12_345, direction: 'out', reference }]),
     );
     const result = await asUser('finance@kaizen.co.in', () => matchBankLines(account.id));
     expect(result.matched).toBeGreaterThanOrEqual(1);
@@ -497,32 +517,33 @@ describe('Bank reconciliation', () => {
 describe("IST boundaries — a closed month does not take the next month's first hours", () => {
   // 2031-04-30T18:00Z is 23:30 IST on 30 April (April); 2031-04-30T19:00Z is 00:30 IST on 1 May (May).
   it('the April close snapshot includes 23:30 IST on 30 April and excludes 00:30 IST on 1 May', async () => {
-    const account = await bankAccount();
-    const category = await categoryNamed('General Expenses');
-    await asUser('finance@kaizen.co.in', () =>
+    await asUser(FIXTURE.finance, () =>
       recordTransaction({
         txnDate: new Date('2031-04-30T18:00:00Z'),
         direction: 'out',
         amount: 1000,
-        accountId: account.id,
-        categoryId: category.id,
+        accountId: FIXTURE.bankAccountId,
+        categoryId: FIXTURE.categoryId,
         note: 'CLOSE-BOUNDARY in April',
       }),
     );
-    const expected = await asUser('finance@kaizen.co.in', () => trialBalance(istEndOfDay(2031, 4, 30)));
+    const expected = await asUser(FIXTURE.finance, () => trialBalance(istEndOfDay(2031, 4, 30)));
 
-    await asUser('finance@kaizen.co.in', () =>
+    await asUser(FIXTURE.finance, () =>
       recordTransaction({
         txnDate: new Date('2031-04-30T19:00:00Z'),
         direction: 'out',
         amount: 5000,
-        accountId: account.id,
-        categoryId: category.id,
+        accountId: FIXTURE.bankAccountId,
+        categoryId: FIXTURE.categoryId,
         note: 'CLOSE-BOUNDARY in May',
       }),
     );
-    await asUser('finance@kaizen.co.in', () => requestClosePeriod('2031-04'));
-    const closed = await asUser('chairman@kaizen.co.in', () => closePeriod('2031-04'));
+    // The reversal probe above wrote into today's month, which is open; the order rule closes
+    // every earlier month before April 2031.
+    await closeThrough(FIXTURE, monthKey(new Date()));
+    await asUser(FIXTURE.finance, () => requestClosePeriod('2031-04'));
+    const closed = await asUser(FIXTURE.chairman, () => closePeriod('2031-04'));
 
     // A purchase is double-entry, so the totals barely move; the bank and expense rows do.
     // Rows are compared by name, because the ledger's row order is not guaranteed.
@@ -547,24 +568,22 @@ describe("IST boundaries — a closed month does not take the next month's first
   // Financial year 2034-35 starts at 00:00 IST on 1 April 2034, which is 2034-03-31T18:30Z.
   // 2034-03-31T19:00Z is 00:30 IST on 1 April, so it belongs to FY2034-35, not FY2033-34.
   it('a 00:30 IST entry on 1 April is in the new financial year, not the one ending 31 March', async () => {
-    const account = await bankAccount();
-    const category = await categoryNamed('General Expenses');
-    const before = await asUser('chairman@kaizen.co.in', () => statementForFy(2033));
-    const beforeNext = await asUser('chairman@kaizen.co.in', () => statementForFy(2034));
+    const before = await asUser(FIXTURE.chairman, () => statementForFy(2033));
+    const beforeNext = await asUser(FIXTURE.chairman, () => statementForFy(2034));
 
-    await asUser('finance@kaizen.co.in', () =>
+    await asUser(FIXTURE.finance, () =>
       recordTransaction({
         txnDate: new Date('2034-03-31T19:00:00Z'),
         direction: 'out',
         amount: 700,
-        accountId: account.id,
-        categoryId: category.id,
+        accountId: FIXTURE.bankAccountId,
+        categoryId: FIXTURE.categoryId,
         note: 'FY-BOUNDARY 00:30 1 Apr',
       }),
     );
 
-    const after = await asUser('chairman@kaizen.co.in', () => statementForFy(2033));
-    const afterNext = await asUser('chairman@kaizen.co.in', () => statementForFy(2034));
+    const after = await asUser(FIXTURE.chairman, () => statementForFy(2033));
+    const afterNext = await asUser(FIXTURE.chairman, () => statementForFy(2034));
     expect(after.profitAndLoss.expense).toBe(before.profitAndLoss.expense);
     expect(afterNext.profitAndLoss.expense).toBe(round2(beforeNext.profitAndLoss.expense + 700));
   });

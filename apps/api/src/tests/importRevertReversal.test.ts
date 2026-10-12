@@ -18,14 +18,21 @@ import { Prisma } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import { EVENTS, istMonthKey, parseMinor } from '@kaizen/shared';
-import { asUser, tenantId, unscopedPrisma } from './helpers.js';
+import {
+  asUser,
+  booksTenant,
+  closeThrough,
+  reopenLatestFirst,
+  tenantId,
+  unscopedPrisma,
+  type BooksTenant,
+} from './helpers.js';
 import { stageImport, setImportOptions } from '../imports/service.js';
 import { commitImport, revertImport } from '../imports/commit.js';
 import { reverseTransaction } from '../domains/books.js';
 import { createBusinessLine } from '../domains/businessLines.js';
 import { currentCompensation, listCompensationForEmployment } from '../domains/employment.js';
 import { attendanceForPeriod } from '../domains/leave.js';
-import { requestClosePeriod, closePeriod, reopenPeriod } from '../domains/compliance/books.js';
 import { assertTrialBalance, journalTrialBalance } from '../platform/balances.js';
 
 const FINANCE = 'finance@kaizen.co.in';
@@ -41,6 +48,14 @@ const CSV_HEADER = 'Date,Narration,Withdrawal,Deposit,Reference';
 let TENANT: string;
 let BANK_ACCOUNT_ID: string;
 
+/** Where a statement is staged and committed, and who acts on it. Kaizen unless a test names its own books tenant. */
+interface Ground {
+  tenantId: string;
+  bankAccountId: string;
+  chairman: string;
+}
+let KAIZEN: Ground;
+
 beforeAll(async () => {
   TENANT = await tenantId();
   BANK_ACCOUNT_ID = (
@@ -48,6 +63,7 @@ beforeAll(async () => {
       where: { tenantId: TENANT, accountType: 'bank', deletedAt: null },
     })
   ).id;
+  KAIZEN = { tenantId: TENANT, bankAccountId: BANK_ACCOUNT_ID, chairman: CHAIRMAN };
 });
 
 afterAll(async () => {
@@ -69,26 +85,26 @@ interface Line {
   direction: 'in' | 'out';
 }
 
-async function stageStatement(tag: string, lines: Line[]) {
+async function stageStatement(tag: string, lines: Line[], g: Ground = KAIZEN) {
   const body = lines.map((l, i) => {
     const withdrawal = l.direction === 'out' ? l.amount : '';
     const deposit = l.direction === 'in' ? l.amount : '';
     return `${l.date},${tag} line ${i + 1},${withdrawal},${deposit},${tag}-${i + 1}`;
   });
-  return asUser(CHAIRMAN, async () => {
+  return asUser(g.chairman, async () => {
     const staged = await stageImport({
       fileName: `${tag}.csv`,
       buffer: Buffer.from([CSV_HEADER, ...body].join('\n'), 'utf8'),
       kindOverride: 'bank_statement',
     });
-    await setImportOptions(staged.batchId, { accountId: BANK_ACCOUNT_ID });
+    await setImportOptions(staged.batchId, { accountId: g.bankAccountId });
     return staged;
   });
 }
 
-const rowsFor = (batchId: string) =>
+const rowsFor = (batchId: string, tid: string = TENANT) =>
   unscopedPrisma.importRow.findMany({
-    where: { tenantId: TENANT, batchId },
+    where: { tenantId: tid, batchId },
     orderBy: { rowNumber: 'asc' },
     select: { rowNumber: true, status: true, entityId: true, entityType: true, message: true },
   });
@@ -116,25 +132,14 @@ async function auditFor(subjectType: string, subjectId: string, action?: string)
 }
 
 /** Commits a staged statement and returns the entity ids its committed rows wrote. */
-async function commitStatement(tag: string, lines: Line[]) {
-  const staged = await stageStatement(tag, lines);
-  const result = await asUser(CHAIRMAN, () => commitImport(staged.batchId));
+async function commitStatement(tag: string, lines: Line[], g: Ground = KAIZEN) {
+  const staged = await stageStatement(tag, lines, g);
+  const result = await asUser(g.chairman, () => commitImport(staged.batchId));
   expect(result.errors).toEqual([]);
-  const entityIds = (await rowsFor(staged.batchId))
+  const entityIds = (await rowsFor(staged.batchId, g.tenantId))
     .filter((r) => r.status === 'committed')
     .map((r) => r.entityId as string);
   return { batchId: staged.batchId, entityIds };
-}
-
-/** Closes a month for the probe and reopens it afterwards, as booksAuditAndPeriod does. */
-async function withClosedMonth<T>(period: string, probe: () => Promise<T>): Promise<T> {
-  await asUser(FINANCE, () => requestClosePeriod(period));
-  await asUser(CHAIRMAN, () => closePeriod(period));
-  try {
-    return await probe();
-  } finally {
-    await asUser(CHAIRMAN, () => reopenPeriod(period, 'W5 revert probe finished; reopening the month'));
-  }
 }
 
 describe('T71-1: a revert keeps each Transaction and adds a reversal that points back at it', () => {
@@ -209,23 +214,44 @@ describe('T71-2: each reversal and each reversed original leaves an audit row, a
   });
 });
 
+/**
+ * Closes every unclosed month of the books tenant up to `period` for the probe, then reopens
+ * them latest first. The order rule (books.ts requestClosePeriod) closes the earlier months
+ * before today's month, so the window is the one the rule allows, not a single month.
+ */
+async function inClosedWindow<T>(f: BooksTenant, period: string, probe: () => Promise<T>): Promise<T> {
+  await closeThrough(f, period);
+  try {
+    return await probe();
+  } finally {
+    await reopenLatestFirst(f, 'W5 revert probe finished; reopening the months it closed');
+  }
+}
+
 describe('T71-3: a revert while today is in a closed month is refused per row, and the rows are untouched', () => {
   it('reports each row with its reason, leaves every entry unreversed, and keeps the batch committed', async () => {
+    // A books tenant of its own: the close below must not freeze months another file writes into.
+    const f = await booksTenant('import-revert-reversal-test');
     const tag = uniqueTag('CLOSEDTODAY');
-    const { batchId, entityIds } = await commitStatement(tag, [
-      { date: '13/08/2013', amount: '40.00', direction: 'in' },
-      { date: '14/08/2013', amount: '41.00', direction: 'out' },
-    ]);
+    // Committed before the close: a row whose month is closed is refused by the commit.
+    const { batchId, entityIds } = await commitStatement(
+      tag,
+      [
+        { date: '13/08/2013', amount: '40.00', direction: 'in' },
+        { date: '14/08/2013', amount: '41.00', direction: 'out' },
+      ],
+      f,
+    );
     const period = istMonthKey(new Date());
 
-    const result = await withClosedMonth(period, () => asUser(CHAIRMAN, () => revertImport(batchId)));
+    const result = await inClosedWindow(f, period, () => asUser(f.chairman, () => revertImport(batchId)));
 
-    expect(result.failed.map((f) => f.message).every((m) => m.includes('closed accounting period'))).toBe(true);
+    expect(result.failed.map((r) => r.message).every((m) => m.includes('closed accounting period'))).toBe(true);
     expect(result.failed).toHaveLength(2);
     for (const id of entityIds) {
       expect((await txnById(id)).reversedById).toBeNull();
     }
-    expect((await rowsFor(batchId)).map((r) => r.status)).toEqual(['committed', 'committed']);
+    expect((await rowsFor(batchId, f.tenantId)).map((r) => r.status)).toEqual(['committed', 'committed']);
     expect((await batchFor(batchId)).status).toBe('committed');
   });
 });

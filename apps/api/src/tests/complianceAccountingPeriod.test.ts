@@ -14,27 +14,49 @@
  * month reopened afterwards.
  */
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { monthKey } from '@kaizen/shared';
-import { asUser, expectReject, tenantId, unscopedPrisma } from './helpers.js';
+import {
+  asUser,
+  booksTenant,
+  closeThrough,
+  expectReject,
+  reopenLatestFirst,
+  unscopedPrisma,
+  type BooksTenant,
+} from './helpers.js';
 import { applyReverseCharge, issueDebitNote } from '../domains/compliance/gst.js';
 import { computeVendorTds, waiveVendorTds } from '../domains/compliance/tax.js';
 import { raiseFinalInvoice, finalizeCourseFeeInvoice } from '../domains/receipts.js';
-import { requestClosePeriod, closePeriod, reopenPeriod } from '../domains/compliance/books.js';
+import { createInvoice } from '../domains/invoicing.js';
 
 const CLOSED = '2017-10';
-const FINANCE = 'finance@kaizen.co.in';
-const CHAIRMAN = 'chairman@kaizen.co.in';
 
+// A tenant of its own (booksTenant): the month this file closes is not read by any
+// other file, and a close here does not freeze months that other files write into.
+let FIXTURE: BooksTenant;
 let TENANT: string;
+let FINANCE: string;
+// An issued invoice of this tenant's own. The tenant has none of the demo dataset's.
+let INVOICE: { id: string };
 
 beforeAll(async () => {
-  TENANT = await tenantId();
-  const row = await unscopedPrisma.accountingPeriod.findFirst({ where: { tenantId: TENANT, period: CLOSED } });
-  if (row?.status !== 'closed') {
-    await asUser(FINANCE, () => requestClosePeriod(CLOSED));
-    await asUser(CHAIRMAN, () => closePeriod(CLOSED));
-  }
+  FIXTURE = await booksTenant('compliance-accounting-period-test');
+  TENANT = FIXTURE.tenantId;
+  FINANCE = FIXTURE.finance;
+  // A run that stopped inside a close window leaves months closed. Reopen them before this run writes.
+  await reopenLatestFirst(FIXTURE, 'Test fixture reset at the start of the run');
+  INVOICE = await asUser(FINANCE, () =>
+    createInvoice({
+      organizationId: FIXTURE.organizationId,
+      lines: [{ description: 'Compliance period fixture', unitPrice: 1000, gstRate: 18 }],
+    }),
+  );
+  await closeThrough(FIXTURE, CLOSED);
+});
+
+afterAll(async () => {
+  await reopenLatestFirst(FIXTURE, 'Compliance accounting period tests finished; reopening the months they closed');
 });
 
 function unique(label: string): string {
@@ -92,12 +114,9 @@ describe('Closed period — a bill-dated TDS or reverse-charge write is refused 
 
 describe('Closed period — a write stamped today is refused while the current month is closed', () => {
   it('a debit note, a final invoice and a course-fee final invoice are each refused; nothing is written', async () => {
-    const invoice = await unscopedPrisma.invoice.findFirstOrThrow({
-      where: { tenantId: TENANT, status: { not: 'void' } },
-    });
+    const invoice = INVOICE;
     const today = monthKey(new Date());
-    await asUser(FINANCE, () => requestClosePeriod(today));
-    await asUser(CHAIRMAN, () => closePeriod(today));
+    await closeThrough(FIXTURE, today);
     const debitsBefore = await unscopedPrisma.debitNote.count({ where: { tenantId: TENANT, invoiceId: invoice.id } });
     try {
       const debit = await expectReject(() =>
@@ -116,7 +135,7 @@ describe('Closed period — a write stamped today is refused while the current m
       );
       expectClosedRefusal(courseFinal);
     } finally {
-      await asUser(CHAIRMAN, () => reopenPeriod(today, 'W2 probe finished; reopening the current month'));
+      await reopenLatestFirst(FIXTURE, 'W2 probe finished; reopening the months it closed');
     }
   });
 });

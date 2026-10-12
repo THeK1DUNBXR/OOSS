@@ -5,35 +5,44 @@
  *
  * invoicing.ts's assertPeriodOpen guards a GST filing, not the books' close; the
  * books' close is the `accounting_document.before_write` hook. Real Postgres, as
- * in the other suites. Periods are closed here and reopened where a probe needs
- * the current month closed, because a credit note, a payment or its reversal is
- * stamped with the current instant.
+ * in the other suites. The file runs in a books tenant of its own (booksTenant),
+ * so the months it closes are not read by any other file. A probe that needs the
+ * current month closed closes it with closeThrough and reopens it after with
+ * reopenLatestFirst, because a credit note, a payment or its reversal is stamped
+ * with the current instant.
  */
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { monthKey } from '@kaizen/shared';
-import { asUser, expectReject, tenantId, unscopedPrisma } from './helpers.js';
+import {
+  asUser,
+  booksTenant,
+  closeThrough,
+  expectReject,
+  reopenLatestFirst,
+  unscopedPrisma,
+  type BooksTenant,
+} from './helpers.js';
 import { createInvoice, issueInvoiceDraft, voidInvoice, collectInvoicePayment } from '../domains/invoicing.js';
 import { allocatePayment, issueCreditNote, recordPayment, reversePayment } from '../domains/finance.js';
-import { requestClosePeriod, closePeriod, reopenPeriod } from '../domains/compliance/books.js';
 
 const CLOSED = '2017-10';
-const FINANCE = 'finance@kaizen.co.in';
-const CHAIRMAN = 'chairman@kaizen.co.in';
 
+let FIXTURE: BooksTenant;
 let TENANT: string;
 let ORG_ID: string;
 
 beforeAll(async () => {
-  TENANT = await tenantId();
-  const org = await unscopedPrisma.organization.findFirstOrThrow({ where: { tenantId: TENANT } });
-  ORG_ID = org.id;
-  // The database outlives a run, so a second run finds the period already closed.
-  const row = await unscopedPrisma.accountingPeriod.findFirst({ where: { tenantId: TENANT, period: CLOSED } });
-  if (row?.status !== 'closed') {
-    await asUser(FINANCE, () => requestClosePeriod(CLOSED));
-    await asUser(CHAIRMAN, () => closePeriod(CLOSED));
-  }
+  FIXTURE = await booksTenant('invoice-accounting-period');
+  TENANT = FIXTURE.tenantId;
+  ORG_ID = FIXTURE.organizationId;
+  // A run that stopped inside a close window leaves months closed. Reopen them before this run writes.
+  await reopenLatestFirst(FIXTURE, 'Test fixture reset at the start of the run');
+  await closeThrough(FIXTURE, CLOSED);
+});
+
+afterAll(async () => {
+  await reopenLatestFirst(FIXTURE, 'Invoice accounting period tests finished; reopening the months they closed');
 });
 
 function unique(label: string): string {
@@ -45,7 +54,7 @@ async function invoiceCount(): Promise<number> {
 }
 
 async function openDraft() {
-  return asUser(FINANCE, () =>
+  return asUser(FIXTURE.finance, () =>
     createInvoice({
       organizationId: ORG_ID,
       issue: false,
@@ -55,7 +64,7 @@ async function openDraft() {
 }
 
 async function openIssued() {
-  return asUser(FINANCE, () =>
+  return asUser(FIXTURE.finance, () =>
     createInvoice({
       organizationId: ORG_ID,
       lines: [{ description: unique('W2 issued'), unitPrice: 1000, gstRate: 18 }],
@@ -67,7 +76,7 @@ describe('Closed period — invoice writes dated inside it are refused', () => {
   it('an invoice issued in the closed period is refused, and no invoice is created', async () => {
     const before = await invoiceCount();
     const err = await expectReject(() =>
-      asUser(FINANCE, () =>
+      asUser(FIXTURE.finance, () =>
         createInvoice({
           organizationId: ORG_ID,
           issuedDate: new Date('2017-10-15T06:00:00Z'),
@@ -81,7 +90,7 @@ describe('Closed period — invoice writes dated inside it are refused', () => {
 
   it('00:30 IST on 1 October is refused; 00:30 IST on 1 November is not (IST boundary)', async () => {
     const refused = await expectReject(() =>
-      asUser(FINANCE, () =>
+      asUser(FIXTURE.finance, () =>
         createInvoice({
           organizationId: ORG_ID,
           issuedDate: new Date('2017-10-01T00:30:00+05:30'),
@@ -91,7 +100,7 @@ describe('Closed period — invoice writes dated inside it are refused', () => {
     );
     expect(refused.status).toBe(422);
 
-    const accepted = await asUser(FINANCE, () =>
+    const accepted = await asUser(FIXTURE.finance, () =>
       createInvoice({
         organizationId: ORG_ID,
         issuedDate: new Date('2017-11-01T00:30:00+05:30'),
@@ -104,7 +113,7 @@ describe('Closed period — invoice writes dated inside it are refused', () => {
   it('issuing a draft into the closed period is refused, and the draft stays a draft', async () => {
     const draft = await openDraft();
     const err = await expectReject(() =>
-      asUser(FINANCE, () => issueInvoiceDraft(draft.id, { issuedDate: new Date('2017-10-15T06:00:00Z') })),
+      asUser(FIXTURE.finance, () => issueInvoiceDraft(draft.id, { issuedDate: new Date('2017-10-15T06:00:00Z') })),
     );
     expect(err.status).toBe(422);
     const after = await unscopedPrisma.invoice.findUniqueOrThrow({ where: { id: draft.id } });
@@ -120,7 +129,7 @@ describe('Closed period — invoice writes dated inside it are refused', () => {
       where: { id: issued.id },
       data: { issuedDate: new Date('2017-10-15T06:00:00Z') },
     });
-    const err = await expectReject(() => asUser(FINANCE, () => voidInvoice(issued.id, 'W2 probe')));
+    const err = await expectReject(() => asUser(FIXTURE.finance, () => voidInvoice(issued.id, 'W2 probe')));
     expect(err.status).toBe(422);
     const after = await unscopedPrisma.invoice.findUniqueOrThrow({ where: { id: issued.id } });
     expect(after.status).not.toBe('void');
@@ -129,7 +138,7 @@ describe('Closed period — invoice writes dated inside it are refused', () => {
   it('a payment received in the closed period is refused, and no payment is recorded against the invoice', async () => {
     const issued = await openIssued();
     const err = await expectReject(() =>
-      asUser(FINANCE, () =>
+      asUser(FIXTURE.finance, () =>
         collectInvoicePayment(issued.id, {
           amount: 100,
           mode: 'bank_transfer',
@@ -144,7 +153,7 @@ describe('Closed period — invoice writes dated inside it are refused', () => {
   it('a payment recorded for a date in the closed period is refused, and no payment row is written', async () => {
     const reference = unique('W2 closed payment');
     const err = await expectReject(() =>
-      asUser(FINANCE, () =>
+      asUser(FIXTURE.finance, () =>
         recordPayment({ amount: 500, gatewayReference: reference, receivedAt: new Date('2017-10-15T06:00:00Z') }),
       ),
     );
@@ -159,38 +168,37 @@ describe('Closed period — writes dated today are refused while the current mon
     // month is closed for the probes and reopened after, so the next file in
     // the run finds it open again.
     const issued = await openIssued();
-    const payment = await asUser(FINANCE, () =>
+    const payment = await asUser(FIXTURE.finance, () =>
       recordPayment({ amount: 200, gatewayReference: unique('W2 pay before close') }),
     );
 
     const today = monthKey(new Date());
-    await asUser(FINANCE, () => requestClosePeriod(today));
-    await asUser(CHAIRMAN, () => closePeriod(today));
+    await closeThrough(FIXTURE, today);
     try {
       const credit = await expectReject(() =>
-        asUser(FINANCE, () => issueCreditNote(issued.id, 100, 'W2 probe', 'other')),
+        asUser(FIXTURE.finance, () => issueCreditNote(issued.id, 100, 'W2 probe', 'other')),
       );
       expect(credit.status).toBe(422);
       expect(await unscopedPrisma.creditNote.count({ where: { tenantId: TENANT, invoiceId: issued.id } })).toBe(0);
 
-      const reversal = await expectReject(() => asUser(FINANCE, () => reversePayment(payment.id, 'W2 probe')));
+      const reversal = await expectReject(() => asUser(FIXTURE.finance, () => reversePayment(payment.id, 'W2 probe')));
       expect(reversal.status).toBe(422);
       expect(await unscopedPrisma.payment.count({ where: { tenantId: TENANT, reversalOfPaymentId: payment.id } })).toBe(
         0,
       );
 
       const allocation = await expectReject(() =>
-        asUser(FINANCE, () => allocatePayment({ paymentId: payment.id, invoiceId: issued.id, amount: 50 })),
+        asUser(FIXTURE.finance, () => allocatePayment({ paymentId: payment.id, invoiceId: issued.id, amount: 50 })),
       );
       expect(allocation.status).toBe(422);
       expect(await unscopedPrisma.receipt.count({ where: { tenantId: TENANT, paymentId: payment.id } })).toBe(0);
 
       const recorded = await expectReject(() =>
-        asUser(FINANCE, () => recordPayment({ amount: 50, gatewayReference: unique('W2 pay today closed') })),
+        asUser(FIXTURE.finance, () => recordPayment({ amount: 50, gatewayReference: unique('W2 pay today closed') })),
       );
       expect(recorded.status).toBe(422);
     } finally {
-      await asUser(CHAIRMAN, () => reopenPeriod(today, 'W2 probe finished; reopening the current month'));
+      await reopenLatestFirst(FIXTURE, 'W2 probe finished; reopening the months it closed');
     }
   });
 });

@@ -14,17 +14,23 @@
  * Each test reads its own IST month so one test's period cannot leak into another.
  */
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { istMonthKey, monthRange } from '@kaizen/shared';
-import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from './helpers.js';
+import {
+  asUser,
+  booksTenant,
+  closeThrough,
+  expectReject,
+  prisma,
+  reopenLatestFirst,
+  unscopedPrisma,
+  type BooksTenant,
+} from './helpers.js';
 import { recordTransaction, writeTransactionMinor } from '../domains/books.js';
 import { closePeriod, openAccountingDate, requestClosePeriod, trialBalance } from '../domains/compliance/books.js';
 import { assertTrialBalance, journalTrialBalance } from '../platform/balances.js';
 import { stageImport, setImportOptions } from '../imports/service.js';
 import { commitImport } from '../imports/commit.js';
-
-const FINANCE = 'finance@kaizen.co.in';
-const CHAIRMAN = 'chairman@kaizen.co.in';
 
 const JAN = '2029-01';
 const FEB = '2029-02';
@@ -33,22 +39,50 @@ const MAR = '2029-03';
 const ALL_TIME = new Date('9999-12-31T00:00:00.000Z');
 const TB_ASOF = new Date('2029-12-31T12:00:00.000Z');
 
+let FIXTURE: BooksTenant;
 let TENANT: string;
+let FINANCE: string;
+let CHAIRMAN: string;
 let ACCOUNT_ID: string;
 let CATEGORY_ID: string;
 
 beforeAll(async () => {
-  TENANT = await tenantId();
-  ACCOUNT_ID = (
-    await unscopedPrisma.ledgerAccount.findFirstOrThrow({
-      where: { tenantId: TENANT, accountType: 'bank', deletedAt: null },
-    })
-  ).id;
-  CATEGORY_ID = (await unscopedPrisma.ledgerCategory.findFirstOrThrow({ where: { tenantId: TENANT } })).id;
+  FIXTURE = await booksTenant('close-race');
+  TENANT = FIXTURE.tenantId;
+  FINANCE = FIXTURE.finance;
+  CHAIRMAN = FIXTURE.chairman;
+  ACCOUNT_ID = FIXTURE.bankAccountId;
+  CATEGORY_ID = FIXTURE.categoryId;
+  // A run that stopped inside a close window leaves months closed. Reopen the closed ones before this run writes.
+  await reopenLatestFirst(FIXTURE, 'Test fixture reset at the start of the run');
+});
+
+afterAll(async () => {
+  await reopenLatestFirst(FIXTURE, 'Close race tests finished; reopening the months they closed');
 });
 
 function unique(label: string): string {
   return `${label} ${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Closes every month of the tenant before `month` that is not closed yet, ascending. A close
+ * is refused while an earlier month is open or closing, so a race test whose month is later
+ * than an earlier test's walks the earlier months first. These are plain requests and
+ * approvals, not part of any race.
+ */
+async function closeEarlierThan(month: string): Promise<void> {
+  const pending = await unscopedPrisma.accountingPeriod.findMany({
+    where: { tenantId: TENANT, period: { lt: month }, status: { not: 'closed' } },
+    select: { period: true, status: true },
+    orderBy: { period: 'asc' },
+  });
+  for (const row of pending) {
+    if (row.status === 'open' || row.status === 'reopened') {
+      await asUser(FINANCE, () => requestClosePeriod(row.period));
+    }
+    await asUser(CHAIRMAN, () => closePeriod(row.period));
+  }
 }
 
 /** Puts an IST month back to `open`, so each test starts from the same status. Direct write, test fixture only. */
@@ -68,6 +102,22 @@ function freshMonth(): string {
 }
 
 /** A cashbook receipt into the bank account, dated mid-month in IST. */
+/**
+ * A month later than every closed month of the tenant. A month with no row under a closed
+ * later month counts as closed (periodStatus), so a probe month that has no row must sit
+ * after the latest closed one for its legacy write to be accepted.
+ */
+async function freshMonthAfterLatestClosed(): Promise<string> {
+  const latest = await unscopedPrisma.accountingPeriod.findFirst({
+    where: { tenantId: TENANT, status: 'closed' },
+    orderBy: { period: 'desc' },
+    select: { period: true },
+  });
+  const [year, month] = (latest?.period ?? '2099-12').split('-').map(Number) as [number, number];
+  const index = year * 12 + (month - 1) + 1 + Math.floor(Math.random() * 24);
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`;
+}
+
 function receiptIn(month: string, reference: string, amount = 1000) {
   return {
     txnDate: new Date(`${month}-15T06:00:00.000Z`),
@@ -164,6 +214,7 @@ describe('T70-9: a legacy write in a closing period is refused', () => {
 
 describe('T70-10: a legacy write that reaches the close while it waits for the lock is refused', () => {
   it('the close holds the period lock, a cashbook write lands in the window and is refused, and the snapshot is the books as the close left them', async () => {
+    await closeEarlierThan(FEB);
     await openPeriodForTest(FEB);
     await asUser(FINANCE, () => requestClosePeriod(FEB));
     await assertJournalBalances();
@@ -236,6 +287,11 @@ describe('T70-10: a legacy write that reaches the close while it waits for the l
 });
 
 describe('money that has already arrived moves past a closing month', () => {
+  // The test below leaves MAR closing. It is closed here, so no later month's request is refused by it.
+  afterAll(async () => {
+    await closeThrough(FIXTURE, MAR);
+  });
+
   it('openAccountingDate skips a month that is closing, as it skips a closed one', async () => {
     await openPeriodForTest(MAR);
     await asUser(FINANCE, () => requestClosePeriod(MAR));
@@ -256,6 +312,7 @@ describe('T70-13: a legacy write holding the period lock makes the close wait, a
     // creation is audited, which queues on the audit chain lock write A holds. The wait
     // would then look like the period lock. With the row present, the only thing the
     // close can wait on is the period row.
+    await closeEarlierThan(month);
     await openPeriodForTest(month);
 
     // Write A: the legacy entry and its period lock in one transaction, held open until released.
@@ -323,7 +380,8 @@ describe('T70-13: a legacy write holding the period lock makes the close wait, a
 
 describe('T70-14: a legacy write into a month with no period row creates the row under the lock', () => {
   it('the row exists and is open after the write, and the entry is booked', async () => {
-    const month = freshMonth();
+    // After the latest closed month: a row-less month under a closed later month is closed, not open.
+    const month = await freshMonthAfterLatestClosed();
     const reference = unique('W5 no period row');
     expect(await unscopedPrisma.accountingPeriod.findFirst({ where: { tenantId: TENANT, period: month } })).toBeNull();
 
@@ -336,32 +394,39 @@ describe('T70-14: a legacy write into a month with no period row creates the row
   });
 });
 
-describe('an import chunk that spans two months, and a close of its second month', () => {
+describe('an import chunk that spans two months, and a close of its earlier month', () => {
   it('the chunk and the close both finish with no deadlock, and each month keeps its row', async () => {
-    // The chunk writes the earlier month first, then the later one. A close of the later
-    // month takes that month's row and then the audit lock. Taken in the other order, the
-    // chunk holds the audit lock and waits for the later row, and Postgres aborts one side.
+    // Why the earlier month is the one closed. The order rule (books.ts requestClosePeriod)
+    // refuses a close while an earlier month is open, so a close of the later month with the
+    // earlier one still open cannot happen. The cycle that can form is set up by the statement's
+    // row order instead: the chunk takes its rows by rowNumber (imports/commit.ts:242), so a
+    // statement that lists the later month first writes that month's row first. The chunk takes
+    // every month row it will write, in ascending month order, before its first write
+    // (imports/commit.ts:314, platform/periodLock.ts:198). So the close of the earlier month
+    // waits on a row the chunk holds, not on the audit lock behind it.
     const months = [freshMonth(), freshMonth()];
     while (months[1] === months[0]) months[1] = freshMonth();
-    const [first, second] = months.sort();
-    await openPeriodForTest(first);
-    await openPeriodForTest(second);
-    // The second month is requested for close before the chunk runs. The request is its own
+    const [earlier, later] = months.sort();
+    await closeEarlierThan(earlier);
+    await openPeriodForTest(earlier);
+    await openPeriodForTest(later);
+    // The earlier month is requested for close before the chunk runs. The request is its own
     // committed write, so it holds nothing afterwards: the close that waits is the approval
-    // (closePeriod), which takes the month row FOR UPDATE and then the audit lock.
-    await asUser(FINANCE, () => requestClosePeriod(second));
+    // (closePeriod), which takes the tenant's period advisory lock and then the month row FOR UPDATE.
+    await asUser(FINANCE, () => requestClosePeriod(earlier));
 
     const tag = `W5-CHUNK-${Math.random().toString(36).slice(2, 10)}`;
     const staged = await stageBankStatement(tag, [
-      { month: first, amount: '250.00', direction: 'out' },
-      { month: second, amount: '75.00', direction: 'in' },
+      { month: later, amount: '75.00', direction: 'in' },
+      { month: earlier, amount: '250.00', direction: 'out' },
     ]);
 
     // Connection X holds the event chain lock, which emit takes after the audit lock
-    // (platform/eventBus.ts). The chunk writes its first row, takes the audit lock, then
-    // queues on the chain, so it holds the audit lock while it waits. The close can only
-    // queue on that same audit lock, behind the chunk. Nothing is left to race: the cycle
-    // forms as soon as X lets go.
+    // (platform/eventBus.ts). The chunk writes its first row (the later month), takes the audit
+    // lock, then queues on the chain, so it holds the audit lock while it waits. The close does
+    // not need the audit lock to reach its wait: it queues on the earlier month's row, which the
+    // chunk holds FOR SHARE from its up-front lock. Nothing is left to race: the chunk finishes
+    // and releases the row as soon as X lets go.
     let releaseHolder!: () => void;
     const holderGate = new Promise<void>((resolve) => (releaseHolder = resolve));
     let holderHeld!: () => void;
@@ -379,7 +444,7 @@ describe('an import chunk that spans two months, and a close of its second month
     const chunk = settle(asUser(CHAIRMAN, () => commitImport(staged.batchId)));
     await waitFor(async () => (await lockWaiters()) >= 1, 'the import chunk to queue on the audit lock');
 
-    const close = settle(asUser(CHAIRMAN, () => closePeriod(second)));
+    const close = settle(asUser(CHAIRMAN, () => closePeriod(earlier)));
     await waitFor(async () => (await lockWaiters()) >= 2, 'the close to queue behind the chunk');
 
     releaseHolder();
@@ -390,14 +455,14 @@ describe('an import chunk that spans two months, and a close of its second month
     expect(failures.filter(isDeadlock).map((e) => e.message)).toEqual([]);
     expect(failures.map((e) => e.message)).toEqual([]);
 
-    // The first month's row is written. The second month's row is refused, as a row in a
-    // closing month is, and the close then completes.
+    // The later month's row is written, since that month is open. The earlier month's row is
+    // refused, as a row in a closing month is, and the close then completes.
     expect(await countTransactions(`${tag}-1`)).toBe(1);
     expect(await countTransactions(`${tag}-2`)).toBe(0);
     const chunkResult = (chunkOut as PromiseFulfilledResult<{ errors: Array<{ message: string }> }>).value;
     expect(chunkResult.errors.map((e) => e.message).join(' ')).toContain('closing accounting period');
     const after = await unscopedPrisma.accountingPeriod.findFirstOrThrow({
-      where: { tenantId: TENANT, period: second },
+      where: { tenantId: TENANT, period: earlier },
     });
     expect(after.status).toBe('closed');
   }, 60_000);

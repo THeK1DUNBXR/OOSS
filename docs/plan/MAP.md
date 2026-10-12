@@ -64,7 +64,7 @@
 
 **`apps/api/src/domains/companyProfile.ts`** (320 lines) — CompanyProfileInput:38 · companyProfile:90 · updateCompanyProfile:108 · documentPrefix:266 · documentNumbering:277 · supplyingParty:292 · assertRegistered:311
 
-**`apps/api/src/domains/compliance/books.ts`** (1156 lines) — listPeriods:82 · periodStatus:124 · periodRefusesEntries:137 · openAccountingDate:146 · requestClosePeriod:156 · closePeriod:188 · reopenPeriod:275 · sweepRetention:360 · retentionReport:430 · statementForFy:493 · classifyAssetClass:590 · depreciationReport:623 · trialBalance:739 · trialBalanceCsv:811 · generalLedgerCsv:819 · tallyExportXml:857 · BankLineInput:906 · importBankStatement:937 · matchBankLines:1024 · reconciliationReport:1103 · fingerprint:1153
+**`apps/api/src/domains/compliance/books.ts`** (1277 lines) — listPeriods:83 · periodStatus:151 · periodRefusesEntries:172 · openAccountingDate:181 · requestClosePeriod:234 · closePeriod:269 · reopenPeriod:371 · sweepRetention:481 · retentionReport:551 · statementForFy:614 · classifyAssetClass:711 · depreciationReport:744 · trialBalance:860 · trialBalanceCsv:932 · generalLedgerCsv:940 · tallyExportXml:978 · BankLineInput:1027 · importBankStatement:1058 · matchBankLines:1145 · reconciliationReport:1224 · fingerprint:1274
 
 **`apps/api/src/domains/compliance/calendar.ts`** (392 lines) — resolveOwnerPartyId:44 · GenerateResult:83 · generateObligations:96 · ObligationFilter:185 · listTypes:192 · listObligations:198 · obligationDetail:214 · MarkFiledInput:229 · markFiled:244 · waive:309 · summary:355
 
@@ -196,6 +196,8 @@
 
 **`apps/api/src/domains/marketing/adapters/console.ts`** (74 lines) — ConsoleAdapter:29
 
+**`apps/api/src/domains/marketing/adapters/fake.ts`** (122 lines) — FakeEmailRecord:35 · FakeEmailAdapter:51 · fakeOutbox:114 · clearFakeOutbox:119
+
 **`apps/api/src/domains/marketing/adapters/httpEmail.ts`** (142 lines) — HttpEmailAdapter:56
 
 **`apps/api/src/domains/marketing/adapters/merge.ts`** (94 lines) — extractMergeFields:45 · renderMergeFields:80
@@ -204,7 +206,7 @@
 
 **`apps/api/src/domains/marketing/adapters/notConfigured.ts`** (50 lines) — NotConfiguredAdapter:20
 
-**`apps/api/src/domains/marketing/adapters/registry.ts`** (100 lines) — getAdapter:76 · adapterStatus:85 · resetAdapterCacheForTests:97
+**`apps/api/src/domains/marketing/adapters/registry.ts`** (102 lines) — getAdapter:78 · adapterStatus:87 · resetAdapterCacheForTests:99
 
 **`apps/api/src/domains/marketing/adapters/types.ts`** (100 lines) — ChannelKey:15 · ChannelKind:32 · OutboundMessage:34 · SendResult:51 · RenderedMessage:57 · InboundDeliveryEvent:64 · ChannelAdapter:77
 
@@ -314,7 +316,7 @@
 
 **`apps/api/src/platform/hooks.ts`** (60 lines) — HookName:29 · HookFn:39 · registerHook:44 · runHooks:53 · hookCount:57
 
-**`apps/api/src/platform/ledger.ts`** (466 lines) — SourceType:19 · JournalLineInput:21 · PostInput:36 · POSTABLE_PERIOD_STATUSES:53 · reversalLinkFor:103 · CostCentreRefusalReason:137 · CostCentreRefusedError:139 · post:351 · postInTx:394 · reverse:401 · balanceOf:446
+**`apps/api/src/platform/ledger.ts`** (523 lines) — SourceType:19 · JournalLineInput:21 · PostInput:36 · POSTABLE_PERIOD_STATUSES:53 · reversalLinkFor:160 · CostCentreRefusalReason:194 · CostCentreRefusedError:196 · post:408 · postInTx:451 · reverse:458 · balanceOf:503
 
 **`apps/api/src/platform/lifecycle.ts`** (226 lines) — TransitionInput:27 · TransitionResult:60 · transition:76 · transitionInTx:112 · applyDecided:131 · decide:149 · availableTransitions:212 · assertNotTerminal:217
 
@@ -330,7 +332,7 @@
 
 **`apps/api/src/platform/outbox.ts`** (340 lines) — OUTBOX_MAX_ATTEMPTS:33 · DrainOptions:46 · DrainResult:55 · drainOutbox:82 · backoffMs:105 · dispatchDueOutbox:227 · replayDeadLetter:259 · startOutboxDispatcher:318 · stopOutboxDispatcher:336
 
-**`apps/api/src/platform/periodLock.ts`** (138 lines) — lockLegacyPeriod:99 · lockLegacyPeriods:124
+**`apps/api/src/platform/periodLock.ts`** (215 lines) — lockPeriodRows:82 · lockLegacyPeriod:166 · lockLegacyPeriods:191
 
 **`apps/api/src/platform/permissions.ts`** (722 lines) — ResolvedGrant:38 · invalidateGrantCache:64 · resolveGrants:68 · ScopedRecord:115 · EvaluateInput:132 · evaluate:150 · ResolvedBinding:316 · resolveAuthorityCeiling:415 · resolveAuthorityCeilingPaise:426 · assertCan:436 · can:446 · holdsScopeResolver:460 · scopeFor:472 · matchNothing:487 · scopeWhere:495 · assertScopeAll:531 · visibilityWhere:558 · FilterResult:619 · FilterOptions:624 · FIELD_PURPOSES:645 · applyFieldVisibility:666 · canSeeMoney:717
 
