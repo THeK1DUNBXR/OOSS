@@ -23,6 +23,7 @@ import { Prisma, type DbTx } from '../platform/db.js';
 import { auditWrite } from '../platform/audit.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
+import { can, scopeFor } from '../platform/permissions.js';
 import { authoriseCaseHandover, handOverCaseInTx, OPEN_CASE_STATES } from './cases.js';
 import { authoriseCommitmentHandover, handOverCommitmentInTx, OPEN_COMMITMENT_STATES } from './commitments.js';
 import { authoriseCustodyHandover, transferCustodyInTx } from './hcm/assets.js';
@@ -37,6 +38,16 @@ export interface HandoverRowRef {
   kind: HandoverKind;
   id: string;
   recordCode: string | null;
+}
+
+/**
+ * What the 409 shows for a kind the caller may not view: how many rows, and nothing that
+ * identifies them. The gate counts every row either way; this only decides what is shown.
+ */
+export interface HandoverWithheld {
+  kind: HandoverKind;
+  count: number;
+  withheld: true;
 }
 
 export interface HandoverRowInput {
@@ -98,13 +109,66 @@ export async function authoriseHandover(handover: HandoverInput): Promise<void> 
 }
 
 /**
+ * The kinds of blocker the caller may see named. Each kind uses the check its own list
+ * route makes, so the 409 never shows a row the caller could not list:
+ *   commitment  listCommitments, commitments.ts:256-257 (assertCan view)
+ *   case        listCases, cases.ts:327-329 (assertCan view)
+ *   lead        listLeads, leads.ts:460-463 (scopeFor view, forbidden when null)
+ *   asset_custody  listAssetAssignments, hcm/assets.ts:189-191 (assertCan view)
+ * Read before the transaction: these reads go through the scoped client, which cannot
+ * run inside a transaction this code did not open (as authoriseHandover says).
+ */
+export async function viewableHandoverKinds(): Promise<ReadonlySet<HandoverKind>> {
+  const kinds = new Set<HandoverKind>();
+  if (await can({ resource: 'commitments', verb: 'view' })) kinds.add('commitment');
+  if (await can({ resource: 'cases', verb: 'view' })) kinds.add('case');
+  if ((await scopeFor('leads', 'view')) !== null) kinds.add('lead');
+  if (await can({ resource: 'asset_assignments', verb: 'view' })) kinds.add('asset_custody');
+  return kinds;
+}
+
+/**
+ * The blocker list for the 409. A row of a kind the caller may view is named as it
+ * always was. Every row of a kind the caller may not view is folded into one
+ * `{ kind, count, withheld }` entry, at the place that kind first appears.
+ */
+export function blockersFor(
+  unhanded: HandoverRowRef[],
+  viewable: ReadonlySet<HandoverKind>,
+): Array<HandoverRowRef | HandoverWithheld> {
+  const entries: Array<HandoverRowRef | HandoverWithheld> = [];
+  const withheld = new Map<HandoverKind, HandoverWithheld>();
+  for (const row of unhanded) {
+    if (viewable.has(row.kind)) {
+      entries.push(row);
+      continue;
+    }
+    let entry = withheld.get(row.kind);
+    if (!entry) {
+      entry = { kind: row.kind, count: 0, withheld: true };
+      withheld.set(row.kind, entry);
+      entries.push(entry);
+    }
+    entry.count += 1;
+  }
+  return entries;
+}
+
+/**
  * Locks the leaver and every named successor, then the leaver's open rows, and
  * works out where each one goes. Refuses (409, the blockers listed) when a row has
  * no successor and no waiver allows it to stay with the leaver.
  */
 export async function planHandover(
   tx: DbTx,
-  args: { tenantId: string; leaverPersonId: string; handover?: HandoverInput; allowUnhanded: boolean },
+  args: {
+    tenantId: string;
+    leaverPersonId: string;
+    handover?: HandoverInput;
+    allowUnhanded: boolean;
+    /** The kinds the caller may view, from viewableHandoverKinds. Decides what the 409 names, never whether it refuses. */
+    viewable: ReadonlySet<HandoverKind>;
+  },
 ): Promise<HandoverPlan> {
   const { tenantId, leaverPersonId, handover } = args;
   const successorIds = [
@@ -164,7 +228,7 @@ export async function planHandover(
     throw ApiError.conflict(
       `This person still owns ${unhanded.length} open row${unhanded.length === 1 ? '' : 's'} with no successor. ` +
         'Name a successor for each, or record a handover override with a reason.',
-      { blockers: unhanded },
+      { blockers: blockersFor(unhanded, args.viewable) },
     );
   }
   return { moves, unhanded };

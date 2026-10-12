@@ -64,6 +64,7 @@ import {
   OVERRIDE_REASON_MIN_CHARS,
   planHandover,
   recordHandoverOverride,
+  viewableHandoverKinds,
   type HandoverInput,
   type HandoverOverrideInput,
   type HandoverPlan,
@@ -1353,6 +1354,8 @@ export async function transitionOffboarding(
   // run inside a transaction this code did not open.
   if (options.handover) await authoriseHandover(options.handover);
   if (options.override) await authoriseOverride(options.override, leaverPersonId);
+  // Read here for the same reason: it decides which blockers the 409 names, and never whether it refuses.
+  const viewable = await viewableHandoverKinds();
 
   let plan: HandoverPlan | undefined;
   const { value: updated } = await transitionInTx(
@@ -1379,6 +1382,7 @@ export async function transitionOffboarding(
             leaverPersonId,
             handover: options.handover,
             allowUnhanded: hasOverride,
+            viewable,
           });
         }
         return tx.offboarding.update({
