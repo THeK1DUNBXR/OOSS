@@ -30,6 +30,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { seedCompliance } from './compliance/index.js';
+import { seedFounderDuty } from './compliance/statutory.js';
 import { seedIt } from './it/index.js';
 import { AI_TOUCHPOINTS, EVENTS } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from '../platform/db.js';
@@ -2819,6 +2820,8 @@ export interface SeededAccount {
   roleSlug: string;
   name: string;
   email: string;
+  /** The person the account is written to: the one the founder duty is named for. */
+  partyId: string;
   holds: string;
   /** Null when the password came from the environment, or the account already existed. */
   password: string | null;
@@ -2881,7 +2884,15 @@ async function seedAccount(spec: FoundingAccount): Promise<SeededAccount> {
 
   if (existingUser) {
     console.log(`  ${spec.roleSlug} ${email} already exists — password left untouched`);
-    return { roleSlug: spec.roleSlug, name: fullName, email, holds: spec.holds, password: null, created: false };
+    return {
+      roleSlug: spec.roleSlug,
+      name: fullName,
+      email,
+      partyId: person.id,
+      holds: spec.holds,
+      password: null,
+      created: false,
+    };
   }
 
   // The credential lives on the Principal, not the User — find-or-create it
@@ -2908,6 +2919,7 @@ async function seedAccount(spec: FoundingAccount): Promise<SeededAccount> {
     roleSlug: spec.roleSlug,
     name: fullName,
     email,
+    partyId: person.id,
     holds: spec.holds,
     password: existingPrincipal || fromEnv ? null : password,
     created: true,
@@ -2990,6 +3002,11 @@ export async function seedBootstrap(opts: SeedBootstrapOptions = {}): Promise<{
     await seedCompliance();
     await seedIt();
     accounts = await seedFoundingAccounts();
+    // After the accounts, because seedCompliance (above) runs before them and the owner's
+    // person does not exist until its account is written.
+    const ownerSpec = FOUNDING_ACCOUNTS.find((a) => a.env === 'OWNER');
+    const owner = accounts.find((a) => ownerSpec !== undefined && a.roleSlug === ownerSpec.roleSlug);
+    if (ownerSpec && owner) await seedFounderDuty(owner.partyId, ownerSpec.roleSlug);
   });
 
   // Marketing's per-tenant defaults (channels, starter score rules) — the

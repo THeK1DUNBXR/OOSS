@@ -13,6 +13,7 @@ import { findHeaderRow } from './detect.js';
 import { classifyLedger, isAccountName } from './classify.js';
 import { normaliseName as canonicalName } from './matchName.js';
 import type { TemplateSpec } from './templates.js';
+import { round2 } from '@kaizen/shared';
 
 export interface StagedRow {
   rowNumber: number;
@@ -1028,10 +1029,6 @@ export function extractStudentRegister(grid: Grid, headerRow: number): Extractio
   }
 
   return { rows, notes, columns: header.filter(Boolean) };
-}
-
-function round2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
 export function extractTemplate(grid: Grid, spec: TemplateSpec, headerRow: number): Extraction {

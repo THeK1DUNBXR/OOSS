@@ -193,7 +193,8 @@ export async function createJourney(data: JourneyInput): Promise<JourneyView> {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_journeys', verb: 'create' });
   const parsed = JourneyInputSchema.parse(data);
-  const recordCode = await nextRecordCode('JRN');
+  // JNY, not JRN: JRN is the journal entry series (ledger.ts), and the two must not share a prefix.
+  const recordCode = await nextRecordCode('JNY');
 
   const journey = await prisma.marketingJourney.create({
     data: {
@@ -358,7 +359,7 @@ export async function enrolPerson(journeyId: string, personId: string): Promise<
   const step0 = steps[0];
   const nextAt = step0 ? new Date(Date.now() + step0.delayDays * 86_400_000) : null;
   const run = await prisma.$transaction(async (tx) => {
-    const recordCode = await nextRecordCode('JRN', new Date(), tx);
+    const recordCode = await nextRecordCode('JNY', new Date(), tx);
     const created = await tx.marketingJourneyRun.create({
       data: {
         tenantId: auth.tenantId,

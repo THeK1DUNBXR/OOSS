@@ -286,15 +286,32 @@ router.get(
   }),
 );
 
-/** Chain-continuity is alerted on per tenant, not merely logged. */
+/**
+ * Chain-continuity is alerted on per tenant, not merely logged. With no `limit`
+ * the walk covers the whole chain in this request. With a `limit` it stops after
+ * that many rows and returns `nextCursor`; passing that back as `cursor` resumes
+ * the walk, so a large tenant is verified in pages rather than in one request.
+ */
 router.get(
   '/events/verify-chain',
-  handler(async () => {
+  handler(async (req) => {
     await assertCan({ resource: 'events', verb: 'view' });
-    // Walks the whole chain in this request. A large tenant needs a background job, not this handler.
-    return verifyChain(currentAuth().tenantId);
+    return verifyChain(currentAuth().tenantId, {
+      maxRows: verifyLimit(req.query.limit),
+      cursor: str(req.query.cursor),
+    });
   }),
 );
+
+function verifyLimit(raw: unknown): number | undefined {
+  if (raw === undefined || raw === '') return undefined;
+  // A digit string is matched before it is parsed: a Number() conversion here
+  // would be the float-reading pattern G9 exists to stop, and a limit is a row count.
+  if (typeof raw !== 'string' || !/^[1-9]\d{0,6}$/.test(raw) || Number.parseInt(raw, 10) > 1_000_000) {
+    throw ApiError.badRequest('The limit has to be a whole number from 1 to 1000000.');
+  }
+  return Number.parseInt(raw, 10);
+}
 
 router.get(
   '/events/dead-letters',

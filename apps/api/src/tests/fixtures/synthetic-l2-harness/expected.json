@@ -1,0 +1,17 @@
+{
+  "description": "SYNTHETIC. Expected figures for the harness self-test. These prove the harness, not L2.",
+  "voucherCount": 5,
+  "ledgerAccountCount": 4,
+  "balances": [
+    { "accountName": "SYNTH Bank", "asOf": "2030-02-28", "balance": "7500.00" },
+    { "accountName": "SYNTH Bank", "asOf": "2030-03-31", "balance": "7100.00" },
+    { "accountName": "SYNTH Sales", "asOf": "2030-02-28", "balance": "-10000.00" },
+    { "accountName": "SYNTH Sales", "asOf": "2030-03-31", "balance": "-10000.00" },
+    { "accountName": "SYNTH Rent", "asOf": "2030-02-28", "balance": "2500.00" },
+    { "accountName": "SYNTH Rent", "asOf": "2030-03-31", "balance": "2900.00" },
+    { "accountName": "Opening Balance Difference", "asOf": "2030-02-28", "balance": "0.00" },
+    { "accountName": "Opening Balance Difference", "asOf": "2030-03-31", "balance": "0.00" }
+  ],
+  "trialBalance": { "debits": "12900.00", "credits": "12900.00" },
+  "openingBalanceDifference": "0.00"
+}

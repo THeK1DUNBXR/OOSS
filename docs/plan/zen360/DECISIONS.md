@@ -1206,3 +1206,57 @@ v. Candidate stale or contested values, for the approver to verify at onboarding
 - No seed value is changed and no value is verified.
 - Not decided: the holder's name and the duty key name for statutory approval. Both are set at onboarding (round 23 item d).
 - The Kaizen figures are not confirmed, and no named human has confirmed them.
+
+## Owner answers, round 28 (recorded 2026-10-12, night)
+
+Append-only. Source: the owner's answers of 2026-10-12 (night), as written in the owner's decision note of the same date. Where a later line in that note supersedes an earlier one, the earlier line is marked as superseded and the later one governs. "What was built" lines give the PR where one is known. "in progress" means the work is not merged, and no PR number is given for it.
+
+- **Enforce DRAFT.** Build the status, maker-checker and duty resolver now. Switch the live readers at onboarding.
+  - What was built: #66 (merged): status, maker-checker and the duty resolver. The live readers are not switched; that waits for onboarding.
+- **Rate store.** Readers move to `StatutoryRule` (`ruleAt`). The typed rate tables become read-only legacy. There is one approval flow. This happens after the money slices.
+  - What was built: no PR recorded.
+- **FX-73 payroll: division to business line.** A division-to-business-line map, date-effective and kept by finance. An unmapped division refuses with HTTP 422.
+  - What was built: in progress.
+- **FX-73 payroll: ledger entity link.** A nullable `ledgerEntityId` foreign key on `EmploymentRelationship`, backfilled by exact match.
+  - What was built: in progress.
+- **FX-73 payroll: one entry per run.** One balanced entry per ledger entity per run. Unmapped refuses (the note does not say which unmapped case; read it as the same rule as the division map).
+  - What was built: in progress.
+- **FX-73 payroll: accrual date.** The payroll accrual is dated the last day of the pay month, in IST.
+  - What was built: in progress.
+- **GST return check (`gstReturns.ts:500`).** Keep the ₹1 tolerance, held exactly as 100 paise.
+  - What was built: not yet; it rides a later money slice. #70 (money S1) does not change the GST path.
+- **Statutory approver duty.** The founder holds it unless onboarding changes it.
+  - What was built: #66 (merged).
+- **Statutory figures.** The owner approves the approach. Each rule is approved in-app by the duty holder, with a verified citation. Seeds stay DRAFT and UNVERIFIED.
+  - What was built: #66 (merged): the in-app approval flow, with seeds left DRAFT and UNVERIFIED. The G10 sweep is in progress.
+- **Founder authority.** The owner's words, verbatim: "The founder is end all be all, he can do whatever he wants."
+  - Implementation: a tenant duty `founder` (`DutyAssignment`), held by the owner's founding account unless onboarding changes it.
+  - The founder is exempt from maker-checker and separation of duties everywhere: statutory author equals approver, duty self-assignment, approval ladders, and `payments:approve`. Round 23 item b applies, so founder-created payments need no second approver.
+  - Every waived check is recorded in the audit metadata as `founderOverride`.
+  - Not waivable, because the CLAUDE.md rules say they cannot be disabled: the audit trail, tenant scope, period close, and posted-entry immutability. A founder correction is still a reversal.
+  - This supersedes the D-10 in-app gate for founder deals.
+  - Flag: Companies Act s.188 related-party board approval is outside the app. The app does not check it.
+  - What was built: #69 (founder exemption). `payments:approve`: in progress.
+- **L2 harness (current).** Kaizen has no legacy books, and books are created by using the ERP. L2 does not apply to Kaizen until the cashbook-to-journal cutover. The harness is kept for pre-cutover ERP cashbook rows and for later tenants. L2 is never passed on synthetic data.
+- **L2 fixture: "real books" (withdrawn).** An uploaded spreadsheet was first recorded as Kaizen's real books, with L2 applying to them. That was a misreading, withdrawn by the next item. The plan's "1,123 vouchers" figure is not supported either way.
+- **L2 fixture: test data (current).** The owner: the uploaded spreadsheet is test data only. Its imbalance and the mapping review are not owner items. It still stays out of git, because it may carry personal-looking data, and is loaded from `L2_FIXTURE_DIR`. The L2 harness item above stands.
+  - What was built: #68 (L2 harness).
+- **L2 mapping: "Suspence - Rishikesh".** The owner's account of this treatment: transfers to the founder's personal savings account, so that he could pay company expenses by debit card or UPI, because the current account had neither. Treat it as a balance-sheet clearing account, class asset, with the founder as paying agent. The net is held by the founder (positive) or owed to the founder (negative). It is not an expense and not capital.
+  - Founder-related transactions: the independent reviewer is an authorised director (D-10). The founder authority ruling above supersedes D-10 for founder deals.
+
+Built, not tied to a decision in this note: FX-51 and FX-64 are in PR #67, which is open, not merged.
+
+### Still open
+
+- D-02, exact rounding for GST, for the finance head. The note's example: 5% of 42.70 gives 2.14 under exact rounding, where the current rounding gives 2.13.
+- C-008, C-009 and C-015 (level model and account recovery holder; the owner has not answered them).
+- FX-24: consumer idempotency and the EventRecord and AuditRecord cross-anchor, pending the D-16 deferral.
+- FX-62: how audit and event personal values are handled under s.128(5).
+- FX-80: the certificate snapshot is returned unfiltered, and there is no public verify.
+- The 0.6 deviation: the hash chain uses an advisory lock under ReadCommitted, not SERIALIZABLE. The owner has not yet accepted it (`ORDERED-PLAN.md`, 0.6).
+- The croner licence record. It is not yet in the repository.
+
+### Round 28: what was not done
+
+- No code, schema, seed, test or CI change. This round changes docs only.
+- The spreadsheet was not opened, and no figure from it is recorded.
