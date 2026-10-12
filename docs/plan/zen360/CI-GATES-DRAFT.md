@@ -119,12 +119,13 @@ What exists in the repository today is noted per gate, so the owner can see how 
 - **Exists today:** no. Checked: `eslint.config.js` has no rule that restricts journal writes, `round2` or UTC getters. `packages/shared/src/time.ts` exists. `packages/shared/src/money.ts` does not exist (checked). The rule for `num()` and `Number()` will flag many existing sites (FIXES.md FX-31 cites `num()` in 54 files, cited from FIXES.md). The rule should be introduced with an allowlist that shrinks each phase, not with a list that is empty on day one.
 - **First mandatory:** the IST rule (part 2) in Wave A, since FX-40 and FX-41 are Phase 0 fix items. The money rule (part 1) and ledger-write rule (part 3) in Wave B, when 1.3 and 1.6 land.
 
-### G10. Statutory values only as StatutoryRule rows
+### G10. Statutory values only as StatutoryRule rows, approval by role
 
 - **Checks (a), static scan:** no literal for a statutory parameter (rates, thresholds, ceilings, slabs, section numbers, form numbers, due-day offsets, notification strings) in finance, HCM or compliance code paths. The denylist is maintained from the findings in FX-36 and FX-76 (cited from FIXES.md). Seed data lives in one dedicated folder, which is the only allowlist.
 - **Checks (b), resolver test:** every computation resolves its parameter by effective date from a `StatutoryRule` row. A date with no covering row throws. Every row has non-null `effectiveFrom`, `jurisdiction` and `source`.
-- **Fails the build:** a scan hit outside the seed folder, or a resolver that returns a value for an uncovered date, or a row missing a field.
-- **Protects:** CLAUDE.md rule 4 and its instruction "About to hardcode a number a government can change? Stop."; DECISIONS round 2 (D-05: "seed Tamil Nadu as data, no hardcoding"); DECISIONS round 3 (D-02: every statutory item "remains awaiting professional sign-off"); phase-0 owner Wave B item 3.1 (statutory master pack, placed early in Phase 0 by round 4).
+- **Checks (c), approval:** (1) no literal holder name, person id, email or role label (`internal finance head`, `finance_head`, `accountant`, `chairman`) outside the seed folder, in finance, HCM or compliance paths. (2) The approver of a statutory row resolves at runtime from the tenant-level duty assignment. A tenant with no holder gets zero APPROVED rows, and each statutory feature fails closed with "awaiting the accountant's setup". (3) Every seed and migration row is DRAFT; a test asserts that no seed row is APPROVED. (4) The approver is not the enterer or editor of the row, except where the founder exemption (round 23 item b) applies. (5) Each approval is audited with the resolved approver, the time and the rule version.
+- **Fails the build:** a scan hit outside the seed folder; a resolver that returns a value for an uncovered date; a row missing a field; an APPROVED row with no resolved approver; an approver equal to the enterer outside the round 23 item b exemption; a seed row that is APPROVED.
+- **Protects:** CLAUDE.md rule 4 and its instruction "About to hardcode a number a government can change? Stop."; DECISIONS round 2 (D-05: "seed Tamil Nadu as data, no hardcoding"); DECISIONS round 3 (D-02: every statutory item "remains awaiting professional sign-off"); phase-0 owner Wave B item 3.1 (statutory master pack, placed early in Phase 0 by round 4). Round 23 item d (holder decided at onboarding; rows stay DRAFT until a holder approves): DECISIONS round 27 items a and c; ACCESS-MODEL-PLAN.md:283-284.
 - **Exists today:** no. FX-36 and FX-76 cite statutory constants in code (for example `packages/shared/src/compliance/tax.ts:251-255`, cited from FIXES.md; not re-opened in this pass). UNVERIFIED as of today.
 - **Statutory values are not stated in this draft and must not be added to it.**
 - **First mandatory:** Wave B, with 3.1.
@@ -213,7 +214,7 @@ Named in `docs/plan/archive/phase-1-ledger.md` 1.5 (gate line), and the cutover 
 **Inputs**
 
 - A frozen fixture of the Kaizen cashbook for 1 February 2026 to 27 August 2026: 1,123 vouchers and 66 ledger accounts (docs/plan/archive/phase-1-ledger.md 1.5). These figures are cited from the phase doc. `docs/plan/archive/README-old-index.md:68` says they must be confirmed with a human before relying on them. UNVERIFIED until confirmed.
-- The reviewed mapping table from `ledgerGroup` to `accountType`, committed as a CSV fixture after sign-off (docs/plan/archive/phase-1-ledger.md 1.5 step 1). The reviewer is the internal finance head (DECISIONS round 5).
+- The reviewed mapping table from `ledgerGroup` to `accountType`, committed as a CSV fixture after sign-off (docs/plan/archive/phase-1-ledger.md 1.5 step 1). The reviewer is the holder of the 1.5 account-mapping review duty, set at onboarding (DECISIONS round 27, item b).
 - The inherited reconciliation gap recorded in the source financial model. The test reads that gap from the recorded source. It does not hard-code a number.
 
 **Procedure**
@@ -230,7 +231,7 @@ Named in `docs/plan/archive/phase-1-ledger.md` 1.5 (gate line), and the cutover 
 - Re-running the migration posts nothing new (each idempotency key is `legacy:<transaction.id>`).
 - On any mismatch the test prints the account and month, and fails. No forcing to zero (docs/plan/archive/phase-1-ledger.md 1.5 step 4).
 
-**Gate status:** blocked until the mapping fixture is signed. `model Transaction` is deleted only after this test passes (docs/plan/archive/phase-1-ledger.md 1.5).
+**Gate status:** blocked until the mapping fixture is signed and the figures are confirmed at onboarding. `model Transaction` is deleted only after this test passes (docs/plan/archive/phase-1-ledger.md 1.5). Phase 0 may build the harness on a labelled synthetic fixture; that run does not pass L2 (DECISIONS round 27, item b).
 
 ### L3. Two-hundred concurrent allocations
 
@@ -305,8 +306,8 @@ Status after round 10 (owner answers recorded in DECISIONS.md, "Owner answers, r
 6. **Log redaction and axe.** RESOLVED: both are required gates (G11, G12). Neither replaces a gate above.
 7. **Dependency licence check.** RESOLVED: report only. The check lists licences and never fails the build. Enforcement of the clean-room rule moves to review. The GPL, AGPL, LGPL, MPL and BUSL list and the exception owner are not recorded and remain open.
 8. **Ledger test budgets.** PARTLY RESOLVED: short runs of L1 on every pull request; the full ten-thousand-operation test and full concurrency runs at phase end. Still open: the runtime ceiling for L1, the latency ceiling for L3, and whether 200 is the right concurrency for L3.
-9. **Fixture sign-off (L2).** OPEN in part. Under round 9 item 11, sign-off duties (including the 1.5 account-mapping review) attach to access levels, not named people. The interim holder is the internal finance head. Still open: whether the Kaizen book figures (1,123 vouchers, 66 accounts, the window) are checked by a human before the fixture is committed (`docs/plan/archive/README-old-index.md:68`), and the level model (open after round 9).
-10. **Statutory gate (G10).** RESOLVED: G10 checks structure only and fails on hard-coded rates. It never checks values. Values, sign-off and ownership stay with the internal finance head (DECISIONS round 3, D-02). Statutory sign-off still needs a real qualified person, even when the duty is held by a level.
+9. **Fixture sign-off (L2).** RESOLVED (DECISIONS round 27, item b). Phase 0 builds the harness and `cashbookToJournal` now and must not claim L2 passed on synthetic data. The real fixture is the frozen Kaizen cashbook export for 1 February to 27 August 2026. Its figures (1,123 vouchers, 66 accounts, the gap) are confirmed at onboarding by a named human, and the confirmation is recorded in DECISIONS.md. The 1.5 mapping CSV is reviewed at onboarding by the holder of the 1.5 account-mapping review duty, a level duty (round 9). The questionnaire samples A, B and C are access-mapping fixtures, not L2 inputs.
+10. **Statutory gate (G10).** RESOLVED (DECISIONS round 27, item c). G10 checks structure, never values. The approver is resolved from a tenant-level duty at onboarding and is not named in code. "Internal finance head" is interim wording only (round 3, D-02; round 12 item 1), superseded for permanence by round 23 item d. Statutory sign-off still needs a real qualified holder.
 11. **CI database approach (G3).** RESOLVED (round 10, item 2): the CI migration baseline sits in Wave 0, and the G3 row in section 3 and the G3 section now say Wave 0 (previously "from B"). Still open: who owns the baseline; the owner did not name an owner in round 10.
 12. **Fast-check.** RESOLVED: fast-check (MIT) approved as a test-only dependency.
 13. **Tenancy gate G7 and the leakage fuzzer.** DEFERRED by owner answer, round 18b, item 1. G7 stays deferred as a whole (round 20): the RLS-on-new-tenant-tables check is not split out as a named gate. The merged test from PR #33 stays in the test suite without being a named gate. Recorded here, not re-opened.
