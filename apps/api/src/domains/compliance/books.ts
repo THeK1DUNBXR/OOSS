@@ -13,7 +13,7 @@
  * everything else.
  */
 
-import { istDateKey, istFinancialYearStart } from '@kaizen/shared';
+import { istDateKey, istFinancialYearStart, toMinorHalfUp } from '@kaizen/shared';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import {
@@ -917,7 +917,8 @@ export async function trialBalance(asOf: Date, tx?: DbTx) {
   const totalDebit = round2(rows.reduce((s, r) => s + r.debit, 0));
   const totalCredit = round2(rows.reduce((s, r) => s + r.credit, 0));
   const plug = round2(totalDebit - totalCredit);
-  if (Math.abs(plug) > 0.005) {
+  // plug is rounded to the paisa, so any nonzero paisa is a plug row.
+  if (toMinorHalfUp(plug) !== 0n) {
     rows.push({ name: 'Opening balances / equity', debit: plug < 0 ? -plug : 0, credit: plug > 0 ? plug : 0 });
   }
 

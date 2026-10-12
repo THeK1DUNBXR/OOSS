@@ -7,6 +7,7 @@
  */
 
 import { round2 } from '../finance.js';
+import { toMinorHalfUp } from '../money.js';
 
 // ---------------------------------------------------------------------------
 // Schedule III — the statement format
@@ -133,7 +134,9 @@ export function isLikelyMatch(input: {
   windowDays?: number;
 }): boolean {
   if (input.bankDirection !== input.txnDirection) return false;
-  if (round2(Math.abs(input.bankAmount - input.txnAmount)) > 0.005) return false;
+  // Compared in paise. The old 0.005 sat behind a round2, so it only ever told
+  // zero paise from one or more; saying that in paise removes the tolerance.
+  if (toMinorHalfUp(input.bankAmount) !== toMinorHalfUp(input.txnAmount)) return false;
   const days = Math.abs(input.bankDate.getTime() - input.txnDate.getTime()) / 86_400_000;
   if (days > (input.windowDays ?? 3)) return false;
   // A shared reference is corroborating, not required: many ledger entries

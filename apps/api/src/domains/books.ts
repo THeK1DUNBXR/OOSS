@@ -35,6 +35,8 @@ import {
   isTrading,
   type Division,
   type GstLineInput,
+  decimalToMinor,
+  toMinorHalfUp,
 } from '@kaizen/shared';
 import { prisma, unscopedPrisma, num, type DbTx } from '../platform/db.js';
 import { governedWrite } from '../platform/governedWrite.js';
@@ -705,7 +707,9 @@ export async function payVendorBill(
   await runHooks('vendor_bill.before_pay', { bill, amount: input.amount });
 
   const outstanding = round2((num(bill.total) ?? 0) - (num(bill.paidAmount) ?? 0));
-  if (input.amount > outstanding + 0.005) {
+  // Paise against paise. An amount typed with a third decimal rounds half away
+  // from zero here, so 0.005 over is refused where the old tolerance let it through.
+  if (toMinorHalfUp(input.amount) > toMinorHalfUp(outstanding)) {
     throw ApiError.unprocessable(
       `That is more than is outstanding on ${bill.recordCode} (₹${outstanding.toFixed(2)}). ` +
         'An overpayment needs a credit note rather than a larger payment.',
@@ -727,7 +731,7 @@ export async function payVendorBill(
   });
 
   const paid = round2((num(bill.paidAmount) ?? 0) + input.amount);
-  const status = paid >= (num(bill.total) ?? 0) - 0.005 ? 'paid' : 'part_paid';
+  const status = toMinorHalfUp(paid) >= decimalToMinor(bill.total) ? 'paid' : 'part_paid';
 
   const updated = await prisma.vendorBill.update({
     where: { id },

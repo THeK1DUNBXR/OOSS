@@ -24,7 +24,7 @@
  * pointing one way is what stops the two files becoming one.
  */
 
-import { EVENTS } from '@kaizen/shared';
+import { EVENTS, decimalToMinor, toMinorHalfUp } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -431,7 +431,11 @@ async function settleIfFullyPaid(invoiceId: string | null, feeInstalmentId: stri
     // when only the pre-tax value had been paid.
     const { payable, allocated, creditNoted } = totalsOf(invoice);
     const status =
-      allocated + creditNoted >= payable - 0.001 ? 'settled' : allocated > 0 ? 'part_paid' : invoice.status;
+      toMinorHalfUp(allocated) + toMinorHalfUp(creditNoted) >= toMinorHalfUp(payable)
+        ? 'settled'
+        : allocated > 0
+          ? 'part_paid'
+          : invoice.status;
     if (status !== invoice.status) {
       await prisma.invoice.update({ where: { id: invoiceId }, data: { status } });
       if (status === 'settled') {
@@ -452,9 +456,11 @@ async function settleIfFullyPaid(invoiceId: string | null, feeInstalmentId: stri
       include: { receipts: true },
     });
     if (!fee) return;
-    const allocated = fee.receipts.reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0);
-    const total = num(fee.amount) ?? 0;
-    const status = allocated >= total - 0.001 ? 'settled' : allocated > 0 ? 'part_paid' : fee.status;
+    // Summed in paise from each receipt's Decimal. A float sum over instalments is
+    // where the old 0.001 was absorbing noise, so the sum is no longer a float.
+    const allocated = fee.receipts.reduce((s, r) => s + decimalToMinor(r.allocatedAmount), 0n);
+    const total = decimalToMinor(fee.amount);
+    const status = allocated >= total ? 'settled' : allocated > 0n ? 'part_paid' : fee.status;
     if (status !== fee.status) await prisma.feeInstalment.update({ where: { id: feeInstalmentId }, data: { status } });
   }
 }
