@@ -35,6 +35,15 @@ export function useZodForm<S extends z.AnyZodObject>(schema: S, defaultValues: D
 const NOT_A_RUPEE_AMOUNT = 'Enter an amount in rupees, such as 1250 or 1250.50';
 
 /**
+ * Thousands separators as a bank statement prints them: western 1,234,567 and
+ * Indian 12,34,567 (lakh and crore). Only whole-rupee text that groups correctly
+ * is ungrouped here. "1,2345" and "12,34.5" stay as typed, so parseMinor refuses
+ * them: a stray comma is a typo, and guessing where it belonged would post a
+ * figure nobody typed.
+ */
+const GROUPED_WHOLE_RUPEES = /^-?(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3})(?:\.\d+)?$/;
+
+/**
  * A money field: the text the person typed in, out as bigint paise.
  *
  * The parse is `parseMinor`, which refuses a third decimal rather than rounding
@@ -53,7 +62,7 @@ export function moneyField({ positive = false, optional = false }: { positive?: 
     }
     let paise: bigint;
     try {
-      paise = parseMinor(typed);
+      paise = parseMinor(GROUPED_WHOLE_RUPEES.test(typed) ? typed.replace(/,/g, '') : typed);
     } catch {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: NOT_A_RUPEE_AMOUNT });
       return z.NEVER;
