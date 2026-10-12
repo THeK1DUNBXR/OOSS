@@ -12,11 +12,7 @@ import { PrismaClient } from '@prisma/client';
 import { unscopedPrisma } from '../platform/db.js';
 import { can } from '../platform/permissions.js';
 import { addMissingGrants } from '../platform/grantSync.js';
-import {
-  confirmAssignment,
-  expireAssignment,
-  suggestAssignment,
-} from '../domains/access/assignments.js';
+import { confirmAssignment, expireAssignment, suggestAssignment } from '../domains/access/assignments.js';
 import { asPrincipal, asUser, expectReject, principalFor, tenantId } from './helpers.js';
 import {
   authOf,
@@ -139,7 +135,9 @@ describe('PR11a confirm', () => {
     const before = await unscopedPrisma.auditRecord.count({
       where: { tenantId: tid, subjectType: 'access_assignment', subjectId: row.id },
     });
-    const err = await asUser(CHAIRMAN, () => expectReject(() => confirmAssignment({ assignmentId: row.id, reason: 'T2' })));
+    const err = await asUser(CHAIRMAN, () =>
+      expectReject(() => confirmAssignment({ assignmentId: row.id, reason: 'T2 self check' })),
+    );
     expect(err.status).toBe(403);
     const after = await unscopedPrisma.accessAssignment.findUniqueOrThrow({ where: { id: row.id } });
     expect(after.status).toBe('suggested');
@@ -155,23 +153,42 @@ describe('PR11a confirm', () => {
     // a. the answerer may not confirm the mapping they answered
     const subjA = await makePerson(tid);
     const a = await asUser(CHAIRMAN, () =>
-      suggestAssignment({ personId: subjA.id, identityType: 'employee', placements: [plc(staffVertical, staffLevel)], reason: 'T3a' }),
+      suggestAssignment({
+        personId: subjA.id,
+        identityType: 'employee',
+        placements: [plc(staffVertical, staffLevel)],
+        reason: 'T3a',
+      }),
     );
-    const refusedAnswerer = await asUser(CHAIRMAN, () => expectReject(() => confirmAssignment({ assignmentId: a.id, reason: 'x' })));
+    const refusedAnswerer = await asUser(CHAIRMAN, () =>
+      expectReject(() => confirmAssignment({ assignmentId: a.id, reason: 'refusal check' })),
+    );
     expect(refusedAnswerer.status).toBe(403);
 
     // b. the Head of a vertical may not confirm a Head placement
     const subjB = await makePerson(tid);
     const b = await asUser(CHAIRMAN, () =>
-      suggestAssignment({ personId: subjB.id, identityType: 'employee', placements: [plc(staffVertical, headLevel)], reason: 'T3b' }),
+      suggestAssignment({
+        personId: subjB.id,
+        identityType: 'employee',
+        placements: [plc(staffVertical, headLevel)],
+        reason: 'T3b',
+      }),
     );
-    const refusedHead = await asPrincipal(authOf(tid, hrId), () => expectReject(() => confirmAssignment({ assignmentId: b.id, reason: 'x' })));
+    const refusedHead = await asPrincipal(authOf(tid, hrId), () =>
+      expectReject(() => confirmAssignment({ assignmentId: b.id, reason: 'refusal check' })),
+    );
     expect(refusedHead.status).toBe(403);
 
     // c. the Head of the vertical confirms a staff placement in it
     const subjC = await makePerson(tid);
     const c = await asUser(CHAIRMAN, () =>
-      suggestAssignment({ personId: subjC.id, identityType: 'employee', placements: [plc(staffVertical, staffLevel)], reason: 'T3c' }),
+      suggestAssignment({
+        personId: subjC.id,
+        identityType: 'employee',
+        placements: [plc(staffVertical, staffLevel)],
+        reason: 'T3c',
+      }),
     );
     const confirmed = await asHr(() => confirmAssignment({ assignmentId: c.id, reason: 'staff in own vertical' }));
     expect(confirmed.status).toBe('confirmed');
@@ -180,9 +197,16 @@ describe('PR11a confirm', () => {
     // d. the Head of one vertical may not confirm a placement in another
     const subjD = await makePerson(tid);
     const d = await asUser(CHAIRMAN, () =>
-      suggestAssignment({ personId: subjD.id, identityType: 'employee', placements: [plc(otherVertical, staffLevel)], reason: 'T3d' }),
+      suggestAssignment({
+        personId: subjD.id,
+        identityType: 'employee',
+        placements: [plc(otherVertical, staffLevel)],
+        reason: 'T3d',
+      }),
     );
-    const refusedOther = await asHr(() => expectReject(() => confirmAssignment({ assignmentId: d.id, reason: 'x' })));
+    const refusedOther = await asHr(() =>
+      expectReject(() => confirmAssignment({ assignmentId: d.id, reason: 'refusal check' })),
+    );
     expect(refusedOther.status).toBe(403);
 
     // e. a sensitive duty needs the founder, even inside the Head's vertical
@@ -196,7 +220,9 @@ describe('PR11a confirm', () => {
         reason: 'T3e',
       }),
     );
-    const refusedDuty = await asHr(() => expectReject(() => confirmAssignment({ assignmentId: e.id, reason: 'x' })));
+    const refusedDuty = await asHr(() =>
+      expectReject(() => confirmAssignment({ assignmentId: e.id, reason: 'refusal check' })),
+    );
     expect(refusedDuty.status).toBe(403);
 
     // f. the founder confirms that sensitive duty, answered by HR
@@ -219,7 +245,12 @@ describe('PR11a confirm', () => {
     const day = 86_400_000;
     const noExpiry = await asUser(CHAIRMAN, () =>
       expectReject(() =>
-        suggestAssignment({ personId: subject.id, identityType: 'non_employee', placements: [plc(staffVertical, staffLevel)], reason: 'T4 none' }),
+        suggestAssignment({
+          personId: subject.id,
+          identityType: 'non_employee',
+          placements: [plc(staffVertical, staffLevel)],
+          reason: 'T4 none',
+        }),
       ),
     );
     expect(noExpiry.status).toBe(422);
@@ -251,12 +282,19 @@ describe('PR11a confirm', () => {
   it('T5: expire moves a suggestion to expired, and a second expiry is refused', async () => {
     const subject = await makePerson(tid);
     const row = await asUser(CHAIRMAN, () =>
-      suggestAssignment({ personId: subject.id, identityType: 'employee', placements: [plc(staffVertical, staffLevel)], reason: 'T5' }),
+      suggestAssignment({
+        personId: subject.id,
+        identityType: 'employee',
+        placements: [plc(staffVertical, staffLevel)],
+        reason: 'T5 withdrawn',
+      }),
     );
     const expired = await asUser(CHAIRMAN, () => expireAssignment({ assignmentId: row.id, reason: 'withdrawn' }));
     expect(expired.status).toBe('expired');
     expect(expired.expiredById).toBeTruthy();
-    const again = await asUser(CHAIRMAN, () => expectReject(() => expireAssignment({ assignmentId: row.id, reason: 'again' })));
+    const again = await asUser(CHAIRMAN, () =>
+      expectReject(() => expireAssignment({ assignmentId: row.id, reason: 'again' })),
+    );
     expect(again.status).toBe(422);
   });
 });
@@ -269,18 +307,20 @@ describe('PR11a database invariants', () => {
     const l = await makeLevel(tid, 'own');
     await makeLevelLimit(tid, l.id, 'approve_payment', 1n);
     await makeCapabilityRule(tid, v.id, l.id, 'access_assignments', ['view']);
-    await makeResourceBinding(tid, 'leads', 'none');
-    await makeConfirmedPlacement(tid, hrId, v.id, l.id);
-    const row = await unscopedPrisma.accessAssignment.findFirstOrThrow({ where: { tenantId: tid } });
+    await makeResourceBinding(tid, `leads-${uniqCode('')}`, 'none');
+    const placed = await makeConfirmedPlacement(tid, hrId, v.id, l.id);
     await unscopedPrisma.accessDuty.create({
-      data: { tenantId: tid, assignmentId: row.id, dutyCode: 'approve_payments', sensitive: true },
+      data: { tenantId: tid, assignmentId: placed.assignmentId, dutyCode: 'approve_payments', sensitive: true },
     });
 
     for (const table of ACCESS_TABLES) {
       const visible = (t: string) =>
         app.$transaction(async (tx) => {
           await tx.$executeRaw`SELECT set_config('app.tenant_id', ${t}, true)`;
-          const rows = await tx.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM "${table}" WHERE "tenantId" = $1`, tid);
+          const rows = await tx.$queryRawUnsafe<{ n: number }[]>(
+            `SELECT count(*)::int AS n FROM "${table}" WHERE "tenantId" = $1`,
+            tid,
+          );
           return rows[0]!.n;
         });
       expect(await visible(tid), table).toBeGreaterThan(0);
@@ -299,11 +339,20 @@ describe('PR11a database invariants', () => {
     const l = await makeLevel(tid, 'own');
     const v = await makeVertical(tid, 'shared');
     await expect(
-      unscopedPrisma.accessLevel.create({ data: { tenantId: tid, code: uniqCode('B'), name: 'bad', rank: uniqRank(), reach: 'boss' } }),
+      unscopedPrisma.accessLevel.create({
+        data: { tenantId: tid, code: uniqCode('B'), name: 'bad', rank: uniqRank(), reach: 'boss' },
+      }),
     ).rejects.toThrow();
     await expect(
       unscopedPrisma.accessCapabilityRule.create({
-        data: { tenantId: tid, verticalId: v.id, levelId: l.id, unitCode: null, resource: 'access_assignments', verbs: [] },
+        data: {
+          tenantId: tid,
+          verticalId: v.id,
+          levelId: l.id,
+          unitCode: '',
+          resource: 'access_assignments',
+          verbs: [],
+        },
       }),
     ).rejects.toThrow();
     await expect(
@@ -352,7 +401,12 @@ describe('PR11a database invariants', () => {
   it('T9: every write is audited and emits its event', async () => {
     const subject = await makePerson(tid);
     const row = await asUser(CHAIRMAN, () =>
-      suggestAssignment({ personId: subject.id, identityType: 'employee', placements: [plc(staffVertical, staffLevel)], reason: 'T9' }),
+      suggestAssignment({
+        personId: subject.id,
+        identityType: 'employee',
+        placements: [plc(staffVertical, staffLevel)],
+        reason: 'T9 suggestion',
+      }),
     );
     await asHr(() => confirmAssignment({ assignmentId: row.id, reason: 'T9 confirm' }));
     const audit = await unscopedPrisma.auditRecord.findMany({

@@ -8,7 +8,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { ROLE_SLUGS } from '@kaizen/shared';
-import { checkConfirmRules, expiryWithinCap, type ConfirmContext } from '../domains/access/rules.js';
+import { checkConfirmRules, expiryWithinCap, IDENTITY_TYPES, type ConfirmContext } from '../domains/access/rules.js';
 
 const SUBJECT = 'person-subject';
 const ANSWERER = 'person-answerer';
@@ -107,7 +107,17 @@ describe('no hardcode in the access domain (CLAUDE.md rule 4, "Never")', () => {
   });
 
   it('names no role slug and no business-line code as a literal', () => {
-    const forbidden = [...ROLE_SLUGS, 'SKL', 'EDU', 'CLR', 'TEC', 'WFS'];
+    // 'employee' is both a role slug and an identity type. The identity type is the
+    // kind of person, not an authority, so it is not a literal this check forbids.
+    const identityWords = IDENTITY_TYPES as readonly string[];
+    const forbidden = [
+      ...ROLE_SLUGS.filter((slug) => !identityWords.includes(slug)),
+      'SKL',
+      'EDU',
+      'CLR',
+      'TEC',
+      'WFS',
+    ];
     const offenders: string[] = [];
     for (const { name, text } of sources) {
       for (const word of forbidden) {

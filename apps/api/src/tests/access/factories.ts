@@ -18,7 +18,11 @@ const CHAIRMAN = 'chairman@kaizen.co.in';
 
 /** An uppercase code that is unique enough per run: a letter, then A-Z0-9. */
 export function uniqCode(prefix: string): string {
-  const rand = Math.random().toString(36).slice(2, 8).toUpperCase().replace(/[^A-Z0-9]/g, 'X');
+  const rand = Math.random()
+    .toString(36)
+    .slice(2, 8)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, 'X');
   return `${prefix}${rand}`;
 }
 
@@ -131,7 +135,7 @@ export async function makeCapabilityRule(
   verbs: string[],
 ): Promise<{ id: string }> {
   return unscopedPrisma.accessCapabilityRule.create({
-    data: { tenantId, verticalId, levelId, unitCode: null, resource, verbs },
+    data: { tenantId, verticalId, levelId, unitCode: '', resource, verbs },
     select: { id: true },
   });
 }
@@ -175,7 +179,7 @@ export async function makeConfirmedPlacement(
     select: { id: true },
   });
   await unscopedPrisma.accessPlacement.create({
-    data: { tenantId, assignmentId: assignment.id, personId, verticalId, levelId, unitCode },
+    data: { tenantId, assignmentId: assignment.id, personId, verticalId, levelId, unitCode: unitCode ?? '' },
   });
   return { assignmentId: assignment.id };
 }

@@ -370,6 +370,12 @@ export const RESOURCES = [
   // and overdue cases. Only the chairman holds it (seed/grants.ts), and the view
   // still checks view on each source, so holding this alone shows no rows.
   'founder_view',
+  // Wave 6 PR11a (ACCESS-MODEL-PLAN s.5.2). The access model's tables (verticals,
+  // levels, capability rules, bindings) and the assignments that place people in
+  // it. Only the chairman holds them by default (seed/grants.ts); HR gets them by
+  // a grant when the founder decides.
+  'access_model',
+  'access_assignments',
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];
