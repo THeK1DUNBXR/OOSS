@@ -404,6 +404,9 @@ export const EVENTS = {
   CASE_ACKNOWLEDGED: 'kz.gov.case.acknowledged',
   CASE_RESOLVED: 'kz.gov.case.resolved',
   CASE_CLOSED: 'kz.gov.case.closed',
+  // An open case handed to a successor when its owner exits (SPINE-CONTRACT 1.7).
+  // Not a state change, so the state the subscriber reads is unchanged.
+  CASE_REASSIGNED: 'kz.gov.case.reassigned',
   CASE_WITHDRAWN: 'kz.gov.case.withdrawn',
   CASE_MARKED_OVERDUE: 'kz.gov.case.marked_overdue',
   CASE_EXCEPTION_RAISED: 'kz.gov.case.exception_raised',
@@ -438,6 +441,9 @@ export const EVENTS = {
   EMPLOYMENT_RELATIONSHIP_ENDED: 'kz.hr.employment.ended',
   ONBOARDING_INITIATED: 'kz.hr.onboarding.initiated',
   OFFBOARDING_INITIATED: 'kz.hr.offboarding.initiated',
+  // An exit went ahead with open rows left with the leaver, under a recorded
+  // override. The rows and the reason are on the audit row; this says it happened.
+  OFFBOARDING_HANDOVER_OVERRIDE_RECORDED: 'kz.hr.offboarding.handover_override_recorded',
   REQUISITION_CREATED: 'kz.hr.requisition.created',
   APPLICATION_CREATED: 'kz.hr.application.created',
   ASSIGNMENT_CREATED: 'kz.hr.assignment.created',
@@ -573,6 +579,9 @@ export const EVENTS = {
   NO_DUES_ISSUED: 'kz.hr.no_dues.issued',
   // WS11 assets
   ASSET_ASSIGNED: 'kz.hr.asset.assigned',
+  // Custody moved from a leaver to a successor: the old spell is closed and a new
+  // one opened, and the asset stays assigned throughout.
+  ASSET_TRANSFERRED: 'kz.hr.asset.transferred',
   ASSET_RETURNED: 'kz.hr.asset.returned',
   TRAVEL_REQUEST_SUBMITTED: 'kz.hr.travel_request.submitted',
   TRAVEL_REQUEST_APPROVED: 'kz.hr.travel_request.approved',

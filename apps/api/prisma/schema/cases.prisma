@@ -78,8 +78,8 @@ model Case {
   @@map("cases")
 }
 
-/// One row per change of state, and one per overdue flag (fromState equals toState
-/// there). The creation row has no fromState. Append-only: a trigger refuses UPDATE
+/// One row per change of state, and one per overdue flag or reassignment (fromState
+/// equals toState there). The creation row has no fromState. Append-only: a trigger refuses UPDATE
 /// and DELETE for every role, so a correction is a new row.
 model CaseEvent {
   id       String @id @default(cuid())

@@ -27,8 +27,10 @@ import {
   type TravelMode,
   type TravelRequestStatus,
 } from '@kaizen/shared';
-import { HR_LETTER_KINDS, istDateKey, istYearMonth, type HrLetterKind } from '@kaizen/shared';
+import { EVENTS, HR_LETTER_KINDS, istDateKey, istYearMonth, type HrLetterKind } from '@kaizen/shared';
+import type { AssetAssignment } from '@prisma/client';
 import { governedWrite } from '../../platform/governedWrite.js';
+import { lockAssignableParty } from '../ownership.js';
 import { prisma, num, type DbTx } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -221,6 +223,7 @@ export async function assignAsset(input: {
   }
 
   return governedWrite(async (tx) => {
+    await lockAssignableParty(tx, auth.tenantId, employment.personId);
     const assignment = await tx.assetAssignment.create({
       data: {
         tenantId: auth.tenantId,
@@ -295,6 +298,80 @@ export async function returnAsset(assignmentId: string, input: { condition: Asse
     });
     return updated;
   });
+}
+
+/** The grants a custody handover needs. Checked outside the exit's transaction, as every grant check here is. */
+export async function authoriseCustodyHandover(): Promise<void> {
+  await assertCan({ resource: 'asset_assignments', verb: 'edit' });
+  await assertAllScope('asset_assignments', 'edit');
+  await assertCan({ resource: 'asset_assignments', verb: 'create' });
+  await assertAllScope('asset_assignments', 'create');
+}
+
+/**
+ * Moves an open custody spell from a leaver to a successor's employment, inside the
+ * exit's transaction. The old spell closes with its condition kept, a new spell
+ * opens on the successor's employment with that condition, and the asset stays
+ * `assigned` throughout: it is still out, with someone else. The caller has locked
+ * the assignment and checked the grant.
+ */
+export async function transferCustodyInTx(
+  tx: DbTx,
+  assignment: AssetAssignment,
+  successorEmploymentId: string,
+  reason: string,
+): Promise<AssetAssignment> {
+  const auth = currentAuth();
+  const returnedOn = new Date();
+
+  // Conditional on the spell still being open: a second transfer of the same spell
+  // matches nothing and is refused, rather than opening a duplicate custody.
+  const { count } = await tx.assetAssignment.updateMany({
+    where: { id: assignment.id, returnedOn: null },
+    data: { returnedOn },
+  });
+  if (count !== 1) throw ApiError.conflict('This custody has already been returned or moved.');
+
+  const opened = await tx.assetAssignment.create({
+    data: {
+      tenantId: auth.tenantId,
+      assetId: assignment.assetId,
+      employmentRelationshipId: successorEmploymentId,
+      condition: assignment.condition,
+      note: `Custody moved on exit handover: ${reason}`,
+    },
+  });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'asset_assignment',
+    subjectId: assignment.id,
+    before: { returnedOn: null },
+    after: { returnedOn: returnedOn.toISOString() },
+    meta: { reason, movedTo: opened.id },
+    tx,
+  });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'asset_assignment',
+    subjectId: opened.id,
+    after: opened as never,
+    meta: { reason, movedFrom: assignment.id },
+    tx,
+  });
+  await emit({
+    name: EVENTS.ASSET_TRANSFERRED,
+    subject: { entityType: 'asset_assignment', entityId: opened.id },
+    related: [
+      { relation: 'asset', entityType: 'asset', entityId: assignment.assetId },
+      { relation: 'about', entityType: 'employment_relationship', entityId: successorEmploymentId },
+    ],
+    previousState: { employmentRelationshipId: assignment.employmentRelationshipId, assignmentId: assignment.id },
+    newState: { employmentRelationshipId: successorEmploymentId, assignmentId: opened.id },
+    impact: { domains: ['hr'] },
+    tx,
+  });
+  return opened;
 }
 
 // ---------------------------------------------------------------------------
