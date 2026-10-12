@@ -5,13 +5,16 @@
  * the event's outbox row (platform/eventBus.ts), so a row here is an event that
  * committed. Names are the canonical kz.fin.<object>.<verb> grammar.
  *
- * Periods are closed here as in the other period suites; the closed period is
- * reopened and closed again inside the reopen probe so the rest of the run finds
- * it as it was.
+ * The file runs in a books tenant of its own (booksTenant), so the period it
+ * closes is not read by any other file. The closed month is not closed at the
+ * start: a closed month refuses the 2016 writes the rest of the file makes
+ * (periodStatus reads a month with no row under a closed later month as closed).
+ * The reopen probe closes it (closeThrough), reopens it, closes it again, and
+ * reopens the window (reopenLatestFirst) before the file moves on.
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import { asUser, tenantId, unscopedPrisma } from './helpers.js';
+import { asUser, booksTenant, closeThrough, reopenLatestFirst, unscopedPrisma, type BooksTenant } from './helpers.js';
 import {
   createAccount,
   createCategory,
@@ -36,26 +39,23 @@ import {
 } from '../domains/compliance/books.js';
 
 const CLOSED = '2017-10';
-const FINANCE = 'finance@kaizen.co.in';
-const CHAIRMAN = 'chairman@kaizen.co.in';
 
+let FIXTURE: BooksTenant;
 let TENANT: string;
+let FINANCE: string;
+let CHAIRMAN: string;
 let ACCOUNT_ID: string;
 let CATEGORY_ID: string;
 
 beforeAll(async () => {
-  TENANT = await tenantId();
-  ACCOUNT_ID = (
-    await unscopedPrisma.ledgerAccount.findFirstOrThrow({
-      where: { tenantId: TENANT, accountType: 'bank', deletedAt: null },
-    })
-  ).id;
-  CATEGORY_ID = (await unscopedPrisma.ledgerCategory.findFirstOrThrow({ where: { tenantId: TENANT } })).id;
-  const row = await unscopedPrisma.accountingPeriod.findFirst({ where: { tenantId: TENANT, period: CLOSED } });
-  if (row?.status !== 'closed') {
-    await asUser(FINANCE, () => requestClosePeriod(CLOSED));
-    await asUser(CHAIRMAN, () => closePeriod(CLOSED));
-  }
+  FIXTURE = await booksTenant('books-events-test');
+  TENANT = FIXTURE.tenantId;
+  FINANCE = FIXTURE.finance;
+  CHAIRMAN = FIXTURE.chairman;
+  ACCOUNT_ID = FIXTURE.bankAccountId;
+  CATEGORY_ID = FIXTURE.categoryId;
+  // A run that stopped inside a close window leaves months closed. Reopen them before this run writes.
+  await reopenLatestFirst(FIXTURE, 'Test fixture reset at the start of the run');
 });
 
 function unique(label: string): string {
@@ -180,19 +180,28 @@ describe('Books writes emit their event', () => {
 
   it('a period requested for close emits kz.fin.accounting_period.close_requested', async () => {
     const period = '2016-08';
-    const existing = await unscopedPrisma.accountingPeriod.findFirst({ where: { tenantId: TENANT, period } });
-    const row = existing ?? (await asUser(FINANCE, () => requestClosePeriod(period)));
+    // The order rule refuses a request while an earlier month is open, and this file's
+    // earlier writes left 2016-05 and 2016-06 open: close those first, request this one,
+    // close it so the window can reopen everything after.
+    await closeThrough(FIXTURE, '2016-07');
+    const row = await asUser(FINANCE, () => requestClosePeriod(period));
+    await closeThrough(FIXTURE, period);
     expect((await eventsFor('kz.fin.accounting_period.opened', row.id)).length).toBeGreaterThanOrEqual(1);
     expect((await eventsFor('kz.fin.accounting_period.close_requested', row.id)).length).toBeGreaterThanOrEqual(1);
+    await reopenLatestFirst(FIXTURE, 'Books events request probe finished; reopening the months it closed');
   });
 
   it('a period closed and reopened emit kz.fin.accounting_period.closed and .reopened', async () => {
+    // Earlier months close first (closeThrough): the order rule refuses a close past an open month.
+    await closeThrough(FIXTURE, CLOSED);
     const row = await unscopedPrisma.accountingPeriod.findFirstOrThrow({ where: { tenantId: TENANT, period: CLOSED } });
     await asUser(CHAIRMAN, () => reopenPeriod(CLOSED, 'W2 event probe; closing again straight away'));
     await asUser(FINANCE, () => requestClosePeriod(CLOSED));
     await asUser(CHAIRMAN, () => closePeriod(CLOSED));
     expect((await eventsFor('kz.fin.accounting_period.reopened', row.id)).length).toBeGreaterThanOrEqual(1);
     expect((await eventsFor('kz.fin.accounting_period.closed', row.id)).length).toBeGreaterThanOrEqual(1);
+    // The later tests write into 2016, which a closed 2017-10 would refuse.
+    await reopenLatestFirst(FIXTURE, 'Books events probe finished; reopening the months it closed');
   });
 
   it('a bank statement imported emits kz.fin.bank_statement.imported on the account', async () => {

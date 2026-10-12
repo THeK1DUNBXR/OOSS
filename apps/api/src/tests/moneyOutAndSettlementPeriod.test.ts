@@ -5,38 +5,55 @@
  * Money that has left the bank is never refused by a closed month. A TDS challan
  * marked paid, or an advance-tax payment, dated in a closed period is recorded
  * with its real paid date (that date drives interest and the return), gets a
- * `bookedOn` in the current open period, and raises EX-FIN-008. A course-fee
- * invoice that a receipt settles gets its final invoice in the open period,
- * with EX-FIN-009. A dropout (a staff withdrawal) keeps its guard.
+ * `bookedOn` in the current open period, and raises EX-FIN-008. A receipt dated
+ * in a closed month is refused, not moved: the order rule keeps every month
+ * before a closed one closed, so no open month exists to move it to (the
+ * settlement tests below). A dropout (a staff withdrawal) keeps its guard.
  *
- * Real Postgres. Periods are closed here and reopened after, as in the other
- * period suites.
+ * Real Postgres. The file runs in a books tenant of its own (booksTenant), so
+ * the months it closes are not read by any other file. Its closes are windows:
+ * closeThrough closes the months a probe needs in ascending order, and
+ * reopenLatestFirst reopens them latest first when the window ends.
  */
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { monthKey, round2 } from '@kaizen/shared';
-import { asUser, prisma, tenantId, unscopedPrisma } from './helpers.js';
+import {
+  asUser,
+  booksTenant,
+  closeThrough,
+  expectReject,
+  prisma,
+  reopenLatestFirst,
+  unscopedPrisma,
+  type BooksTenant,
+} from './helpers.js';
 import { markChallanPaid, recordAdvanceTaxPayment } from '../domains/compliance/tax.js';
-import { collectInvoicePayment, createInvoice } from '../domains/invoicing.js';
+import { collectInvoicePayment, createInvoice, invoiceLabel } from '../domains/invoicing.js';
 import { enrolStudent } from '../domains/education.js';
 import { nextRecordCode } from '../platform/recordCode.js';
-import { requestClosePeriod, closePeriod, reopenPeriod } from '../domains/compliance/books.js';
 // Registers the invoice.before_issue hook the course-fee invoice needs, as courseFeeInvoice.test does.
 import '../domains/compliance/gst.js';
 
 const CLOSED = '2017-10';
-const FINANCE = 'finance@kaizen.co.in';
-const CHAIRMAN = 'chairman@kaizen.co.in';
 
+let FIXTURE: BooksTenant;
 let TENANT: string;
+let FINANCE: string;
+let CHAIRMAN: string;
 
 beforeAll(async () => {
-  TENANT = await tenantId();
-  const row = await unscopedPrisma.accountingPeriod.findFirst({ where: { tenantId: TENANT, period: CLOSED } });
-  if (row?.status !== 'closed') {
-    await asUser(FINANCE, () => requestClosePeriod(CLOSED));
-    await asUser(CHAIRMAN, () => closePeriod(CLOSED));
-  }
+  FIXTURE = await booksTenant('money-out-settlement-period');
+  TENANT = FIXTURE.tenantId;
+  FINANCE = FIXTURE.finance;
+  CHAIRMAN = FIXTURE.chairman;
+  // A run that stopped inside a close window leaves months closed. Reopen them before this run writes.
+  await reopenLatestFirst(FIXTURE, 'Test fixture reset at the start of the run');
+  await closeThrough(FIXTURE, CLOSED);
+});
+
+afterAll(async () => {
+  await reopenLatestFirst(FIXTURE, 'Money out and settlement period tests finished; reopening the months they closed');
 });
 
 function unique(label: string): string {
@@ -50,6 +67,28 @@ function bookedOnOf(row: object): Date | null | undefined {
 
 async function exceptionsFor(code: string, subjectId: string): Promise<number> {
   return unscopedPrisma.exceptionRecord.count({ where: { tenantId: TENANT, code, subjectId } });
+}
+
+/**
+ * What a refused collection leaves behind: the invoice as it was before the attempt, and no
+ * receipt, payment, final invoice or EX-FIN-009 for it. The EX-FIN-009 detail names the invoice
+ * id (receipts.ts issueFinalInvoice), which is how an exception for this attempt is found, since
+ * a refused attempt raises no final invoice to key it by.
+ */
+async function expectRefusedCollectionWroteNothing(invoiceId: string, status: string, label: string): Promise<void> {
+  const after = await unscopedPrisma.invoice.findUniqueOrThrow({ where: { id: invoiceId } });
+  expect(after.status).toBe(status);
+  expect(after.status).not.toBe('settled');
+  expect(await unscopedPrisma.receipt.count({ where: { tenantId: TENANT, invoiceId } })).toBe(0);
+  expect(await unscopedPrisma.finalInvoice.count({ where: { tenantId: TENANT, invoiceId } })).toBe(0);
+  expect(
+    await unscopedPrisma.payment.count({ where: { tenantId: TENANT, gatewayReference: { startsWith: label } } }),
+  ).toBe(0);
+  expect(
+    await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: TENANT, code: 'EX-FIN-009', detail: { contains: invoiceId } },
+    }),
+  ).toBe(0);
 }
 
 describe('Money out — a payment already made is never refused by a closed month', () => {
@@ -117,8 +156,8 @@ describe('Money out — a payment already made is never refused by a closed mont
   });
 });
 
-describe('Settlement — a receipt that settles a course-fee invoice is not blocked by a closed current month', () => {
-  it('the final invoice is raised in the open period, the receipt stands, and EX-FIN-009 is raised', async () => {
+describe('Settlement — a receipt dated in a closed month is refused, and the course-fee invoice it would settle does not move', () => {
+  it('the receipt is refused with 422, and the invoice stays unsettled with no receipt, payment, final invoice or EX-FIN-009', async () => {
     // Set up as the finance principal, so every write runs in a request context.
     const invoice = await asUser(FINANCE, async () => {
       const course = await prisma.course.create({
@@ -157,34 +196,39 @@ describe('Settlement — a receipt that settles a course-fee invoice is not bloc
     });
 
     const today = monthKey(new Date());
-    await asUser(FINANCE, () => requestClosePeriod(today));
-    await asUser(CHAIRMAN, () => closePeriod(today));
+    await closeThrough(FIXTURE, today);
     try {
       const amount = round2(Number(invoice.grandTotal.toString()));
-      // The money came in during an open month, earlier; it is the settling of
-      // the invoice, today, that would have been refused.
-      await asUser(FINANCE, () =>
-        collectInvoicePayment(invoice.id, {
-          amount,
-          mode: 'bank_transfer',
-          receivedAt: new Date('2026-09-15T06:00:00Z'),
-        }),
+      const before = await unscopedPrisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+      // Closing today's month closes every earlier month too (the order rule, books.ts
+      // requestClosePeriod), so 2026-09 is closed and cannot be left open beneath it. A receipt
+      // dated into it is refused by the period hook: collectInvoicePayment runs
+      // accounting_document.before_write on the receipt date (invoicing.ts:1290), and
+      // refuseClosedPeriod throws for a closed month (compliance/books.ts:442). Nothing before
+      // that hook can refuse this call: the invoice is issued, the balance is the full amount, and
+      // the mode is given. Money that has already moved is rolled forward for gateway payments,
+      // which gatewayPaymentPeriod.test.ts covers; a collected invoice payment is not rolled
+      // forward, it is refused.
+      const refusal = await expectReject(() =>
+        asUser(FINANCE, () =>
+          collectInvoicePayment(invoice.id, {
+            amount,
+            mode: 'bank_transfer',
+            receivedAt: new Date('2026-09-15T06:00:00Z'),
+          }),
+        ),
       );
-
-      const final = await unscopedPrisma.finalInvoice.findFirstOrThrow({
-        where: { tenantId: TENANT, invoiceId: invoice.id },
-      });
-      expect(final.settled).toBe(true);
-      expect(monthKey(final.issuedAt)).not.toBe(today);
-      expect(await exceptionsFor('EX-FIN-009', final.id)).toBe(1);
+      expect(refusal.status).toBe(422);
+      expect(refusal.message).toContain('closed accounting period');
+      await expectRefusedCollectionWroteNothing(invoice.id, before.status, invoiceLabel(invoice));
     } finally {
-      await asUser(CHAIRMAN, () => reopenPeriod(today, 'W2 probe finished; reopening the current month'));
+      await reopenLatestFirst(FIXTURE, 'W2 probe finished; reopening the months it closed');
     }
   });
 });
 
-describe('Settlement — a receipt that settles a generic invoice is not blocked by a closed current month', () => {
-  it('the statement is raised in the open period, the receipt stands, and EX-FIN-009 is raised', async () => {
+describe('Settlement — a receipt dated in a closed month is refused, and the generic invoice it would settle does not move', () => {
+  it('the receipt is refused with 422, and the invoice stays unsettled with no receipt, payment, final invoice or EX-FIN-009', async () => {
     const org = await unscopedPrisma.organization.findFirstOrThrow({ where: { tenantId: TENANT } });
     const invoice = await asUser(FINANCE, () =>
       createInvoice({
@@ -194,26 +238,26 @@ describe('Settlement — a receipt that settles a generic invoice is not blocked
     );
 
     const today = monthKey(new Date());
-    await asUser(FINANCE, () => requestClosePeriod(today));
-    await asUser(CHAIRMAN, () => closePeriod(today));
+    await closeThrough(FIXTURE, today);
     try {
       const amount = round2(Number(invoice.grandTotal.toString()));
-      await asUser(FINANCE, () =>
-        collectInvoicePayment(invoice.id, {
-          amount,
-          mode: 'bank_transfer',
-          receivedAt: new Date('2026-09-15T06:00:00Z'),
-        }),
+      const before = await unscopedPrisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+      // The same refusal as the course-fee case above: 2026-09 is closed by the order rule, and
+      // the period hook refuses a receipt dated into it before anything is written.
+      const refusal = await expectReject(() =>
+        asUser(FINANCE, () =>
+          collectInvoicePayment(invoice.id, {
+            amount,
+            mode: 'bank_transfer',
+            receivedAt: new Date('2026-09-15T06:00:00Z'),
+          }),
+        ),
       );
-
-      const final = await unscopedPrisma.finalInvoice.findFirstOrThrow({
-        where: { tenantId: TENANT, invoiceId: invoice.id },
-      });
-      expect(final.settled).toBe(true);
-      expect(monthKey(final.issuedAt)).not.toBe(today);
-      expect(await exceptionsFor('EX-FIN-009', final.id)).toBe(1);
+      expect(refusal.status).toBe(422);
+      expect(refusal.message).toContain('closed accounting period');
+      await expectRefusedCollectionWroteNothing(invoice.id, before.status, invoiceLabel(invoice));
     } finally {
-      await asUser(CHAIRMAN, () => reopenPeriod(today, 'W2 probe finished; reopening the current month'));
+      await reopenLatestFirst(FIXTURE, 'W2 probe finished; reopening the months it closed');
     }
   });
 });

@@ -29,7 +29,7 @@ import {
   resolvePostingAccounts,
 } from '../../platform/postingRoles.js';
 import { assertTrialBalance, journalTrialBalance } from '../../platform/balances.js';
-import { asUser, tenantId } from '../helpers.js';
+import { asUser, booksTenant } from '../helpers.js';
 
 const APP_URL =
   process.env.TEST_APP_DATABASE_URL ??
@@ -38,7 +38,8 @@ const APP_URL =
     '//kaizen_app:kaizen_app@',
   );
 
-const CHAIRMAN = 'chairman@kaizen.co.in';
+/** The books tenant's chairman, set in beforeAll: this file closes periods, so it cannot share `kaizen`. */
+let CHAIRMAN: string;
 const app = new PrismaClient({ datasourceUrl: APP_URL });
 /** Past every real posting: the trial balance is taken over the whole tenant. */
 const ALL_TIME = new Date('9999-12-31T00:00:00.000Z');
@@ -149,7 +150,11 @@ function fixtureAccounts(): ResolvedPostingAccounts {
 }
 
 beforeAll(async () => {
-  tid = await tenantId();
+  // Its own tenant (slug 'posting-plumbing-test'): this file writes closed and closing periods (2044-03, 2044-04),
+  // and in `kaizen` those freeze every row-less month below them for every other file.
+  const books = await booksTenant('posting-plumbing-test');
+  tid = books.tenantId;
+  CHAIRMAN = books.chairman;
   const other = await unscopedPrisma.tenant.create({
     data: { name: 'Posting plumbing other tenant', slug: `pplumb-other-${randomUUID().slice(0, 8)}` },
   });
