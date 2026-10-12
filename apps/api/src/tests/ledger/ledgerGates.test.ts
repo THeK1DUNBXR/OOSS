@@ -164,6 +164,17 @@ describe('L1: the database refuses an entry that is not a balanced double entry'
       }),
     ).rejects.toThrow(/at least two lines/);
   });
+
+  it('refuses an entry with one line at commit, as the application role', async () => {
+    const p = await unscopedPrisma.accountingPeriod.findFirstOrThrow({ where: { tenantId: tid, period: '2030-06' } });
+    const entryId = randomUUID();
+    await expect(
+      asAppRole(async (tx) => {
+        await tx.$executeRaw`INSERT INTO "journal_entries" ("id","tenantId","entityId","periodId","entryNumber","entryDate","status","narration","sourceType") VALUES (${entryId}, ${tid}, ${entityId}, ${p.id}, ${'L1O-' + entryId}, ${'2030-06-15'}::date, 'posted', 'one line', 'manual')`;
+        await tx.$executeRaw`INSERT INTO "journal_lines" ("id","tenantId","entryId","lineNo","accountId","amountMinor","currency","baseAmountMinor") VALUES (${randomUUID()}, ${tid}, ${entryId}, 1, ${bankId}, ${10000n}, 'INR', ${10000n})`;
+      }),
+    ).rejects.toThrow(/at least two lines/);
+  });
 });
 
 describe('L2: a posted entry is immutable and a reversal is final', () => {

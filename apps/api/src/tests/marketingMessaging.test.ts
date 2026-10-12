@@ -327,6 +327,30 @@ describe('MKT-MSG — sends over the approval threshold need a distinct approver
   });
 });
 
+describe('journey record codes stay clear of journal entry numbers', () => {
+  // Journal entries are numbered JRN-<year>-<n> (ledger.ts:88, :102). Journeys were on the same
+  // prefix, so a journey and a journal entry could carry the same shape of code. New journeys and
+  // runs take JNY; the codes already issued under JRN stay as they are.
+  it('issues JNY codes for a new journey and for its run', async () => {
+    const person = await makePerson('Journey Code Person', `journey-code-${Date.now()}@example.com`, null);
+    const template = await makeApprovedTemplate('email');
+
+    const journey = await asUser(CREATOR, () =>
+      createJourney({
+        name: `Code ${Date.now()}`,
+        triggerKind: 'manual',
+        steps: [{ delayDays: 0, templateId: template.id, channelKey: 'email' }],
+      }),
+    );
+    await asUser(CREATOR, () => activateJourney(journey.id));
+    const run = await asUser(CREATOR, () => enrolPerson(journey.id, person.id));
+
+    const runRow = await unscopedPrisma.marketingJourneyRun.findFirstOrThrow({ where: { id: run.id } });
+    expect(journey.recordCode).toMatch(/^JNY-\d{4}-\d{5}$/);
+    expect(runRow.recordCode).toMatch(/^JNY-\d{4}-\d{5}$/);
+  });
+});
+
 describe('MKT-MSG-008 — journeys enrol and advance', () => {
   it('tick() sends step 0 then advances to step 1, and enrolling twice never duplicates the active run', async () => {
     process.env.MARKETING_EMAIL_ADAPTER = 'fake';
