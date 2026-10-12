@@ -69,9 +69,13 @@ describe('moneyField', () => {
     expect(parsed(positive, '   ').success).toBe(false);
   });
 
-  it('accepts a blank amount when the field is optional', () => {
-    expect(parsed(optional, '').success).toBe(true);
-    expect(parsed(optional, '   ').success).toBe(true);
+  it('accepts a blank amount when the field is optional, and reads it as not entered rather than zero', () => {
+    expect(parsed(optional, '')).toEqual({ success: true, data: undefined });
+    expect(parsed(optional, '   ')).toEqual({ success: true, data: undefined });
+  });
+
+  it('reads a typed zero in an optional field as zero, not as blank', () => {
+    expect(parsed(optional, '0')).toEqual({ success: true, data: 0n });
   });
 });
 
