@@ -16,6 +16,7 @@ import {
   createStatutoryRule,
   holdStatutoryRule,
   ruleAt,
+  STATUTORY_APPROVER_DUTY,
   StatutoryRuleNotFoundError,
 } from '../domains/statutory.js';
 import { asUser, expectReject, tenantId, withFixtureRole } from './helpers.js';
@@ -171,6 +172,22 @@ const APPROVER_GRANTS = [{ resource: 'rate_tables', verbs: ['view', 'edit', 'app
 
 async function clearFx() {
   await unscopedPrisma.statutoryRule.deleteMany({ where: { jurisdiction: FX_JURISDICTION } });
+  // Approval needs the statutory approver duty held (round 27 c). Every approval test here
+  // names its approver as the holder, so the holder row is cleared with the rules.
+  await unscopedPrisma.dutyAssignment.deleteMany({ where: { tenantId: tid, dutyKey: STATUTORY_APPROVER_DUTY } });
+}
+
+/** A fixture holder of the statutory approver duty, written directly: the duty's own grant is tested elsewhere. */
+async function holdApproverDuty(partyId: string) {
+  return unscopedPrisma.dutyAssignment.create({
+    data: {
+      tenantId: tid,
+      dutyKey: STATUTORY_APPROVER_DUTY,
+      partyId,
+      effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
+      assignedBy: 'fixture',
+    },
+  });
 }
 
 describe('StatutoryRule drafting and approval (FIXES P2, P3)', () => {
@@ -290,9 +307,10 @@ describe('StatutoryRule drafting and approval (FIXES P2, P3)', () => {
       }),
     );
 
-    const approved = await withFixtureRole({ grants: APPROVER_GRANTS }, (approver) =>
-      approveStatutoryRule(draft.id).then((row) => ({ row, approverPartyId: approver.partyId })),
-    );
+    const approved = await withFixtureRole({ grants: APPROVER_GRANTS }, async (approver) => {
+      await holdApproverDuty(approver.partyId);
+      return approveStatutoryRule(draft.id).then((row) => ({ row, approverPartyId: approver.partyId }));
+    });
     expect(approved.row.status).toBe('APPROVED');
     expect(approved.row.approvedBy).toBe(approved.approverPartyId);
 
@@ -326,7 +344,10 @@ describe('StatutoryRule drafting and approval (FIXES P2, P3)', () => {
         source: 'fixture: obviously fake, W1K',
       }),
     );
-    await withFixtureRole({ grants: APPROVER_GRANTS }, () => approveStatutoryRule(draft.id));
+    await withFixtureRole({ grants: APPROVER_GRANTS }, async (approver) => {
+      await holdApproverDuty(approver.partyId);
+      await approveStatutoryRule(draft.id);
+    });
     const audited = await unscopedPrisma.auditRecord.findMany({
       where: { subjectType: 'statutory_rule', subjectId: { in: [prior.id, draft.id] } },
     });
@@ -349,7 +370,8 @@ describe('StatutoryRule drafting and approval (FIXES P2, P3)', () => {
         source: 'fixture: obviously fake, W1K',
       }),
     );
-    await withFixtureRole({ grants: APPROVER_GRANTS }, async () => {
+    await withFixtureRole({ grants: APPROVER_GRANTS }, async (approver) => {
+      await holdApproverDuty(approver.partyId);
       const err = await expectReject(() => approveStatutoryRule(draft.id));
       expect(err.status).toBe(409);
     });
