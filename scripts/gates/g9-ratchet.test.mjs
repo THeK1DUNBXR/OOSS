@@ -41,12 +41,9 @@ test('does not flag Number helpers that are not the bare conversion', () => {
 });
 
 test('flags each IST period getter', () => {
-  const text = [
-    'const m = d.getUTCMonth();',
-    'const y = d.getUTCFullYear();',
-    'const day = d.getUTCDate();',
-    '',
-  ].join('\n');
+  const text = ['const m = d.getUTCMonth();', 'const y = d.getUTCFullYear();', 'const day = d.getUTCDate();', ''].join(
+    '\n',
+  );
   assert.deepEqual(
     scanSource(API, text).map((f) => [f.line, f.rule]),
     [

@@ -1,0 +1,576 @@
+{
+  "gate": "G9 IST",
+  "description": "Ratchet for CLAUDE.md rule 3 (periods are IST). Per-file counts; a count may only fall. packages/shared/src/time.ts is exempt. Regenerate with node scripts/gates/run.mjs --write-baseline.",
+  "entries": [
+    {
+      "file": "apps/api/src/domains/board.ts",
+      "rule": ".getUTCDate()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/board.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 3,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/board.ts",
+      "rule": ".getUTCMonth()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/books.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/corporate/contracts.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/gst.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/gst.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/payroll.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/payroll.ts",
+      "rule": ".getUTCMonth()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/privacy.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/esop.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/group.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/group.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/it/continuity.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/it/continuity.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/it/servicedesk.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/it/servicedesk.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/jobs/it/governance.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/approvalStepResource.test.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/compliance/calendar.test.ts",
+      "rule": ".getUTCDate()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/compliance/gst.test.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 3,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/compliance/gst.test.ts",
+      "rule": ".getUTCMonth()",
+      "count": 3,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/compliance/labour.test.ts",
+      "rule": ".getUTCDate()",
+      "count": 3,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/compliance/labour.test.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/compliance/labour.test.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/compliance/tax.test.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/compliance/tax.test.ts",
+      "rule": ".getUTCMonth()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/esop.test.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/fixtures/demoBooks.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/fixtures/demoBooks.ts",
+      "rule": ".getUTCMonth()",
+      "count": 6,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/fixtures/demoDataset.ts",
+      "rule": ".getUTCDate()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/fixtures/demoDataset.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/fixtures/demoDataset.ts",
+      "rule": ".getUTCMonth()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/hcm/analytics.test.ts",
+      "rule": ".getUTCDate()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/hcm/analytics.test.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/hcm/analytics.test.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/hcm/time.test.ts",
+      "rule": ".getUTCDate()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/hcm/time.test.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/hcm/time.test.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/invoicing.test.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/invoicing.test.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/it/governance.test.ts",
+      "rule": ".getUTCDate()",
+      "count": 3,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/it/servicedesk.test.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/it/software.test.ts",
+      "rule": ".getUTCDate()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/it/software.test.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/it/vendors.test.ts",
+      "rule": ".getUTCDate()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/raiseInTransactionAtomicity.test.ts",
+      "rule": ".getUTCDate()",
+      "count": 3,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/raiseInTransactionAtomicity.test.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 3,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/api/src/tests/raiseInTransactionAtomicity.test.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/compliance/Books.tsx",
+      "rule": ".getUTCFullYear()",
+      "count": 3,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/compliance/Books.tsx",
+      "rule": ".getUTCMonth()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/compliance/Gst.tsx",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/compliance/Gst.tsx",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/compliance/Payroll.tsx",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/compliance/Payroll.tsx",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/Executive.tsx",
+      "rule": ".getUTCFullYear()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/Executive.tsx",
+      "rule": ".getUTCMonth()",
+      "count": 3,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/GstReturns.tsx",
+      "rule": ".getUTCFullYear()",
+      "count": 3,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/GstReturns.tsx",
+      "rule": ".getUTCMonth()",
+      "count": 3,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/hcm/LeaveCalendar.tsx",
+      "rule": ".getUTCDate()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/hcm/LeaveCalendar.tsx",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/hcm/LeaveCalendar.tsx",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/it/Continuity.tsx",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/it/Continuity.tsx",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/it/Portfolio.tsx",
+      "rule": ".getUTCFullYear()",
+      "count": 5,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/it/Portfolio.tsx",
+      "rule": ".getUTCMonth()",
+      "count": 3,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/marketing/Analytics.tsx",
+      "rule": ".getUTCDate()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/marketing/Calendar.tsx",
+      "rule": ".getUTCDate()",
+      "count": 4,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/marketing/Calendar.tsx",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/marketing/Calendar.tsx",
+      "rule": ".getUTCMonth()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/me/Leave.tsx",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "apps/web/src/pages/me/Leave.tsx",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/compliance/books.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/compliance/calendar.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 7,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/compliance/calendar.ts",
+      "rule": ".getUTCMonth()",
+      "count": 5,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/compliance/labour.ts",
+      "rule": ".getUTCDate()",
+      "count": 7,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/compliance/labour.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 6,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/compliance/labour.ts",
+      "rule": ".getUTCMonth()",
+      "count": 4,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/compliance/privacy.ts",
+      "rule": ".getUTCDate()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/compliance/privacy.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/compliance/tax.ts",
+      "rule": ".getUTCDate()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/esop.ts",
+      "rule": ".getUTCDate()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/esop.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/esop.ts",
+      "rule": ".getUTCMonth()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/finance.ts",
+      "rule": ".getUTCDate()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/finance.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/finance.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/hcm/learning.ts",
+      "rule": ".getUTCMonth()",
+      "count": 2,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/hcm/recruiting.ts",
+      "rule": ".getUTCDate()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/hcm/time.ts",
+      "rule": ".getUTCDate()",
+      "count": 3,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/hcm/time.ts",
+      "rule": ".getUTCFullYear()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/hcm/time.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/it/governance.ts",
+      "rule": ".getUTCDate()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/it/vendors.ts",
+      "rule": ".getUTCDate()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/it/vendors.ts",
+      "rule": ".getUTCMonth()",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count."
+    }
+  ]
+}

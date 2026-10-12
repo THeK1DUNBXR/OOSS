@@ -65,7 +65,7 @@ test('flags force: true inside an auditWrite argument', () => {
 test('does not flag force: true on an unrelated call', () => {
   const result = analyze({
     'apps/api/src/platform/registry.ts': REGISTER,
-    [PROD]: "export async function f(p) { await rm(p, { force: true }); }\n",
+    [PROD]: 'export async function f(p) { await rm(p, { force: true }); }\n',
   });
   assert.deepEqual(result.findings, []);
 });

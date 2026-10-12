@@ -48,7 +48,7 @@ test('ignores mentions of a mock in comments and strings', () => {
   const text = [
     "// vi.mock('../platform/db') was the old way",
     '/* vi.spyOn(a, "b") */',
-    "const note = \"do not vi.fn() the database\";",
+    'const note = "do not vi.fn() the database";',
     "const tmpl = `jest.mock('x')`;",
     '',
   ].join('\n');
@@ -56,12 +56,6 @@ test('ignores mentions of a mock in comments and strings', () => {
 });
 
 test('ignores other vi helpers and calls on other receivers', () => {
-  const text = [
-    'vi.hoisted(() => 1);',
-    'mocker.mock("x");',
-    'obj.fn();',
-    'const v = vi.waitFor;',
-    '',
-  ].join('\n');
+  const text = ['vi.hoisted(() => 1);', 'mocker.mock("x");', 'obj.fn();', 'const v = vi.waitFor;', ''].join('\n');
   assert.deepEqual(scanSource(TEST, text), []);
 });

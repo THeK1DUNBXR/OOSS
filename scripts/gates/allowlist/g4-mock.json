@@ -1,0 +1,12 @@
+{
+  "gate": "G4",
+  "description": "Mock and spy calls that the API suite is allowed to keep. The rule is zero tolerance (CLAUDE.md Never). Each entry needs an owner decision; the count may only fall, and an entry the code no longer matches fails the gate.",
+  "entries": [
+    {
+      "file": "apps/api/src/tests/marketingMessaging.test.ts",
+      "rule": "vi.spyOn",
+      "count": 1,
+      "reason": "PENDING OWNER: CI-GATES §5 Q2 has not named this stub"
+    }
+  ]
+}
