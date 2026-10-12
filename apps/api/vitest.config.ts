@@ -1,6 +1,6 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 const ownerUrl = process.env.TEST_DATABASE_URL ?? 'postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public';
 
@@ -19,6 +19,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/tests/**/*.test.ts'],
+    // The concurrency suite has its own config (vitest.concurrency.config.ts). It
+    // races on purpose, so it must not run here, where every file is serial.
+    exclude: [...configDefaults.exclude, 'src/tests/concurrency/**'],
     testTimeout: 30_000,
     hookTimeout: 60_000,
     fileParallelism: false,
