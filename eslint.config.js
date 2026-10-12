@@ -118,6 +118,12 @@ export default tseslint.config(
             'TemplateElement[value.raw=/(INSERT\\s+INTO|UPDATE|DELETE\\s+FROM)[^;]*journal_(entries|lines|reversals)/i]',
           message: 'Only platform/ledger.ts writes journal rows. Post through post() (CLAUDE.md rule 2).',
         },
+        {
+          // A write built from a plain string never reaches the TemplateElement
+          // selector above, so it passed lint until this one was added.
+          selector: 'Literal[value=/(INSERT\\s+INTO|UPDATE|DELETE\\s+FROM)[^;]*journal_(entries|lines|reversals)/i]',
+          message: 'Only platform/ledger.ts writes journal rows. Post through post() (CLAUDE.md rule 2).',
+        },
       ],
     },
   },

@@ -837,3 +837,4 @@
 Generated or lock files. Nothing in them answers a question worth the tokens.
 
 - `pnpm-lock.yaml` (6082 lines)
+- `scripts/gates/allowlist/g9-money.json` (1915 lines)

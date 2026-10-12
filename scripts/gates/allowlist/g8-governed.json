@@ -1,0 +1,30 @@
+{
+  "gate": "G8",
+  "description": "Order findings for CLAUDE.md rule 5 (assertCan, then auditWrite, then emit). Unregistered subjectTypes and force: true have no entries and must not get one. Regenerate with node scripts/gates/run.mjs --write-baseline.",
+  "entries": [
+    {
+      "file": "apps/api/src/domains/compliance/books.ts",
+      "rule": "emit-before-auditWrite",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). This function does not yet run the rule 5 order; fix the order and drop this entry."
+    },
+    {
+      "file": "apps/api/src/domains/equity.ts",
+      "rule": "emit-before-auditWrite",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). This function does not yet run the rule 5 order; fix the order and drop this entry."
+    },
+    {
+      "file": "apps/api/src/domains/hcm/workflow.ts",
+      "rule": "emit-before-auditWrite",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). This function does not yet run the rule 5 order; fix the order and drop this entry."
+    },
+    {
+      "file": "apps/api/src/domains/receipts.ts",
+      "rule": "emit-before-auditWrite",
+      "count": 1,
+      "reason": "Baselined at Wave 7 (W7-A). This function does not yet run the rule 5 order; fix the order and drop this entry."
+    }
+  ]
+}
