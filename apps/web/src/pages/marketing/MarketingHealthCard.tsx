@@ -10,15 +10,14 @@
 
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import type { CommandCenterResponse } from '@kaizen/shared';
-import { api } from '../../lib/api.js';
 import { NOT_MEASURED, domainAsks, domainName } from '../../lib/words.js';
 import { BandChip, Card, ContributionBar, Loading } from '../../components/ui.js';
+import { mk } from '../../lib/marketingApi.js';
 
 export function MarketingHealthCard() {
   const { data, isLoading } = useQuery({
     queryKey: ['command-center', 'for-marketing-health'],
-    queryFn: () => api.get<CommandCenterResponse>('/command'),
+    queryFn: () => mk.commandCenter(),
     staleTime: 60_000,
   });
 

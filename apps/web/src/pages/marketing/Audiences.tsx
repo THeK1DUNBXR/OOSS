@@ -20,10 +20,13 @@ import {
   type AudienceKind,
   type AudienceRule,
   type AudienceRuleOp,
+  type AudienceView,
 } from '@kaizen/shared';
-import { api, date, dateTime, titleCase } from '../../lib/api.js';
+import { date, dateTime, titleCase } from '../../lib/api.js';
 import {
   AudienceField,
+  crmSearch,
+  mk,
   useAddAudienceMembers,
   useAudience,
   useAudienceFields,
@@ -47,6 +50,7 @@ import {
   RecordCode,
   StatusChip,
 } from '../../components/ui.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
 import { CreateModal, messageOf } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
@@ -64,6 +68,60 @@ function emptyRule(): AudienceRule {
 // ---------------------------------------------------------------------------
 // List
 // ---------------------------------------------------------------------------
+
+const AUDIENCE_COLUMNS: ReadonlyArray<DataTableColumn<AudienceView>> = [
+  { id: 'code', header: 'Code', cell: (a) => <RecordCode code={a.recordCode} />, sortValue: (a) => a.recordCode },
+  {
+    id: 'name',
+    header: 'Name',
+    cell: (a) => (
+      <>
+        <p className="text-xs font-medium text-ink-100">{a.name}</p>
+        {a.description && <p className="text-2xs text-ink-500">{a.description}</p>}
+      </>
+    ),
+    sortValue: (a) => a.name,
+  },
+  {
+    id: 'kind',
+    header: 'Kind',
+    cell: (a) => (
+      <>
+        <StatusChip status={AUDIENCE_KIND_LABELS[a.kind]} tone={KIND_TONE[a.kind]} />
+        {a.kind === 'suppression' && <p className="mt-0.5 text-2xs italic text-band-watch">excluded from every send</p>}
+      </>
+    ),
+    sortValue: (a) => AUDIENCE_KIND_LABELS[a.kind],
+  },
+  {
+    id: 'entity',
+    header: 'Entity',
+    cell: (a) => titleCase(a.entityType),
+    cellClassName: 'text-xs text-ink-300',
+    sortValue: (a) => titleCase(a.entityType),
+  },
+  {
+    id: 'members',
+    header: 'Members',
+    align: 'right',
+    // A dynamic audience whose count was never computed shows a dash, not a zero, and sorts last.
+    cell: (a) => a.memberCount ?? '—',
+    cellClassName: 'text-xs',
+    sortValue: (a) => a.memberCount,
+  },
+  {
+    id: 'lastEvaluated',
+    header: 'Last evaluated',
+    cell: (a) =>
+      a.kind === 'static'
+        ? 'not evaluated — manual list'
+        : a.lastEvaluatedAt
+          ? dateTime(a.lastEvaluatedAt)
+          : 'never evaluated',
+    cellClassName: 'text-2xs text-ink-500',
+    sortValue: (a) => a.lastEvaluatedAt,
+  },
+];
 
 export function Audiences() {
   const { can } = useSession();
@@ -87,59 +145,18 @@ export function Audiences() {
         }
       />
 
-      {isLoading ? (
-        <Loading />
-      ) : !data?.items.length ? (
-        <Card>
-          <EmptyState
-            message="No audiences yet."
-            hint="An audience is a rule tree (dynamic), a manual list (static), or a suppression list every send checks."
-          />
-        </Card>
-      ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Name</th>
-                <th>Kind</th>
-                <th>Entity</th>
-                <th className="text-right">Members</th>
-                <th>Last evaluated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((a) => (
-                <tr key={a.id} className="cursor-pointer" onClick={() => setOpenId(a.id)}>
-                  <td>
-                    <RecordCode code={a.recordCode} />
-                  </td>
-                  <td>
-                    <p className="text-xs font-medium text-ink-100">{a.name}</p>
-                    {a.description && <p className="text-2xs text-ink-500">{a.description}</p>}
-                  </td>
-                  <td>
-                    <StatusChip status={AUDIENCE_KIND_LABELS[a.kind]} tone={KIND_TONE[a.kind]} />
-                    {a.kind === 'suppression' && (
-                      <p className="mt-0.5 text-2xs italic text-band-watch">excluded from every send</p>
-                    )}
-                  </td>
-                  <td className="text-xs text-ink-300">{titleCase(a.entityType)}</td>
-                  <td className="text-right tabular-nums text-xs">{a.memberCount ?? '—'}</td>
-                  <td className="text-2xs text-ink-500">
-                    {a.kind === 'static'
-                      ? 'not evaluated — manual list'
-                      : a.lastEvaluatedAt
-                        ? dateTime(a.lastEvaluatedAt)
-                        : 'never evaluated'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      <Card bodyClassName="p-0">
+        <DataTable
+          caption="Audiences"
+          columns={AUDIENCE_COLUMNS}
+          rows={data?.items ?? []}
+          rowKey={(a) => a.id}
+          loading={isLoading}
+          emptyMessage="No audiences yet."
+          emptyHint="An audience is a rule tree (dynamic), a manual list (static), or a suppression list every send checks."
+          rowAction={{ label: (a) => `Open audience ${a.name}`, onActivate: (a) => setOpenId(a.id) }}
+        />
+      </Card>
 
       <NewAudience open={createOpen} onClose={() => setCreateOpen(false)} onCreated={(id) => setOpenId(id)} />
       {openId && <AudienceDrawer id={openId} onClose={() => setOpenId(null)} />}
@@ -183,15 +200,21 @@ function NewAudience({
         const created = result as { id: string } | undefined;
         if (created?.id) onCreated(created.id);
       }}
-      onSubmit={() =>
-        api.post(`/marketing/audiences`, {
+      onSubmit={() => {
+        // The selects start empty and the modal has no native required check,
+        // so an unchosen kind was sent to the server as ''. Refusing here names
+        // what is missing.
+        if (!kind || !entityType) {
+          return Promise.reject(new Error('Choose what kind of audience this is and what it holds.'));
+        }
+        return mk.createAudience({
           name,
           kind,
           entityType,
           description: description || undefined,
           rules: kind === 'dynamic' ? emptyRule() : undefined,
-        })
-      }
+        });
+      }}
     >
       <TextInput label="Name" required value={name} onChange={setName} placeholder="e.g. Warm leads — last 30 days" />
       <Row>
@@ -687,13 +710,13 @@ function StaticMemberAdd({
 
   const { data, isFetching } = useQuery({
     queryKey: ['mkt', 'audience-member-search', entityType, q],
-    queryFn: () => api.get<{ items: any[] }>(`${path}?q=${encodeURIComponent(q)}&pageSize=10`),
+    queryFn: () => crmSearch.entities(path, q),
     enabled: q.length >= 2,
   });
 
   const results: SearchResult[] = useMemo(
     () =>
-      (data?.items ?? []).map((it: any) => ({
+      (data?.items ?? []).map((it) => ({
         id: it.id,
         recordCode: it.recordCode,
         label: it.fullName ?? it.name ?? it.title ?? it.recordCode,

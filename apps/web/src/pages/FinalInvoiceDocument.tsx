@@ -221,12 +221,18 @@ export function FinalInvoices() {
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Statements" value={current.length} />
-        <Metric label="Settled" value={settled} tone={settled === current.length ? 'good' : 'warn'} />
+        <Metric label="Statements" value={current.length} noActionReason="Counted from the statement rows below" />
+        <Metric
+          label="Settled"
+          value={settled}
+          tone={settled === current.length ? 'good' : 'warn'}
+          noActionReason="Counted from the statement rows below"
+        />
         <Metric
           label="Still owed"
           value={money(current.reduce((s, f) => s + f.balance, 0))}
           tone={current.some((f) => f.balance > 0) ? 'warn' : 'good'}
+          noActionReason="Summed from the statement rows below"
         />
       </div>
 

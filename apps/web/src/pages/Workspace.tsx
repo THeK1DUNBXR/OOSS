@@ -26,6 +26,7 @@ import {
   StatusChip,
   Tabs,
 } from '../components/ui.js';
+import { NOT_MEASURED } from '../lib/words.js';
 import { useSession } from '../lib/session.js';
 
 export function Workspace() {
@@ -112,7 +113,7 @@ export function Workspace() {
         {can('leads:V') && (
           <Metric
             label="Unrouted leads"
-            value={unrouted?.total ?? 0}
+            value={unrouted ? unrouted.total : NOT_MEASURED}
             tone={(unrouted?.total ?? 0) > 0 ? 'warn' : 'good'}
             sub="Counted from the moment assignment fails"
             drillTo="/crm/leads"

@@ -186,13 +186,14 @@ export function Receipts() {
       <PageHeader title="Receipts" subtitle="What has been received, instalment by instalment." />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Receipts" value={data.length} />
-        <Metric label="Received" value={money(total)} />
+        <Metric label="Receipts" value={data.length} noActionReason="Counted from the receipt rows below" />
+        <Metric label="Received" value={money(total)} noActionReason="Summed from the receipt rows below" />
         <Metric
           label="Part payments"
           value={partPayments}
           sub="Receipts that left a balance behind"
           tone={partPayments > 0 ? 'warn' : 'good'}
+          noActionReason="Counted from the receipt rows below"
         />
       </div>
 

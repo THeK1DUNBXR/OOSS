@@ -9,8 +9,21 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, date, money } from '../../lib/api.js';
-import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip, Tabs, Metric } from '../../components/ui.js';
+import { date, money } from '../../lib/api.js';
+import {
+  decimalAmount,
+  hcmApi,
+  type IndividualDevelopmentPlan,
+  type MandatoryTrainingRow,
+  type MandatoryTrainingRule,
+  type TrainingBudget,
+  type TrainingCertification,
+  type TrainingEnrollment,
+  type TrainingProgram,
+  type TrainingSession,
+} from '../../lib/hcmApi.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
+import { Card, PageHeader, StatusChip, Tabs, Metric } from '../../components/ui.js';
 import {
   CreateModal,
   messageOf,
@@ -59,18 +72,6 @@ export function Learning() {
 // Programs
 // ---------------------------------------------------------------------------
 
-interface Program {
-  id: string;
-  title: string;
-  kind: string;
-  provider: string | null;
-  durationHours: number | null;
-  cost: number;
-  skillIds: string[];
-  validityMonths: number | null;
-  isActive: boolean;
-}
-
 function ProgramsTab() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -84,14 +85,49 @@ function ProgramsTab() {
 
   const programs = useQuery({
     queryKey: ['learning-programs'],
-    queryFn: () => api.get<Program[]>('/hcm/learning/programs'),
+    queryFn: () => hcmApi.learning.programs.list(),
   });
 
   const toggleActive = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
-      api.patch(`/hcm/learning/programs/${id}`, { isActive }),
+      hcmApi.learning.programs.setActive(id, isActive),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['learning-programs'] }),
   });
+
+  const columns: ReadonlyArray<DataTableColumn<TrainingProgram>> = [
+    { id: 'title', header: 'Title', sortValue: (p) => p.title, cell: (p) => p.title },
+    { id: 'kind', header: 'Kind', sortValue: (p) => p.kind, cell: (p) => <StatusChip status={p.kind} /> },
+    { id: 'provider', header: 'Provider', sortValue: (p) => p.provider, cell: (p) => p.provider ?? '—' },
+    {
+      id: 'cost',
+      header: 'Cost',
+      align: 'right',
+      sortValue: (p) => decimalAmount(p.cost),
+      cell: (p) => money(decimalAmount(p.cost)),
+    },
+    {
+      id: 'validity',
+      header: 'Validity',
+      sortValue: (p) => p.validityMonths,
+      cell: (p) => (p.validityMonths ? `${p.validityMonths} months` : '—'),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (p) => p.isActive,
+      cell: (p) => <StatusChip status={p.isActive ? 'active' : 'inactive'} tone={p.isActive ? 'good' : 'neutral'} />,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (p) => (
+        <button className="btn text-2xs" onClick={() => toggleActive.mutate({ id: p.id, isActive: !p.isActive })}>
+          {p.isActive ? 'Deactivate' : 'Activate'}
+        </button>
+      ),
+    },
+  ];
 
   return (
     <Card
@@ -99,50 +135,16 @@ function ProgramsTab() {
       subtitle="Classroom, online, certification and mandatory courses the company runs or sponsors."
       actions={<NewButton label="Add program" onClick={() => setOpen(true)} />}
     >
-      {programs.isLoading && <Loading />}
-      {programs.error && <ErrorBox error={programs.error} />}
-      {programs.data && programs.data.length === 0 && (
-        <EmptyState message="No training programs yet." hint="Add one to start scheduling sessions against it." />
-      )}
-      {programs.data && programs.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Kind</th>
-              <th>Provider</th>
-              <th>Cost</th>
-              <th>Validity</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {programs.data.map((p) => (
-              <tr key={p.id}>
-                <td>{p.title}</td>
-                <td>
-                  <StatusChip status={p.kind} />
-                </td>
-                <td>{p.provider ?? '—'}</td>
-                <td className="tabular-nums">{money(p.cost)}</td>
-                <td>{p.validityMonths ? `${p.validityMonths} months` : '—'}</td>
-                <td>
-                  <StatusChip status={p.isActive ? 'active' : 'inactive'} tone={p.isActive ? 'good' : 'neutral'} />
-                </td>
-                <td className="text-right">
-                  <button
-                    className="btn text-2xs"
-                    onClick={() => toggleActive.mutate({ id: p.id, isActive: !p.isActive })}
-                  >
-                    {p.isActive ? 'Deactivate' : 'Activate'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Training programs"
+        columns={columns}
+        rows={programs.data ?? []}
+        rowKey={(p) => p.id}
+        loading={programs.isLoading}
+        error={programs.error}
+        emptyMessage="No training programs yet."
+        emptyHint="Add one to start scheduling sessions against it."
+      />
 
       <CreateModal
         open={open}
@@ -150,7 +152,7 @@ function ProgramsTab() {
         onClose={() => setOpen(false)}
         invalidate={[['learning-programs']]}
         onSubmit={() =>
-          api.post('/hcm/learning/programs', {
+          hcmApi.learning.programs.create({
             title: form.title,
             kind: form.kind,
             provider: form.provider || undefined,
@@ -199,18 +201,6 @@ function ProgramsTab() {
 // Sessions
 // ---------------------------------------------------------------------------
 
-interface Session {
-  id: string;
-  programId: string;
-  startsAt: string;
-  endsAt: string;
-  trainer: string | null;
-  seats: number;
-  location: string | null;
-  status: string;
-  program: { title: string; kind: string; cost: number };
-}
-
 function SessionsTab() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -218,18 +208,48 @@ function SessionsTab() {
 
   const programs = useQuery({
     queryKey: ['learning-programs'],
-    queryFn: () => api.get<Program[]>('/hcm/learning/programs'),
+    queryFn: () => hcmApi.learning.programs.list(),
   });
   const sessions = useQuery({
     queryKey: ['learning-sessions'],
-    queryFn: () => api.get<Session[]>('/hcm/learning/sessions'),
+    queryFn: () => hcmApi.learning.sessions.list(),
   });
 
   const setStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: 'completed' | 'cancelled' }) =>
-      api.post(`/hcm/learning/sessions/${id}/status`, { status }),
+      hcmApi.learning.sessions.setStatus(id, status),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['learning-sessions'] }),
   });
+
+  const columns: ReadonlyArray<DataTableColumn<TrainingSession>> = [
+    { id: 'program', header: 'Program', sortValue: (r) => r.program.title, cell: (r) => r.program.title },
+    { id: 'starts', header: 'Starts', sortValue: (r) => r.startsAt, cell: (r) => date(r.startsAt) },
+    { id: 'trainer', header: 'Trainer', sortValue: (r) => r.trainer, cell: (r) => r.trainer ?? '—' },
+    { id: 'seats', header: 'Seats', align: 'right', sortValue: (r) => r.seats, cell: (r) => r.seats },
+    { id: 'location', header: 'Location', sortValue: (r) => r.location, cell: (r) => r.location ?? '—' },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (r) => r.status,
+      cell: (r) => (
+        <StatusChip
+          status={r.status}
+          tone={r.status === 'completed' ? 'good' : r.status === 'cancelled' ? 'bad' : 'neutral'}
+        />
+      ),
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (r) =>
+        r.status === 'scheduled' && (
+          <button className="btn text-2xs" onClick={() => setStatus.mutate({ id: r.id, status: 'completed' })}>
+            Mark completed
+          </button>
+        ),
+    },
+  ];
 
   return (
     <Card
@@ -237,56 +257,16 @@ function SessionsTab() {
       subtitle="A scheduled running of a program — a batch, a cohort, a booked slot."
       actions={<NewButton label="Schedule session" onClick={() => setOpen(true)} />}
     >
-      {sessions.isLoading && <Loading />}
-      {sessions.error && <ErrorBox error={sessions.error} />}
-      {sessions.data && sessions.data.length === 0 && (
-        <EmptyState
-          message="No sessions scheduled yet."
-          hint="Add a program first, then schedule a session against it."
-        />
-      )}
-      {sessions.data && sessions.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Program</th>
-              <th>Starts</th>
-              <th>Trainer</th>
-              <th>Seats</th>
-              <th>Location</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {sessions.data.map((s) => (
-              <tr key={s.id}>
-                <td>{s.program.title}</td>
-                <td>{date(s.startsAt)}</td>
-                <td>{s.trainer ?? '—'}</td>
-                <td className="tabular-nums">{s.seats}</td>
-                <td>{s.location ?? '—'}</td>
-                <td>
-                  <StatusChip
-                    status={s.status}
-                    tone={s.status === 'completed' ? 'good' : s.status === 'cancelled' ? 'bad' : 'neutral'}
-                  />
-                </td>
-                <td className="text-right">
-                  {s.status === 'scheduled' && (
-                    <button
-                      className="btn text-2xs"
-                      onClick={() => setStatus.mutate({ id: s.id, status: 'completed' })}
-                    >
-                      Mark completed
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Training sessions"
+        columns={columns}
+        rows={sessions.data ?? []}
+        rowKey={(r) => r.id}
+        loading={sessions.isLoading}
+        error={sessions.error}
+        emptyMessage="No sessions scheduled yet."
+        emptyHint="Add a program first, then schedule a session against it."
+      />
 
       <CreateModal
         open={open}
@@ -294,7 +274,7 @@ function SessionsTab() {
         onClose={() => setOpen(false)}
         invalidate={[['learning-sessions']]}
         onSubmit={() =>
-          api.post('/hcm/learning/sessions', {
+          hcmApi.learning.sessions.create({
             programId: form.programId,
             startsAt: form.startsAt,
             endsAt: form.endsAt,
@@ -342,20 +322,6 @@ function SessionsTab() {
 // Enrollments
 // ---------------------------------------------------------------------------
 
-interface Enrollment {
-  id: string;
-  sessionId: string;
-  employmentRelationshipId: string;
-  status: string;
-  score: number | null;
-  session: { startsAt: string; program: { title: string; kind: string } };
-}
-
-interface Employee {
-  id: string;
-  fullName: string;
-}
-
 function EnrollmentsTab() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -363,36 +329,100 @@ function EnrollmentsTab() {
 
   const sessions = useQuery({
     queryKey: ['learning-sessions'],
-    queryFn: () => api.get<Session[]>('/hcm/learning/sessions'),
+    queryFn: () => hcmApi.learning.sessions.list(),
   });
-  const employees = useQuery({ queryKey: ['learning-employees'], queryFn: () => api.get<Employee[]>('/hr/employees') });
+  const employees = useQuery({ queryKey: ['learning-employees'], queryFn: () => hcmApi.hr.employees() });
   const enrollments = useQuery({
     queryKey: ['learning-enrollments'],
-    queryFn: () => api.get<Enrollment[]>('/hcm/learning/enrollments'),
+    queryFn: () => hcmApi.learning.enrollments.list(),
   });
 
   const nameFor = (id: string) => employees.data?.find((e) => e.id === id)?.fullName ?? id;
 
   const approve = useMutation({
-    mutationFn: (id: string) => api.post(`/hcm/learning/enrollments/${id}/approve`),
+    mutationFn: (id: string) => hcmApi.learning.enrollments.approve(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['learning-enrollments'] }),
   });
   const reject = useMutation({
-    mutationFn: (id: string) => api.post(`/hcm/learning/enrollments/${id}/reject`, {}),
+    mutationFn: (id: string) => hcmApi.learning.enrollments.reject(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['learning-enrollments'] }),
   });
   const attend = useMutation({
     mutationFn: ({ id, attended }: { id: string; attended: boolean }) =>
-      api.post(`/hcm/learning/enrollments/${id}/attendance`, { attended }),
+      hcmApi.learning.enrollments.attend(id, attended),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['learning-enrollments'] }),
   });
   const complete = useMutation({
-    mutationFn: (id: string) => api.post(`/hcm/learning/enrollments/${id}/complete`, {}),
+    mutationFn: (id: string) => hcmApi.learning.enrollments.complete(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['learning-enrollments'] });
       qc.invalidateQueries({ queryKey: ['learning-certifications'] });
     },
   });
+
+  const columns: ReadonlyArray<DataTableColumn<TrainingEnrollment>> = [
+    {
+      id: 'employee',
+      header: 'Employee',
+      sortValue: (e) => nameFor(e.employmentRelationshipId),
+      cell: (e) => nameFor(e.employmentRelationshipId),
+    },
+    {
+      id: 'program',
+      header: 'Program',
+      sortValue: (e) => e.session.program.title,
+      cell: (e) => e.session.program.title,
+    },
+    { id: 'session', header: 'Session', sortValue: (e) => e.session.startsAt, cell: (e) => date(e.session.startsAt) },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (e) => e.status,
+      cell: (e) => (
+        <StatusChip
+          status={e.status}
+          tone={
+            e.status === 'completed' ? 'good' : e.status === 'rejected' || e.status === 'no_show' ? 'bad' : 'neutral'
+          }
+        />
+      ),
+    },
+    { id: 'score', header: 'Score', align: 'right', sortValue: (e) => e.score, cell: (e) => e.score ?? '—' },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (e) => (
+        <div className="flex justify-end gap-2">
+          {e.status === 'nominated' && (
+            <>
+              <button className="btn text-2xs" onClick={() => approve.mutate(e.id)}>
+                Approve
+              </button>
+              <button className="btn text-2xs" onClick={() => reject.mutate(e.id)}>
+                Reject
+              </button>
+            </>
+          )}
+          {e.status === 'approved' && (
+            <>
+              <button className="btn text-2xs" onClick={() => attend.mutate({ id: e.id, attended: true })}>
+                Attended
+              </button>
+              <button className="btn text-2xs" onClick={() => attend.mutate({ id: e.id, attended: false })}>
+                No-show
+              </button>
+            </>
+          )}
+          {e.status === 'attended' && (
+            <button className="btn-primary text-2xs" onClick={() => complete.mutate(e.id)}>
+              Complete
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <Card
@@ -400,72 +430,15 @@ function EnrollmentsTab() {
       subtitle="Nominated → approved → attended → completed. Approving your own nomination is refused."
       actions={<NewButton label="Nominate" onClick={() => setOpen(true)} />}
     >
-      {enrollments.isLoading && <Loading />}
-      {enrollments.error && <ErrorBox error={enrollments.error} />}
-      {enrollments.data && enrollments.data.length === 0 && <EmptyState message="No enrollments yet." />}
-      {enrollments.data && enrollments.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Program</th>
-              <th>Session</th>
-              <th>Status</th>
-              <th>Score</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {enrollments.data.map((e) => (
-              <tr key={e.id}>
-                <td>{nameFor(e.employmentRelationshipId)}</td>
-                <td>{e.session.program.title}</td>
-                <td>{date(e.session.startsAt)}</td>
-                <td>
-                  <StatusChip
-                    status={e.status}
-                    tone={
-                      e.status === 'completed'
-                        ? 'good'
-                        : e.status === 'rejected' || e.status === 'no_show'
-                          ? 'bad'
-                          : 'neutral'
-                    }
-                  />
-                </td>
-                <td className="tabular-nums">{e.score ?? '—'}</td>
-                <td className="text-right space-x-2">
-                  {e.status === 'nominated' && (
-                    <>
-                      <button className="btn text-2xs" onClick={() => approve.mutate(e.id)}>
-                        Approve
-                      </button>
-                      <button className="btn text-2xs" onClick={() => reject.mutate(e.id)}>
-                        Reject
-                      </button>
-                    </>
-                  )}
-                  {e.status === 'approved' && (
-                    <>
-                      <button className="btn text-2xs" onClick={() => attend.mutate({ id: e.id, attended: true })}>
-                        Attended
-                      </button>
-                      <button className="btn text-2xs" onClick={() => attend.mutate({ id: e.id, attended: false })}>
-                        No-show
-                      </button>
-                    </>
-                  )}
-                  {e.status === 'attended' && (
-                    <button className="btn-primary text-2xs" onClick={() => complete.mutate(e.id)}>
-                      Complete
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Training enrollments"
+        columns={columns}
+        rows={enrollments.data ?? []}
+        rowKey={(e) => e.id}
+        loading={enrollments.isLoading}
+        error={enrollments.error}
+        emptyMessage="No enrollments yet."
+      />
       {(approve.error || reject.error || attend.error || complete.error) && (
         <p className="mt-2 text-2xs text-band-critical">
           {messageOf(approve.error ?? reject.error ?? attend.error ?? complete.error)}
@@ -478,7 +451,7 @@ function EnrollmentsTab() {
         submitLabel="Nominate"
         onClose={() => setOpen(false)}
         invalidate={[['learning-enrollments']]}
-        onSubmit={() => api.post('/hcm/learning/enrollments', form)}
+        onSubmit={() => hcmApi.learning.enrollments.nominate(form)}
       >
         <SelectInput
           label="Session"
@@ -508,37 +481,68 @@ function EnrollmentsTab() {
 // Certifications
 // ---------------------------------------------------------------------------
 
-interface Certification {
-  id: string;
-  recordCode: string;
-  employmentRelationshipId: string;
-  name: string;
-  issuer: string | null;
-  issuedOn: string;
-  expiresOn: string | null;
-  verified: boolean;
-}
-
 function CertificationsTab() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ employmentRelationshipId: '', name: '', issuer: '', issuedOn: '', expiresOn: '' });
 
-  const employees = useQuery({ queryKey: ['learning-employees'], queryFn: () => api.get<Employee[]>('/hr/employees') });
+  const employees = useQuery({ queryKey: ['learning-employees'], queryFn: () => hcmApi.hr.employees() });
   const certs = useQuery({
     queryKey: ['learning-certifications'],
-    queryFn: () => api.get<Certification[]>('/hcm/learning/certifications'),
+    queryFn: () => hcmApi.learning.certifications.list(),
   });
   const nameFor = (id: string) => employees.data?.find((e) => e.id === id)?.fullName ?? id;
 
   const verify = useMutation({
-    mutationFn: (id: string) => api.post(`/hcm/learning/certifications/${id}/verify`),
+    mutationFn: (id: string) => hcmApi.learning.certifications.verify(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['learning-certifications'] }),
   });
   const runExpiryCheck = useMutation({
-    mutationFn: () => api.post('/hcm/learning/certifications/expiry-check'),
+    mutationFn: () => hcmApi.learning.certifications.runExpiryCheck(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['learning-certifications'] }),
   });
+
+  const columns: ReadonlyArray<DataTableColumn<TrainingCertification>> = [
+    {
+      id: 'code',
+      header: 'Code',
+      sortValue: (c) => c.recordCode,
+      cell: (c) => <span className="mono">{c.recordCode}</span>,
+    },
+    {
+      id: 'employee',
+      header: 'Employee',
+      sortValue: (c) => nameFor(c.employmentRelationshipId),
+      cell: (c) => nameFor(c.employmentRelationshipId),
+    },
+    { id: 'name', header: 'Name', sortValue: (c) => c.name, cell: (c) => c.name },
+    { id: 'issued', header: 'Issued', sortValue: (c) => c.issuedOn, cell: (c) => date(c.issuedOn) },
+    {
+      id: 'expires',
+      header: 'Expires',
+      sortValue: (c) => c.expiresOn,
+      cell: (c) => (c.expiresOn ? date(c.expiresOn) : 'Never'),
+    },
+    {
+      id: 'verified',
+      header: 'Verified',
+      sortValue: (c) => c.verified,
+      cell: (c) => (
+        <StatusChip status={c.verified ? 'verified' : 'unverified'} tone={c.verified ? 'good' : 'neutral'} />
+      ),
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (c) =>
+        !c.verified && (
+          <button className="btn text-2xs" onClick={() => verify.mutate(c.id)}>
+            Verify
+          </button>
+        ),
+    },
+  ];
 
   return (
     <Card
@@ -553,45 +557,15 @@ function CertificationsTab() {
         </>
       }
     >
-      {certs.isLoading && <Loading />}
-      {certs.error && <ErrorBox error={certs.error} />}
-      {certs.data && certs.data.length === 0 && <EmptyState message="No certifications on file yet." />}
-      {certs.data && certs.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Code</th>
-              <th>Employee</th>
-              <th>Name</th>
-              <th>Issued</th>
-              <th>Expires</th>
-              <th>Verified</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {certs.data.map((c) => (
-              <tr key={c.id}>
-                <td className="mono">{c.recordCode}</td>
-                <td>{nameFor(c.employmentRelationshipId)}</td>
-                <td>{c.name}</td>
-                <td>{date(c.issuedOn)}</td>
-                <td>{c.expiresOn ? date(c.expiresOn) : 'Never'}</td>
-                <td>
-                  <StatusChip status={c.verified ? 'verified' : 'unverified'} tone={c.verified ? 'good' : 'neutral'} />
-                </td>
-                <td className="text-right">
-                  {!c.verified && (
-                    <button className="btn text-2xs" onClick={() => verify.mutate(c.id)}>
-                      Verify
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Certifications on file"
+        columns={columns}
+        rows={certs.data ?? []}
+        rowKey={(c) => c.id}
+        loading={certs.isLoading}
+        error={certs.error}
+        emptyMessage="No certifications on file yet."
+      />
       {verify.error && <p className="mt-2 text-2xs text-band-critical">{messageOf(verify.error)}</p>}
 
       <CreateModal
@@ -600,7 +574,7 @@ function CertificationsTab() {
         onClose={() => setOpen(false)}
         invalidate={[['learning-certifications']]}
         onSubmit={() =>
-          api.post('/hcm/learning/certifications', {
+          hcmApi.learning.certifications.create({
             employmentRelationshipId: form.employmentRelationshipId,
             name: form.name,
             issuer: form.issuer || undefined,
@@ -644,44 +618,62 @@ function CertificationsTab() {
 // Mandatory training
 // ---------------------------------------------------------------------------
 
-interface MandatoryRule {
-  id: string;
-  programId: string;
-  dueWithinDaysOfJoin: number | null;
-  recurrenceMonths: number | null;
-  program: { title: string };
-}
-
-interface MandatoryRow {
-  ruleId: string;
-  programId: string;
-  programTitle: string;
-  employmentRelationshipId: string;
-  dueDate: string | null;
-  overdue: boolean;
-}
-
 function MandatoryTab() {
-  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ programId: '', dueWithinDaysOfJoin: '30', recurrenceMonths: '' });
 
   const programs = useQuery({
     queryKey: ['learning-programs'],
-    queryFn: () => api.get<Program[]>('/hcm/learning/programs'),
+    queryFn: () => hcmApi.learning.programs.list(),
   });
-  const employees = useQuery({ queryKey: ['learning-employees'], queryFn: () => api.get<Employee[]>('/hr/employees') });
+  const employees = useQuery({ queryKey: ['learning-employees'], queryFn: () => hcmApi.hr.employees() });
   const rules = useQuery({
     queryKey: ['learning-mandatory-rules'],
-    queryFn: () => api.get<MandatoryRule[]>('/hcm/learning/mandatory-rules'),
+    queryFn: () => hcmApi.learning.mandatory.rules(),
   });
   const status = useQuery({
     queryKey: ['learning-mandatory-status'],
-    queryFn: () => api.get<MandatoryRow[]>('/hcm/learning/mandatory-status'),
+    queryFn: () => hcmApi.learning.mandatory.status(),
   });
   const nameFor = (id: string) => employees.data?.find((e) => e.id === id)?.fullName ?? id;
 
-  const overdueCount = status.data?.filter((r) => r.overdue).length ?? 0;
+  // Undefined until the compliance feed loads: showing 0 would read as "nothing overdue".
+  const overdueCount = status.data?.filter((r) => r.overdue).length;
+
+  const ruleColumns: ReadonlyArray<DataTableColumn<MandatoryTrainingRule>> = [
+    { id: 'program', header: 'Program', sortValue: (r) => r.program.title, cell: (r) => r.program.title },
+    {
+      id: 'due',
+      header: 'Due within (days of join)',
+      align: 'right',
+      sortValue: (r) => r.dueWithinDaysOfJoin,
+      cell: (r) => r.dueWithinDaysOfJoin ?? '—',
+    },
+    {
+      id: 'recurs',
+      header: 'Recurs (months)',
+      align: 'right',
+      sortValue: (r) => r.recurrenceMonths,
+      cell: (r) => r.recurrenceMonths ?? '—',
+    },
+  ];
+
+  const statusColumns: ReadonlyArray<DataTableColumn<MandatoryTrainingRow>> = [
+    {
+      id: 'employee',
+      header: 'Employee',
+      sortValue: (r) => nameFor(r.employmentRelationshipId),
+      cell: (r) => nameFor(r.employmentRelationshipId),
+    },
+    { id: 'program', header: 'Program', sortValue: (r) => r.programTitle, cell: (r) => r.programTitle },
+    { id: 'due', header: 'Due', sortValue: (r) => r.dueDate, cell: (r) => (r.dueDate ? date(r.dueDate) : '—') },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (r) => r.overdue,
+      cell: (r) => <StatusChip status={r.overdue ? 'overdue' : 'on track'} tone={r.overdue ? 'bad' : 'good'} />,
+    },
+  ];
 
   return (
     <div className="space-y-4">
@@ -693,8 +685,8 @@ function MandatoryTab() {
         />
         <Metric
           label="Overdue"
-          value={overdueCount}
-          tone={overdueCount > 0 ? 'warn' : 'good'}
+          value={overdueCount ?? '—'}
+          tone={overdueCount === undefined ? undefined : overdueCount > 0 ? 'warn' : 'good'}
           noActionReason="Every overdue row is listed below."
         />
       </div>
@@ -704,29 +696,15 @@ function MandatoryTab() {
         subtitle="Ties a program to a due window from date of join, with an optional recurrence."
         actions={<NewButton label="Add rule" onClick={() => setOpen(true)} />}
       >
-        {rules.isLoading && <Loading />}
-        {rules.error && <ErrorBox error={rules.error} />}
-        {rules.data && rules.data.length === 0 && <EmptyState message="No mandatory-training rules yet." />}
-        {rules.data && rules.data.length > 0 && (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Program</th>
-                <th>Due within (days of join)</th>
-                <th>Recurs (months)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.data.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.program.title}</td>
-                  <td className="tabular-nums">{r.dueWithinDaysOfJoin ?? '—'}</td>
-                  <td className="tabular-nums">{r.recurrenceMonths ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          caption="Mandatory training rules"
+          columns={ruleColumns}
+          rows={rules.data ?? []}
+          rowKey={(r) => r.id}
+          loading={rules.isLoading}
+          error={rules.error}
+          emptyMessage="No mandatory-training rules yet."
+        />
 
         <CreateModal
           open={open}
@@ -734,7 +712,7 @@ function MandatoryTab() {
           onClose={() => setOpen(false)}
           invalidate={[['learning-mandatory-rules'], ['learning-mandatory-status']]}
           onSubmit={() =>
-            api.post('/hcm/learning/mandatory-rules', {
+            hcmApi.learning.mandatory.createRule({
               programId: form.programId,
               dueWithinDaysOfJoin: form.dueWithinDaysOfJoin ? Number(form.dueWithinDaysOfJoin) : undefined,
               recurrenceMonths: form.recurrenceMonths ? Number(form.recurrenceMonths) : undefined,
@@ -768,35 +746,15 @@ function MandatoryTab() {
       </Card>
 
       <Card title="Compliance status" subtitle="Every active employee against every active rule.">
-        {status.isLoading && <Loading />}
-        {status.error && <ErrorBox error={status.error} />}
-        {status.data && status.data.length === 0 && (
-          <EmptyState message="Nothing is due — no active mandatory rules, or every employee is within their window." />
-        )}
-        {status.data && status.data.length > 0 && (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Program</th>
-                <th>Due</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {status.data.map((r) => (
-                <tr key={`${r.ruleId}:${r.employmentRelationshipId}`}>
-                  <td>{nameFor(r.employmentRelationshipId)}</td>
-                  <td>{r.programTitle}</td>
-                  <td>{r.dueDate ? date(r.dueDate) : '—'}</td>
-                  <td>
-                    <StatusChip status={r.overdue ? 'overdue' : 'on track'} tone={r.overdue ? 'bad' : 'good'} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          caption="Mandatory training compliance"
+          columns={statusColumns}
+          rows={status.data ?? []}
+          rowKey={(r) => `${r.ruleId}:${r.employmentRelationshipId}`}
+          loading={status.isLoading}
+          error={status.error}
+          emptyMessage="Nothing is due — no active mandatory rules, or every employee is within their window."
+        />
       </Card>
     </div>
   );
@@ -806,28 +764,56 @@ function MandatoryTab() {
 // IDPs
 // ---------------------------------------------------------------------------
 
-interface Idp {
-  id: string;
-  employmentRelationshipId: string;
-  goals: { items?: string[] } | null;
-  mentorId: string | null;
-  reviewDate: string | null;
-  status: string;
-}
-
 function IdpsTab() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ employmentRelationshipId: '', goalsText: '', mentorId: '', reviewDate: '' });
 
-  const employees = useQuery({ queryKey: ['learning-employees'], queryFn: () => api.get<Employee[]>('/hr/employees') });
-  const idps = useQuery({ queryKey: ['learning-idps'], queryFn: () => api.get<Idp[]>('/hcm/learning/idps') });
+  const employees = useQuery({ queryKey: ['learning-employees'], queryFn: () => hcmApi.hr.employees() });
+  const idps = useQuery({ queryKey: ['learning-idps'], queryFn: () => hcmApi.learning.idps.list() });
   const nameFor = (id: string) => employees.data?.find((e) => e.id === id)?.fullName ?? id;
 
   const close = useMutation({
-    mutationFn: (id: string) => api.patch(`/hcm/learning/idps/${id}`, { status: 'closed' }),
+    mutationFn: (id: string) => hcmApi.learning.idps.close(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['learning-idps'] }),
   });
+
+  const columns: ReadonlyArray<DataTableColumn<IndividualDevelopmentPlan>> = [
+    {
+      id: 'employee',
+      header: 'Employee',
+      sortValue: (i) => nameFor(i.employmentRelationshipId),
+      cell: (i) => nameFor(i.employmentRelationshipId),
+    },
+    {
+      id: 'goals',
+      header: 'Goals',
+      cell: (i) => <span className="max-w-sm text-2xs text-ink-400">{(i.goals?.items ?? []).join('; ') || '—'}</span>,
+    },
+    {
+      id: 'review',
+      header: 'Review date',
+      sortValue: (i) => i.reviewDate,
+      cell: (i) => (i.reviewDate ? date(i.reviewDate) : '—'),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (i) => i.status,
+      cell: (i) => <StatusChip status={i.status} tone={i.status === 'active' ? 'good' : 'neutral'} />,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (i) =>
+        i.status === 'active' && (
+          <button className="btn text-2xs" onClick={() => close.mutate(i.id)}>
+            Close
+          </button>
+        ),
+    },
+  ];
 
   return (
     <Card
@@ -835,41 +821,15 @@ function IdpsTab() {
       subtitle="A mentor, goals and a review date — separate from a performance-cycle goal, because this is a growth intention, not a measured commitment."
       actions={<NewButton label="Add IDP" onClick={() => setOpen(true)} />}
     >
-      {idps.isLoading && <Loading />}
-      {idps.error && <ErrorBox error={idps.error} />}
-      {idps.data && idps.data.length === 0 && <EmptyState message="No development plans yet." />}
-      {idps.data && idps.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Goals</th>
-              <th>Review date</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {idps.data.map((i) => (
-              <tr key={i.id}>
-                <td>{nameFor(i.employmentRelationshipId)}</td>
-                <td className="max-w-sm text-2xs text-ink-400">{(i.goals?.items ?? []).join('; ') || '—'}</td>
-                <td>{i.reviewDate ? date(i.reviewDate) : '—'}</td>
-                <td>
-                  <StatusChip status={i.status} tone={i.status === 'active' ? 'good' : 'neutral'} />
-                </td>
-                <td className="text-right">
-                  {i.status === 'active' && (
-                    <button className="btn text-2xs" onClick={() => close.mutate(i.id)}>
-                      Close
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Individual development plans"
+        columns={columns}
+        rows={idps.data ?? []}
+        rowKey={(i) => i.id}
+        loading={idps.isLoading}
+        error={idps.error}
+        emptyMessage="No development plans yet."
+      />
 
       <CreateModal
         open={open}
@@ -877,7 +837,7 @@ function IdpsTab() {
         onClose={() => setOpen(false)}
         invalidate={[['learning-idps']]}
         onSubmit={() =>
-          api.post('/hcm/learning/idps', {
+          hcmApi.learning.idps.create({
             employmentRelationshipId: form.employmentRelationshipId,
             goals: {
               items: form.goalsText
@@ -917,24 +877,34 @@ function IdpsTab() {
 // Budget
 // ---------------------------------------------------------------------------
 
-interface Budget {
-  id: string;
-  fy: string;
-  division: string | null;
-  amount: number;
-  spent: number;
-  utilisationPercent: number | null;
-}
-
 function BudgetTab() {
-  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ fy: '', division: '', amount: '' });
 
   const budgets = useQuery({
     queryKey: ['learning-budgets'],
-    queryFn: () => api.get<Budget[]>('/hcm/learning/budgets'),
+    queryFn: () => hcmApi.learning.budgets.list(),
   });
+
+  const columns: ReadonlyArray<DataTableColumn<TrainingBudget>> = [
+    { id: 'fy', header: 'FY', sortValue: (b) => b.fy, cell: (b) => b.fy },
+    { id: 'division', header: 'Division', sortValue: (b) => b.division, cell: (b) => b.division ?? 'All' },
+    {
+      id: 'amount',
+      header: 'Amount',
+      align: 'right',
+      sortValue: (b) => decimalAmount(b.amount),
+      cell: (b) => money(decimalAmount(b.amount)),
+    },
+    { id: 'spent', header: 'Spent', align: 'right', sortValue: (b) => b.spent, cell: (b) => money(b.spent) },
+    {
+      id: 'utilisation',
+      header: 'Utilisation',
+      align: 'right',
+      sortValue: (b) => b.utilisationPercent,
+      cell: (b) => (b.utilisationPercent == null ? '—' : `${b.utilisationPercent}%`),
+    },
+  ];
 
   return (
     <Card
@@ -942,33 +912,15 @@ function BudgetTab() {
       subtitle="Utilisation is the cost of every completed enrollment whose session started in that financial year — not split by division, since this workstream has no reliable employee-to-division join of its own."
       actions={<NewButton label="Add budget" onClick={() => setOpen(true)} />}
     >
-      {budgets.isLoading && <Loading />}
-      {budgets.error && <ErrorBox error={budgets.error} />}
-      {budgets.data && budgets.data.length === 0 && <EmptyState message="No training budget recorded yet." />}
-      {budgets.data && budgets.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>FY</th>
-              <th>Division</th>
-              <th>Amount</th>
-              <th>Spent</th>
-              <th>Utilisation</th>
-            </tr>
-          </thead>
-          <tbody>
-            {budgets.data.map((b) => (
-              <tr key={b.id}>
-                <td>{b.fy}</td>
-                <td>{b.division ?? 'All'}</td>
-                <td className="tabular-nums">{money(b.amount)}</td>
-                <td className="tabular-nums">{money(b.spent)}</td>
-                <td className="tabular-nums">{b.utilisationPercent == null ? '—' : `${b.utilisationPercent}%`}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Training budget by financial year"
+        columns={columns}
+        rows={budgets.data ?? []}
+        rowKey={(b) => b.id}
+        loading={budgets.isLoading}
+        error={budgets.error}
+        emptyMessage="No training budget recorded yet."
+      />
 
       <CreateModal
         open={open}
@@ -976,7 +928,7 @@ function BudgetTab() {
         onClose={() => setOpen(false)}
         invalidate={[['learning-budgets']]}
         onSubmit={() =>
-          api.post('/hcm/learning/budgets', {
+          hcmApi.learning.budgets.create({
             fy: form.fy,
             division: form.division || undefined,
             amount: Number(form.amount) || 0,

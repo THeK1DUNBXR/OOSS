@@ -8,7 +8,9 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, date } from '../../lib/api.js';
+import { date } from '../../lib/api.js';
+import { hcmApi, type AccrualRunRow, type ApprovalChainLevel, type LeavePolicyRule } from '../../lib/hcmApi.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
 import { CreateModal, NewButton, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
 
@@ -40,47 +42,13 @@ export function LeavePolicies() {
 // Policies + rules
 // ---------------------------------------------------------------------------
 
-interface LeaveTypeOption {
-  id: string;
-  code: string;
-  name: string;
-}
-
-interface PolicyRule {
-  id: string;
-  leaveTypeId: string;
-  accrualFrequency: string;
-  accrualDays: string | number;
-  prorateOnJoin: boolean;
-  maxBalanceDays: string | number | null;
-  carryForwardCapDays: string | number | null;
-  negativeAllowed: boolean;
-  minNoticeDays: number;
-  maxConsecutiveDays: number | null;
-  sandwichRule: boolean;
-  requiresDocumentAfterDays: number | null;
-  applicableGender: string | null;
-}
-
-interface Policy {
-  id: string;
-  name: string;
-  description: string | null;
-  engagementTypes: string[];
-  orgUnitIds: string[];
-  effectiveFrom: string;
-  effectiveTo: string | null;
-  status: string;
-  rules: PolicyRule[];
-}
-
 const ENGAGEMENT_TYPES = ['employee', 'contractor', 'consultant', 'intern', 'apprentice'];
 const FREQUENCIES = ['monthly', 'quarterly', 'yearly', 'none'];
 
 function PoliciesTab() {
   const [creating, setCreating] = useState(false);
   const [addingRuleTo, setAddingRuleTo] = useState<string | null>(null);
-  const [runningRule, setRunningRule] = useState<PolicyRule | null>(null);
+  const [runningRule, setRunningRule] = useState<LeavePolicyRule | null>(null);
   const [form, setForm] = useState({ name: '', description: '', engagementTypes: [] as string[], effectiveFrom: '' });
   const [ruleForm, setRuleForm] = useState({
     leaveTypeId: '',
@@ -100,11 +68,11 @@ function PoliciesTab() {
 
   const policies = useQuery({
     queryKey: ['leavepolicy-policies'],
-    queryFn: () => api.get<Policy[]>('/hcm/leavepolicy/policies'),
+    queryFn: () => hcmApi.leavePolicy.policies.list(),
   });
   const { data: leaveTypes = [] } = useQuery({
     queryKey: ['leave-types'],
-    queryFn: () => api.get<LeaveTypeOption[]>('/hr/leave-types'),
+    queryFn: () => hcmApi.hr.leaveTypes(),
   });
 
   const nameForType = (id: string) => leaveTypes.find((t) => t.id === id)?.name ?? id;
@@ -116,6 +84,44 @@ function PoliciesTab() {
         ? f.engagementTypes.filter((e) => e !== v)
         : [...f.engagementTypes, v],
     }));
+
+  const ruleColumns: ReadonlyArray<DataTableColumn<LeavePolicyRule>> = [
+    {
+      id: 'leaveType',
+      header: 'Leave type',
+      sortValue: (r) => nameForType(r.leaveTypeId),
+      cell: (r) => nameForType(r.leaveTypeId),
+    },
+    {
+      id: 'accrual',
+      header: 'Accrual',
+      cell: (r) =>
+        r.accrualFrequency === 'none'
+          ? 'No accrual'
+          : `${r.accrualDays} days / ${r.accrualFrequency.replace('ly', '')}`,
+    },
+    { id: 'maxBalance', header: 'Max balance', cell: (r) => r.maxBalanceDays ?? '—' },
+    {
+      id: 'minNotice',
+      header: 'Min notice',
+      sortValue: (r) => r.minNoticeDays,
+      cell: (r) => `${r.minNoticeDays} days`,
+    },
+    { id: 'maxConsecutive', header: 'Max consecutive', cell: (r) => r.maxConsecutiveDays ?? '—' },
+    { id: 'sandwich', header: 'Sandwich', cell: (r) => (r.sandwichRule ? 'Yes' : 'No') },
+    { id: 'negative', header: 'Negative allowed', cell: (r) => (r.negativeAllowed ? 'Yes' : 'No') },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (r) =>
+        r.accrualFrequency !== 'none' && (
+          <button className="btn text-2xs" onClick={() => setRunningRule(r)}>
+            Run accrual
+          </button>
+        ),
+    },
+  ];
 
   return (
     <Card
@@ -156,44 +162,13 @@ function PoliciesTab() {
               {p.rules.length === 0 ? (
                 <p className="mt-2 text-2xs text-ink-400">No leave type has a rule under this policy yet.</p>
               ) : (
-                <table className="table mt-2">
-                  <thead>
-                    <tr>
-                      <th>Leave type</th>
-                      <th>Accrual</th>
-                      <th>Max balance</th>
-                      <th>Min notice</th>
-                      <th>Max consecutive</th>
-                      <th>Sandwich</th>
-                      <th>Negative allowed</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {p.rules.map((r) => (
-                      <tr key={r.id}>
-                        <td>{nameForType(r.leaveTypeId)}</td>
-                        <td>
-                          {r.accrualFrequency === 'none'
-                            ? 'No accrual'
-                            : `${r.accrualDays} days / ${r.accrualFrequency.replace('ly', '')}`}
-                        </td>
-                        <td>{r.maxBalanceDays ?? '—'}</td>
-                        <td>{r.minNoticeDays} days</td>
-                        <td>{r.maxConsecutiveDays ?? '—'}</td>
-                        <td>{r.sandwichRule ? 'Yes' : 'No'}</td>
-                        <td>{r.negativeAllowed ? 'Yes' : 'No'}</td>
-                        <td className="text-right">
-                          {r.accrualFrequency !== 'none' && (
-                            <button className="btn text-2xs" onClick={() => setRunningRule(r)}>
-                              Run accrual
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <DataTable
+                  caption={`Leave rules under ${p.name}`}
+                  columns={ruleColumns}
+                  rows={p.rules}
+                  rowKey={(r) => r.id}
+                  emptyMessage="No leave type has a rule under this policy yet."
+                />
               )}
             </div>
           ))}
@@ -206,7 +181,7 @@ function PoliciesTab() {
         onClose={() => setCreating(false)}
         invalidate={[['leavepolicy-policies']]}
         onSubmit={() =>
-          api.post('/hcm/leavepolicy/policies', {
+          hcmApi.leavePolicy.policies.create({
             name: form.name,
             description: form.description || null,
             engagementTypes: form.engagementTypes,
@@ -247,7 +222,7 @@ function PoliciesTab() {
         onClose={() => setAddingRuleTo(null)}
         invalidate={[['leavepolicy-policies']]}
         onSubmit={() =>
-          api.post(`/hcm/leavepolicy/policies/${addingRuleTo}/rules`, {
+          hcmApi.leavePolicy.policies.createRule(addingRuleTo!, {
             leaveTypeId: ruleForm.leaveTypeId,
             accrualFrequency: ruleForm.accrualFrequency,
             accrualDays: Number(ruleForm.accrualDays) || 0,
@@ -370,7 +345,7 @@ function PoliciesTab() {
         submitLabel="Run"
         onClose={() => setRunningRule(null)}
         invalidate={[['leavepolicy-accrual-runs']]}
-        onSubmit={() => api.post('/hcm/leavepolicy/accrual-runs', { leavePolicyRuleId: runningRule?.id, period })}
+        onSubmit={() => hcmApi.leavePolicy.accrualRuns.run({ leavePolicyRuleId: runningRule?.id, period })}
       >
         <TextInput
           label="Period"
@@ -394,62 +369,62 @@ function PoliciesTab() {
 // Accrual runs
 // ---------------------------------------------------------------------------
 
-interface AccrualRunRow {
-  id: string;
-  leavePolicyRuleId: string;
-  leaveTypeId: string;
-  period: string;
-  status: string;
-  employeesProcessed: number;
-  totalDaysAccrued: string | number;
-  runAt: string;
-}
-
 function AccrualsTab() {
   const runs = useQuery({
     queryKey: ['leavepolicy-accrual-runs'],
-    queryFn: () => api.get<AccrualRunRow[]>('/hcm/leavepolicy/accrual-runs'),
+    queryFn: () => hcmApi.leavePolicy.accrualRuns.list(),
   });
   const { data: leaveTypes = [] } = useQuery({
     queryKey: ['leave-types'],
-    queryFn: () => api.get<LeaveTypeOption[]>('/hr/leave-types'),
+    queryFn: () => hcmApi.hr.leaveTypes(),
   });
   const nameForType = (id: string) => leaveTypes.find((t) => t.id === id)?.name ?? id;
+
+  const columns: ReadonlyArray<DataTableColumn<AccrualRunRow>> = [
+    {
+      id: 'leaveType',
+      header: 'Leave type',
+      sortValue: (r) => nameForType(r.leaveTypeId),
+      cell: (r) => nameForType(r.leaveTypeId),
+    },
+    {
+      id: 'period',
+      header: 'Period',
+      sortValue: (r) => r.period,
+      cell: (r) => <span className="mono">{r.period}</span>,
+    },
+    {
+      id: 'employees',
+      header: 'Employees',
+      align: 'right',
+      sortValue: (r) => r.employeesProcessed,
+      cell: (r) => r.employeesProcessed,
+    },
+    {
+      id: 'days',
+      header: 'Days credited',
+      align: 'right',
+      sortValue: (r) => Number(r.totalDaysAccrued),
+      cell: (r) => Number(r.totalDaysAccrued).toFixed(2),
+    },
+    { id: 'ran', header: 'Ran', sortValue: (r) => r.runAt, cell: (r) => date(r.runAt) },
+  ];
 
   return (
     <Card
       title="Accrual runs"
       subtitle="Every firing is idempotent per rule and period — running one twice credits the ledger once."
     >
-      {runs.isLoading && <Loading />}
-      {runs.error && <ErrorBox error={runs.error} />}
-      {runs.data && runs.data.length === 0 && (
-        <EmptyState message="No accrual has run yet." hint="Run one from a policy's rule on the Policies tab." />
-      )}
-      {runs.data && runs.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Leave type</th>
-              <th>Period</th>
-              <th className="num">Employees</th>
-              <th className="num">Days credited</th>
-              <th>Ran</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.data.map((r) => (
-              <tr key={r.id}>
-                <td>{nameForType(r.leaveTypeId)}</td>
-                <td className="mono">{r.period}</td>
-                <td className="num">{r.employeesProcessed}</td>
-                <td className="num">{Number(r.totalDaysAccrued).toFixed(2)}</td>
-                <td>{date(r.runAt)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Accrual runs"
+        columns={columns}
+        rows={runs.data ?? []}
+        rowKey={(r) => r.id}
+        loading={runs.isLoading}
+        error={runs.error}
+        emptyMessage="No accrual has run yet."
+        emptyHint="Run one from a policy's rule on the Policies tab."
+      />
     </Card>
   );
 }
@@ -458,24 +433,10 @@ function AccrualsTab() {
 // Approval chains
 // ---------------------------------------------------------------------------
 
-interface ChainLevel {
-  level: number;
-  kind: 'manager' | 'hr' | 'custom_grant';
-  approverPartyId?: string | null;
-}
-
-interface Chain {
-  id: string;
-  name: string;
-  leavePolicyId: string | null;
-  levels: ChainLevel[];
-  isDefault: boolean;
-}
-
 function ChainsTab() {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState<{ name: string; isDefault: boolean; levels: ChainLevel[] }>({
+  const [form, setForm] = useState<{ name: string; isDefault: boolean; levels: ApprovalChainLevel[] }>({
     name: '',
     isDefault: false,
     levels: [{ level: 1, kind: 'manager', approverPartyId: '' }],
@@ -483,17 +444,17 @@ function ChainsTab() {
 
   const chains = useQuery({
     queryKey: ['leavepolicy-chains'],
-    queryFn: () => api.get<Chain[]>('/hcm/leavepolicy/approval-chains'),
+    queryFn: () => hcmApi.leavePolicy.approvalChains.list(),
   });
 
   const del = useMutation({
-    mutationFn: (id: string) => api.del(`/hcm/leavepolicy/approval-chains/${id}`),
+    mutationFn: (id: string) => hcmApi.leavePolicy.approvalChains.remove(id),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['leavepolicy-chains'] }),
   });
 
   const addLevel = () =>
     setForm((f) => ({ ...f, levels: [...f.levels, { level: f.levels.length + 1, kind: 'hr', approverPartyId: '' }] }));
-  const updateLevel = (idx: number, patch: Partial<ChainLevel>) =>
+  const updateLevel = (idx: number, patch: Partial<ApprovalChainLevel>) =>
     setForm((f) => ({ ...f, levels: f.levels.map((l, i) => (i === idx ? { ...l, ...patch } : l)) }));
   const removeLevel = (idx: number) => setForm((f) => ({ ...f, levels: f.levels.filter((_, i) => i !== idx) }));
 
@@ -538,7 +499,7 @@ function ChainsTab() {
         onClose={() => setCreating(false)}
         invalidate={[['leavepolicy-chains']]}
         onSubmit={() =>
-          api.post('/hcm/leavepolicy/approval-chains', {
+          hcmApi.leavePolicy.approvalChains.create({
             name: form.name,
             isDefault: form.isDefault,
             levels: form.levels.map((l) => ({
@@ -567,7 +528,7 @@ function ChainsTab() {
               <SelectInput
                 label={`Level ${l.level}`}
                 value={l.kind}
-                onChange={(v) => updateLevel(idx, { kind: v as ChainLevel['kind'] })}
+                onChange={(v) => updateLevel(idx, { kind: v as ApprovalChainLevel['kind'] })}
                 options={[
                   { value: 'manager', label: 'Manager' },
                   { value: 'hr', label: 'HR' },

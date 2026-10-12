@@ -12,15 +12,14 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { InteractionView, PersonView } from '@kaizen/shared';
-import { api, date, relative, titleCase } from '../lib/api.js';
+import { date, relative, titleCase } from '../lib/api.js';
+import { hcmApi, type MergeCandidateRow, type PeopleGroup } from '../lib/hcmApi.js';
 import {
   Card,
   EmptyState,
   ErrorBox,
   Field,
   Loading,
-  Modal,
   PageHeader,
   RecordCode,
   SensitivityChip,
@@ -57,14 +56,6 @@ const ROLE_TONE: Record<string, string> = {
   employee: 'border-band-strong/40 text-band-strong',
 };
 
-type PeopleGroup = 'all' | 'student' | 'employee' | 'contact' | 'none';
-
-interface PeopleResponse {
-  items: PersonView[];
-  total: number;
-  counts: Record<PeopleGroup, number>;
-}
-
 export function People() {
   const [creating, setCreating] = useState(false);
   const [tab, setTab] = useState<'people' | 'merge'>('people');
@@ -73,12 +64,12 @@ export function People() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['people', q, group],
-    queryFn: () => api.get<PeopleResponse>(`/crm/people?q=${encodeURIComponent(q)}&affiliation=${group}`),
+    queryFn: () => hcmApi.people.list(q, group),
   });
 
   const { data: candidates = [] } = useQuery({
     queryKey: ['merge-candidates'],
-    queryFn: () => api.get<any[]>('/crm/merge-candidates'),
+    queryFn: () => hcmApi.people.mergeCandidates(),
   });
 
   if (error) return <ErrorBox error={error} />;
@@ -226,14 +217,14 @@ export function People() {
   );
 }
 
-function MergeQueue({ candidates }: { candidates: any[] }) {
+function MergeQueue({ candidates }: { candidates: MergeCandidateRow[] }) {
   const qc = useQueryClient();
   const { can } = useSession();
   const [note, setNote] = useState<Record<string, string>>({});
 
   const resolve = useMutation({
     mutationFn: ({ id, disposition }: { id: string; disposition: string }) =>
-      api.post(`/crm/merge-candidates/${id}/resolve`, { disposition, note: note[id] || 'Reviewed.' }),
+      hcmApi.people.resolveMergeCandidate(id, disposition, note[id] || 'Reviewed.'),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['merge-candidates'] }),
   });
 
@@ -325,7 +316,7 @@ export function PersonDetail() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['person', id],
-    queryFn: () => api.get<any>(`/crm/people/${id}`),
+    queryFn: () => hcmApi.people.get(id ?? ''),
     enabled: Boolean(id),
   });
 
@@ -346,7 +337,7 @@ export function PersonDetail() {
               <EmptyState message="No roles recorded." />
             ) : (
               <div className="space-y-2">
-                {p.affiliations.map((a: any) => (
+                {p.affiliations.map((a) => (
                   <div
                     key={a.id}
                     className="flex items-center justify-between gap-3 rounded border border-ink-800 bg-ink-950 p-3"
@@ -383,7 +374,7 @@ export function PersonDetail() {
               <EmptyState message="Nothing logged." />
             ) : (
               <ul className="divide-y divide-ink-850">
-                {data.timeline.map((t: InteractionView) => (
+                {data.timeline.map((t) => (
                   <li key={t.id} className="px-4 py-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="chip border-ink-700 text-ink-400">{humanize(t.interactionType)}</span>
@@ -424,7 +415,7 @@ export function PersonDetail() {
               <EmptyState message="No edges recorded." />
             ) : (
               <ul className="divide-y divide-ink-850">
-                {data.relationships.map((r: any) => (
+                {data.relationships.map((r) => (
                   <li key={r.id} className="px-4 py-2.5">
                     <p className="text-xs text-ink-200">{titleCase(r.relationshipType)}</p>
                     <p className="text-2xs text-ink-500">
@@ -453,7 +444,7 @@ export function Interactions() {
     error,
   } = useQuery({
     queryKey: ['interactions'],
-    queryFn: () => api.get<InteractionView[]>('/crm/interactions?limit=80'),
+    queryFn: () => hcmApi.people.interactions(),
   });
 
   if (error) return <ErrorBox error={error} />;

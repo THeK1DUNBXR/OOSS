@@ -9,9 +9,17 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, date, dateTime, titleCase } from '../../lib/api.js';
-import { Card, EmptyState, ErrorBox, Field, Loading, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
+import { date, dateTime, titleCase } from '../../lib/api.js';
+import {
+  hcmApi,
+  type AlumniRow,
+  type ClearanceRow,
+  type NoticePolicyRow,
+  type ResignationRow,
+} from '../../lib/hcmApi.js';
+import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
 import { CreateModal, NewButton, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 
 type Tab = 'resignations' | 'clearances' | 'no-dues' | 'alumni' | 'notice-policies';
 
@@ -46,28 +54,57 @@ export function Separations() {
 // Resignations
 // ---------------------------------------------------------------------------
 
-interface ResignationRow {
-  id: string;
-  recordCode: string;
-  employmentRelationshipId: string;
-  employment: { personId: string; person: { fullName: string; recordCode: string } };
-  submittedOn: string;
-  requestedLastDay: string;
-  agreedLastDay: string | null;
-  noticeDays: number;
-  reasonCategory: string;
-  reasonNote: string | null;
-  status: 'submitted' | 'accepted' | 'withdrawn' | 'rejected';
-  rejectedReason: string | null;
-  offboardingId: string | null;
-}
-
 const RESIGNATION_TONE: Record<ResignationRow['status'], 'neutral' | 'good' | 'warn' | 'bad'> = {
   submitted: 'warn',
   accepted: 'good',
   withdrawn: 'neutral',
   rejected: 'bad',
 };
+
+const RESIGNATION_COLUMNS: ReadonlyArray<DataTableColumn<ResignationRow>> = [
+  {
+    id: 'employee',
+    header: 'Employee',
+    sortValue: (r) => r.employment.person.fullName,
+    cell: (r) => r.employment.person.fullName,
+  },
+  {
+    id: 'record',
+    header: 'Record',
+    sortValue: (r) => r.recordCode,
+    cell: (r) => <span className="mono">{r.recordCode}</span>,
+  },
+  {
+    id: 'submitted',
+    header: 'Submitted',
+    sortValue: (r) => r.submittedOn,
+    cell: (r) => date(r.submittedOn),
+  },
+  {
+    id: 'lastDay',
+    header: 'Last day',
+    sortValue: (r) => r.agreedLastDay ?? r.requestedLastDay,
+    cell: (r) => date(r.agreedLastDay ?? r.requestedLastDay),
+  },
+  {
+    id: 'notice',
+    header: 'Notice',
+    sortValue: (r) => r.noticeDays,
+    cell: (r) => `${r.noticeDays}d`,
+  },
+  {
+    id: 'reason',
+    header: 'Reason',
+    sortValue: (r) => r.reasonCategory,
+    cell: (r) => titleCase(r.reasonCategory),
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    sortValue: (r) => r.status,
+    cell: (r) => <StatusChip status={r.status} tone={RESIGNATION_TONE[r.status]} />,
+  },
+];
 
 function ResignationsTab() {
   const qc = useQueryClient();
@@ -77,22 +114,41 @@ function ResignationsTab() {
 
   const resignations = useQuery({
     queryKey: ['sep-resignations', statusFilter],
-    queryFn: () =>
-      api.get<ResignationRow[]>(`/hcm/separations/resignations${statusFilter ? `?status=${statusFilter}` : ''}`),
+    queryFn: () => hcmApi.separations.resignations.list(statusFilter),
   });
 
   const accept = useMutation({
-    mutationFn: (id: string) => api.post(`/hcm/separations/resignations/${id}/accept`),
+    mutationFn: (id: string) => hcmApi.separations.resignations.accept(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sep-resignations'] }),
   });
   const reject = useMutation({
-    mutationFn: () => api.post(`/hcm/separations/resignations/${rejectId}/reject`, { reason: rejectReason }),
+    mutationFn: () => hcmApi.separations.resignations.reject(rejectId!, rejectReason),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sep-resignations'] });
       setRejectId(null);
       setRejectReason('');
     },
   });
+
+  const columns: ReadonlyArray<DataTableColumn<ResignationRow>> = [
+    ...RESIGNATION_COLUMNS,
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (r) =>
+        r.status === 'submitted' && (
+          <div className="flex justify-end gap-2">
+            <button className="btn text-2xs" disabled={accept.isPending} onClick={() => accept.mutate(r.id)}>
+              Accept
+            </button>
+            <button className="btn text-2xs" onClick={() => setRejectId(r.id)}>
+              Reject
+            </button>
+          </div>
+        ),
+    },
+  ];
 
   return (
     <Card
@@ -113,52 +169,16 @@ function ResignationsTab() {
         />
       }
     >
-      {resignations.isLoading && <Loading />}
-      {resignations.error && <ErrorBox error={resignations.error} />}
-      {resignations.data && resignations.data.length === 0 && <EmptyState message="No resignations recorded." />}
-      {resignations.data && resignations.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Record</th>
-              <th>Submitted</th>
-              <th>Last day</th>
-              <th>Notice</th>
-              <th>Reason</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {resignations.data.map((r) => (
-              <tr key={r.id}>
-                <td>{r.employment.person.fullName}</td>
-                <td className="mono">{r.recordCode}</td>
-                <td>{date(r.submittedOn)}</td>
-                <td>{date(r.agreedLastDay ?? r.requestedLastDay)}</td>
-                <td>{r.noticeDays}d</td>
-                <td>{titleCase(r.reasonCategory)}</td>
-                <td>
-                  <StatusChip status={r.status} tone={RESIGNATION_TONE[r.status]} />
-                </td>
-                <td className="text-right">
-                  {r.status === 'submitted' && (
-                    <div className="flex justify-end gap-2">
-                      <button className="btn text-2xs" disabled={accept.isPending} onClick={() => accept.mutate(r.id)}>
-                        Accept
-                      </button>
-                      <button className="btn text-2xs" onClick={() => setRejectId(r.id)}>
-                        Reject
-                      </button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Resignations"
+        columns={columns}
+        rows={resignations.data ?? []}
+        rowKey={(r) => r.id}
+        loading={resignations.isLoading}
+        error={resignations.error}
+        emptyMessage="No resignations recorded."
+        emptyHint={statusFilter ? 'Clear the status filter to see every resignation.' : undefined}
+      />
       {accept.isError && <ErrorBox error={accept.error} />}
 
       <CreateModal
@@ -178,15 +198,6 @@ function ResignationsTab() {
 // Exit clearance
 // ---------------------------------------------------------------------------
 
-interface ClearanceRow {
-  id: string;
-  offboardingId: string;
-  department: string;
-  status: 'pending' | 'cleared' | 'blocked';
-  note: string | null;
-  clearedAt: string | null;
-}
-
 const CLEARANCE_TONE: Record<ClearanceRow['status'], 'neutral' | 'good' | 'warn' | 'bad'> = {
   pending: 'neutral',
   cleared: 'good',
@@ -202,17 +213,17 @@ function ClearancesTab() {
 
   const acceptedResignations = useQuery({
     queryKey: ['sep-resignations', 'accepted'],
-    queryFn: () => api.get<ResignationRow[]>('/hcm/separations/resignations?status=accepted'),
+    queryFn: () => hcmApi.separations.resignations.list('accepted'),
   });
 
   const clearances = useQuery({
     queryKey: ['sep-clearances', activeOffboardingId],
-    queryFn: () => api.get<ClearanceRow[]>(`/hcm/separations/offboarding/${activeOffboardingId}/clearances`),
+    queryFn: () => hcmApi.separations.clearances.list(activeOffboardingId),
     enabled: Boolean(activeOffboardingId),
   });
 
   const initiate = useMutation({
-    mutationFn: (id: string) => api.post<ClearanceRow[]>(`/hcm/separations/offboarding/${id}/clearances/initiate`),
+    mutationFn: (id: string) => hcmApi.separations.clearances.initiate(id),
     onSuccess: (_data, id) => {
       setActiveOffboardingId(id);
       qc.invalidateQueries({ queryKey: ['sep-clearances', id] });
@@ -220,11 +231,11 @@ function ClearancesTab() {
   });
 
   const clear = useMutation({
-    mutationFn: (id: string) => api.post(`/hcm/separations/clearances/${id}/clear`),
+    mutationFn: (id: string) => hcmApi.separations.clearances.clear(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sep-clearances', activeOffboardingId] }),
   });
   const block = useMutation({
-    mutationFn: () => api.post(`/hcm/separations/clearances/${blockId}/block`, { note: blockNote }),
+    mutationFn: () => hcmApi.separations.clearances.block(blockId!, blockNote),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sep-clearances', activeOffboardingId] });
       setBlockId(null);
@@ -232,52 +243,98 @@ function ClearancesTab() {
     },
   });
 
+  const acceptedColumns: ReadonlyArray<DataTableColumn<ResignationRow>> = [
+    {
+      id: 'employee',
+      header: 'Employee',
+      sortValue: (r) => r.employment.person.fullName,
+      cell: (r) => r.employment.person.fullName,
+    },
+    {
+      id: 'lastDay',
+      header: 'Last day',
+      sortValue: (r) => r.agreedLastDay ?? r.requestedLastDay,
+      cell: (r) => date(r.agreedLastDay ?? r.requestedLastDay),
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (r) =>
+        r.offboardingId && (
+          <div className="flex justify-end gap-2">
+            <button className="btn text-2xs" onClick={() => setActiveOffboardingId(r.offboardingId!)}>
+              View clearance
+            </button>
+            <button
+              className="btn text-2xs"
+              disabled={initiate.isPending}
+              onClick={() => initiate.mutate(r.offboardingId!)}
+            >
+              Open / refresh clearance
+            </button>
+          </div>
+        ),
+    },
+  ];
+
+  const clearanceColumns: ReadonlyArray<DataTableColumn<ClearanceRow>> = [
+    {
+      id: 'department',
+      header: 'Department',
+      sortValue: (c) => c.department,
+      cell: (c) => titleCase(c.department),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (c) => c.status,
+      cell: (c) => <StatusChip status={c.status} tone={CLEARANCE_TONE[c.status]} />,
+    },
+    {
+      id: 'note',
+      header: 'Note',
+      cell: (c) => <span className="text-ink-400">{c.note ?? '—'}</span>,
+    },
+    {
+      id: 'cleared',
+      header: 'Cleared',
+      sortValue: (c) => c.clearedAt,
+      cell: (c) => (c.clearedAt ? dateTime(c.clearedAt) : '—'),
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (c) =>
+        c.status !== 'cleared' && (
+          <div className="flex justify-end gap-2">
+            <button className="btn text-2xs" disabled={clear.isPending} onClick={() => clear.mutate(c.id)}>
+              Clear
+            </button>
+            <button className="btn text-2xs" onClick={() => setBlockId(c.id)}>
+              Block
+            </button>
+          </div>
+        ),
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-4">
       <Card
         title="Accepted resignations"
         subtitle="Open clearance once the last working day is settled — this moves the offboarding forward through last-day and into clearance."
       >
-        {acceptedResignations.isLoading && <Loading />}
-        {acceptedResignations.error && <ErrorBox error={acceptedResignations.error} />}
-        {acceptedResignations.data && acceptedResignations.data.length === 0 && (
-          <EmptyState message="No accepted resignations yet." />
-        )}
-        {acceptedResignations.data && acceptedResignations.data.length > 0 && (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Last day</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {acceptedResignations.data.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.employment.person.fullName}</td>
-                  <td>{date(r.agreedLastDay ?? r.requestedLastDay)}</td>
-                  <td className="text-right">
-                    {r.offboardingId && (
-                      <div className="flex justify-end gap-2">
-                        <button className="btn text-2xs" onClick={() => setActiveOffboardingId(r.offboardingId!)}>
-                          View clearance
-                        </button>
-                        <button
-                          className="btn text-2xs"
-                          disabled={initiate.isPending}
-                          onClick={() => initiate.mutate(r.offboardingId!)}
-                        >
-                          Open / refresh clearance
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          caption="Accepted resignations awaiting clearance"
+          columns={acceptedColumns}
+          rows={acceptedResignations.data ?? []}
+          rowKey={(r) => r.id}
+          loading={acceptedResignations.isLoading}
+          error={acceptedResignations.error}
+          emptyMessage="No accepted resignations yet."
+        />
         {initiate.isError && <ErrorBox error={initiate.error} />}
       </Card>
 
@@ -299,47 +356,17 @@ function ClearancesTab() {
         }
       >
         {!activeOffboardingId && <EmptyState message="No offboarding selected." />}
-        {activeOffboardingId && clearances.isLoading && <Loading />}
-        {activeOffboardingId && clearances.error && <ErrorBox error={clearances.error} />}
-        {activeOffboardingId && clearances.data && clearances.data.length === 0 && (
-          <EmptyState message="Clearance has not been opened yet." hint="Use “Open / refresh clearance” above." />
-        )}
-        {activeOffboardingId && clearances.data && clearances.data.length > 0 && (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Department</th>
-                <th>Status</th>
-                <th>Note</th>
-                <th>Cleared</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {clearances.data.map((c) => (
-                <tr key={c.id}>
-                  <td>{titleCase(c.department)}</td>
-                  <td>
-                    <StatusChip status={c.status} tone={CLEARANCE_TONE[c.status]} />
-                  </td>
-                  <td className="text-ink-400">{c.note ?? '—'}</td>
-                  <td>{c.clearedAt ? dateTime(c.clearedAt) : '—'}</td>
-                  <td className="text-right">
-                    {c.status !== 'cleared' && (
-                      <div className="flex justify-end gap-2">
-                        <button className="btn text-2xs" disabled={clear.isPending} onClick={() => clear.mutate(c.id)}>
-                          Clear
-                        </button>
-                        <button className="btn text-2xs" onClick={() => setBlockId(c.id)}>
-                          Block
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {activeOffboardingId && (
+          <DataTable
+            caption="Exit clearance by department"
+            columns={clearanceColumns}
+            rows={clearances.data ?? []}
+            rowKey={(c) => c.id}
+            loading={clearances.isLoading}
+            error={clearances.error}
+            emptyMessage="Clearance has not been opened yet."
+            emptyHint="Use “Open / refresh clearance” above."
+          />
         )}
         {clear.isError && <ErrorBox error={clear.error} />}
       </Card>
@@ -368,18 +395,17 @@ function NoDuesTab() {
 
   const clearances = useQuery({
     queryKey: ['sep-clearances', activeOffboardingId],
-    queryFn: () => api.get<ClearanceRow[]>(`/hcm/separations/offboarding/${activeOffboardingId}/clearances`),
+    queryFn: () => hcmApi.separations.clearances.list(activeOffboardingId),
     enabled: Boolean(activeOffboardingId),
   });
   const noDues = useQuery({
     queryKey: ['sep-no-dues', activeOffboardingId],
-    queryFn: () =>
-      api.get<{ id: string; issuedOn: string } | null>(`/hcm/separations/offboarding/${activeOffboardingId}/no-dues`),
+    queryFn: () => hcmApi.separations.noDues.get(activeOffboardingId),
     enabled: Boolean(activeOffboardingId),
   });
 
   const issue = useMutation({
-    mutationFn: () => api.post(`/hcm/separations/offboarding/${activeOffboardingId}/no-dues`),
+    mutationFn: () => hcmApi.separations.noDues.issue(activeOffboardingId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sep-no-dues', activeOffboardingId] }),
   });
 
@@ -436,22 +462,39 @@ function NoDuesTab() {
 // Alumni
 // ---------------------------------------------------------------------------
 
-interface AlumniRow {
-  id: string;
-  personId: string;
-  employmentRelationshipId: string;
-  lastDesignation: string;
-  exitDate: string;
-  separationType: string;
-  rehireEligible: boolean | null;
-  rehireNote: string | null;
-  contactConsent: boolean;
-  contactEmail: string | null;
-  contactPhone: string | null;
-}
+const ALUMNI_COLUMNS: ReadonlyArray<DataTableColumn<AlumniRow>> = [
+  {
+    id: 'designation',
+    header: 'Last designation',
+    sortValue: (a) => a.lastDesignation,
+    cell: (a) => a.lastDesignation,
+  },
+  {
+    id: 'exitDate',
+    header: 'Exit date',
+    sortValue: (a) => a.exitDate,
+    cell: (a) => date(a.exitDate),
+  },
+  {
+    id: 'separation',
+    header: 'Separation',
+    sortValue: (a) => a.separationType,
+    cell: (a) => <StatusChip status={a.separationType} />,
+  },
+  {
+    id: 'rehire',
+    header: 'Rehire eligible',
+    sortValue: (a) => a.rehireEligible,
+    cell: (a) => (a.rehireEligible === null ? 'Not assessed' : a.rehireEligible ? 'Yes' : 'No'),
+  },
+  {
+    id: 'contact',
+    header: 'Contact consent',
+    cell: (a) => (a.contactConsent ? (a.contactEmail ?? a.contactPhone ?? 'Given') : 'Not given'),
+  },
+];
 
 function AlumniTab() {
-  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     employmentRelationshipId: '',
@@ -462,7 +505,7 @@ function AlumniTab() {
     contactPhone: '',
   });
 
-  const alumni = useQuery({ queryKey: ['sep-alumni'], queryFn: () => api.get<AlumniRow[]>('/hcm/separations/alumni') });
+  const alumni = useQuery({ queryKey: ['sep-alumni'], queryFn: () => hcmApi.separations.alumni.list() });
 
   return (
     <Card
@@ -470,35 +513,15 @@ function AlumniTab() {
       subtitle="Written once, deliberately, when separation reaches Terminated — rehire eligibility and contact consent are not defaults."
       actions={<NewButton label="Record alumni" onClick={() => setOpen(true)} />}
     >
-      {alumni.isLoading && <Loading />}
-      {alumni.error && <ErrorBox error={alumni.error} />}
-      {alumni.data && alumni.data.length === 0 && <EmptyState message="No alumni recorded yet." />}
-      {alumni.data && alumni.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Last designation</th>
-              <th>Exit date</th>
-              <th>Separation</th>
-              <th>Rehire eligible</th>
-              <th>Contact consent</th>
-            </tr>
-          </thead>
-          <tbody>
-            {alumni.data.map((a) => (
-              <tr key={a.id}>
-                <td>{a.lastDesignation}</td>
-                <td>{date(a.exitDate)}</td>
-                <td>
-                  <StatusChip status={a.separationType} />
-                </td>
-                <td>{a.rehireEligible === null ? 'Not assessed' : a.rehireEligible ? 'Yes' : 'No'}</td>
-                <td>{a.contactConsent ? (a.contactEmail ?? a.contactPhone ?? 'Given') : 'Not given'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Alumni records"
+        columns={ALUMNI_COLUMNS}
+        rows={alumni.data ?? []}
+        rowKey={(a) => a.id}
+        loading={alumni.isLoading}
+        error={alumni.error}
+        emptyMessage="No alumni recorded yet."
+      />
 
       <CreateModal
         open={open}
@@ -506,7 +529,7 @@ function AlumniTab() {
         onClose={() => setOpen(false)}
         invalidate={[['sep-alumni']]}
         onSubmit={() =>
-          api.post('/hcm/separations/alumni', {
+          hcmApi.separations.alumni.record({
             employmentRelationshipId: form.employmentRelationshipId,
             rehireEligible: form.rehireEligible === 'unknown' ? null : form.rehireEligible === 'yes',
             rehireNote: form.rehireNote || undefined,
@@ -565,15 +588,27 @@ function AlumniTab() {
 // Notice policies
 // ---------------------------------------------------------------------------
 
-interface NoticePolicyRow {
-  id: string;
-  name: string;
-  grade: string | null;
-  engagementType: string | null;
-  noticeDays: number;
-  buyoutAllowed: boolean;
-  active: boolean;
-}
+const NOTICE_POLICY_COLUMNS: ReadonlyArray<DataTableColumn<NoticePolicyRow>> = [
+  { id: 'name', header: 'Name', sortValue: (p) => p.name, cell: (p) => p.name },
+  { id: 'grade', header: 'Grade', cell: (p) => p.grade ?? 'Any' },
+  {
+    id: 'engagement',
+    header: 'Engagement type',
+    cell: (p) => (p.engagementType ? titleCase(p.engagementType) : 'Any'),
+  },
+  { id: 'noticeDays', header: 'Notice days', sortValue: (p) => p.noticeDays, cell: (p) => p.noticeDays },
+  {
+    id: 'buyout',
+    header: 'Buyout',
+    cell: (p) => (p.buyoutAllowed ? 'Allowed' : 'Not allowed'),
+  },
+  {
+    id: 'active',
+    header: 'Active',
+    sortValue: (p) => p.active,
+    cell: (p) => <StatusChip status={p.active ? 'active' : 'inactive'} tone={p.active ? 'good' : 'neutral'} />,
+  },
+];
 
 function NoticePoliciesTab() {
   const qc = useQueryClient();
@@ -582,14 +617,28 @@ function NoticePoliciesTab() {
 
   const policies = useQuery({
     queryKey: ['sep-notice-policies'],
-    queryFn: () => api.get<NoticePolicyRow[]>('/hcm/separations/notice-policies'),
+    queryFn: () => hcmApi.separations.noticePolicies.list(),
   });
 
   const toggle = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
-      api.patch(`/hcm/separations/notice-policies/${id}/active`, { active }),
+      hcmApi.separations.noticePolicies.setActive(id, active),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sep-notice-policies'] }),
   });
+
+  const columns: ReadonlyArray<DataTableColumn<NoticePolicyRow>> = [
+    ...NOTICE_POLICY_COLUMNS,
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (p) => (
+        <button className="btn text-2xs" onClick={() => toggle.mutate({ id: p.id, active: !p.active })}>
+          {p.active ? 'Deactivate' : 'Activate'}
+        </button>
+      ),
+    },
+  ];
 
   return (
     <Card
@@ -597,48 +646,16 @@ function NoticePoliciesTab() {
       subtitle="What noticeDays comes from, by grade and engagement type. An employment with no matching row falls back to its own flat default."
       actions={<NewButton label="Add policy" onClick={() => setOpen(true)} />}
     >
-      {policies.isLoading && <Loading />}
-      {policies.error && <ErrorBox error={policies.error} />}
-      {policies.data && policies.data.length === 0 && (
-        <EmptyState
-          message="No notice policies defined."
-          hint="Every employment falls back to its own flat notice period."
-        />
-      )}
-      {policies.data && policies.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Grade</th>
-              <th>Engagement type</th>
-              <th>Notice days</th>
-              <th>Buyout</th>
-              <th>Active</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {policies.data.map((p) => (
-              <tr key={p.id}>
-                <td>{p.name}</td>
-                <td>{p.grade ?? 'Any'}</td>
-                <td>{p.engagementType ? titleCase(p.engagementType) : 'Any'}</td>
-                <td>{p.noticeDays}</td>
-                <td>{p.buyoutAllowed ? 'Allowed' : 'Not allowed'}</td>
-                <td>
-                  <StatusChip status={p.active ? 'active' : 'inactive'} tone={p.active ? 'good' : 'neutral'} />
-                </td>
-                <td className="text-right">
-                  <button className="btn text-2xs" onClick={() => toggle.mutate({ id: p.id, active: !p.active })}>
-                    {p.active ? 'Deactivate' : 'Activate'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Notice policies"
+        columns={columns}
+        rows={policies.data ?? []}
+        rowKey={(p) => p.id}
+        loading={policies.isLoading}
+        error={policies.error}
+        emptyMessage="No notice policies defined."
+        emptyHint="Every employment falls back to its own flat notice period."
+      />
 
       <CreateModal
         open={open}
@@ -646,7 +663,7 @@ function NoticePoliciesTab() {
         onClose={() => setOpen(false)}
         invalidate={[['sep-notice-policies']]}
         onSubmit={() =>
-          api.post('/hcm/separations/notice-policies', {
+          hcmApi.separations.noticePolicies.create({
             name: form.name,
             grade: form.grade || undefined,
             engagementType: form.engagementType || undefined,

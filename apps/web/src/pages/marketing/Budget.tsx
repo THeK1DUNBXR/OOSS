@@ -6,8 +6,18 @@
  */
 
 import { useMemo, useState } from 'react';
-import { DIVISIONS, DIVISION_LABELS, CHANNEL_KEY_LABELS, CHANNEL_KEYS, type ChannelKey } from '@kaizen/shared';
-import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
+import {
+  DIVISIONS,
+  DIVISION_LABELS,
+  CHANNEL_KEY_LABELS,
+  CHANNEL_KEYS,
+  type BudgetView,
+  type ChannelKey,
+  type SpendView,
+  type VendorView,
+} from '@kaizen/shared';
+import { Card, ErrorBox, Loading, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { CreateModal, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
 import { NewButton } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
@@ -23,6 +33,7 @@ import {
   useReconcileSpend,
   useSpends,
   useVendors,
+  type BudgetVarianceRow,
 } from '../../lib/marketingApi.js';
 
 type BudgetTab = 'budgets' | 'spend' | 'vendors';
@@ -98,6 +109,58 @@ export function Budget() {
   );
 }
 
+const VARIANCE_COLUMNS: ReadonlyArray<DataTableColumn<BudgetVarianceRow>> = [
+  {
+    id: 'division',
+    header: 'Division',
+    cell: (v) => titleCase(v.division),
+    cellClassName: 'text-xs',
+    sortValue: (v) => titleCase(v.division),
+  },
+  {
+    id: 'channel',
+    header: 'Channel',
+    cell: (v) => (v.channelKey ? CHANNEL_KEY_LABELS[v.channelKey] : 'All'),
+    cellClassName: 'text-xs text-ink-400',
+    sortValue: (v) => (v.channelKey ? CHANNEL_KEY_LABELS[v.channelKey] : 'All'),
+  },
+  {
+    id: 'planned',
+    header: 'Planned',
+    align: 'right',
+    cell: (v) => money(v.planned),
+    cellClassName: 'text-xs',
+    sortValue: (v) => v.planned,
+  },
+  {
+    id: 'committed',
+    header: 'Committed',
+    align: 'right',
+    cell: (v) => money(v.committed),
+    cellClassName: 'text-xs',
+    sortValue: (v) => v.committed,
+  },
+  {
+    id: 'actual',
+    header: 'Actual',
+    align: 'right',
+    cell: (v) => (v.measured ? money(v.actual) : NOT_MEASURED),
+    cellClassName: 'text-xs',
+    sortValue: (v) => (v.measured ? v.actual : null),
+  },
+  {
+    id: 'variance',
+    header: 'Variance',
+    align: 'right',
+    cell: (v) => (
+      <span className={`text-xs ${v.variance < 0 ? 'text-band-critical' : 'text-band-strong'}`}>
+        {v.measured ? money(v.variance) : NOT_MEASURED}
+      </span>
+    ),
+    sortValue: (v) => (v.measured ? v.variance : null),
+  },
+];
+
 function BudgetsTab({ period, division, canApprove }: { period: string; division: string; canApprove: boolean }) {
   const {
     data: budgets,
@@ -111,107 +174,94 @@ function BudgetsTab({ period, division, canApprove }: { period: string; division
   } = useBudgetVariance({ period, division: division || undefined });
   const approve = useApproveBudget();
 
+  // The Approve action closes over the mutation and the viewer's permission, so these columns live here.
+  const budgetColumns: ReadonlyArray<DataTableColumn<BudgetView>> = [
+    { id: 'period', header: 'Period', cell: (b) => b.period, cellClassName: 'text-xs', sortValue: (b) => b.period },
+    {
+      id: 'division',
+      header: 'Division',
+      cell: (b) => titleCase(b.division),
+      cellClassName: 'text-xs',
+      sortValue: (b) => titleCase(b.division),
+    },
+    {
+      id: 'target',
+      header: 'Channel / Campaign',
+      cell: (b) => (b.channelKey ? CHANNEL_KEY_LABELS[b.channelKey] : (b.campaignName ?? 'All')),
+      cellClassName: 'text-xs text-ink-400',
+    },
+    {
+      id: 'planned',
+      header: 'Planned',
+      align: 'right',
+      cell: (b) => money(b.planned),
+      cellClassName: 'text-xs',
+      sortValue: (b) => b.planned,
+    },
+    {
+      id: 'committed',
+      header: 'Committed',
+      align: 'right',
+      cell: (b) => money(b.committed),
+      cellClassName: 'text-xs',
+      sortValue: (b) => b.committed,
+    },
+    {
+      id: 'spent',
+      header: 'Spent',
+      align: 'right',
+      cell: (b) => money(b.spent),
+      cellClassName: 'text-xs',
+      sortValue: (b) => b.spent,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (b) => (
+        <>
+          <span className="text-2xs text-ink-500">
+            {b.remaining >= 0 ? `${money(b.remaining)} left` : `${money(-b.remaining)} over`}
+          </span>
+          {canApprove && (
+            <button
+              className="ml-2 text-2xs text-accent-soft hover:underline"
+              onClick={() => approve.mutate(b.id)}
+              disabled={approve.isPending}
+            >
+              Approve
+            </button>
+          )}
+        </>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-4">
       <Card title="Budgets" subtitle="Proposed by operations, approved by finance.">
-        {loadingBudgets ? (
-          <Loading />
-        ) : budgetsError ? (
-          <ErrorBox error={budgetsError} />
-        ) : !budgets || budgets.items.length === 0 ? (
-          <EmptyState
-            message="No budget has been proposed for this period yet."
-            hint="A budget is proposed against a division, and optionally a channel or a single campaign."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Period</th>
-                  <th>Division</th>
-                  <th>Channel / Campaign</th>
-                  <th className="text-right">Planned</th>
-                  <th className="text-right">Committed</th>
-                  <th className="text-right">Spent</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {budgets.items.map((b) => (
-                  <tr key={b.id}>
-                    <td className="text-xs">{b.period}</td>
-                    <td className="text-xs">{titleCase(b.division)}</td>
-                    <td className="text-xs text-ink-400">
-                      {b.channelKey ? CHANNEL_KEY_LABELS[b.channelKey] : (b.campaignName ?? 'All')}
-                    </td>
-                    <td className="text-right tabular-nums text-xs">{money(b.planned)}</td>
-                    <td className="text-right tabular-nums text-xs">{money(b.committed)}</td>
-                    <td className="text-right tabular-nums text-xs">{money(b.spent)}</td>
-                    <td>
-                      <span className="text-2xs text-ink-500">
-                        {b.remaining >= 0 ? `${money(b.remaining)} left` : `${money(-b.remaining)} over`}
-                      </span>
-                      {canApprove && (
-                        <button
-                          className="ml-2 text-2xs text-accent-soft hover:underline"
-                          onClick={() => approve.mutate(b.id)}
-                          disabled={approve.isPending}
-                        >
-                          Approve
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DataTable
+          caption="Budgets"
+          columns={budgetColumns}
+          rows={budgets?.items ?? []}
+          rowKey={(b) => b.id}
+          loading={loadingBudgets}
+          error={budgetsError}
+          emptyMessage="No budget has been proposed for this period yet."
+          emptyHint="A budget is proposed against a division, and optionally a channel or a single campaign."
+        />
       </Card>
 
       <Card title="Variance" subtitle="Planned vs committed vs actual, per line.">
-        {loadingVariance ? (
-          <Loading />
-        ) : varianceError ? (
-          <ErrorBox error={varianceError} />
-        ) : !variance || variance.length === 0 ? (
-          <EmptyState
-            message="Nothing to measure yet."
-            hint="Variance appears once a budget is approved for this period."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Division</th>
-                  <th>Channel</th>
-                  <th className="text-right">Planned</th>
-                  <th className="text-right">Committed</th>
-                  <th className="text-right">Actual</th>
-                  <th className="text-right">Variance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {variance.map((v, i) => (
-                  <tr key={i}>
-                    <td className="text-xs">{titleCase(v.division)}</td>
-                    <td className="text-xs text-ink-400">{v.channelKey ? CHANNEL_KEY_LABELS[v.channelKey] : 'All'}</td>
-                    <td className="text-right tabular-nums text-xs">{money(v.planned)}</td>
-                    <td className="text-right tabular-nums text-xs">{money(v.committed)}</td>
-                    <td className="text-right tabular-nums text-xs">{v.measured ? money(v.actual) : NOT_MEASURED}</td>
-                    <td
-                      className={`text-right tabular-nums text-xs ${v.variance < 0 ? 'text-band-critical' : 'text-band-strong'}`}
-                    >
-                      {v.measured ? money(v.variance) : NOT_MEASURED}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DataTable
+          caption="Budget variance"
+          columns={VARIANCE_COLUMNS}
+          rows={variance ?? []}
+          rowKey={(_, index) => String(index)}
+          loading={loadingVariance}
+          error={varianceError}
+          emptyMessage="Nothing to measure yet."
+          emptyHint="Variance appears once a budget is approved for this period."
+        />
       </Card>
     </div>
   );
@@ -229,86 +279,120 @@ function SpendTab({ period }: { period: string }) {
   if (isLoading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
 
-  return items.length === 0 ? (
-    <Card>
-      <EmptyState message="No spend recorded this period." />
-    </Card>
-  ) : (
-    <Card bodyClassName="p-0 overflow-x-auto">
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Campaign</th>
-            <th>Channel</th>
-            <th>Vendor</th>
-            <th className="text-right">Amount</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((s) => (
-            <tr key={s.id}>
-              <td className="text-xs">{date(s.spendDate)}</td>
-              <td className="text-xs">{s.campaignName ?? '—'}</td>
-              <td className="text-xs">{CHANNEL_KEY_LABELS[s.channelKey]}</td>
-              <td className="text-xs">{s.vendorName ?? '—'}</td>
-              <td className="text-right tabular-nums text-xs">{money(s.amount)}</td>
-              <td>
-                <StatusChip status={s.status} tone={s.status === 'reconciled' ? 'good' : 'neutral'} />
-                {s.status === 'recorded' && (
-                  <button
-                    className="ml-2 text-2xs text-accent-soft hover:underline"
-                    onClick={() => reconcile.mutate({ id: s.id, body: {} })}
-                  >
-                    Reconcile
-                  </button>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+  const spendColumns: ReadonlyArray<DataTableColumn<SpendView>> = [
+    {
+      id: 'date',
+      header: 'Date',
+      cell: (s) => date(s.spendDate),
+      cellClassName: 'text-xs',
+      sortValue: (s) => s.spendDate,
+    },
+    {
+      id: 'campaign',
+      header: 'Campaign',
+      cell: (s) => s.campaignName ?? '—',
+      cellClassName: 'text-xs',
+      sortValue: (s) => s.campaignName,
+    },
+    {
+      id: 'channel',
+      header: 'Channel',
+      cell: (s) => CHANNEL_KEY_LABELS[s.channelKey],
+      cellClassName: 'text-xs',
+      sortValue: (s) => CHANNEL_KEY_LABELS[s.channelKey],
+    },
+    {
+      id: 'vendor',
+      header: 'Vendor',
+      cell: (s) => s.vendorName ?? '—',
+      cellClassName: 'text-xs',
+      sortValue: (s) => s.vendorName,
+    },
+    {
+      id: 'amount',
+      header: 'Amount',
+      align: 'right',
+      cell: (s) => money(s.amount),
+      cellClassName: 'text-xs',
+      sortValue: (s) => s.amount,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (s) => (
+        <>
+          <StatusChip status={s.status} tone={s.status === 'reconciled' ? 'good' : 'neutral'} />
+          {s.status === 'recorded' && (
+            <button
+              className="ml-2 text-2xs text-accent-soft hover:underline"
+              onClick={() => reconcile.mutate({ id: s.id, body: {} })}
+            >
+              Reconcile
+            </button>
+          )}
+        </>
+      ),
+    },
+  ];
+
+  return (
+    <Card bodyClassName="p-0">
+      <DataTable
+        caption="Spend"
+        columns={spendColumns}
+        rows={items}
+        rowKey={(s) => s.id}
+        emptyMessage="No spend recorded this period."
+      />
     </Card>
   );
 }
+
+const VENDOR_COLUMNS: ReadonlyArray<DataTableColumn<VendorView>> = [
+  {
+    id: 'organization',
+    header: 'Organization',
+    cell: (v) => v.organizationName,
+    cellClassName: 'text-xs font-medium text-ink-200',
+    sortValue: (v) => v.organizationName,
+  },
+  {
+    id: 'services',
+    header: 'Services',
+    cell: (v) => v.services.join(', '),
+    cellClassName: 'text-xs text-ink-400',
+    sortValue: (v) => v.services.join(', '),
+  },
+  {
+    id: 'contract',
+    header: 'Contract',
+    cell: (v) => v.contractRef ?? '—',
+    cellClassName: 'text-xs text-ink-400',
+    sortValue: (v) => v.contractRef,
+  },
+  {
+    id: 'active',
+    header: 'Active',
+    cell: (v) => <StatusChip status={v.active ? 'active' : 'inactive'} tone={v.active ? 'good' : 'neutral'} />,
+    sortValue: (v) => v.active,
+  },
+];
 
 function VendorsTab() {
   const { data, isLoading, error } = useVendors();
   if (isLoading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
   const items = data?.items ?? [];
-  return items.length === 0 ? (
-    <Card>
-      <EmptyState
-        message="No vendors on file yet."
-        hint="A vendor is an existing organization tagged with the services it supplies."
+  return (
+    <Card bodyClassName="p-0">
+      <DataTable
+        caption="Vendors"
+        columns={VENDOR_COLUMNS}
+        rows={items}
+        rowKey={(v) => v.id}
+        emptyMessage="No vendors on file yet."
+        emptyHint="A vendor is an existing organization tagged with the services it supplies."
       />
-    </Card>
-  ) : (
-    <Card bodyClassName="p-0 overflow-x-auto">
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Organization</th>
-            <th>Services</th>
-            <th>Contract</th>
-            <th>Active</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((v) => (
-            <tr key={v.id}>
-              <td className="text-xs font-medium text-ink-200">{v.organizationName}</td>
-              <td className="text-xs text-ink-400">{v.services.join(', ')}</td>
-              <td className="text-xs text-ink-400">{v.contractRef ?? '—'}</td>
-              <td>
-                <StatusChip status={v.active ? 'active' : 'inactive'} tone={v.active ? 'good' : 'neutral'} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </Card>
   );
 }

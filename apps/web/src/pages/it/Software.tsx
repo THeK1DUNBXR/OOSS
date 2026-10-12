@@ -34,6 +34,7 @@ import {
 } from '../../components/ui.js';
 import { MoneyInput, NewButton, Row, SelectInput, TextArea, TextInput, messageOf } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
+import { DataTable } from '../../components/DataTable.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -220,13 +221,15 @@ export function ItApplications() {
               value={Object.values(s.byStatus).reduce((a, b) => a + b, 0)}
               noActionReason="The whole catalogue."
             />
+            {/* byTier is built from the applications present, so a tier with none is absent, and absent is zero. */}
             <Metric label="Tier 1" value={s.byTier['1'] ?? 0} noActionReason="Business-stopping if it goes down." />
             <Metric
               label="No owner"
               value={s.unowned}
               tone={s.unowned > 0 ? 'bad' : 'good'}
-              drillTo={s.unowned > 0 ? '/it/applications?status=active' : undefined}
-              noActionReason={s.unowned === 0 ? 'Every application has an accountable owner.' : undefined}
+              {...(s.unowned > 0
+                ? { drillTo: '/it/applications?status=active' }
+                : { noActionReason: 'Every application has an accountable owner.' })}
             />
             <Metric label="Retired" value={s.byStatus.retired} noActionReason="Kept for the record." />
           </div>
@@ -251,43 +254,63 @@ export function ItApplications() {
         ) : rows.length === 0 ? (
           <EmptyState message="Nothing here." hint="Add an application, or widen the tab." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-ink-800 text-2xs uppercase tracking-wide text-ink-500">
-                  <th className="py-2 pr-3">Application</th>
-                  <th className="py-2 pr-3">Tier</th>
-                  <th className="py-2 pr-3">Hosting</th>
-                  <th className="py-2 pr-3">Category</th>
-                  <th className="py-2 pr-3">Owner</th>
-                  <th className="py-2 pr-3">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((a) => (
-                  <tr key={a.id} className="border-b border-ink-850/60">
-                    <td className="py-2 pr-3">
-                      <Link to={`/it/applications/${a.id}`} className="text-ink-100 hover:underline">
-                        {a.name}
-                      </Link>
-                      <div className="text-2xs text-ink-500">
-                        <RecordCode code={a.recordCode} /> {a.sso && '· SSO'}
-                      </div>
-                    </td>
-                    <td className="py-2 pr-3 tabular-nums text-ink-300">T{a.tier}</td>
-                    <td className="py-2 pr-3 text-ink-300">{a.hosting}</td>
-                    <td className="py-2 pr-3 text-ink-300">{a.category}</td>
-                    <td className="py-2 pr-3 text-ink-300">
-                      {a.ownerPartyId ? a.ownerPartyId : <span className="text-band-critical">unowned</span>}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <StatusChip status={a.status} tone={STATUS_TONE[a.status]} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption="Applications"
+            rows={rows}
+            rowKey={(a) => a.id}
+            emptyMessage="No applications in this view."
+            columns={[
+              {
+                id: 'name',
+                header: 'Application',
+                sortValue: (a) => a.name,
+                cell: (a) => (
+                  <>
+                    <Link to={`/it/applications/${a.id}`} className="text-ink-100 hover:underline">
+                      {a.name}
+                    </Link>
+                    <div className="text-2xs text-ink-500">
+                      <RecordCode code={a.recordCode} /> {a.sso && '· SSO'}
+                    </div>
+                  </>
+                ),
+              },
+              {
+                id: 'tier',
+                header: 'Tier',
+                sortValue: (a) => a.tier,
+                cell: (a) => <span className="tabular-nums text-ink-300">T{a.tier}</span>,
+              },
+              {
+                id: 'hosting',
+                header: 'Hosting',
+                sortValue: (a) => a.hosting,
+                cell: (a) => <span className="text-ink-300">{a.hosting}</span>,
+              },
+              {
+                id: 'category',
+                header: 'Category',
+                sortValue: (a) => a.category,
+                cell: (a) => <span className="text-ink-300">{a.category}</span>,
+              },
+              {
+                id: 'owner',
+                header: 'Owner',
+                sortValue: (a) => a.ownerPartyId,
+                cell: (a) => (
+                  <span className="text-ink-300">
+                    {a.ownerPartyId ? a.ownerPartyId : <span className="text-band-critical">unowned</span>}
+                  </span>
+                ),
+              },
+              {
+                id: 'status',
+                header: 'Status',
+                sortValue: (a) => a.status,
+                cell: (a) => <StatusChip status={a.status} tone={STATUS_TONE[a.status]} />,
+              },
+            ]}
+          />
         )}
       </Card>
 
@@ -609,42 +632,63 @@ export function ItApplicationDetail() {
         {app.licences.length === 0 ? (
           <EmptyState message="No licences recorded for this application." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-ink-800 text-2xs uppercase tracking-wide text-ink-500">
-                  <th className="py-2 pr-3">Licence</th>
-                  <th className="py-2 pr-3">Kind</th>
-                  <th className="py-2 pr-3">Seats</th>
-                  <th className="py-2 pr-3">Cost</th>
-                  <th className="py-2 pr-3">Renews</th>
-                  <th className="py-2 pr-3">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {app.licences.map((l) => (
-                  <tr key={l.id} className="border-b border-ink-850/60">
-                    <td className="py-2 pr-3">
-                      <Link to={`/it/licences/${l.id}`} className="text-ink-100 hover:underline">
-                        <RecordCode code={l.recordCode} />
-                      </Link>
-                    </td>
-                    <td className="py-2 pr-3 text-ink-300">{l.kind}</td>
-                    <td className="py-2 pr-3 tabular-nums text-ink-300">
-                      {l.seatsInUse}/{l.seatsPurchased}
-                    </td>
-                    <td className="py-2 pr-3 tabular-nums text-ink-300">
-                      {can('it_licences:F') ? money(l.costPerPeriod, l.currency) : <Withheld reason="no_permission" />}
-                    </td>
-                    <td className="py-2 pr-3 text-ink-300">{l.renewalDate ? date(l.renewalDate) : '—'}</td>
-                    <td className="py-2 pr-3">
-                      <StatusChip status={l.status} tone={LICENCE_STATUS_TONE[l.status]} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption="Licences for this application"
+            rows={app.licences}
+            rowKey={(l) => l.id}
+            emptyMessage="No licences recorded for this application."
+            columns={[
+              {
+                id: 'licence',
+                header: 'Licence',
+                sortValue: (l) => l.recordCode,
+                cell: (l) => (
+                  <Link to={`/it/licences/${l.id}`} className="text-ink-100 hover:underline">
+                    <RecordCode code={l.recordCode} />
+                  </Link>
+                ),
+              },
+              {
+                id: 'kind',
+                header: 'Kind',
+                sortValue: (l) => l.kind,
+                cell: (l) => <span className="text-ink-300">{l.kind}</span>,
+              },
+              {
+                id: 'seats',
+                header: 'Seats',
+                sortValue: (l) => l.seatsInUse,
+                cell: (l) => (
+                  <span className="tabular-nums text-ink-300">
+                    {l.seatsInUse}/{l.seatsPurchased}
+                  </span>
+                ),
+              },
+              {
+                id: 'cost',
+                header: 'Cost',
+                align: 'right',
+                sortValue: (l) => (can('it_licences:F') ? l.costPerPeriod : null),
+                cell: (l) => (
+                  <span className="text-ink-300">
+                    {can('it_licences:F') ? money(l.costPerPeriod, l.currency) : <Withheld reason="no_permission" />}
+                  </span>
+                ),
+              },
+              {
+                id: 'renews',
+                header: 'Renews',
+                sortValue: (l) => l.renewalDate,
+                cell: (l) => <span className="text-ink-300">{l.renewalDate ? date(l.renewalDate) : '—'}</span>,
+              },
+              {
+                id: 'status',
+                header: 'Status',
+                sortValue: (l) => l.status,
+                cell: (l) => <StatusChip status={l.status} tone={LICENCE_STATUS_TONE[l.status]} />,
+              },
+            ]}
+          />
         )}
       </Card>
     </div>
@@ -733,49 +777,70 @@ export function ItLicences() {
         ) : rows.length === 0 ? (
           <EmptyState message="Nothing here." hint="Add a licence, or widen the tab." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-ink-800 text-2xs uppercase tracking-wide text-ink-500">
-                  <th className="py-2 pr-3">Licence</th>
-                  <th className="py-2 pr-3">Application</th>
-                  <th className="py-2 pr-3">Seats</th>
-                  <th className="py-2 pr-3">Cost / period</th>
-                  <th className="py-2 pr-3">Renews</th>
-                  <th className="py-2 pr-3">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((l) => {
+          <DataTable
+            caption="Licences"
+            rows={rows}
+            rowKey={(l) => l.id}
+            emptyMessage="No licences in this view."
+            columns={[
+              {
+                id: 'licence',
+                header: 'Licence',
+                sortValue: (l) => l.recordCode,
+                cell: (l) => (
+                  <Link to={`/it/licences/${l.id}`} className="text-ink-100 hover:underline">
+                    <RecordCode code={l.recordCode} />
+                  </Link>
+                ),
+              },
+              {
+                id: 'application',
+                header: 'Application',
+                sortValue: (l) => l.application?.name ?? l.applicationId,
+                cell: (l) => <span className="text-ink-300">{l.application?.name ?? l.applicationId}</span>,
+              },
+              {
+                id: 'seats',
+                header: 'Seats',
+                sortValue: (l) => l.seatsInUse,
+                cell: (l) => {
                   const over = l.seatsInUse > l.seatsPurchased;
                   return (
-                    <tr key={l.id} className="border-b border-ink-850/60">
-                      <td className="py-2 pr-3">
-                        <Link to={`/it/licences/${l.id}`} className="text-ink-100 hover:underline">
-                          <RecordCode code={l.recordCode} />
-                        </Link>
-                      </td>
-                      <td className="py-2 pr-3 text-ink-300">{l.application?.name ?? l.applicationId}</td>
-                      <td className={`py-2 pr-3 tabular-nums ${over ? 'text-band-critical' : 'text-ink-300'}`}>
-                        {l.seatsInUse}/{l.seatsPurchased}
-                      </td>
-                      <td className="py-2 pr-3 tabular-nums text-ink-300">
-                        {can('it_licences:F') ? (
-                          `${money(l.costPerPeriod, l.currency)}/${l.billingCycle}`
-                        ) : (
-                          <Withheld reason="no_permission" />
-                        )}
-                      </td>
-                      <td className="py-2 pr-3 text-ink-300">{l.renewalDate ? date(l.renewalDate) : '—'}</td>
-                      <td className="py-2 pr-3">
-                        <StatusChip status={l.status} tone={LICENCE_STATUS_TONE[l.status]} />
-                      </td>
-                    </tr>
+                    <span className={`tabular-nums ${over ? 'text-band-critical' : 'text-ink-300'}`}>
+                      {l.seatsInUse}/{l.seatsPurchased}
+                    </span>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
+                },
+              },
+              {
+                id: 'cost',
+                header: 'Cost / period',
+                align: 'right',
+                sortValue: (l) => (can('it_licences:F') ? l.costPerPeriod : null),
+                cell: (l) => (
+                  <span className="tabular-nums text-ink-300">
+                    {can('it_licences:F') ? (
+                      `${money(l.costPerPeriod, l.currency)}/${l.billingCycle}`
+                    ) : (
+                      <Withheld reason="no_permission" />
+                    )}
+                  </span>
+                ),
+              },
+              {
+                id: 'renews',
+                header: 'Renews',
+                sortValue: (l) => l.renewalDate,
+                cell: (l) => <span className="text-ink-300">{l.renewalDate ? date(l.renewalDate) : '—'}</span>,
+              },
+              {
+                id: 'status',
+                header: 'Status',
+                sortValue: (l) => l.status,
+                cell: (l) => <StatusChip status={l.status} tone={LICENCE_STATUS_TONE[l.status]} />,
+              },
+            ]}
+          />
         )}
       </Card>
 

@@ -19,13 +19,19 @@ import {
   type ApplicationState,
   type ApplicationEvent,
 } from '@kaizen/shared';
-import { prisma } from '../platform/db.js';
+import { prisma, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, assertScopeAll } from '../platform/permissions.js';
-import { transition } from '../platform/lifecycle.js';
+import {
+  transition,
+  decide,
+  applyDecided,
+  type TransitionInput,
+  type TransitionResult,
+} from '../platform/lifecycle.js';
 import { hire } from './employment.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { governedWrite } from '../platform/governedWrite.js';
@@ -222,11 +228,32 @@ export async function createApplication(input: { requisitionId: string; candidat
   });
 }
 
-export async function transitionApplication(
+export type ApplicationTransitionInput = { note?: string; rejectionReason?: string; screeningOutcome?: string };
+
+/**
+ * An application move that has been read and granted, but not written. The reads
+ * and the grant check run on the scoped client, which throws inside a transaction
+ * it did not open, so they happen in `prepareApplicationTransition` before the
+ * caller opens one. `applyApplicationTransition` then writes it inside that
+ * transaction. `transitionOffer` needs both halves: an accepted offer moves its
+ * application in the same transaction as the offer itself.
+ */
+export interface PreparedApplicationTransition {
+  id: string;
+  event: ApplicationEvent;
+  input: ApplicationTransitionInput;
+  transition: TransitionInput<ApplicationState, ApplicationEvent>;
+  decided: TransitionResult<ApplicationState>;
+  candidatePartyId: string;
+  positionId: string;
+  targetStartDate: Date | null;
+}
+
+export async function prepareApplicationTransition(
   id: string,
   event: ApplicationEvent,
-  input: { note?: string; rejectionReason?: string; screeningOutcome?: string } = {},
-) {
+  input: ApplicationTransitionInput = {},
+): Promise<PreparedApplicationTransition> {
   const auth = currentAuth();
   const application = await prisma.application.findFirst({
     where: { id, tenantId: auth.tenantId },
@@ -240,7 +267,7 @@ export async function transitionApplication(
     );
   }
 
-  const result = await transition({
+  const transition: TransitionInput<ApplicationState, ApplicationEvent> = {
     machine: applicationMachine,
     eventObject: 'application',
     verbs: APPLICATION_EVENT_VERB,
@@ -253,39 +280,74 @@ export async function transitionApplication(
     event,
     detail: { funnelBucket: applicationFunnelBucket(application.status as ApplicationState) },
     reasonNote: input.note ?? input.rejectionReason ?? null,
-  });
+  };
+  const decided = await decide(transition);
+  return {
+    id,
+    event,
+    input,
+    transition,
+    decided,
+    candidatePartyId: application.candidatePartyId,
+    positionId: application.requisition.positionId,
+    targetStartDate: application.requisition.targetStartDate ?? null,
+  };
+}
 
-  const updated = await prisma.application.update({
-    where: { id },
-    data: {
-      status: result.to,
-      ...(input.rejectionReason ? { rejectionReason: input.rejectionReason } : {}),
-      ...(input.screeningOutcome ? { screeningOutcome: input.screeningOutcome } : {}),
+/**
+ * The application's status, its audit row, its event and the appointment letter
+ * of an accepted offer commit together, in the caller's transaction. Before,
+ * transition() committed the audit and the event first, so a refused letter left
+ * the application OfferAccepted in the history with no appointment letter and the
+ * status still read OfferExtended.
+ */
+export async function applyApplicationTransition(tx: DbTx, prepared: PreparedApplicationTransition) {
+  const auth = currentAuth();
+  const { value } = await applyDecided(tx, prepared.transition, prepared.decided, {
+    write: (tx, to) =>
+      tx.application.update({
+        where: { id: prepared.id },
+        data: {
+          status: to,
+          ...(prepared.input.rejectionReason ? { rejectionReason: prepared.input.rejectionReason } : {}),
+          ...(prepared.input.screeningOutcome ? { screeningOutcome: prepared.input.screeningOutcome } : {}),
+        },
+      }),
+    // CMP-LAB-003: an accepted offer generates an appointment letter as a
+    // final document, not a bare state flip.
+    after: async (tx, to) => {
+      if (to !== 'OfferAccepted') return;
+      const [candidate, position] = await Promise.all([
+        tx.person.findFirst({ where: { id: prepared.candidatePartyId, tenantId: auth.tenantId } }),
+        tx.position.findFirst({
+          where: { id: prepared.positionId, tenantId: auth.tenantId },
+          include: { job: true },
+        }),
+      ]);
+      const { issueLetter } = await import('./compliance/labour.js');
+      await issueLetter(
+        {
+          kind: 'appointment',
+          applicationId: prepared.id,
+          employeeName: candidate?.fullName ?? 'Candidate',
+          legalEntity: 'Kaizen Infinities Pvt Ltd',
+          designation: position?.job.title ?? null,
+          hireEffectiveDate: prepared.targetStartDate,
+        },
+        tx,
+      );
     },
   });
+  return value;
+}
 
-  // CMP-LAB-003: an accepted offer generates an appointment letter as a
-  // final document, not a bare state flip.
-  if (result.to === 'OfferAccepted') {
-    const [candidate, position] = await Promise.all([
-      prisma.person.findFirst({ where: { id: application.candidatePartyId, tenantId: auth.tenantId } }),
-      prisma.position.findFirst({
-        where: { id: application.requisition.positionId, tenantId: auth.tenantId },
-        include: { job: true },
-      }),
-    ]);
-    const { issueLetter } = await import('./compliance/labour.js');
-    await issueLetter({
-      kind: 'appointment',
-      applicationId: id,
-      employeeName: candidate?.fullName ?? 'Candidate',
-      legalEntity: 'Kaizen Infinities Pvt Ltd',
-      designation: position?.job.title ?? null,
-      hireEffectiveDate: application.requisition.targetStartDate ?? null,
-    });
-  }
-
-  return updated;
+export async function transitionApplication(
+  id: string,
+  event: ApplicationEvent,
+  input: ApplicationTransitionInput = {},
+) {
+  const prepared = await prepareApplicationTransition(id, event, input);
+  return governedWrite((tx) => applyApplicationTransition(tx, prepared));
 }
 
 /**

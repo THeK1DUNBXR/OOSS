@@ -14,7 +14,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, date, relative, titleCase } from '../lib/api.js';
+import { date } from '../lib/api.js';
+import { edu, type EnrollmentRow, type ProjectRow } from '../lib/educationApi.js';
 import {
   Card,
   EmptyState,
@@ -27,6 +28,7 @@ import {
   StatusChip,
   Tabs,
 } from '../components/ui.js';
+import { DataTable, type DataTableColumn } from '../components/DataTable.js';
 import { NewButton } from '../components/forms.js';
 import { NewCohort, NewCourse, NewEnrollment } from '../components/createForms.js';
 import { humanize } from '../lib/words.js';
@@ -39,7 +41,7 @@ export function Cohorts() {
     error,
   } = useQuery({
     queryKey: ['cohorts'],
-    queryFn: () => api.get<any[]>('/education/cohorts'),
+    queryFn: () => edu.cohorts(),
   });
 
   if (error) return <ErrorBox error={error} />;
@@ -122,12 +124,11 @@ export function Enrollments() {
     error,
   } = useQuery({
     queryKey: ['enrollments', tab],
-    queryFn: () => api.get<any[]>(`/education/enrollments${tab === 'at_risk' ? '?atRisk=true' : ''}`),
+    queryFn: () => edu.enrollments({ atRisk: tab === 'at_risk' }),
   });
 
   const setStatus = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.post(`/education/enrollments/${id}/status`, { status }),
+    mutationFn: ({ id, status }: { id: string; status: string }) => edu.setEnrollmentStatus(id, status),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['enrollments'] }),
   });
 
@@ -141,6 +142,110 @@ export function Enrollments() {
   // Present only when the viewer's ceiling clears `regulated`; structurally
   // absent from the payload otherwise.
   const seesRegulated = data.some((e) => 'guardianPhone' in e);
+
+  const columns: ReadonlyArray<DataTableColumn<EnrollmentRow>> = [
+    { id: 'code', header: 'Code', sortValue: (e) => e.recordCode, cell: (e) => <RecordCode code={e.recordCode} /> },
+    {
+      id: 'student',
+      header: 'Student',
+      sortValue: (e) => e.personName,
+      cell: (e) => (
+        <>
+          <Link to={`/education/enrollments/${e.id}`} className="text-xs text-ink-100 hover:text-accent-soft">
+            {e.personName ?? '—'}
+          </Link>
+          {e.isMinor && (
+            <span
+              className="chip border-band-critical/40 text-band-critical"
+              title="Guardian contact is DPDP-covered and read-audited."
+            >
+              minor
+            </span>
+          )}
+        </>
+      ),
+    },
+    {
+      id: 'from',
+      header: 'From',
+      sortValue: (e) => e.institutionName,
+      cellClassName: 'text-2xs',
+      cell: (e) =>
+        e.institutionName ? (
+          <Link to={`/crm/institutions/${e.institutionId}`} className="text-ink-300 hover:text-accent-soft">
+            {e.institutionName}
+          </Link>
+        ) : (
+          <span className="text-ink-600" title="Not recruited through a college — a direct enrolment.">
+            direct
+          </span>
+        ),
+    },
+    {
+      id: 'batch',
+      header: 'Batch',
+      sortValue: (e) => e.cohortName,
+      cellClassName: 'text-2xs text-ink-400',
+      cell: (e) => (
+        <>
+          {e.cohortName}
+          <p className="text-ink-600">{e.courseName}</p>
+        </>
+      ),
+    },
+    {
+      id: 'progress',
+      header: 'Progress',
+      align: 'right',
+      sortValue: (e) => e.progressPct,
+      cellClassName: 'tabular-nums text-xs',
+      cell: (e) => `${e.progressPct}%`,
+    },
+    {
+      id: 'attendance',
+      header: 'Attendance',
+      align: 'right',
+      sortValue: (e) => e.attendancePct,
+      cellClassName: 'tabular-nums text-xs',
+      cell: (e) => <span className={e.atRisk ? 'text-band-watch' : undefined}>{e.attendancePct}%</span>,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (e) => e.status,
+      cell: (e) => (
+        <>
+          <StatusChip
+            status={humanize(e.status)}
+            tone={e.status === 'completed' ? 'good' : e.status === 'withdrawn' ? 'bad' : 'neutral'}
+          />
+          {e.atRisk && <p className="mt-0.5 text-2xs text-band-watch">at risk</p>}
+        </>
+      ),
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      cellClassName: 'whitespace-nowrap',
+      cell: (e) => (
+        <>
+          <Link className="btn-ghost" to={`/education/enrollments/${e.id}`}>
+            Timeline
+          </Link>
+          {e.status === 'reserved' && (
+            <button className="btn-ghost" onClick={() => setStatus.mutate({ id: e.id, status: 'confirmed' })}>
+              Confirm
+            </button>
+          )}
+          {e.status === 'active' && (
+            <button className="btn-ghost" onClick={() => setStatus.mutate({ id: e.id, status: 'completed' })}>
+              Complete
+            </button>
+          )}
+        </>
+      ),
+    },
+  ];
 
   return (
     <div>
@@ -190,93 +295,17 @@ export function Enrollments() {
         </div>
       )}
 
-      {isLoading ? (
-        <Loading />
-      ) : data.length === 0 ? (
-        <Card>
-          <EmptyState message="No students yet." hint="A student joins a batch, and usually comes from a college." />
-        </Card>
-      ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Student</th>
-                <th>From</th>
-                <th>Batch</th>
-                <th className="text-right">Progress</th>
-                <th className="text-right">Attendance</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((e) => (
-                <tr key={e.id}>
-                  <td>
-                    <RecordCode code={e.recordCode} />
-                  </td>
-                  <td>
-                    <Link to={`/education/enrollments/${e.id}`} className="text-xs text-ink-100 hover:text-accent-soft">
-                      {e.personName ?? '—'}
-                    </Link>
-                    {e.isMinor && (
-                      <span
-                        className="chip border-band-critical/40 text-band-critical"
-                        title="Guardian contact is DPDP-covered and read-audited."
-                      >
-                        minor
-                      </span>
-                    )}
-                  </td>
-                  <td className="text-2xs">
-                    {e.institutionName ? (
-                      <Link to={`/crm/institutions/${e.institutionId}`} className="text-ink-300 hover:text-accent-soft">
-                        {e.institutionName}
-                      </Link>
-                    ) : (
-                      <span className="text-ink-600" title="Not recruited through a college — a direct enrolment.">
-                        direct
-                      </span>
-                    )}
-                  </td>
-                  <td className="text-2xs text-ink-400">
-                    {e.cohortName}
-                    <p className="text-ink-600">{e.courseName}</p>
-                  </td>
-                  <td className="text-right tabular-nums text-xs">{e.progressPct}%</td>
-                  <td className={`text-right tabular-nums text-xs ${e.atRisk ? 'text-band-watch' : ''}`}>
-                    {e.attendancePct}%
-                  </td>
-                  <td>
-                    <StatusChip
-                      status={humanize(e.status)}
-                      tone={e.status === 'completed' ? 'good' : e.status === 'withdrawn' ? 'bad' : 'neutral'}
-                    />
-                    {e.atRisk && <p className="mt-0.5 text-2xs text-band-watch">at risk</p>}
-                  </td>
-                  <td className="whitespace-nowrap">
-                    <Link className="btn-ghost" to={`/education/enrollments/${e.id}`}>
-                      Timeline
-                    </Link>
-                    {e.status === 'reserved' && (
-                      <button className="btn-ghost" onClick={() => setStatus.mutate({ id: e.id, status: 'confirmed' })}>
-                        Confirm
-                      </button>
-                    )}
-                    {e.status === 'active' && (
-                      <button className="btn-ghost" onClick={() => setStatus.mutate({ id: e.id, status: 'completed' })}>
-                        Complete
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      <Card bodyClassName="p-0">
+        <DataTable
+          caption="Enrolments: who is on which batch"
+          columns={columns}
+          rows={data}
+          rowKey={(e) => e.id}
+          loading={isLoading}
+          emptyMessage="No students yet."
+          emptyHint="A student joins a batch, and usually comes from a college."
+        />
+      </Card>
     </div>
   );
 }
@@ -289,17 +318,74 @@ export function Projects() {
     error,
   } = useQuery({
     queryKey: ['projects'],
-    queryFn: () => api.get<any[]>('/education/projects'),
+    queryFn: () => edu.projects(),
   });
 
   const accept = useMutation({
-    mutationFn: (id: string) => api.post(`/education/projects/${id}/accept-handoff`),
+    mutationFn: (id: string) => edu.acceptProjectHandoff(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['projects'] }),
   });
 
   if (error) return <ErrorBox error={error} />;
 
   const pending = data.filter((p) => p.handoffPending).length;
+
+  const projectColumns: ReadonlyArray<DataTableColumn<ProjectRow>> = [
+    { id: 'code', header: 'Code', sortValue: (p) => p.recordCode, cell: (p) => <RecordCode code={p.recordCode} /> },
+    {
+      id: 'project',
+      header: 'Project',
+      sortValue: (p) => p.name,
+      cellClassName: 'text-xs text-ink-100',
+      cell: (p) => p.name,
+    },
+    {
+      id: 'account',
+      header: 'Account',
+      sortValue: (p) => p.organizationName,
+      cellClassName: 'text-2xs text-ink-400',
+      cell: (p) => p.organizationName ?? '—',
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (p) => p.status,
+      cell: (p) => (
+        <StatusChip
+          status={humanize(p.status)}
+          tone={p.status === 'delivered' ? 'good' : p.status === 'on_hold' ? 'warn' : 'neutral'}
+        />
+      ),
+    },
+    {
+      id: 'variance',
+      header: 'Schedule variance',
+      align: 'right',
+      sortValue: (p) => p.scheduleVariancePct,
+      cellClassName: 'tabular-nums text-xs',
+      cell: (p) => (
+        <span className={Math.abs(p.scheduleVariancePct) > 10 ? 'text-band-watch' : undefined}>
+          {p.scheduleVariancePct}%
+        </span>
+      ),
+    },
+    {
+      id: 'health',
+      header: 'Health',
+      sortValue: (p) => p.healthBand,
+      cell: (p) => <StatusChip status={humanize(p.healthBand)} tone={p.healthBand === 'stable' ? 'good' : 'warn'} />,
+    },
+    {
+      id: 'handoff',
+      header: <span className="sr-only">Handoff</span>,
+      cell: (p) =>
+        p.handoffPending && (
+          <button className="btn-primary" onClick={() => accept.mutate(p.id)} disabled={accept.isPending}>
+            Accept handoff
+          </button>
+        ),
+    },
+  ];
 
   return (
     <div>
@@ -317,61 +403,17 @@ export function Projects() {
         <Metric label="Active" value={data.filter((p) => p.status === 'active').length} drillTo="/delivery/projects" />
       </div>
 
-      {isLoading ? (
-        <Loading />
-      ) : data.length === 0 ? (
-        <Card>
-          <EmptyState message="No projects." />
-        </Card>
-      ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Project</th>
-                <th>Account</th>
-                <th>Status</th>
-                <th className="text-right">Schedule variance</th>
-                <th>Health</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((p) => (
-                <tr key={p.id}>
-                  <td>
-                    <RecordCode code={p.recordCode} />
-                  </td>
-                  <td className="text-xs text-ink-100">{p.name}</td>
-                  <td className="text-2xs text-ink-400">{p.organizationName ?? '—'}</td>
-                  <td>
-                    <StatusChip
-                      status={humanize(p.status)}
-                      tone={p.status === 'delivered' ? 'good' : p.status === 'on_hold' ? 'warn' : 'neutral'}
-                    />
-                  </td>
-                  <td
-                    className={`text-right tabular-nums text-xs ${Math.abs(p.scheduleVariancePct) > 10 ? 'text-band-watch' : ''}`}
-                  >
-                    {p.scheduleVariancePct}%
-                  </td>
-                  <td>
-                    <StatusChip status={humanize(p.healthBand)} tone={p.healthBand === 'stable' ? 'good' : 'warn'} />
-                  </td>
-                  <td>
-                    {p.handoffPending && (
-                      <button className="btn-primary" onClick={() => accept.mutate(p.id)} disabled={accept.isPending}>
-                        Accept handoff
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      <Card bodyClassName="p-0">
+        <DataTable
+          caption="Projects delivered after award"
+          columns={projectColumns}
+          rows={data}
+          rowKey={(p) => p.id}
+          loading={isLoading}
+          emptyMessage="No projects."
+          emptyHint="Work that has been won and handed to delivery appears here."
+        />
+      </Card>
     </div>
   );
 }

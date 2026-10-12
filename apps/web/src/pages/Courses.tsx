@@ -16,7 +16,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GST_RATES, type CourseView } from '@kaizen/shared';
-import { api, money } from '../lib/api.js';
+import { money } from '../lib/api.js';
+import { edu, type Page } from '../lib/educationApi.js';
 import {
   Card,
   EmptyState,
@@ -56,16 +57,16 @@ export function Courses() {
     error: loadError,
   } = useQuery({
     queryKey: ['courses', tab],
-    queryFn: () => api.get<CourseView[]>(`/education/courses${tab === 'all' ? '?includeRetired=true' : ''}`),
+    queryFn: () => edu.courses({ includeRetired: tab === 'all' }),
   });
 
   const retire = useMutation({
-    mutationFn: (id: string) => api.post(`/education/courses/${id}/retire`, {}),
+    mutationFn: (id: string) => edu.retireCourse(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['courses'] }),
     onError: (e) => setError(messageOf(e)),
   });
   const reactivate = useMutation({
-    mutationFn: (id: string) => api.patch(`/education/courses/${id}`, { active: true }),
+    mutationFn: (id: string) => edu.updateCourse(id, { active: true }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['courses'] }),
     onError: (e) => setError(messageOf(e)),
   });
@@ -94,8 +95,13 @@ export function Courses() {
       )}
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Courses" value={data.length} />
-        <Metric label="Priced" value={`${priced} of ${data.length}`} tone={unpriced.length ? 'warn' : 'good'} />
+        <Metric label="Courses" value={data.length} noActionReason="Counted from the course list below" />
+        <Metric
+          label="Priced"
+          value={`${priced} of ${data.length}`}
+          tone={unpriced.length ? 'warn' : 'good'}
+          noActionReason="Each course's fee plan is shown in the list below"
+        />
         <Metric
           label="Students"
           value={data.reduce((s, c) => s + c.enrolledCount, 0)}
@@ -279,9 +285,7 @@ function CourseForm({ open, course, onClose }: { open: boolean; course?: CourseV
       submitLabel={editing ? 'Save it' : 'Add it'}
       onClose={onClose}
       invalidate={[['courses']]}
-      onSubmit={() =>
-        editing ? api.patch(`/education/courses/${course!.id}`, body()) : api.post('/education/courses', body())
-      }
+      onSubmit={() => (editing ? edu.updateCourse(course!.id, body()) : edu.createCourse(body()))}
     >
       <Row>
         <TextInput
@@ -462,15 +466,16 @@ export function AssignCourse({
 }) {
   const people = useQuery({
     queryKey: ['people-picker'],
-    queryFn: () => api.get<any>('/crm/people?pageSize=200'),
+    queryFn: () => edu.pickerPeople(),
   });
   const colleges = useQuery({
     queryKey: ['colleges'],
-    queryFn: () => api.get<any>('/crm/institutions?pageSize=200'),
+    queryFn: () => edu.pickerInstitutions(),
   });
 
-  const rows = <T,>(data: unknown): T[] =>
-    Array.isArray(data) ? (data as T[]) : Array.isArray((data as any)?.items) ? ((data as any).items as T[]) : [];
+  // Tolerates a bare array as well as `{ items, total }`, as marketingApi's
+  // normalizePage does for the same routes.
+  const rows = <T,>(data: Page<T> | T[] | undefined): T[] => (Array.isArray(data) ? data : (data?.items ?? []));
 
   const [who, setWho] = useState<'new' | 'existing'>(personId ? 'existing' : 'new');
   const [existingId, setExistingId] = useState(personId ?? '');
@@ -496,7 +501,7 @@ export function AssignCourse({
       onClose={onClose}
       invalidate={[['enrollments'], ['courses'], ['cohorts'], ['people']]}
       onSubmit={() =>
-        api.post(`/education/courses/${course.id}/assign`, {
+        edu.assignCourse(course.id, {
           cohortId: cohortId || null,
           ...(who === 'existing'
             ? { personId: existingId }
@@ -533,7 +538,7 @@ export function AssignCourse({
           value={existingId}
           onChange={setExistingId}
           placeholder={rows(people.data).length ? 'Search the contacts on file' : 'Nobody on file yet'}
-          options={rows<{ id: string; fullName: string; primaryPhone?: string | null }>(people.data).map((p) => ({
+          options={rows(people.data).map((p) => ({
             value: p.id,
             label: p.primaryPhone ? `${p.fullName} — ${p.primaryPhone}` : p.fullName,
           }))}
@@ -565,7 +570,7 @@ export function AssignCourse({
         value={institutionId}
         onChange={setInstitutionId}
         placeholder="Not from a college"
-        options={rows<{ id: string; name: string }>(colleges.data).map((c) => ({ value: c.id, label: c.name }))}
+        options={rows(colleges.data).map((c) => ({ value: c.id, label: c.name }))}
         hint="leave blank for a direct enrolment"
       />
 

@@ -294,6 +294,11 @@ model Person {
   commitmentsConfirmed Commitment[]      @relation("CommitmentConfirmer")
   commitmentEvents     CommitmentEvent[] @relation("CommitmentEventActor")
 
+  casesOwned        Case[]      @relation("CaseOwner")
+  casesBackedUp     Case[]      @relation("CaseBackup")
+  casesAcknowledged Case[]      @relation("CaseAcknowledger")
+  caseEvents        CaseEvent[] @relation("CaseEventActor")
+
   /// The composite key the commitment tables reference, so an owner, backup or
   /// actor is always a person of the same tenant (CLAUDE.md rule 6).
   @@unique([tenantId, id])
@@ -3884,6 +3889,11 @@ model ExceptionRecord {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  caseExceptionLink CaseExceptionLink?
+
+  /// The composite key a case's exception link references, so the link is always
+  /// an exception of the same tenant (CLAUDE.md rule 6).
+  @@unique([tenantId, id])
   @@unique([tenantId, recordCode])
   @@index([tenantId, state, severity, raisedAt])
   @@index([tenantId, ownerPartyId, state])
@@ -5023,6 +5033,7 @@ model LedgerAccount {
   transactions Transaction[]
   journalLines JournalLine[]
   balanceSnapshots AccountBalanceSnapshot[]
+  postingRoles LedgerPostingRole[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, name])

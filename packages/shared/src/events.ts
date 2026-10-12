@@ -386,6 +386,16 @@ export const EVENTS = {
   COMMITMENT_MISSED: 'kz.gov.commitment.missed',
   COMMITMENT_CANCELLED: 'kz.gov.commitment.cancelled',
   COMMITMENT_REASSIGNED: 'kz.gov.commitment.reassigned',
+  // A case's state changes (Wave 6, OP:116). Silence is not an acknowledgement:
+  // `marked_overdue` is written by the scheduled job and leaves the state open,
+  // so a subscriber that reads it must not take it for a person's acknowledgement.
+  CASE_OPENED: 'kz.gov.case.opened',
+  CASE_ACKNOWLEDGED: 'kz.gov.case.acknowledged',
+  CASE_RESOLVED: 'kz.gov.case.resolved',
+  CASE_CLOSED: 'kz.gov.case.closed',
+  CASE_WITHDRAWN: 'kz.gov.case.withdrawn',
+  CASE_MARKED_OVERDUE: 'kz.gov.case.marked_overdue',
+  CASE_EXCEPTION_RAISED: 'kz.gov.case.exception_raised',
   APPROVAL_STEP_OPENED: 'kz.gov.approval_step.opened',
   APPROVAL_STEP_DECIDED: 'kz.gov.approval_step.decided',
   APPROVAL_STEP_ESCALATED: 'kz.gov.approval_step.escalated',
@@ -901,6 +911,13 @@ export const EVENTS = {
   BUSINESS_LINE_SUCCESSOR_RECORDED: 'kz.org.business_line_successor.recorded',
   LINE_DISTRIBUTION_RECORDED: 'kz.org.line_distribution.recorded',
   LINE_DISTRIBUTION_SUPERSEDED: 'kz.org.line_distribution.superseded',
+
+  // --- Organisation: business-line units (SPINE-CONTRACT s.1.0). Emitted by
+  // apps/api/src/domains/units.ts. A move emits one `moved`; its two rows are
+  // audited separately.
+  UNIT_OPENED: 'kz.org.unit.opened',
+  UNIT_CLOSED: 'kz.org.unit.closed',
+  UNIT_MOVED: 'kz.org.unit.moved',
 } as const;
 
 /**

@@ -129,14 +129,21 @@ export function RecordCode({ code, to }: { code: string | null | undefined; to?:
   return <span className="mono">{code}</span>;
 }
 
-export type MetricProps = {
+type MetricBase = {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
-  drillTo?: string;
-  noActionReason?: string;
   tone?: 'neutral' | 'good' | 'warn' | 'bad';
 };
+
+/**
+ * Exactly one of the two is required. Both were optional before, so a number
+ * could reach the screen with neither: a dead number is a defect, not a layout
+ * choice (phase-4 audit 4.2a). The `never` on the other arm also makes passing
+ * both an error: a drill target and a reason there is none contradict each other.
+ */
+export type MetricProps = MetricBase &
+  ({ drillTo: string; noActionReason?: never } | { noActionReason: string; drillTo?: never });
 
 /**
  * Metrics are best when they point to action, but some KPIs are intentionally
@@ -378,75 +385,6 @@ export function Modal({
 }
 
 /** A small inline sparkline-ish bar for factor contributions. */
-export type ColumnDefinition<T> = {
-  key: keyof T | string;
-  header: ReactNode;
-  render?: (row: T) => ReactNode;
-  className?: string;
-  headerClassName?: string;
-};
-
-export function DataTable<T extends Record<string, unknown>>({
-  columns,
-  rows,
-  getRowKey,
-  emptyState,
-  loading = false,
-  stickyHeader = false,
-  className = '',
-}: {
-  columns: Array<ColumnDefinition<T>>;
-  rows: T[];
-  getRowKey: (row: T, index: number) => string | number;
-  emptyState?: ReactNode;
-  loading?: boolean;
-  stickyHeader?: boolean;
-  className?: string;
-}) {
-  if (loading) {
-    return (
-      <div className={`rounded-lg border border-ink-800 bg-ink-900 p-4 text-sm text-ink-400 ${className}`}>
-        Loading…
-      </div>
-    );
-  }
-
-  if (!rows.length) {
-    return (
-      <div className={`rounded-lg border border-ink-800 bg-ink-900 p-4 ${className}`}>
-        {emptyState ?? <EmptyState message="No rows yet." />}
-      </div>
-    );
-  }
-
-  return (
-    <div className={`overflow-x-auto rounded-lg border border-ink-800 bg-ink-900 ${className}`}>
-      <table className="table">
-        <thead className={stickyHeader ? 'sticky top-0 z-10 bg-ink-900' : ''}>
-          <tr>
-            {columns.map((column, index) => (
-              <th key={`${String(column.key)}-${index}`} className={column.headerClassName ?? ''}>
-                {column.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, rowIndex) => (
-            <tr key={String(getRowKey(row, rowIndex))}>
-              {columns.map((column, index) => (
-                <td key={`${String(column.key)}-${rowIndex}-${index}`} className={column.className ?? ''}>
-                  {column.render ? column.render(row) : ((row[String(column.key)] as ReactNode) ?? '—')}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 export function ContributionBar({
   value,
   max,

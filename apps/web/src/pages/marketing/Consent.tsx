@@ -12,7 +12,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CHANNEL_KEYS, CHANNEL_KEY_LABELS, type ChannelKey, type PreferenceChangeSource } from '@kaizen/shared';
-import { api, dateTime, titleCase } from '../../lib/api.js';
+import { dateTime, titleCase } from '../../lib/api.js';
 import {
   Card,
   EmptyState,
@@ -26,6 +26,7 @@ import {
 } from '../../components/ui.js';
 import { messageOf } from '../../components/forms.js';
 import {
+  crmSearch,
   usePreferenceCoverage,
   usePreferences,
   useRecordConsent,
@@ -34,14 +35,6 @@ import {
   useWithdrawConsent,
 } from '../../lib/marketingApi.js';
 import { useSession } from '../../lib/session.js';
-
-interface PersonHit {
-  id: string;
-  recordCode: string;
-  fullName: string;
-  primaryEmail: string | null;
-  primaryPhone: string | null;
-}
 
 const CONSENT_CHANNELS: Array<{ value: 'portal' | 'in_app' | 'paper' | 'verbal' | 'guardian_intake'; label: string }> =
   [
@@ -60,7 +53,7 @@ export function Consent() {
 
   const { data: search, isFetching } = useQuery({
     queryKey: ['mkt', 'consent-person-search', q],
-    queryFn: () => api.get<{ items: PersonHit[] }>(`/crm/people?q=${encodeURIComponent(q)}&pageSize=10`),
+    queryFn: () => crmSearch.people(q),
     enabled: q.length >= 2,
   });
 

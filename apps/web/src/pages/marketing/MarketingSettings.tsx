@@ -30,6 +30,7 @@ import {
   StatusChip,
   Tabs,
 } from '../../components/ui.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { CreateModal, NewButton, Row, SelectInput, TextArea, TextInput, messageOf } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
 import { dateTime, titleCase } from '../../lib/api.js';
@@ -45,6 +46,7 @@ import {
   useWebhookLog,
   type AdapterStatusRow,
   type AiDraftResponse,
+  type AiTouchpointRow,
   type MarketingPolicy,
   type MarketingWebhookInboundView,
 } from '../../lib/marketingApi.js';
@@ -125,6 +127,74 @@ function ChannelsTab({ canEdit }: { canEdit: boolean }) {
 
   const items = data?.items ?? [];
 
+  const channelColumns: ReadonlyArray<DataTableColumn<ChannelView>> = [
+    {
+      id: 'channel',
+      header: 'Channel',
+      cell: (c) => (
+        <>
+          <p className="text-xs font-medium text-ink-100">{c.label}</p>
+          <p className="mono">{c.key}</p>
+        </>
+      ),
+      sortValue: (c) => c.label,
+    },
+    {
+      id: 'kind',
+      header: 'Kind',
+      cell: (c) => CHANNEL_KIND_LABELS[c.kind as ChannelKind] ?? titleCase(c.kind),
+      cellClassName: 'text-2xs text-ink-400',
+      sortValue: (c) => CHANNEL_KIND_LABELS[c.kind as ChannelKind] ?? titleCase(c.kind),
+    },
+    {
+      id: 'provider',
+      header: 'Provider',
+      cell: (c) =>
+        c.configured ? (
+          <StatusChip status={c.providerAdapter ?? 'configured'} tone="good" />
+        ) : (
+          <span title={`Set ${envVarFor(c.key)} to configure this channel.`}>
+            <StatusChip status="Not configured" tone="warn" />
+          </span>
+        ),
+      sortValue: (c) => c.configured,
+    },
+    {
+      id: 'active',
+      header: 'Active',
+      cell: (c) => <StatusChip status={c.active ? 'active' : 'inactive'} tone={c.active ? 'good' : 'neutral'} />,
+      sortValue: (c) => c.active,
+    },
+    {
+      id: 'senders',
+      header: 'Sender IDs',
+      cell: (c) => (c.senderIds.length ? c.senderIds.join(', ') : '—'),
+      cellClassName: 'mono text-2xs',
+      sortValue: (c) => c.senderIds.join(', '),
+    },
+    {
+      id: 'dlt',
+      header: 'DLT entity',
+      cell: (c) => c.dltEntityId ?? '—',
+      cellClassName: 'mono text-2xs',
+      sortValue: (c) => c.dltEntityId,
+    },
+    // Edit is offered only to viewers who can change channels, so the column is absent otherwise.
+    ...(canEdit
+      ? [
+          {
+            id: 'actions',
+            header: <span className="sr-only">Actions</span>,
+            cell: (c: ChannelView) => (
+              <button className="btn-ghost btn-sm" onClick={() => setEditing(c)}>
+                Edit
+              </button>
+            ),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <>
       {canEdit && (
@@ -133,59 +203,14 @@ function ChannelsTab({ canEdit }: { canEdit: boolean }) {
         </div>
       )}
       <Card bodyClassName="p-0 overflow-x-auto">
-        {isLoading ? (
-          <Loading />
-        ) : items.length === 0 ? (
-          <EmptyState message="No channels registered yet." />
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Channel</th>
-                <th>Kind</th>
-                <th>Provider</th>
-                <th>Active</th>
-                <th>Sender IDs</th>
-                <th>DLT entity</th>
-                {canEdit && <th />}
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    <p className="text-xs font-medium text-ink-100">{c.label}</p>
-                    <p className="mono">{c.key}</p>
-                  </td>
-                  <td className="text-2xs text-ink-400">
-                    {CHANNEL_KIND_LABELS[c.kind as ChannelKind] ?? titleCase(c.kind)}
-                  </td>
-                  <td>
-                    {c.configured ? (
-                      <StatusChip status={c.providerAdapter ?? 'configured'} tone="good" />
-                    ) : (
-                      <span title={`Set ${envVarFor(c.key)} to configure this channel.`}>
-                        <StatusChip status="Not configured" tone="warn" />
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    <StatusChip status={c.active ? 'active' : 'inactive'} tone={c.active ? 'good' : 'neutral'} />
-                  </td>
-                  <td className="mono text-2xs">{c.senderIds.length ? c.senderIds.join(', ') : '—'}</td>
-                  <td className="mono text-2xs">{c.dltEntityId ?? '—'}</td>
-                  {canEdit && (
-                    <td>
-                      <button className="btn-ghost btn-sm" onClick={() => setEditing(c)}>
-                        Edit
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          caption="Channels"
+          columns={channelColumns}
+          rows={items}
+          rowKey={(c) => c.id}
+          loading={isLoading}
+          emptyMessage="No channels registered yet."
+        />
       </Card>
 
       {editing && <EditChannelModal channel={editing} onClose={() => setEditing(null)} />}
@@ -449,6 +474,35 @@ function PolicyTab({ canEdit }: { canEdit: boolean }) {
 // Adapters
 // ---------------------------------------------------------------------------
 
+const ADAPTER_COLUMNS: ReadonlyArray<DataTableColumn<AdapterStatusRow>> = [
+  {
+    id: 'channel',
+    header: 'Channel',
+    cell: (r) => CHANNEL_KEY_LABELS[r.channelKey] ?? r.channelKey,
+    sortValue: (r) => CHANNEL_KEY_LABELS[r.channelKey] ?? r.channelKey,
+  },
+  {
+    id: 'provider',
+    header: 'Provider',
+    cell: (r) => r.provider ?? '—',
+    cellClassName: 'text-2xs text-ink-400',
+    sortValue: (r) => r.provider,
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    cell: (r) =>
+      r.configured ? (
+        <StatusChip status="Configured" tone="good" />
+      ) : (
+        <span title={`Set ${envVarFor(r.channelKey)} to configure this channel.`}>
+          <StatusChip status="Not configured" tone="warn" />
+        </span>
+      ),
+    sortValue: (r) => r.configured,
+  },
+];
+
 function AdaptersTab() {
   const { data = [], isLoading, error } = useAdapterStatus();
 
@@ -462,38 +516,14 @@ function AdaptersTab() {
       subtitle="Which provider is wired up behind each channel, right now."
       bodyClassName="p-0 overflow-x-auto"
     >
-      {isLoading ? (
-        <Loading />
-      ) : rows.length === 0 ? (
-        <EmptyState message="No adapters reported." />
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Channel</th>
-              <th>Provider</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.channelKey}>
-                <td>{CHANNEL_KEY_LABELS[r.channelKey] ?? r.channelKey}</td>
-                <td className="text-2xs text-ink-400">{r.provider ?? '—'}</td>
-                <td>
-                  {r.configured ? (
-                    <StatusChip status="Configured" tone="good" />
-                  ) : (
-                    <span title={`Set ${envVarFor(r.channelKey)} to configure this channel.`}>
-                      <StatusChip status="Not configured" tone="warn" />
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Adapter status"
+        columns={ADAPTER_COLUMNS}
+        rows={rows}
+        rowKey={(r) => r.channelKey}
+        loading={isLoading}
+        emptyMessage="No adapters reported."
+      />
     </Card>
   );
 }
@@ -510,48 +540,68 @@ function WebhooksTab() {
 
   const rows = data as MarketingWebhookInboundView[];
 
+  const webhookColumns: ReadonlyArray<DataTableColumn<MarketingWebhookInboundView>> = [
+    {
+      id: 'provider',
+      header: 'Provider',
+      cell: (w) => titleCase(w.provider),
+      cellClassName: 'text-2xs text-ink-200',
+      sortValue: (w) => titleCase(w.provider),
+    },
+    {
+      id: 'event',
+      header: 'Event',
+      cell: (w) => w.eventKind,
+      cellClassName: 'mono text-2xs',
+      sortValue: (w) => w.eventKind,
+    },
+    {
+      id: 'received',
+      header: 'Received',
+      cell: (w) => dateTime(w.receivedAt),
+      cellClassName: 'text-2xs text-ink-400',
+      sortValue: (w) => w.receivedAt,
+    },
+    {
+      id: 'processed',
+      header: 'Processed',
+      cell: (w) => (w.processedAt ? dateTime(w.processedAt) : '—'),
+      cellClassName: 'text-2xs text-ink-400',
+      sortValue: (w) => w.processedAt,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (w) => (
+        <StatusChip
+          status={w.status}
+          tone={w.status === 'failed' || w.error ? 'bad' : w.status === 'processed' ? 'good' : 'neutral'}
+        />
+      ),
+      sortValue: (w) => w.status,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      cell: (w) => (
+        <button className="btn-ghost btn-sm" onClick={() => setViewing(w)}>
+          View
+        </button>
+      ),
+    },
+  ];
+
   return (
     <>
       <Card title="Recent inbound webhooks" bodyClassName="p-0 overflow-x-auto">
-        {isLoading ? (
-          <Loading />
-        ) : rows.length === 0 ? (
-          <EmptyState message="No inbound webhooks recorded yet." />
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Provider</th>
-                <th>Event</th>
-                <th>Received</th>
-                <th>Processed</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((w) => (
-                <tr key={w.id}>
-                  <td className="text-2xs text-ink-200">{titleCase(w.provider)}</td>
-                  <td className="mono text-2xs">{w.eventKind}</td>
-                  <td className="text-2xs text-ink-400">{dateTime(w.receivedAt)}</td>
-                  <td className="text-2xs text-ink-400">{w.processedAt ? dateTime(w.processedAt) : '—'}</td>
-                  <td>
-                    <StatusChip
-                      status={w.status}
-                      tone={w.status === 'failed' || w.error ? 'bad' : w.status === 'processed' ? 'good' : 'neutral'}
-                    />
-                  </td>
-                  <td>
-                    <button className="btn-ghost btn-sm" onClick={() => setViewing(w)}>
-                      View
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          caption="Inbound webhooks"
+          columns={webhookColumns}
+          rows={rows}
+          rowKey={(w) => w.id}
+          loading={isLoading}
+          emptyMessage="No inbound webhooks recorded yet."
+        />
       </Card>
 
       <Modal open={Boolean(viewing)} title="Webhook detail" onClose={() => setViewing(null)}>
@@ -583,6 +633,29 @@ const DRAFT_KINDS: Array<{
   { value: 'next_best_action', label: 'Next best action for a lead' },
 ];
 
+const AI_TOUCHPOINT_COLUMNS: ReadonlyArray<DataTableColumn<AiTouchpointRow>> = [
+  {
+    id: 'touchpoint',
+    header: 'Touchpoint',
+    cell: (t) => (
+      <span title={t.code} className="text-xs text-ink-200">
+        {t.label}
+      </span>
+    ),
+    sortValue: (t) => t.label,
+  },
+  {
+    id: 'tier',
+    header: 'Tier',
+    cell: (t) => (
+      <span className="chip border-ink-700 bg-ink-850 text-ink-300" title={t.code}>
+        {AI_TIER_BY_CODE[t.tier as keyof typeof AI_TIER_BY_CODE]?.label ?? titleCase(t.tier)}
+      </span>
+    ),
+    sortValue: (t) => AI_TIER_BY_CODE[t.tier as keyof typeof AI_TIER_BY_CODE]?.label ?? titleCase(t.tier),
+  },
+];
+
 function AiTab({ canDraft }: { canDraft: boolean }) {
   const { data = [], isLoading, error } = useAiTouchpoints();
 
@@ -593,36 +666,15 @@ function AiTab({ canDraft }: { canDraft: boolean }) {
         subtitle="Every place AI touches this module, and how much it is trusted to do on its own."
         bodyClassName="p-0 overflow-x-auto"
       >
-        {error ? (
-          <ErrorBox error={error} />
-        ) : isLoading ? (
-          <Loading />
-        ) : data.length === 0 ? (
-          <EmptyState message="No AI touchpoints reported." />
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Touchpoint</th>
-                <th>Tier</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((t) => (
-                <tr key={t.code}>
-                  <td title={t.code} className="text-xs text-ink-200">
-                    {t.label}
-                  </td>
-                  <td>
-                    <span className="chip border-ink-700 bg-ink-850 text-ink-300" title={t.code}>
-                      {AI_TIER_BY_CODE[t.tier as keyof typeof AI_TIER_BY_CODE]?.label ?? titleCase(t.tier)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          caption="AI touchpoints"
+          columns={AI_TOUCHPOINT_COLUMNS}
+          rows={data}
+          rowKey={(t) => t.code}
+          error={error}
+          loading={isLoading}
+          emptyMessage="No AI touchpoints reported."
+        />
       </Card>
 
       <p className="text-2xs text-ink-500">

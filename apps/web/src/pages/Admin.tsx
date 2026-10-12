@@ -28,6 +28,7 @@ import {
   StatusChip,
   Tabs,
 } from '../components/ui.js';
+import { NOT_MEASURED } from '../lib/words.js';
 
 // ---------------------------------------------------------------------------
 // Pipeline configuration
@@ -954,7 +955,7 @@ export function Audit() {
         />
         <Metric
           label="Governed entities"
-          value={platform?.governedEntities?.length ?? 0}
+          value={platform?.governedEntities ? platform.governedEntities.length : NOT_MEASURED}
           sub="Record types this audit trail covers"
           drillTo="/admin/platform"
         />

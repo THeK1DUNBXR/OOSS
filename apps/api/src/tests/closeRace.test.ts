@@ -17,7 +17,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { istMonthKey, monthRange } from '@kaizen/shared';
 import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from './helpers.js';
-import { recordTransaction, writeTransaction } from '../domains/books.js';
+import { recordTransaction, writeTransactionMinor } from '../domains/books.js';
 import { closePeriod, openAccountingDate, requestClosePeriod, trialBalance } from '../domains/compliance/books.js';
 import { assertTrialBalance, journalTrialBalance } from '../platform/balances.js';
 
@@ -264,7 +264,7 @@ describe('T70-13: a legacy write holding the period lock makes the close wait, a
     const writeA = asUser(FINANCE, () =>
       prisma.$transaction(
         async (tx) => {
-          const txn = await writeTransaction(receiptIn(month, refA, 2500), tx);
+          const txn = await writeTransactionMinor({ ...receiptIn(month, refA), amount: 2500n }, tx);
           signalHeld();
           await gate;
           return txn;

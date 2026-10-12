@@ -9,8 +9,20 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, date, dateTime } from '../../lib/api.js';
-import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
+import { date, dateTime } from '../../lib/api.js';
+import {
+  hcmApi,
+  type HrEmployeeRow,
+  type TimeClockEvent,
+  type TimeCompOffRow,
+  type TimeOvertimeRow,
+  type TimeRegularisationRow,
+  type TimeRosterRow,
+  type TimeShift,
+  type TimeTimesheet,
+} from '../../lib/hcmApi.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
+import { Card, EmptyState, ErrorBox, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
 import { CreateModal, NewButton, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
 
 type Tab = 'shifts' | 'roster' | 'clock' | 'timesheets' | 'overtime' | 'compoff' | 'regularisations';
@@ -25,16 +37,10 @@ const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'regularisations', label: 'Regularisations' },
 ];
 
-interface EmployeeOption {
-  id: string;
-  fullName: string;
-  status: string;
-}
-
 function useEmployeeOptions() {
   return useQuery({
     queryKey: ['time-employees'],
-    queryFn: () => api.get<EmployeeOption[]>('/hr/employees'),
+    queryFn: () => hcmApi.hr.employees(),
   });
 }
 
@@ -45,7 +51,7 @@ function EmployeeFilter({
 }: {
   value: string;
   onChange: (v: string) => void;
-  employees: EmployeeOption[];
+  employees: HrEmployeeRow[];
 }) {
   return (
     <select className="input max-w-xs" value={value} onChange={(e) => onChange(e.target.value)}>
@@ -84,18 +90,6 @@ export function Time() {
 // Shifts
 // ---------------------------------------------------------------------------
 
-interface Shift {
-  id: string;
-  code: string;
-  name: string;
-  startTime: string;
-  endTime: string;
-  graceMinutes: number;
-  breakMinutes: number;
-  nightShift: boolean;
-  active: boolean;
-}
-
 function ShiftsTab() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
@@ -108,7 +102,34 @@ function ShiftsTab() {
     nightShift: false,
   });
 
-  const shifts = useQuery({ queryKey: ['time-shifts'], queryFn: () => api.get<Shift[]>('/hcm/time/shifts') });
+  const shifts = useQuery({ queryKey: ['time-shifts'], queryFn: () => hcmApi.time.shifts.list() });
+
+  const columns: ReadonlyArray<DataTableColumn<TimeShift>> = [
+    { id: 'code', header: 'Code', sortValue: (r) => r.code, cell: (r) => <span className="mono">{r.code}</span> },
+    { id: 'name', header: 'Name', sortValue: (r) => r.name, cell: (r) => r.name },
+    { id: 'hours', header: 'Hours', sortValue: (r) => r.startTime, cell: (r) => `${r.startTime}–${r.endTime}` },
+    {
+      id: 'grace',
+      header: 'Grace',
+      align: 'right',
+      sortValue: (r) => r.graceMinutes,
+      cell: (r) => `${r.graceMinutes}m`,
+    },
+    {
+      id: 'break',
+      header: 'Break',
+      align: 'right',
+      sortValue: (r) => r.breakMinutes,
+      cell: (r) => `${r.breakMinutes}m`,
+    },
+    { id: 'night', header: 'Night', sortValue: (r) => r.nightShift, cell: (r) => (r.nightShift ? 'Yes' : 'No') },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (r) => r.active,
+      cell: (r) => <StatusChip status={r.active ? 'active' : 'inactive'} tone={r.active ? 'good' : 'neutral'} />,
+    },
+  ];
 
   return (
     <Card
@@ -116,43 +137,16 @@ function ShiftsTab() {
       subtitle="Start/end are clock time; a night shift is the one case where end reads earlier than start."
       actions={<NewButton label="Add shift" onClick={() => setOpen(true)} />}
     >
-      {shifts.isLoading && <Loading />}
-      {shifts.error && <ErrorBox error={shifts.error} />}
-      {shifts.data && shifts.data.length === 0 && (
-        <EmptyState message="No shifts defined yet." hint="Add one before assigning a roster." />
-      )}
-      {shifts.data && shifts.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Code</th>
-              <th>Name</th>
-              <th>Hours</th>
-              <th>Grace</th>
-              <th>Break</th>
-              <th>Night</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {shifts.data.map((s) => (
-              <tr key={s.id}>
-                <td className="mono">{s.code}</td>
-                <td>{s.name}</td>
-                <td>
-                  {s.startTime}–{s.endTime}
-                </td>
-                <td>{s.graceMinutes}m</td>
-                <td>{s.breakMinutes}m</td>
-                <td>{s.nightShift ? 'Yes' : 'No'}</td>
-                <td>
-                  <StatusChip status={s.active ? 'active' : 'inactive'} tone={s.active ? 'good' : 'neutral'} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Shifts"
+        columns={columns}
+        rows={shifts.data ?? []}
+        rowKey={(r) => r.id}
+        loading={shifts.isLoading}
+        error={shifts.error}
+        emptyMessage="No shifts defined yet."
+        emptyHint="Add one before assigning a roster."
+      />
 
       <CreateModal
         open={open}
@@ -160,7 +154,7 @@ function ShiftsTab() {
         onClose={() => setOpen(false)}
         invalidate={[['time-shifts']]}
         onSubmit={() =>
-          api.post('/hcm/time/shifts', {
+          hcmApi.time.shifts.create({
             code: form.code,
             name: form.name,
             startTime: form.startTime,
@@ -222,15 +216,6 @@ function ShiftsTab() {
 // Roster
 // ---------------------------------------------------------------------------
 
-interface RosterRow {
-  id: string;
-  employmentRelationshipId: string;
-  shiftId: string;
-  effectiveFrom: string;
-  effectiveTo: string | null;
-  weeklyOffDays: number[];
-}
-
 const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function RosterTab() {
@@ -246,9 +231,9 @@ function RosterTab() {
   const { data: employees = [] } = useEmployeeOptions();
   const { data: shifts = [] } = useQuery({
     queryKey: ['time-shifts'],
-    queryFn: () => api.get<Shift[]>('/hcm/time/shifts'),
+    queryFn: () => hcmApi.time.shifts.list(),
   });
-  const rosters = useQuery({ queryKey: ['time-rosters'], queryFn: () => api.get<RosterRow[]>('/hcm/time/rosters') });
+  const rosters = useQuery({ queryKey: ['time-rosters'], queryFn: () => hcmApi.time.rosters.list() });
 
   const nameFor = (id: string) => employees.find((e) => e.id === id)?.fullName ?? id;
   const shiftFor = (id: string) => shifts.find((s) => s.id === id)?.name ?? id;
@@ -262,39 +247,43 @@ function RosterTab() {
     }));
   };
 
+  const columns: ReadonlyArray<DataTableColumn<TimeRosterRow>> = [
+    {
+      id: 'employee',
+      header: 'Employee',
+      sortValue: (r) => nameFor(r.employmentRelationshipId),
+      cell: (r) => nameFor(r.employmentRelationshipId),
+    },
+    { id: 'shift', header: 'Shift', sortValue: (r) => shiftFor(r.shiftId), cell: (r) => shiftFor(r.shiftId) },
+    { id: 'from', header: 'From', sortValue: (r) => r.effectiveFrom, cell: (r) => date(r.effectiveFrom) },
+    {
+      id: 'to',
+      header: 'To',
+      sortValue: (r) => r.effectiveTo,
+      cell: (r) => (r.effectiveTo ? date(r.effectiveTo) : 'Open-ended'),
+    },
+    {
+      id: 'offs',
+      header: 'Weekly offs',
+      cell: (r) => r.weeklyOffDays.map((d) => WEEKDAY_NAMES[d]).join(', '),
+    },
+  ];
+
   return (
     <Card
       title="Roster assignments"
       subtitle="Which shift an employment works, over a date range, with its weekly offs."
       actions={<NewButton label="Assign roster" onClick={() => setOpen(true)} />}
     >
-      {rosters.isLoading && <Loading />}
-      {rosters.error && <ErrorBox error={rosters.error} />}
-      {rosters.data && rosters.data.length === 0 && <EmptyState message="No roster assignments yet." />}
-      {rosters.data && rosters.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Shift</th>
-              <th>From</th>
-              <th>To</th>
-              <th>Weekly offs</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rosters.data.map((r) => (
-              <tr key={r.id}>
-                <td>{nameFor(r.employmentRelationshipId)}</td>
-                <td>{shiftFor(r.shiftId)}</td>
-                <td>{date(r.effectiveFrom)}</td>
-                <td>{r.effectiveTo ? date(r.effectiveTo) : 'Open-ended'}</td>
-                <td>{r.weeklyOffDays.map((d) => WEEKDAY_NAMES[d]).join(', ')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Roster assignments"
+        columns={columns}
+        rows={rosters.data ?? []}
+        rowKey={(r) => r.id}
+        loading={rosters.isLoading}
+        error={rosters.error}
+        emptyMessage="No roster assignments yet."
+      />
 
       <CreateModal
         open={open}
@@ -302,7 +291,7 @@ function RosterTab() {
         onClose={() => setOpen(false)}
         invalidate={[['time-rosters']]}
         onSubmit={() =>
-          api.post('/hcm/time/rosters', {
+          hcmApi.time.rosters.assign({
             employmentRelationshipId: form.employmentRelationshipId,
             shiftId: form.shiftId,
             effectiveFrom: form.effectiveFrom,
@@ -363,13 +352,6 @@ function RosterTab() {
 // Clock
 // ---------------------------------------------------------------------------
 
-interface ClockEventRow {
-  id: string;
-  kind: string;
-  occurredAt: string;
-  source: string;
-}
-
 function ClockTab() {
   const { data: employees = [] } = useEmployeeOptions();
   const [employmentId, setEmploymentId] = useState('');
@@ -377,9 +359,20 @@ function ClockTab() {
 
   const events = useQuery({
     queryKey: ['time-clock', selected],
-    queryFn: () => api.get<ClockEventRow[]>(`/hcm/time/clock?employmentRelationshipId=${selected}`),
+    queryFn: () => hcmApi.time.clock.list(selected),
     enabled: Boolean(selected),
   });
+
+  const columns: ReadonlyArray<DataTableColumn<TimeClockEvent>> = [
+    { id: 'when', header: 'When', sortValue: (e) => e.occurredAt, cell: (e) => dateTime(e.occurredAt) },
+    {
+      id: 'kind',
+      header: 'Kind',
+      sortValue: (e) => e.kind,
+      cell: (e) => <StatusChip status={e.kind} tone={e.kind === 'in' ? 'good' : 'neutral'} />,
+    },
+    { id: 'source', header: 'Source', sortValue: (e) => e.source, cell: (e) => e.source.replace('_', ' ') },
+  ];
 
   return (
     <Card
@@ -388,33 +381,15 @@ function ClockTab() {
       actions={<EmployeeFilter value={employmentId} onChange={setEmploymentId} employees={employees} />}
     >
       {!selected && <EmptyState message="No employee selected." />}
-      {selected && events.isLoading && <Loading />}
-      {selected && events.error && <ErrorBox error={events.error} />}
-      {selected && events.data && events.data.length === 0 && (
-        <EmptyState message="No clock events recorded for this employee." />
-      )}
-      {selected && events.data && events.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>When</th>
-              <th>Kind</th>
-              <th>Source</th>
-            </tr>
-          </thead>
-          <tbody>
-            {events.data.map((e) => (
-              <tr key={e.id}>
-                <td>{dateTime(e.occurredAt)}</td>
-                <td>
-                  <StatusChip status={e.kind} tone={e.kind === 'in' ? 'good' : 'neutral'} />
-                </td>
-                <td>{e.source.replace('_', ' ')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Clock events for the selected employee"
+        columns={columns}
+        rows={events.data ?? []}
+        rowKey={(e) => e.id}
+        loading={events.isLoading}
+        error={events.error}
+        emptyMessage="No clock events recorded for this employee."
+      />
     </Card>
   );
 }
@@ -422,15 +397,6 @@ function ClockTab() {
 // ---------------------------------------------------------------------------
 // Timesheets
 // ---------------------------------------------------------------------------
-
-interface TimesheetRow {
-  id: string;
-  recordCode: string;
-  employmentRelationshipId: string;
-  weekStart: string;
-  status: string;
-  totalHours: string | number;
-}
 
 const TIMESHEET_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
   draft: 'neutral',
@@ -448,18 +414,17 @@ function TimesheetsTab() {
 
   const timesheets = useQuery({
     queryKey: ['time-timesheets', employmentId],
-    queryFn: () =>
-      api.get<TimesheetRow[]>(`/hcm/time/timesheets${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`),
+    queryFn: () => hcmApi.time.timesheets.list(employmentId),
   });
 
   const nameFor = (id: string) => employees.find((e) => e.id === id)?.fullName ?? id;
 
   const approve = useMutation({
-    mutationFn: (id: string) => api.post(`/hcm/time/timesheets/${id}/approve`, {}),
+    mutationFn: (id: string) => hcmApi.time.timesheets.approve(id),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['time-timesheets'] }),
   });
   const reject = useMutation({
-    mutationFn: () => api.post(`/hcm/time/timesheets/${rejecting}/reject`, { note: rejectNote }),
+    mutationFn: () => hcmApi.time.timesheets.reject(rejecting!, rejectNote),
     onSuccess: () => {
       setRejecting(null);
       setRejectNote('');
@@ -467,58 +432,66 @@ function TimesheetsTab() {
     },
   });
 
+  const columns: ReadonlyArray<DataTableColumn<TimeTimesheet>> = [
+    {
+      id: 'code',
+      header: 'Code',
+      sortValue: (t) => t.recordCode,
+      cell: (t) => <span className="mono">{t.recordCode}</span>,
+    },
+    {
+      id: 'employee',
+      header: 'Employee',
+      sortValue: (t) => nameFor(t.employmentRelationshipId),
+      cell: (t) => nameFor(t.employmentRelationshipId),
+    },
+    { id: 'week', header: 'Week of', sortValue: (t) => t.weekStart, cell: (t) => date(t.weekStart) },
+    {
+      id: 'hours',
+      header: 'Hours',
+      align: 'right',
+      sortValue: (t) => Number(t.totalHours),
+      cell: (t) => Number(t.totalHours).toFixed(2),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (t) => t.status,
+      cell: (t) => <StatusChip status={t.status} tone={TIMESHEET_TONE[t.status] ?? 'neutral'} />,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (t) =>
+        t.status === 'submitted' && (
+          <div className="flex justify-end gap-2">
+            <button className="btn text-2xs" onClick={() => approve.mutate(t.id)} disabled={approve.isPending}>
+              Approve
+            </button>
+            <button className="btn text-2xs" onClick={() => setRejecting(t.id)}>
+              Reject
+            </button>
+          </div>
+        ),
+    },
+  ];
+
   return (
     <Card
       title="Timesheets"
       subtitle="Submitted weekly and approved by anyone but the employee who filed them."
       actions={<EmployeeFilter value={employmentId} onChange={setEmploymentId} employees={employees} />}
     >
-      {timesheets.isLoading && <Loading />}
-      {timesheets.error && <ErrorBox error={timesheets.error} />}
-      {timesheets.data && timesheets.data.length === 0 && <EmptyState message="No timesheets yet." />}
-      {timesheets.data && timesheets.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Code</th>
-              <th>Employee</th>
-              <th>Week of</th>
-              <th>Hours</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {timesheets.data.map((t) => (
-              <tr key={t.id}>
-                <td className="mono">{t.recordCode}</td>
-                <td>{nameFor(t.employmentRelationshipId)}</td>
-                <td>{date(t.weekStart)}</td>
-                <td className="tabular-nums">{Number(t.totalHours).toFixed(2)}</td>
-                <td>
-                  <StatusChip status={t.status} tone={TIMESHEET_TONE[t.status] ?? 'neutral'} />
-                </td>
-                <td className="text-right">
-                  {t.status === 'submitted' && (
-                    <div className="flex justify-end gap-2">
-                      <button
-                        className="btn text-2xs"
-                        onClick={() => approve.mutate(t.id)}
-                        disabled={approve.isPending}
-                      >
-                        Approve
-                      </button>
-                      <button className="btn text-2xs" onClick={() => setRejecting(t.id)}>
-                        Reject
-                      </button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Timesheets"
+        columns={columns}
+        rows={timesheets.data ?? []}
+        rowKey={(t) => t.id}
+        loading={timesheets.isLoading}
+        error={timesheets.error}
+        emptyMessage="No timesheets yet."
+      />
       {approve.error && <ErrorBox error={approve.error} />}
 
       <CreateModal
@@ -538,15 +511,6 @@ function TimesheetsTab() {
 // Overtime
 // ---------------------------------------------------------------------------
 
-interface OvertimeRow {
-  id: string;
-  employmentRelationshipId: string;
-  date: string;
-  hours: string | number;
-  reason: string | null;
-  status: string;
-}
-
 const OT_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
   requested: 'warn',
   approved: 'good',
@@ -560,20 +524,74 @@ function OvertimeTab() {
 
   const requests = useQuery({
     queryKey: ['time-overtime', employmentId],
-    queryFn: () =>
-      api.get<OvertimeRow[]>(`/hcm/time/overtime${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`),
+    queryFn: () => hcmApi.time.overtime.list(employmentId),
   });
 
   const nameFor = (id: string) => employees.find((e) => e.id === id)?.fullName ?? id;
 
   const decide = useMutation({
-    mutationFn: ({ id, approve }: { id: string; approve: boolean }) =>
-      api.post(`/hcm/time/overtime/${id}/${approve ? 'approve' : 'reject'}`, approve ? {} : { note: 'Not approved.' }),
+    mutationFn: ({ id, approve }: { id: string; approve: boolean }) => hcmApi.time.overtime.decide(id, approve),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['time-overtime'] });
       void qc.invalidateQueries({ queryKey: ['time-compoffs'] });
     },
   });
+
+  const columns: ReadonlyArray<DataTableColumn<TimeOvertimeRow>> = [
+    {
+      id: 'employee',
+      header: 'Employee',
+      sortValue: (r) => nameFor(r.employmentRelationshipId),
+      cell: (r) => nameFor(r.employmentRelationshipId),
+    },
+    { id: 'date', header: 'Date', sortValue: (r) => r.date, cell: (r) => date(r.date) },
+    {
+      id: 'hours',
+      header: 'Hours',
+      align: 'right',
+      sortValue: (r) => Number(r.hours),
+      cell: (r) => Number(r.hours).toFixed(2),
+    },
+    {
+      id: 'reason',
+      header: 'Reason',
+      cell: (r) => (
+        <span className="block max-w-xs truncate" title={r.reason ?? ''}>
+          {r.reason ?? '—'}
+        </span>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (r) => r.status,
+      cell: (r) => <StatusChip status={r.status} tone={OT_TONE[r.status] ?? 'neutral'} />,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (r) =>
+        r.status === 'requested' && (
+          <div className="flex justify-end gap-2">
+            <button
+              className="btn text-2xs"
+              onClick={() => decide.mutate({ id: r.id, approve: true })}
+              disabled={decide.isPending}
+            >
+              Approve
+            </button>
+            <button
+              className="btn text-2xs"
+              onClick={() => decide.mutate({ id: r.id, approve: false })}
+              disabled={decide.isPending}
+            >
+              Reject
+            </button>
+          </div>
+        ),
+    },
+  ];
 
   return (
     <Card
@@ -581,59 +599,16 @@ function OvertimeTab() {
       subtitle="Approving one is also what earns the comp-off it comes with."
       actions={<EmployeeFilter value={employmentId} onChange={setEmploymentId} employees={employees} />}
     >
-      {requests.isLoading && <Loading />}
-      {requests.error && <ErrorBox error={requests.error} />}
+      <DataTable
+        caption="Overtime requests"
+        columns={columns}
+        rows={requests.data ?? []}
+        rowKey={(r) => r.id}
+        loading={requests.isLoading}
+        error={requests.error}
+        emptyMessage="No overtime requests yet."
+      />
       {decide.error && <ErrorBox error={decide.error} />}
-      {requests.data && requests.data.length === 0 && <EmptyState message="No overtime requests yet." />}
-      {requests.data && requests.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Date</th>
-              <th>Hours</th>
-              <th>Reason</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {requests.data.map((r) => (
-              <tr key={r.id}>
-                <td>{nameFor(r.employmentRelationshipId)}</td>
-                <td>{date(r.date)}</td>
-                <td className="tabular-nums">{Number(r.hours).toFixed(2)}</td>
-                <td className="max-w-xs truncate" title={r.reason ?? ''}>
-                  {r.reason ?? '—'}
-                </td>
-                <td>
-                  <StatusChip status={r.status} tone={OT_TONE[r.status] ?? 'neutral'} />
-                </td>
-                <td className="text-right">
-                  {r.status === 'requested' && (
-                    <div className="flex justify-end gap-2">
-                      <button
-                        className="btn text-2xs"
-                        onClick={() => decide.mutate({ id: r.id, approve: true })}
-                        disabled={decide.isPending}
-                      >
-                        Approve
-                      </button>
-                      <button
-                        className="btn text-2xs"
-                        onClick={() => decide.mutate({ id: r.id, approve: false })}
-                        disabled={decide.isPending}
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
     </Card>
   );
 }
@@ -641,16 +616,6 @@ function OvertimeTab() {
 // ---------------------------------------------------------------------------
 // Comp-off
 // ---------------------------------------------------------------------------
-
-interface CompOffRow {
-  id: string;
-  employmentRelationshipId: string;
-  earnedFrom: string;
-  earnedOn: string;
-  days: string | number;
-  expiresOn: string;
-  status: string;
-}
 
 const COMP_OFF_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
   available: 'good',
@@ -667,16 +632,51 @@ function CompOffTab() {
 
   const compOffs = useQuery({
     queryKey: ['time-compoffs', employmentId],
-    queryFn: () =>
-      api.get<CompOffRow[]>(`/hcm/time/comp-offs${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`),
+    queryFn: () => hcmApi.time.compOffs.list(employmentId),
   });
 
   const nameFor = (id: string) => employees.find((e) => e.id === id)?.fullName ?? id;
 
   const consume = useMutation({
-    mutationFn: (id: string) => api.post(`/hcm/time/comp-offs/${id}/consume`, {}),
+    mutationFn: (id: string) => hcmApi.time.compOffs.consume(id),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['time-compoffs'] }),
   });
+
+  const columns: ReadonlyArray<DataTableColumn<TimeCompOffRow>> = [
+    {
+      id: 'employee',
+      header: 'Employee',
+      sortValue: (c) => nameFor(c.employmentRelationshipId),
+      cell: (c) => nameFor(c.employmentRelationshipId),
+    },
+    { id: 'from', header: 'Earned from', sortValue: (c) => c.earnedFrom, cell: (c) => c.earnedFrom.replace('_', ' ') },
+    { id: 'earned', header: 'Earned on', sortValue: (c) => c.earnedOn, cell: (c) => date(c.earnedOn) },
+    {
+      id: 'days',
+      header: 'Days',
+      align: 'right',
+      sortValue: (c) => Number(c.days),
+      cell: (c) => Number(c.days).toFixed(2),
+    },
+    { id: 'expires', header: 'Expires', sortValue: (c) => c.expiresOn, cell: (c) => date(c.expiresOn) },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (c) => c.status,
+      cell: (c) => <StatusChip status={c.status} tone={COMP_OFF_TONE[c.status] ?? 'neutral'} />,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (c) =>
+        c.status === 'available' && (
+          <button className="btn text-2xs" onClick={() => consume.mutate(c.id)} disabled={consume.isPending}>
+            Mark consumed
+          </button>
+        ),
+    },
+  ];
 
   return (
     <Card
@@ -689,46 +689,16 @@ function CompOffTab() {
         </div>
       }
     >
-      {compOffs.isLoading && <Loading />}
-      {compOffs.error && <ErrorBox error={compOffs.error} />}
+      <DataTable
+        caption="Comp-off balances"
+        columns={columns}
+        rows={compOffs.data ?? []}
+        rowKey={(c) => c.id}
+        loading={compOffs.isLoading}
+        error={compOffs.error}
+        emptyMessage="No comp-off records yet."
+      />
       {consume.error && <ErrorBox error={consume.error} />}
-      {compOffs.data && compOffs.data.length === 0 && <EmptyState message="No comp-off records yet." />}
-      {compOffs.data && compOffs.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Earned from</th>
-              <th>Earned on</th>
-              <th>Days</th>
-              <th>Expires</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {compOffs.data.map((c) => (
-              <tr key={c.id}>
-                <td>{nameFor(c.employmentRelationshipId)}</td>
-                <td>{c.earnedFrom.replace('_', ' ')}</td>
-                <td>{date(c.earnedOn)}</td>
-                <td className="tabular-nums">{Number(c.days).toFixed(2)}</td>
-                <td>{date(c.expiresOn)}</td>
-                <td>
-                  <StatusChip status={c.status} tone={COMP_OFF_TONE[c.status] ?? 'neutral'} />
-                </td>
-                <td className="text-right">
-                  {c.status === 'available' && (
-                    <button className="btn text-2xs" onClick={() => consume.mutate(c.id)} disabled={consume.isPending}>
-                      Mark consumed
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
 
       <CreateModal
         open={open}
@@ -736,7 +706,7 @@ function CompOffTab() {
         onClose={() => setOpen(false)}
         invalidate={[['time-compoffs']]}
         onSubmit={() =>
-          api.post('/hcm/time/comp-offs/holiday-work', {
+          hcmApi.time.compOffs.recordHolidayWork({
             employmentRelationshipId: form.employmentRelationshipId,
             earnedOn: form.earnedOn,
             days: Number(form.days),
@@ -779,14 +749,6 @@ function CompOffTab() {
 // Regularisations
 // ---------------------------------------------------------------------------
 
-interface RegularisationRow {
-  id: string;
-  employmentRelationshipId: string;
-  date: string;
-  reason: string;
-  status: string;
-}
-
 const REG_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
   submitted: 'warn',
   approved: 'good',
@@ -802,20 +764,17 @@ function RegularisationsTab() {
 
   const rows = useQuery({
     queryKey: ['time-regularisations', employmentId],
-    queryFn: () =>
-      api.get<RegularisationRow[]>(
-        `/hcm/time/regularisations${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`,
-      ),
+    queryFn: () => hcmApi.time.regularisations.list(employmentId),
   });
 
   const nameFor = (id: string) => employees.find((e) => e.id === id)?.fullName ?? id;
 
   const approve = useMutation({
-    mutationFn: (id: string) => api.post(`/hcm/time/regularisations/${id}/approve`, {}),
+    mutationFn: (id: string) => hcmApi.time.regularisations.approve(id),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['time-regularisations'] }),
   });
   const reject = useMutation({
-    mutationFn: () => api.post(`/hcm/time/regularisations/${rejecting}/reject`, { note: rejectNote }),
+    mutationFn: () => hcmApi.time.regularisations.reject(rejecting!, rejectNote),
     onSuccess: () => {
       setRejecting(null);
       setRejectNote('');
@@ -823,59 +782,63 @@ function RegularisationsTab() {
     },
   });
 
+  const columns: ReadonlyArray<DataTableColumn<TimeRegularisationRow>> = [
+    {
+      id: 'employee',
+      header: 'Employee',
+      sortValue: (r) => nameFor(r.employmentRelationshipId),
+      cell: (r) => nameFor(r.employmentRelationshipId),
+    },
+    { id: 'date', header: 'Date', sortValue: (r) => r.date, cell: (r) => date(r.date) },
+    {
+      id: 'reason',
+      header: 'Reason',
+      cell: (r) => (
+        <span className="block max-w-xs truncate" title={r.reason}>
+          {r.reason}
+        </span>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (r) => r.status,
+      cell: (r) => <StatusChip status={r.status} tone={REG_TONE[r.status] ?? 'neutral'} />,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (r) =>
+        r.status === 'submitted' && (
+          <div className="flex justify-end gap-2">
+            <button className="btn text-2xs" onClick={() => approve.mutate(r.id)} disabled={approve.isPending}>
+              Approve
+            </button>
+            <button className="btn text-2xs" onClick={() => setRejecting(r.id)}>
+              Reject
+            </button>
+          </div>
+        ),
+    },
+  ];
+
   return (
     <Card
       title="Attendance regularisations"
       subtitle="Submitting one disputes the day; approving it regularises the same WorkAttendance row."
       actions={<EmployeeFilter value={employmentId} onChange={setEmploymentId} employees={employees} />}
     >
-      {rows.isLoading && <Loading />}
-      {rows.error && <ErrorBox error={rows.error} />}
+      <DataTable
+        caption="Attendance regularisations"
+        columns={columns}
+        rows={rows.data ?? []}
+        rowKey={(r) => r.id}
+        loading={rows.isLoading}
+        error={rows.error}
+        emptyMessage="No regularisation requests yet."
+      />
       {approve.error && <ErrorBox error={approve.error} />}
-      {rows.data && rows.data.length === 0 && <EmptyState message="No regularisation requests yet." />}
-      {rows.data && rows.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Date</th>
-              <th>Reason</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.data.map((r) => (
-              <tr key={r.id}>
-                <td>{nameFor(r.employmentRelationshipId)}</td>
-                <td>{date(r.date)}</td>
-                <td className="max-w-xs truncate" title={r.reason}>
-                  {r.reason}
-                </td>
-                <td>
-                  <StatusChip status={r.status} tone={REG_TONE[r.status] ?? 'neutral'} />
-                </td>
-                <td className="text-right">
-                  {r.status === 'submitted' && (
-                    <div className="flex justify-end gap-2">
-                      <button
-                        className="btn text-2xs"
-                        onClick={() => approve.mutate(r.id)}
-                        disabled={approve.isPending}
-                      >
-                        Approve
-                      </button>
-                      <button className="btn text-2xs" onClick={() => setRejecting(r.id)}>
-                        Reject
-                      </button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
 
       <CreateModal
         open={Boolean(rejecting)}

@@ -37,7 +37,8 @@ import {
   type PaymentType,
   type TimelineEntryView,
 } from '@kaizen/shared';
-import { api, date, money, titleCase } from '../lib/api.js';
+import { date, money, titleCase } from '../lib/api.js';
+import { edu, type OpenLearnerItem } from '../lib/educationApi.js';
 import { humanize } from '../lib/words.js';
 import {
   Card,
@@ -50,6 +51,7 @@ import {
   RecordCode,
   StatusChip,
 } from '../components/ui.js';
+import { DataTable, type DataTableColumn } from '../components/DataTable.js';
 import { CreateModal, Row, SelectInput, TextArea, TextInput, messageOf } from '../components/forms.js';
 import { InvoiceEditor } from '../components/invoiceEditor.js';
 
@@ -86,19 +88,19 @@ export function StudentTimeline() {
     error: loadError,
   } = useQuery({
     queryKey: ['learner-timeline', id],
-    queryFn: () => api.get<LearnerTimelineView>(`/education/enrollments/${id}/timeline`),
+    queryFn: () => edu.learnerTimeline(id!),
     enabled: Boolean(id),
   });
 
   const resolve = useMutation({
-    mutationFn: (logId: string) => api.post(`/education/learner-log/${logId}/resolve`, { status: 'resolved' }),
+    mutationFn: (logId: string) => edu.resolveLearnerLog(logId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['learner-timeline'] }),
     onError: (e) => setError(messageOf(e)),
   });
 
   const mark = useMutation({
     mutationFn: (status: string) =>
-      api.post(`/education/enrollments/${id}/attendance`, {
+      edu.attendance(id!, {
         sessionDate: new Date().toISOString().slice(0, 10),
         status,
       }),
@@ -108,6 +110,60 @@ export function StudentTimeline() {
 
   if (loadError) return <ErrorBox error={loadError} />;
   if (isLoading || !data) return <Loading label="Loading the record" />;
+
+  type OpenItem = LearnerTimelineView['open'][number];
+  const openColumns: ReadonlyArray<DataTableColumn<OpenItem>> = [
+    {
+      id: 'kind',
+      header: 'Kind',
+      sortValue: (row) => row.kind,
+      cell: (row) => (
+        <span
+          className={`chip ${row.kind === 'issue' ? 'border-band-critical/40 text-band-critical' : 'border-band-watch/40 text-band-watch'}`}
+        >
+          {LEARNER_LOG_LABELS[row.kind as LearnerLogKind] ?? row.kind}
+        </span>
+      ),
+    },
+    {
+      id: 'what',
+      header: 'What',
+      sortValue: (row) => row.title,
+      cellClassName: 'text-xs text-ink-100',
+      cell: (row) => row.title,
+    },
+    {
+      id: 'severity',
+      header: 'Severity',
+      sortValue: (row) => row.severity,
+      cellClassName: 'text-2xs text-ink-400',
+      cell: (row) => (row.severity ? humanize(row.severity) : '—'),
+    },
+    {
+      id: 'raised',
+      header: 'Raised',
+      sortValue: (row) => row.raisedOn,
+      cellClassName: 'text-2xs text-ink-400',
+      cell: (row) => date(row.raisedOn),
+    },
+    {
+      id: 'age',
+      header: 'Age',
+      align: 'right',
+      sortValue: (row) => row.ageDays,
+      cellClassName: 'tabular-nums text-2xs',
+      cell: (row) => <span className={row.ageDays > 7 ? 'text-band-watch' : 'text-ink-500'}>{row.ageDays}d</span>,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      cell: (row) => (
+        <button className="btn-ghost" onClick={() => resolve.mutate(row.id)} disabled={resolve.isPending}>
+          Resolve
+        </button>
+      ),
+    },
+  ];
 
   const e = data.enrollment;
   const owed = data.invoices.reduce((s, i) => s + Math.max(i.payable - i.allocated, 0), 0);
@@ -166,23 +222,32 @@ export function StudentTimeline() {
               ? 'no sessions recorded yet'
               : `${data.counts.present} of ${data.counts.sessions} sessions`
           }
+          noActionReason="Derived from the attendance entries in the timeline below"
         />
         <Metric
           label="Progress"
           value={data.days.some((d) => d.entries.some((x) => x.kind === 'progress')) ? `${e.progressPct}%` : '—'}
           sub="mean of the scores recorded"
+          noActionReason="Mean of the progress entries in the timeline below"
         />
         <Metric
           label="Open queries"
           value={data.counts.openQueries}
           tone={data.counts.openQueries > 0 ? 'warn' : 'good'}
+          noActionReason="Open queries for this student are listed in the timeline below"
         />
-        <Metric label="Open issues" value={data.counts.openIssues} tone={data.counts.openIssues > 0 ? 'bad' : 'good'} />
+        <Metric
+          label="Open issues"
+          value={data.counts.openIssues}
+          tone={data.counts.openIssues > 0 ? 'bad' : 'good'}
+          noActionReason="Open issues for this student are listed in the timeline below"
+        />
         <Metric
           label="Owed"
           value={money(owed)}
           tone={owed > 0 ? 'warn' : 'good'}
           sub={data.counts.meanRating !== null ? `feedback averages ${data.counts.meanRating}/5` : undefined}
+          noActionReason="Payable less allocated, across the invoices listed below"
         />
       </div>
 
@@ -215,44 +280,13 @@ export function StudentTimeline() {
           subtitle="The part of this record that is work rather than history."
           bodyClassName="p-0 overflow-x-auto"
         >
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Kind</th>
-                <th>What</th>
-                <th>Severity</th>
-                <th>Raised</th>
-                <th className="text-right">Age</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {data.open.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    <span
-                      className={`chip ${row.kind === 'issue' ? 'border-band-critical/40 text-band-critical' : 'border-band-watch/40 text-band-watch'}`}
-                    >
-                      {LEARNER_LOG_LABELS[row.kind as LearnerLogKind] ?? row.kind}
-                    </span>
-                  </td>
-                  <td className="text-xs text-ink-100">{row.title}</td>
-                  <td className="text-2xs text-ink-400">{row.severity ? humanize(row.severity) : '—'}</td>
-                  <td className="text-2xs text-ink-400">{date(row.raisedOn)}</td>
-                  <td
-                    className={`text-right tabular-nums text-2xs ${row.ageDays > 7 ? 'text-band-watch' : 'text-ink-500'}`}
-                  >
-                    {row.ageDays}d
-                  </td>
-                  <td>
-                    <button className="btn-ghost" onClick={() => resolve.mutate(row.id)} disabled={resolve.isPending}>
-                      Resolve
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            caption="Open items on this record"
+            columns={openColumns}
+            rows={data.open}
+            rowKey={(row) => row.id}
+            emptyMessage="Nothing open on this record."
+          />
         </Card>
       )}
 
@@ -420,7 +454,7 @@ function LogEntry({
       onClose={onClose}
       invalidate={[['learner-timeline'], ['learner-open']]}
       onSubmit={() =>
-        api.post(`/education/enrollments/${enrollmentId}/log`, {
+        edu.recordLearnerLog(enrollmentId, {
           kind,
           title,
           detail: detail.trim() || null,
@@ -490,7 +524,7 @@ function RecordProgress({ enrollmentId, onClose }: { enrollmentId: string; onClo
       onClose={onClose}
       invalidate={[['learner-timeline'], ['enrollments']]}
       onSubmit={() =>
-        api.post(`/education/enrollments/${enrollmentId}/progress`, {
+        edu.recordDailyProgress(enrollmentId, {
           progressDate: new Date(progressDate).toISOString(),
           score: score === '' ? null : Number(score),
           note: note.trim() || null,
@@ -523,11 +557,11 @@ export function LearnerQueue() {
     error: loadError,
   } = useQuery({
     queryKey: ['learner-open'],
-    queryFn: () => api.get<any[]>('/education/learner-log/open'),
+    queryFn: () => edu.openLearnerItems(),
   });
 
   const resolve = useMutation({
-    mutationFn: (logId: string) => api.post(`/education/learner-log/${logId}/resolve`, { status: 'resolved' }),
+    mutationFn: (logId: string) => edu.resolveLearnerLog(logId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['learner-open'] }),
     onError: (e) => setError(messageOf(e)),
   });
@@ -536,6 +570,86 @@ export function LearnerQueue() {
 
   const issues = data.filter((r) => r.kind === 'issue');
   const stale = data.filter((r) => r.ageDays > 7);
+
+  const queueColumns: ReadonlyArray<DataTableColumn<OpenLearnerItem>> = [
+    {
+      id: 'kind',
+      header: 'Kind',
+      sortValue: (row) => row.kind,
+      cell: (row) => (
+        <span
+          className={`chip ${
+            row.kind === 'issue' ? 'border-band-critical/40 text-band-critical' : 'border-band-watch/40 text-band-watch'
+          }`}
+        >
+          {LEARNER_LOG_LABELS[row.kind as LearnerLogKind] ?? row.kind}
+        </span>
+      ),
+    },
+    {
+      id: 'student',
+      header: 'Student',
+      sortValue: (row) => row.studentName ?? row.enrollmentCode,
+      cellClassName: 'text-xs text-ink-100',
+      cell: (row) => (
+        <Link to={`/education/enrollments/${row.enrollmentId}`} className="hover:text-accent-soft">
+          {row.studentName ?? row.enrollmentCode}
+        </Link>
+      ),
+    },
+    {
+      id: 'course',
+      header: 'Course',
+      sortValue: (row) => row.courseName,
+      cellClassName: 'text-2xs text-ink-400',
+      cell: (row) => (
+        <>
+          {row.courseName}
+          <p className="text-ink-600">{row.cohortName}</p>
+        </>
+      ),
+    },
+    {
+      id: 'what',
+      header: 'What',
+      sortValue: (row) => row.title,
+      cellClassName: 'text-xs text-ink-200',
+      cell: (row) => (
+        <>
+          {row.title}
+          {row.detail && <p className="text-2xs text-ink-500">{row.detail}</p>}
+        </>
+      ),
+    },
+    {
+      id: 'severity',
+      header: 'Severity',
+      sortValue: (row) => row.severity,
+      cellClassName: 'text-2xs',
+      cell: (row) => (
+        <span className={row.severity === 'high' ? 'text-band-critical' : 'text-ink-400'}>
+          {row.severity ? humanize(row.severity) : '—'}
+        </span>
+      ),
+    },
+    {
+      id: 'age',
+      header: 'Age',
+      align: 'right',
+      sortValue: (row) => row.ageDays,
+      cellClassName: 'tabular-nums text-2xs',
+      cell: (row) => <span className={row.ageDays > 7 ? 'text-band-watch' : 'text-ink-500'}>{row.ageDays}d</span>,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      cell: (row) => (
+        <button className="btn-ghost" onClick={() => resolve.mutate(row.id)} disabled={resolve.isPending}>
+          Resolve
+        </button>
+      ),
+    },
+  ];
 
   return (
     <div>
@@ -548,9 +662,24 @@ export function LearnerQueue() {
       )}
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Open" value={data.length} tone={data.length > 0 ? 'warn' : 'good'} />
-        <Metric label="Issues" value={issues.length} tone={issues.length > 0 ? 'bad' : 'good'} />
-        <Metric label="Older than a week" value={stale.length} tone={stale.length > 0 ? 'bad' : 'good'} />
+        <Metric
+          label="Open"
+          value={data.length}
+          tone={data.length > 0 ? 'warn' : 'good'}
+          noActionReason="Counted from the queue rows listed below"
+        />
+        <Metric
+          label="Issues"
+          value={issues.length}
+          tone={issues.length > 0 ? 'bad' : 'good'}
+          noActionReason="The issue rows among the queue listed below"
+        />
+        <Metric
+          label="Older than a week"
+          value={stale.length}
+          tone={stale.length > 0 ? 'bad' : 'good'}
+          noActionReason="The queue rows listed below that are more than seven days old"
+        />
       </div>
 
       {isLoading ? (
@@ -560,63 +689,16 @@ export function LearnerQueue() {
           <EmptyState message="Nothing open." hint="Nothing open." />
         </Card>
       ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Kind</th>
-                <th>Student</th>
-                <th>Course</th>
-                <th>What</th>
-                <th>Severity</th>
-                <th className="text-right">Age</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    <span
-                      className={`chip ${
-                        row.kind === 'issue'
-                          ? 'border-band-critical/40 text-band-critical'
-                          : 'border-band-watch/40 text-band-watch'
-                      }`}
-                    >
-                      {LEARNER_LOG_LABELS[row.kind as LearnerLogKind] ?? row.kind}
-                    </span>
-                  </td>
-                  <td className="text-xs text-ink-100">
-                    <Link to={`/education/enrollments/${row.enrollmentId}`} className="hover:text-accent-soft">
-                      {row.studentName ?? row.enrollmentCode}
-                    </Link>
-                  </td>
-                  <td className="text-2xs text-ink-400">
-                    {row.courseName}
-                    <p className="text-ink-600">{row.cohortName}</p>
-                  </td>
-                  <td className="text-xs text-ink-200">
-                    {row.title}
-                    {row.detail && <p className="text-2xs text-ink-500">{row.detail}</p>}
-                  </td>
-                  <td className={`text-2xs ${row.severity === 'high' ? 'text-band-critical' : 'text-ink-400'}`}>
-                    {row.severity ? humanize(row.severity) : '—'}
-                  </td>
-                  <td
-                    className={`text-right tabular-nums text-2xs ${row.ageDays > 7 ? 'text-band-watch' : 'text-ink-500'}`}
-                  >
-                    {row.ageDays}d
-                  </td>
-                  <td>
-                    <button className="btn-ghost" onClick={() => resolve.mutate(row.id)} disabled={resolve.isPending}>
-                      Resolve
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <Card bodyClassName="p-0">
+          <DataTable
+            caption="Open student queries and issues"
+            columns={queueColumns}
+            rows={data}
+            rowKey={(row) => row.id}
+            loading={isLoading}
+            emptyMessage="Nothing open."
+            emptyHint="Queries and issues raised on a student's record show here until someone resolves them."
+          />
         </Card>
       )}
     </div>

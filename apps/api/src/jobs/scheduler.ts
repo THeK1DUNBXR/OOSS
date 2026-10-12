@@ -53,6 +53,7 @@ import { COMPLIANCE_JOBS } from './compliance/index.js';
 import { IT_JOBS } from './it/index.js';
 import { MARKETING_JOBS } from './marketing.js';
 import { JOBS as COMMITMENT_JOBS } from './commitments.js';
+import { JOBS as CASE_JOBS } from './cases.js';
 
 export interface JobResult {
   processed: number;
@@ -383,6 +384,7 @@ export const ALL_JOBS: JobDefinition[] = [
   ...IT_JOBS,
   ...MARKETING_JOBS,
   ...COMMITMENT_JOBS,
+  ...CASE_JOBS,
 ];
 
 // ---------------------------------------------------------------------------

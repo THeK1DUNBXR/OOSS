@@ -31,7 +31,7 @@ import {
   requestDueAt,
   type PurposeCode,
 } from '@kaizen/shared';
-import { prisma, unscopedPrisma, num } from '../../platform/db.js';
+import { prisma, unscopedPrisma, num, type DbTx } from '../../platform/db.js';
 import { config } from '../../platform/config.js';
 import { currentAuth, type AuthContext } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -1354,12 +1354,16 @@ registerHook('offboarding.completed', 'privacy.revoke_access', async (payload) =
   const employmentRelationship = payload.employmentRelationship as { personId: string } | undefined;
   if (!employmentRelationship?.personId) return;
   const auth = currentAuth();
+  // Inside the offboarding's transaction when one is passed (see runHooks in
+  // employment.ts). The scoped client throws inside a transaction it did not open.
+  const tx = payload.tx as DbTx | undefined;
+  const db = tx ?? (prisma as unknown as DbTx);
 
-  const active = await prisma.affiliation.findMany({
+  const active = await db.affiliation.findMany({
     where: { tenantId: auth.tenantId, partyId: employmentRelationship.personId, status: 'active' },
   });
   for (const aff of active) {
-    await prisma.affiliation.update({
+    await db.affiliation.update({
       where: { id: aff.id },
       data: { status: 'ended', revokedAt: new Date(), revokedReason: 'offboarding' },
     });
@@ -1369,6 +1373,7 @@ registerHook('offboarding.completed', 'privacy.revoke_access', async (payload) =
       subjectId: aff.id,
       before: { status: 'active' },
       after: { status: 'ended', revokedReason: 'offboarding' },
+      tx,
     });
   }
 });
