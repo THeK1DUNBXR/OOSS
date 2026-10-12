@@ -149,7 +149,12 @@ describe('PR11b compile: the reach matrix (design test 5)', () => {
     const auth = authOf(tid, holder.id);
     const decide = (unitCode?: string) =>
       asPrincipal(auth, () =>
-        evaluate({ resource, verb: 'view', record: { ownerPartyId: 'someone-else', verticalCode: v.code, unitCode }, auth }),
+        evaluate({
+          resource,
+          verb: 'view',
+          record: { ownerPartyId: 'someone-else', verticalCode: v.code, unitCode },
+          auth,
+        }),
       );
     expect((await decide('U-1')).allowed).toBe(true);
     expect((await decide('U-2')).allowed).toBe(false);
@@ -170,7 +175,14 @@ describe('PR11b compile: recompile and expiry touch only tagged rows (design tes
     const person = await makePerson(tid, 'Compiled');
     // A legacy grant on the same resource, with no assignment tag.
     const legacy = await unscopedPrisma.grant.create({
-      data: { tenantId: tid, principalType: 'individual', principalId: person.id, resource, verbs: ['view'], scope: 'all' },
+      data: {
+        tenantId: tid,
+        principalType: 'individual',
+        principalId: person.id,
+        resource,
+        verbs: ['view'],
+        scope: 'all',
+      },
       select: { id: true },
     });
 

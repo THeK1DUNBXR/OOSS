@@ -8,19 +8,21 @@
  * CLAUDE.md rule 5). Refusals are thrown before the transaction opens, so a refused
  * caller writes nothing.
  *
- * PR11b fills the two seams at the bottom: confirming compiles the assignment into
- * Grant rows, and expiring removes them. Until then a confirmed assignment is data.
+ * Confirming compiles the assignment into tagged Grant rows (compile.ts), inside the
+ * confirm transaction, and only after checking the confirmer holds every grant it
+ * would write. Expiring removes those rows in its own transaction.
  */
 
 import type { AccessAssignment } from '@prisma/client';
 import { EVENTS } from '@kaizen/shared';
-import { prisma, type DbTx } from '../../platform/db.js';
+import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
-import { assertCan, invalidateGrantCache } from '../../platform/permissions.js';
+import { assertCan, invalidateGrantCache, resolveGrants } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { emit } from '../../platform/eventBus.js';
 import { governedWrite } from '../../platform/governedWrite.js';
+import { uncoveredGrants } from '../../platform/roleAssignment.js';
 import { reasonOf } from '../businessLines.js';
 import {
   checkConfirmRules,
@@ -31,6 +33,7 @@ import {
   type IdentityType,
   type Reach,
 } from './rules.js';
+import { compileAssignmentTx, compileRows, loadCompileInput, removeCompiledGrantsTx } from './compile.js';
 
 registerGovernedEntities('gov', [
   'access_vertical',
@@ -283,6 +286,11 @@ export async function confirmAssignment(input: { assignmentId: string; reason: s
   }
 
   const confirmerId = auth.partyId;
+  // What the confirmer holds, read before the transaction: the scoped client may not
+  // be used inside one (platform/db.ts), and the confirmer's grants do not change
+  // inside it.
+  invalidateGrantCache();
+  const heldGrants = await resolveGrants(auth);
   const result = await governedWrite(async (tx) => {
     const { count } = await tx.accessAssignment.updateMany({
       where: { id: row.id, status: 'suggested' },
@@ -290,7 +298,16 @@ export async function confirmAssignment(input: { assignmentId: string; reason: s
     });
     if (count !== 1) throw ApiError.conflict('This assignment changed while you were confirming it. Reload it first.');
     const after = await tx.accessAssignment.findUniqueOrThrow({ where: { id: row.id } });
-    await compileConfirmedAssignment(tx, row.id);
+    // A confirmation cannot widen access: the confirmer must already hold every grant the
+    // assignment compiles to (AMP s.7). Checked before the compile writes, inside the
+    // transaction, so a refusal rolls back the status change with it.
+    const target = compileRows(await loadCompileInput(tx, row.id));
+    const gaps = uncoveredGrants(target, heldGrants);
+    if (gaps.length > 0) {
+      const names = gaps.map((g) => `${g.verb} on ${g.resource}`).join(', ');
+      throw ApiError.forbidden(`You cannot confirm access you do not hold: ${names}.`);
+    }
+    await compileAssignmentTx(tx, row.id);
     await auditWrite({
       action: 'update',
       subjectType: 'access_assignment',
@@ -333,7 +350,7 @@ export async function expireAssignment(input: { assignmentId: string; reason: st
     });
     if (count !== 1) throw ApiError.conflict('This assignment changed while you were expiring it. Reload it first.');
     const after = await tx.accessAssignment.findUniqueOrThrow({ where: { id: row.id } });
-    await removeCompiledGrants(tx, row.id);
+    await removeCompiledGrantsTx(tx, row.id);
     await auditWrite({
       action: 'update',
       subjectType: 'access_assignment',
@@ -356,23 +373,4 @@ export async function expireAssignment(input: { assignmentId: string; reason: st
   });
   invalidateGrantCache();
   return result;
-}
-
-/**
- * PR11b seam. A confirmed assignment becomes Grant rows here, inside the confirm
- * transaction, so the confirmation and its grants commit or vanish together. In
- * PR11a it writes nothing: a confirmed assignment grants nothing yet.
- */
-export async function compileConfirmedAssignment(tx: DbTx, assignmentId: string): Promise<void> {
-  void tx;
-  void assignmentId;
-}
-
-/**
- * PR11b seam. The Grant rows a confirmed assignment wrote are removed here, inside
- * the expiry transaction. PR11a has none to remove.
- */
-export async function removeCompiledGrants(tx: DbTx, assignmentId: string): Promise<void> {
-  void tx;
-  void assignmentId;
 }

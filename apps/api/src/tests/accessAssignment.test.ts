@@ -418,7 +418,9 @@ describe('PR11a database invariants', () => {
       where: { tenantId: tid, subjectEntityId: row.id },
       select: { eventName: true },
     });
+    // PR11b: confirming also compiles the assignment, and the compile emits once (P11-DESIGN b).
     expect(events.map((e) => e.eventName).sort()).toEqual([
+      'kz.gov.access_assignment.compiled',
       'kz.gov.access_assignment.confirmed',
       'kz.gov.access_assignment.suggested',
     ]);

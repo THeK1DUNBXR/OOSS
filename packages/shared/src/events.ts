@@ -962,6 +962,7 @@ export const EVENTS = {
   ACCESS_ASSIGNMENT_SUGGESTED: 'kz.gov.access_assignment.suggested',
   ACCESS_ASSIGNMENT_CONFIRMED: 'kz.gov.access_assignment.confirmed',
   ACCESS_ASSIGNMENT_EXPIRED: 'kz.gov.access_assignment.expired',
+  ACCESS_ASSIGNMENT_COMPILED: 'kz.gov.access_assignment.compiled',
 } as const;
 
 /**
