@@ -26,6 +26,7 @@ import {
   monthsBack,
   istYearMonth,
   formatMinor,
+  parseMinor,
   depreciationSchedule,
   amortisationSchedule,
   bookValueAt,
@@ -254,6 +255,8 @@ export interface TransactionInput {
   loanId?: string | null;
   /** Set when the counterparty IS another group entity (equity-portal plan §6, phase 2). */
   intercompanyTenantId?: string | null;
+  /** Set on the row that reverses another (reverseTransactionIn, FX-71a). */
+  reversalOfId?: string | null;
 }
 
 /**
@@ -411,6 +414,7 @@ async function insertTransactionIn(db: DbTx, input: Omit<TransactionInput, 'amou
       fixedAssetId: input.fixedAssetId ?? null,
       loanId: input.loanId ?? null,
       intercompanyTenantId: input.intercompanyTenantId ?? null,
+      reversalOfId: input.reversalOfId ?? null,
       createdById: auth.partyId,
     },
   });
@@ -426,6 +430,7 @@ async function insertTransactionIn(db: DbTx, input: Omit<TransactionInput, 'amou
       accountId: input.accountId,
       categoryId: input.categoryId ?? null,
       txnDate: input.txnDate,
+      reversalOfId: input.reversalOfId ?? null,
     },
     tx: db,
   });
@@ -469,22 +474,35 @@ export async function assertPeriodPostableInTx(tx: DbTx, txnDate: Date): Promise
 }
 
 /**
- * Reverses an entry with a second entry.
+ * Reverses an entry with a second entry, inside the caller's transaction.
  *
- * Nothing is quietly deleted: the original stays, the reversal points at it,
- * and both stay visible. That is what keeps a reconciled bank line matched to
- * something and what stops a ledger silently disagreeing with a statement.
+ * The original is locked FOR UPDATE before it is read, so two reversals of one
+ * entry run one after the other, and the second reads the first's
+ * `reversedById` and is refused. The check was once made outside the
+ * transaction (books.ts reverseTransaction, before FX-71a), and two parallel
+ * reversals both passed it and both wrote.
+ *
+ * The reversal is stamped now, so it lands in today's IST period, and it is
+ * refused if that period is closed or closing (assertPeriodPostableInTx). The
+ * caller checks its own permission, and runs the period hook where it can (the
+ * hook reads through the scoped client, which cannot run inside a transaction).
  */
-export async function reverseTransaction(id: string, reason: string) {
+export async function reverseTransactionIn(
+  tx: DbTx,
+  originalId: string,
+  opts: { reason: string; batchId?: string | null },
+) {
   const auth = currentAuth();
-  await assertCan({ resource: 'transactions', verb: 'edit' });
-  // The reversal is stamped now, so it lands in today's period, not the
-  // original's. A closed current month refuses it here, where the entry would
-  // otherwise be written into a closed month.
-  await runHooks('transaction.before_record', { txnDate: new Date(), source: 'reversal' });
-
-  const original = await prisma.transaction.findFirst({
-    where: { id, tenantId: auth.tenantId, deletedAt: null },
+  // One clock read, so the period this locks is the month the reversal lands in.
+  // Two reads can straddle a month boundary (the close-race bug, FX-70).
+  const now = new Date();
+  await assertPeriodPostableInTx(tx, now);
+  await tx.$queryRaw`
+    SELECT "id" FROM "transactions"
+    WHERE "tenantId" = ${auth.tenantId} AND "id" = ${originalId}
+    FOR UPDATE`;
+  const original = await tx.transaction.findFirst({
+    where: { id: originalId, tenantId: auth.tenantId, deletedAt: null },
   });
   if (!original) throw ApiError.notFound('Transaction');
   if (original.reversedById) {
@@ -493,76 +511,70 @@ export async function reverseTransaction(id: string, reason: string) {
   if (original.reversalOfId) {
     throw ApiError.unprocessable('This entry is itself a reversal. Reversing it would restore the original error.');
   }
+  const reversal = await writeTransactionMinor(
+    {
+      txnDate: now,
+      direction: original.direction === 'in' ? 'out' : 'in',
+      amount: parseMinor(original.amount.toFixed(2)),
+      accountId: original.accountId,
+      categoryId: original.categoryId,
+      division: original.division,
+      counterparty: original.counterparty,
+      method: original.method,
+      reference: original.reference,
+      note: `Reversal of ${original.recordCode}: ${opts.reason}`,
+      source: original.source,
+      reversalOfId: original.id,
+    },
+    tx,
+  );
 
-  const recordCode = await nextRecordCode('TXN');
-
-  const reversal = await prisma.$transaction(async (tx) => {
-    // One instant for the lock and the row: the reversal lands in the month this lock
-    // covers. Two separate reads of the clock could straddle a month boundary.
-    const now = new Date();
-    await lockLegacyPeriod(tx, auth.tenantId, now);
-    const created = await tx.transaction.create({
-      data: {
-        tenantId: auth.tenantId,
-        recordCode,
-        txnDate: now,
-        direction: original.direction === 'in' ? 'out' : 'in',
-        amount: original.amount,
-        accountId: original.accountId,
-        categoryId: original.categoryId,
-        division: original.division,
-        counterparty: original.counterparty,
-        method: original.method,
-        reference: original.reference,
-        note: `Reversal of ${original.recordCode}: ${reason}`,
-        source: original.source,
-        reversalOfId: original.id,
-        createdById: auth.partyId,
-      },
-    });
-    await tx.transaction.update({ where: { id: original.id }, data: { reversedById: created.id } });
-    await auditWrite({
-      action: 'update',
-      subjectType: 'transaction',
-      subjectId: original.id,
-      before: { status: 'posted', reversedById: null },
-      after: { status: 'reversed', reversedById: created.id, reason },
-    });
-    return created;
+  const claimed = await tx.transaction.updateMany({
+    where: { id: original.id, tenantId: auth.tenantId, reversedById: null },
+    data: { reversedById: reversal.id },
   });
-
+  if (claimed.count !== 1) {
+    throw ApiError.conflict('This entry has already been reversed.');
+  }
   await auditWrite({
     action: 'update',
     subjectType: 'transaction',
     subjectId: original.id,
     before: { reversedById: null },
-    after: { reversedById: reversal.id },
+    after: { reversedById: reversal.id, reason: opts.reason, batchId: opts.batchId ?? null },
+    tx,
   });
-  await auditWrite({
-    action: 'create',
-    subjectType: 'transaction',
-    subjectId: reversal.id,
-    after: {
-      recordCode,
-      reversalOfId: original.id,
-      amount: num(original.amount),
-      direction: reversal.direction,
-      reason,
-    },
-  });
-
   await emit({
     name: EVENTS.TRANSACTION_REVERSED,
-    subject: { entityType: 'transaction', entityId: reversal.id, recordCode },
+    subject: { entityType: 'transaction', entityId: reversal.id, recordCode: reversal.recordCode },
     related: [{ relation: 'reverses', entityType: 'transaction', entityId: original.id }],
     previousState: { recordCode: original.recordCode },
     newState: { amount: num(original.amount), direction: reversal.direction },
-    reason: { reasonCode: 'reversal', note: reason },
+    reason: { reasonCode: 'reversal', note: opts.reason },
     confidentiality: 'confidential',
     impact: { domains: ['fin'], severity: 'S1_ATTENTION' },
+    tx,
   });
-
   return reversal;
+}
+
+/**
+ * Reverses an entry with a second entry.
+ *
+ * Nothing is quietly deleted: the original stays, the reversal points at it,
+ * and both stay visible. That is what keeps a reconciled bank line matched to
+ * something and what stops a ledger silently disagreeing with a statement.
+ *
+ * The rule itself is reverseTransactionIn's; this checks the caller's grant and
+ * the period hook first, as every dated write here does.
+ */
+export async function reverseTransaction(id: string, reason: string) {
+  await assertCan({ resource: 'transactions', verb: 'edit' });
+  // The reversal is stamped now, so it lands in today's period, not the
+  // original's. A closed current month refuses it here, where the entry would
+  // otherwise be written into a closed month.
+  await runHooks('transaction.before_record', { txnDate: new Date(), source: 'reversal' });
+  return governedWrite((tx) => reverseTransactionIn(tx, id, { reason }));
 }
 
 export async function listTransactions(

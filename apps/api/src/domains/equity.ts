@@ -27,7 +27,7 @@ import {
   type ShareInstrument,
   computeCapTable,
 } from '@kaizen/shared';
-import { prisma, unscopedPrisma, dec, num } from '../platform/db.js';
+import { prisma, unscopedPrisma, dec, num, type DbTx } from '../platform/db.js';
 import { currentAuth, getContext } from '../platform/context.js';
 import { encryptField, readRegulated } from './compliance/privacy.js';
 import { assertCan, assertScopeAll, can, canSeeMoney, scopeFor } from '../platform/permissions.js';
@@ -1469,11 +1469,33 @@ async function retireHolderCertificates(input: {
  * is ever added) cannot reverse the register on its own either.
  */
 export async function reverseShareTransaction(id: string, reason: string) {
-  const auth = currentAuth();
   await assertCan({ resource: 'share_ledger', verb: 'create' });
   await assertCan({ resource: 'share_ledger', verb: 'approve' });
 
-  const txn = await prisma.shareTransaction.findFirst({ where: { id, tenantId: auth.tenantId } });
+  const { reversal, reversed } = await governedWrite((tx) => reverseShareTransactionIn(tx, id, reason));
+
+  return {
+    reversed: shareTransactionView(reversed),
+    reversal: shareTransactionView(reversal),
+  };
+}
+
+/**
+ * The reversal of one effective share transaction, inside the caller's
+ * transaction. reverseShareTransaction and the import revert (FX-71a) both go
+ * through it, so the register has one way of reversing an allotment.
+ *
+ * The caller asserts `share_ledger` create and approve first. The row is locked
+ * before it is read, so two reversals of one transaction run one after the
+ * other, and the second is refused as no longer effective.
+ */
+export async function reverseShareTransactionIn(tx: DbTx, id: string, reason: string) {
+  const auth = currentAuth();
+  await tx.$queryRaw`
+    SELECT "id" FROM "share_transactions"
+    WHERE "tenantId" = ${auth.tenantId} AND "id" = ${id}
+    FOR UPDATE`;
+  const txn = await tx.shareTransaction.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!txn) throw ApiError.notFound('Share transaction');
   if (txn.status !== 'effective') throw ApiError.conflict('Only an effective transaction can be reversed.');
 
@@ -1481,78 +1503,71 @@ export async function reverseShareTransaction(id: string, reason: string) {
   // audit row and the events commit together. A reversal that committed
   // without its events would leave downstream readers of the register unaware
   // that the holding had moved back.
-  const { reversal, reversed } = await governedWrite(async (tx) => {
-    const created = await tx.shareTransaction.create({
-      data: {
-        tenantId: auth.tenantId,
-        recordCode: await nextRecordCode('SHT', new Date(), tx),
-        type: txn.type,
-        shareClassId: txn.shareClassId,
-        // The opposite entry: what came in goes out and back again.
-        fromHolderId: txn.toHolderId,
-        toHolderId: txn.fromHolderId,
-        count: txn.count,
-        pricePerShare: txn.pricePerShare,
-        distinctiveFrom: txn.distinctiveFrom,
-        distinctiveTo: txn.distinctiveTo,
-        effectiveOn: new Date(),
-        status: 'effective',
-        reversalOfId: txn.id,
-        proposedByPartyId: auth.partyId ?? 'system',
-        note: reason,
-      },
-    });
-
-    const next = await tx.shareTransaction.update({
-      where: { id },
-      data: { status: 'reversed', reversedById: created.id },
-    });
-
-    // Cancel certificates issued for the reversed transaction; restore what it
-    // superseded as new certificates rather than un-cancelling them (§6, the
-    // register never edits a certificate back into existence).
-    const issued = await tx.shareCertificate.findMany({
-      where: { tenantId: auth.tenantId, issuedForTransactionId: txn.id },
-    });
-    for (const cert of issued) {
-      await tx.shareCertificate.update({ where: { id: cert.id }, data: { status: 'cancelled' } });
-      await emit({
-        name: EVENTS.CERTIFICATE_CANCELLED,
-        subject: { entityType: 'share_certificate', entityId: cert.id, recordCode: cert.recordCode },
-        newState: { status: 'cancelled', reason },
-        tx,
-      });
-    }
-    const superseded = await tx.shareCertificate.findMany({
-      where: { tenantId: auth.tenantId, supersededById: { in: issued.map((c) => c.id) } },
-    });
-    for (const old of superseded) {
-      await tx.shareCertificate.update({ where: { id: old.id }, data: { status: 'issued', supersededById: null } });
-    }
-
-    await auditWrite({
-      action: 'update',
-      subjectType: 'share_transaction',
-      subjectId: id,
-      before: txn as never,
-      after: { status: 'reversed' },
-      tx,
-    });
-    await emit({
-      name: EVENTS.SHARE_TRANSACTION_REVERSED,
-      subject: { entityType: 'share_transaction', entityId: id, recordCode: txn.recordCode },
-      related: [{ relation: 'reversed_by', entityType: 'share_transaction', entityId: created.id }],
-      newState: { status: 'reversed', reversalId: created.id, reason },
-      tx,
-    });
-
-    return { reversal: created, reversed: next };
+  const created = await tx.shareTransaction.create({
+    data: {
+      tenantId: auth.tenantId,
+      recordCode: await nextRecordCode('SHT', new Date(), tx),
+      type: txn.type,
+      shareClassId: txn.shareClassId,
+      // The opposite entry: what came in goes out and back again.
+      fromHolderId: txn.toHolderId,
+      toHolderId: txn.fromHolderId,
+      count: txn.count,
+      pricePerShare: txn.pricePerShare,
+      distinctiveFrom: txn.distinctiveFrom,
+      distinctiveTo: txn.distinctiveTo,
+      effectiveOn: new Date(),
+      status: 'effective',
+      reversalOfId: txn.id,
+      proposedByPartyId: auth.partyId ?? 'system',
+      note: reason,
+    },
   });
 
-  return {
-    reversed: shareTransactionView(reversed),
-    reversal: shareTransactionView(reversal),
-  };
+  const next = await tx.shareTransaction.update({
+    where: { id },
+    data: { status: 'reversed', reversedById: created.id },
+  });
+
+  // Cancel certificates issued for the reversed transaction; restore what it
+  // superseded as new certificates rather than un-cancelling them (§6, the
+  // register never edits a certificate back into existence).
+  const issued = await tx.shareCertificate.findMany({
+    where: { tenantId: auth.tenantId, issuedForTransactionId: txn.id },
+  });
+  for (const cert of issued) {
+    await tx.shareCertificate.update({ where: { id: cert.id }, data: { status: 'cancelled' } });
+    await emit({
+      name: EVENTS.CERTIFICATE_CANCELLED,
+      subject: { entityType: 'share_certificate', entityId: cert.id, recordCode: cert.recordCode },
+      newState: { status: 'cancelled', reason },
+      tx,
+    });
+  }
+  const superseded = await tx.shareCertificate.findMany({
+    where: { tenantId: auth.tenantId, supersededById: { in: issued.map((c) => c.id) } },
+  });
+  for (const old of superseded) {
+    await tx.shareCertificate.update({ where: { id: old.id }, data: { status: 'issued', supersededById: null } });
+  }
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'share_transaction',
+    subjectId: id,
+    before: txn as never,
+    after: { status: 'reversed' },
+    tx,
+  });
+  await emit({
+    name: EVENTS.SHARE_TRANSACTION_REVERSED,
+    subject: { entityType: 'share_transaction', entityId: id, recordCode: txn.recordCode },
+    related: [{ relation: 'reversed_by', entityType: 'share_transaction', entityId: created.id }],
+    newState: { status: 'reversed', reversalId: created.id, reason },
+    tx,
+  });
+
+  return { reversal: created, reversed: next };
 }
 
 export function shareTransactionView(row: {

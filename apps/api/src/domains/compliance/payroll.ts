@@ -866,7 +866,7 @@ export async function settleOffboarding(offboardingId: string) {
     : (num(
         (
           await prisma.compensationRecord.findFirst({
-            where: { employmentRelationshipId: employment.id, status: 'Effective' },
+            where: { employmentRelationshipId: employment.id, status: 'Effective', voidedAt: null },
             orderBy: { effectiveFrom: 'desc' },
           })
         )?.basicPay,

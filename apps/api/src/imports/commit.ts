@@ -12,7 +12,7 @@
  * sixty of them before their first import is asking them not to bother.
  */
 
-import { Prisma, type ImportRow } from '@prisma/client';
+import { Prisma, type ImportBatch, type ImportRow } from '@prisma/client';
 import { prisma, unscopedPrisma, dec, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { assertCan } from '../platform/permissions.js';
@@ -22,7 +22,13 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { emit } from '../platform/eventBus.js';
 import { auditWrite } from '../platform/audit.js';
 import { lockLegacyPeriods } from '../platform/periodLock.js';
-import { writeTransactionMinor, assertPeriodPostableInTx } from '../domains/books.js';
+import { governedWrite } from '../platform/governedWrite.js';
+import { writeTransactionMinor, assertPeriodPostableInTx, reverseTransactionIn } from '../domains/books.js';
+import { filedReturnFor } from '../domains/invoicing.js';
+// A register import writes learner profiles, and auditWrite refuses a subject type
+// no module has registered. The student_profile registration is in that module, so
+// it must be loaded here rather than only wherever the routes happen to load it.
+import '../domains/students.js';
 import { EVENTS, DIVISION_LABELS, DIVISIONS, parseMinor, type Division } from '@kaizen/shared';
 import { matchFailure, matchPerson } from './matchName.js';
 import { classifyLedger, divisionFor, isAccountName, JOURNAL_ACCOUNT_NAME, JOURNAL_ACCOUNT_TYPE } from './classify.js';
@@ -359,7 +365,13 @@ async function commitRowInChunk(
       tally.created[outcome.entityType] = (tally.created[outcome.entityType] ?? 0) + 1;
       await tx.importRow.update({
         where: { id: row.id },
-        data: { status: 'committed', entityType: outcome.entityType, entityId: outcome.entityId, message: null },
+        data: {
+          status: 'committed',
+          entityType: outcome.entityType,
+          entityId: outcome.entityId,
+          created: [{ entityType: outcome.entityType, entityId: outcome.entityId }] as never,
+          message: null,
+        },
       });
     } else {
       tally.skipped += 1;
@@ -406,7 +418,13 @@ async function commitRowOutsideChunk(row: ImportRow, kind: string, options: Reco
     return;
   }
   try {
-    let outcome: { entityType: string; entityId: string } | null = null;
+    let outcome: {
+      entityType: string;
+      entityId: string;
+      matched?: boolean;
+      /** What the row created, when it made more than its entity: see ImportRow.created. */
+      created?: CreatedRecord[];
+    } | null = null;
     switch (kind) {
       case 'chart_of_accounts':
         outcome = await commitAccountRow(data);
@@ -460,11 +478,32 @@ async function commitRowOutsideChunk(row: ImportRow, kind: string, options: Reco
         throw new Error(`No commit path for an import of kind "${kind}".`);
     }
 
-    if (outcome) {
+    if (outcome?.matched) {
+      // Not counted as created: the row names a record another entry made. What
+      // it did create (a child written for that person) is listed, and a revert
+      // undoes only that list.
+      tally.skipped += 1;
+      await prisma.importRow.update({
+        where: { id: row.id },
+        data: {
+          status: 'matched',
+          entityType: outcome.entityType,
+          entityId: outcome.entityId,
+          created: (outcome.created ?? []) as never,
+          message: 'Matched an existing record. This import did not create it, so a revert leaves it.',
+        },
+      });
+    } else if (outcome) {
       tally.created[outcome.entityType] = (tally.created[outcome.entityType] ?? 0) + 1;
       await prisma.importRow.update({
         where: { id: row.id },
-        data: { status: 'committed', entityType: outcome.entityType, entityId: outcome.entityId, message: null },
+        data: {
+          status: 'committed',
+          entityType: outcome.entityType,
+          entityId: outcome.entityId,
+          created: (outcome.created ?? [{ entityType: outcome.entityType, entityId: outcome.entityId }]) as never,
+          message: null,
+        },
       });
     } else {
       tally.skipped += 1;
@@ -623,16 +662,26 @@ async function commitBankRow(data: Record<string, unknown>, options: Record<stri
 }
 
 async function commitAccountRow(data: Record<string, unknown>) {
+  const auth = currentAuth();
   const name = String(data.name ?? '');
   if (!name) return null;
   // Not a chunk kind (CHUNKED_KINDS): there is no transaction to pass, so the
   // scoped client writes, as it always has for this kind.
   const db = prisma as unknown as DbTx;
   const classified = classifyLedger(name);
+  // Looked up before ensuring, because ensure returns an existing id and a
+  // created one alike; a revert must leave the first kind of row alone.
   if (classified.kind === 'account') {
-    return { entityType: 'ledgerAccount', entityId: await ensureAccount(name, classified.accountType, db) };
+    const existed = await db.ledgerAccount.findFirst({
+      where: { tenantId: auth.tenantId, name },
+      select: { id: true },
+    });
+    const entityId = await ensureAccount(name, classified.accountType, db);
+    return { entityType: 'ledgerAccount', entityId, matched: existed !== null };
   }
-  return { entityType: 'ledgerCategory', entityId: await ensureCategory(name, classified.categoryKind, db) };
+  const existed = await db.ledgerCategory.findFirst({ where: { tenantId: auth.tenantId, name }, select: { id: true } });
+  const entityId = await ensureCategory(name, classified.categoryKind, db);
+  return { entityType: 'ledgerCategory', entityId, matched: existed !== null };
 }
 
 /**
@@ -736,15 +785,19 @@ async function ensureEmployment(input: {
   joiningYear: string | null;
   /** An exact date, where the source gave one rather than only a year. */
   hireDate?: string | null;
-}): Promise<string> {
+}): Promise<{ employmentId: string; created: CreatedRecord[] }> {
   const auth = currentAuth();
 
   const existing = await prisma.employmentRelationship.findFirst({
     where: { tenantId: auth.tenantId, personId: input.personId, deletedAt: null },
     orderBy: { createdAt: 'desc' },
   });
-  if (existing) return existing.id;
+  if (existing) return { employmentId: existing.id, created: [] };
 
+  // The seat, and the employment and assignment that fill it, are what this
+  // call makes; the org unit and job it hangs them on are masters, kept as the
+  // other masters are, and not listed.
+  const created: CreatedRecord[] = [];
   const mapped = DIVISION_CODES[input.divisionCode] ?? { division: 'shared', unit: 'Corporate' };
   const orgUnitId = await ensureOrgUnit(mapped.unit, mapped.division);
   const jobId = await ensureJob(input.designation || 'Unspecified');
@@ -759,6 +812,8 @@ async function ensureEmployment(input: {
       status: 'Filled',
     },
   });
+
+  created.push({ entityType: 'position', entityId: position.id });
 
   // A year is all a staff list gives. The first of April is the start of the
   // Indian financial year and is the least wrong assumption available; it is
@@ -784,7 +839,7 @@ async function ensureEmployment(input: {
     },
   });
 
-  await prisma.assignment.create({
+  const assignment = await prisma.assignment.create({
     data: {
       tenantId: auth.tenantId,
       employmentRelationshipId: employment.id,
@@ -795,8 +850,10 @@ async function ensureEmployment(input: {
       rowStatus: 'Effective',
     },
   });
+  created.push({ entityType: 'employmentRelationship', entityId: employment.id });
+  created.push({ entityType: 'assignment', entityId: assignment.id });
 
-  return employment.id;
+  return { employmentId: employment.id, created };
 }
 
 async function commitEmployeeRow(data: Record<string, unknown>) {
@@ -843,6 +900,10 @@ async function commitEmployeeRow(data: Record<string, unknown>) {
     ...(data.bloodGroup ? { bloodGroup: String(data.bloodGroup) } : {}),
   };
 
+  // What this row makes, for its revert: a new person, and the children written
+  // for them. A matched person is not made here, so only their children are listed.
+  const created: CreatedRecord[] = [];
+
   const person = existing
     ? await prisma.person.update({ where: { id: existing.id }, data: { fullName, ...held } })
     : await prisma.person.create({
@@ -855,6 +916,7 @@ async function commitEmployeeRow(data: Record<string, unknown>) {
           source: 'import',
         },
       });
+  if (!existing) created.push({ entityType: 'person', entityId: person.id });
 
   const divisionCode = divisionCodeOf(data.division);
   const mapped = DIVISION_CODES[divisionCode] ?? { division: 'shared', unit: 'Corporate' };
@@ -863,7 +925,7 @@ async function commitEmployeeRow(data: Record<string, unknown>) {
     where: { tenantId: auth.tenantId, partyId: person.id, affiliationType: 'employee' },
   });
   if (!affiliation) {
-    await prisma.affiliation.create({
+    const madeAffiliation = await prisma.affiliation.create({
       data: {
         tenantId: auth.tenantId,
         partyId: person.id,
@@ -880,9 +942,10 @@ async function commitEmployeeRow(data: Record<string, unknown>) {
         statutoryRetentionFloor: true,
       },
     });
+    created.push({ entityType: 'affiliation', entityId: madeAffiliation.id });
   }
 
-  await ensureEmployment({
+  const employment = await ensureEmployment({
     personId: person.id,
     designation: data.designation ? String(data.designation) : null,
     divisionCode,
@@ -890,8 +953,11 @@ async function commitEmployeeRow(data: Record<string, unknown>) {
     joiningYear: data.joiningYear ? String(data.joiningYear) : null,
     hireDate: data.joiningDate ? String(data.joiningDate) : null,
   });
+  created.push(...employment.created);
 
-  return { entityType: 'person', entityId: person.id };
+  // A person already on file is updated in place, not made. Their fields stay as
+  // this import set them when it reverts: the revert does not restore prior values.
+  return { entityType: 'person', entityId: person.id, matched: existing !== undefined, created };
 }
 
 async function commitSalaryRow(data: Record<string, unknown>) {
@@ -919,33 +985,80 @@ async function commitSalaryRow(data: Record<string, unknown>) {
     );
   }
 
+  // A pay record a revert voided is not this pay: it is not reused, and the
+  // record written below does not supersede it.
   const existing = await prisma.compensationRecord.findFirst({
-    where: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, status: 'Effective' },
+    where: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, status: 'Effective', voidedAt: null },
   });
+  // Matched, not created: the record belongs to whichever entry made it, so this
+  // batch's revert must leave it: a matched row undoes only what it created, and
+  // this one creates nothing (created is empty for a matched salary row).
   if (existing && Number(existing.amount) === amount) {
-    return { entityType: 'compensationRecord', entityId: existing.id };
+    return { entityType: 'compensationRecord', entityId: existing.id, matched: true };
   }
 
-  const record = await prisma.compensationRecord.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: employment.id,
-      amount,
-      currency: 'INR',
-      revisionReason: 'imported_baseline',
-      status: 'Effective',
-      effectiveFrom: new Date(),
-    },
+  // The new record and the supersede of the one it replaces are one governed
+  // write. The superseded record is listed with its action, so a revert puts it
+  // back to Effective if nothing has replaced it since (restoreSupersededIn), and
+  // never voids it: it was not this batch's to void.
+  const created: CreatedRecord[] = [];
+  let madeId = '';
+  await governedWrite(async (tx) => {
+    const record = await tx.compensationRecord.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: employment.id,
+        amount,
+        currency: 'INR',
+        revisionReason: 'imported_baseline',
+        status: 'Effective',
+        effectiveFrom: new Date(),
+      },
+    });
+    madeId = record.id;
+    created.push({ entityType: 'compensationRecord', entityId: record.id });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'compensation_record',
+      subjectId: record.id,
+      after: { amount, status: 'Effective' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.COMPENSATION_RECORD_CREATED,
+      subject: { entityType: 'compensation_record', entityId: record.id },
+      newState: { amount, status: 'Effective' },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
+    if (existing) {
+      const effectiveTo = new Date();
+      await tx.compensationRecord.update({
+        where: { id: existing.id },
+        data: { status: 'Superseded', effectiveTo },
+      });
+      created.push({ entityType: 'compensationRecord', entityId: existing.id, action: 'superseded' });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'compensation_record',
+        subjectId: existing.id,
+        before: { status: 'Effective', effectiveTo: existing.effectiveTo },
+        after: { status: 'Superseded', effectiveTo },
+        tx,
+      });
+      await emit({
+        name: EVENTS.COMPENSATION_RECORD_SUPERSEDED,
+        subject: { entityType: 'compensation_record', entityId: existing.id },
+        newState: { status: 'Superseded', effectiveTo },
+        related: [{ relation: 'replaced_by', entityType: 'compensation_record', entityId: record.id }],
+        impact: { domains: ['hr'] },
+        tx,
+      });
+    }
   });
 
-  if (existing) {
-    await prisma.compensationRecord.update({
-      where: { id: existing.id },
-      data: { status: 'Superseded', effectiveTo: new Date() },
-    });
-  }
-
-  return { entityType: 'compensationRecord', entityId: record.id };
+  return { entityType: 'compensationRecord', entityId: madeId, created };
 }
 
 async function commitAttendanceRow(data: Record<string, unknown>) {
@@ -969,140 +1082,854 @@ async function commitAttendanceRow(data: Record<string, unknown>) {
   });
   if (!employment) throw new Error(`"${fullName}" holds no employment relationship.`);
 
+  // The days this row makes live: created, or a voided day taken back. A day
+  // already live is another batch's and is skipped, so it is not listed here,
+  // and a revert of this row never voids it.
+  const createdDays: CreatedRecord[] = [];
   let written = 0;
   for (const day of days) {
     const workDate = new Date(day.date);
     const existing = await prisma.workAttendance.findFirst({
       where: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, workDate },
     });
-    if (existing) continue;
+    if (existing && existing.voidedAt === null) continue;
     // `status` on this model is the lifecycle state — Recorded, Disputed,
     // Approved — and not whether somebody turned up. The presence mark is the
     // note, and the minutes carry it in a form payroll can add up.
-    await prisma.workAttendance.create({
-      data: {
-        tenantId: auth.tenantId,
-        employmentRelationshipId: employment.id,
-        workDate,
-        status: 'Recorded',
-        workedMinutes: day.status === 'present' ? 480 : day.status === 'half_day' ? 240 : 0,
-        note: `Imported: ${day.status}`,
-      },
-    });
+    const figures = {
+      workedMinutes: day.status === 'present' ? 480 : day.status === 'half_day' ? 240 : 0,
+      note: `Imported: ${day.status}`,
+    };
+    if (existing) {
+      // A day a revert voided is taken back under its own key. WorkAttendance
+      // is unique per employment and day, so a new row would fail on the key
+      // the voided one still holds; the audit row names the void it reverses.
+      await governedWrite(async (tx) => {
+        await tx.workAttendance.update({
+          where: { id: existing.id },
+          data: {
+            ...figures,
+            status: 'Recorded',
+            overtimeMinutes: 0,
+            missingPunch: false,
+            voidedAt: null,
+            voidedById: null,
+            voidReason: null,
+            voidBatchId: null,
+          },
+        });
+        await auditWrite({
+          action: 'update',
+          subjectType: 'work_attendance',
+          subjectId: existing.id,
+          before: {
+            voidedAt: existing.voidedAt,
+            voidBatchId: existing.voidBatchId,
+            workedMinutes: existing.workedMinutes,
+          },
+          after: { voidedAt: null, voidBatchId: null, ...figures },
+          tx,
+        });
+        await emit({
+          name: EVENTS.WORK_ATTENDANCE_RECORDED,
+          subject: { entityType: 'work_attendance', entityId: existing.id },
+          newState: { workDate, workedMinutes: figures.workedMinutes, revivedFromVoid: true },
+          impact: { domains: ['hr'] },
+          tx,
+        });
+      });
+      createdDays.push({ entityType: 'workAttendance', entityId: existing.id });
+    } else {
+      const madeDay = await prisma.workAttendance.create({
+        data: {
+          tenantId: auth.tenantId,
+          employmentRelationshipId: employment.id,
+          workDate,
+          status: 'Recorded',
+          ...figures,
+        },
+      });
+      createdDays.push({ entityType: 'workAttendance', entityId: madeDay.id });
+    }
     written += 1;
   }
 
   if (written === 0) return null;
-  return { entityType: 'workAttendance', entityId: employment.id };
+  return { entityType: 'workAttendance', entityId: employment.id, created: createdDays };
 }
 
 // ---------------------------------------------------------------------------
 
 /**
- * Undo.
+ * Undo, by reversal.
  *
- * Removes exactly what the batch created and nothing else, so a bad import is
- * a mistake somebody made for ten minutes rather than a weekend of manual
- * correction. Accounts and categories the import created are left in place:
- * they are almost always right even when the transactions are not, and
- * deleting one that a later transaction now uses would fail anyway.
+ * A recorded fact is never removed. Each row the batch wrote is undone by the
+ * means its kind allows, and the undo is itself a record:
+ *
+ *   - a Transaction gets a reversal row (books.ts reverseTransactionIn), and any
+ *     bank line matched to it is unmatched, so the statement stops claiming a
+ *     match to an entry that no longer counts;
+ *   - a share allotment is reversed and its certificate cancelled, as
+ *     reverseShareTransaction does (domains/equity.ts);
+ *   - pay and attendance rows are tombstoned (voidedAt, voidReason, voidBatchId),
+ *     and every reader leaves them out.
+ *
+ * Each row is one transaction, so a row that cannot be undone (a split across
+ * business lines, a filed GST month, a locked day, a period that is closed
+ * today) is reported with its reason and leaves the rest of the batch undone.
+ * The batch is `reverted` only when no committed row is left; `revert_partial`
+ * when some are undone and some are not.
  */
 export async function revertImport(id: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'imports', verb: 'delete' });
 
+  const exists = await prisma.importBatch.findFirst({ where: { id, tenantId: auth.tenantId }, select: { id: true } });
+  if (!exists) throw ApiError.notFound('Import');
+
+  // The same lock commit takes, so a revert cannot interleave with a commit of
+  // the batch. The status is read again under it: a commit that held the lock
+  // a moment ago may have finished, or may still be running.
+  return withBatchLock(auth.tenantId, id, () => revertUnderLock(id));
+}
+
+/** A batch a revert may start from: committed, or partly reverted by an earlier run. */
+const REVERTABLE_STATUSES = new Set(['committed', 'revert_partial']);
+
+/**
+ * The kinds whose legacy rows (committed before ImportRow.created) are refused:
+ * a person-bearing row (staff, contact, student) or an attendance row. See
+ * revertUnderLock.
+ */
+const LEGACY_REFUSED_KINDS = new Set([
+  'employees',
+  'template_staff',
+  'template_contacts',
+  'template_students',
+  'student_register',
+  'attendance',
+]);
+
+interface RevertFailure {
+  rowNumber: number;
+  message: string;
+}
+
+interface RowRevert {
+  /** `kept` is for rows whose record a revert deliberately leaves on the books (see revertRowIn). */
+  status: 'reverted' | 'kept';
+  reversalIds: string[];
+  unmatched: number;
+  message: string | null;
+}
+
+async function revertUnderLock(id: string) {
+  const auth = currentAuth();
   const batch = await prisma.importBatch.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!batch) throw ApiError.notFound('Import');
-  if (batch.status !== 'committed') throw ApiError.conflict('Only a committed import can be reverted.');
+  if (!REVERTABLE_STATUSES.has(batch.status)) throw ApiError.conflict('Only a committed import can be reverted.');
 
-  const rows = await prisma.importRow.findMany({
-    where: { tenantId: auth.tenantId, batchId: id, status: 'committed' },
-  });
-
-  const removed: Record<string, number> = {};
-  for (const row of rows) {
-    if (!row.entityId || !row.entityType) continue;
-    try {
-      switch (row.entityType) {
-        case 'transaction':
-          await prisma.transaction.delete({ where: { id: row.entityId } });
-          break;
-        case 'compensationRecord':
-          await prisma.compensationRecord.delete({ where: { id: row.entityId } });
-          break;
-        case 'shareTransaction':
-          // Certificates carry a foreign key to the transaction that
-          // produced them, so they go first.
-          await prisma.shareCertificate.deleteMany({
-            where: { tenantId: auth.tenantId, issuedForTransactionId: row.entityId },
-          });
-          await prisma.shareTransaction.delete({ where: { id: row.entityId } });
-          break;
-        case 'workAttendance':
-          await prisma.workAttendance.deleteMany({
-            where: {
-              tenantId: auth.tenantId,
-              employmentRelationshipId: row.entityId,
-              note: { startsWith: 'Imported:' },
-            },
-          });
-          break;
-        case 'person':
-          // People are soft-deleted rather than removed. A person may already
-          // be referenced by a leave request or an employment record by now,
-          // and the statutory retention floor on an employee affiliation means
-          // deleting one is not the platform's call anyway.
-          await prisma.person.update({ where: { id: row.entityId }, data: { deletedAt: new Date() } });
-          break;
-        case 'enrollment':
-          // Withdrawn rather than deleted, and the person is left alone. An
-          // enrolment that has had attendance marked or a fee receipted against
-          // it is a record of something that happened; reverting the import that
-          // created it does not unhappen any of that. The student stays on file,
-          // because they may have been on file before this import ran — and
-          // their student record with them, for the same reason: it is a fact
-          // about a person, not about this batch.
-          await prisma.enrollment.update({
-            where: { id: row.entityId },
-            data: { status: 'withdrawn' },
-          });
-          break;
-        default:
-          continue;
-      }
-      removed[row.entityType] = (removed[row.entityType] ?? 0) + 1;
-      await prisma.importRow.update({
-        where: { id: row.id },
-        data: { status: 'ready', entityId: null, entityType: null },
-      });
-    } catch {
-      // A row whose record has since been edited into something else is left
-      // alone and reported, rather than cascading into records the import did
-      // not create.
-      await prisma.importRow.update({
-        where: { id: row.id },
-        data: { message: 'Could not be reverted — the record it created has since changed.' },
-      });
+  // A batch committed before ImportRow.created existed cannot say which of its
+  // rows it created and which it only matched. For these kinds, undoing the row
+  // by its entity type voids a matched person, or another batch's attendance
+  // days (FX-71a), so the whole batch is refused before any row is touched. A
+  // legacy row of any other kind is not refused: it keeps the revert it had.
+  if (LEGACY_REFUSED_KINDS.has(batch.kind)) {
+    const legacy = await prisma.importRow.findFirst({
+      where: {
+        tenantId: auth.tenantId,
+        batchId: id,
+        status: { in: ['committed', 'matched'] },
+        created: { equals: Prisma.DbNull },
+      },
+      select: { rowNumber: true },
+      orderBy: { rowNumber: 'asc' },
+    });
+    if (legacy) {
+      throw ApiError.conflict(
+        `This import predates per-row tracking, so the revert cannot tell what row ${legacy.rowNumber} created from what it matched. ` +
+          'Nothing has been reverted. Correct the records it touched by hand.',
+      );
     }
   }
 
-  await prisma.importBatch.update({
-    where: { id },
-    data: {
+  // A matched row is visited only when it created something: a matched row
+  // with nothing on its created list has nothing for a revert to undo. A matched
+  // row committed before the list existed (created null) is left alone, since
+  // what it made was never recorded.
+  const rows = (
+    await prisma.importRow.findMany({
+      where: { tenantId: auth.tenantId, batchId: id, status: { in: ['committed', 'matched'] } },
+      orderBy: { rowNumber: 'asc' },
+    })
+  ).filter((r) => r.status === 'committed' || (Array.isArray(r.created) && r.created.length > 0));
+  // Share rows are reversed by the share register's own rule, which needs its
+  // two grants. Asserted once for the batch, before any row is touched.
+  if (rows.some((r) => r.entityType === 'shareTransaction')) {
+    await assertCan({ resource: 'share_ledger', verb: 'create' });
+    await assertCan({ resource: 'share_ledger', verb: 'approve' });
+  }
+
+  const removed: Record<string, number> = {};
+  const reversalIds: string[] = [];
+  const failed: RevertFailure[] = [];
+  let unmatched = 0;
+
+  try {
+    for (const row of rows) {
+      try {
+        // One transaction per row: the undo and the row's new status commit
+        // together, so a row is never reversed and still reads committed.
+        const outcome = await prisma.$transaction(
+          async (tx) => {
+            const result = await revertRowIn(tx, row, batch);
+            await tx.importRow.update({
+              where: { id: row.id },
+              data: { status: result.status, message: result.message },
+            });
+            return result;
+          },
+          { timeout: CHUNK_TIMEOUT_MS, maxWait: 10_000 },
+        );
+        // Counted by the row's entity type. A matched row is not a removal: its
+        // record stays, and only what it created is undone.
+        if (outcome.status === 'reverted' && row.status === 'committed') {
+          removed[row.entityType!] = (removed[row.entityType!] ?? 0) + 1;
+        }
+        reversalIds.push(...outcome.reversalIds);
+        unmatched += outcome.unmatched;
+      } catch (error) {
+        // A database fault aborts the run (rethrown below, and the batch is
+        // settled from what is on the rows). Anything else is this row's
+        // reason, recorded on the row, and the next row carries on.
+        if (isDatabaseFault(error)) throw error;
+        const message = (error as Error).message;
+        failed.push({ rowNumber: row.rowNumber, message });
+        await prisma.importRow.update({ where: { id: row.id }, data: { message: `Not reverted: ${message}` } });
+      }
+    }
+  } finally {
+    await settleRevertedBatch(id, batch, removed, reversalIds, unmatched, failed.length);
+  }
+
+  return { removed, reversed: reversalIds.length, unmatched, failed };
+}
+
+/**
+ * Sets the batch's state from its rows and, when this run undid something,
+ * audits the change and emits IMPORT_REVERTED once for the batch.
+ */
+async function settleRevertedBatch(
+  id: string,
+  batch: ImportBatch,
+  removed: Record<string, number>,
+  reversalIds: string[],
+  unmatched: number,
+  failedCount: number,
+) {
+  const auth = currentAuth();
+  const remaining = await prisma.importRow.count({
+    where: { tenantId: auth.tenantId, batchId: id, status: 'committed' },
+  });
+  const undone = await prisma.importRow.count({
+    where: { tenantId: auth.tenantId, batchId: id, status: 'reverted' },
+  });
+  const status = remaining === 0 ? 'reverted' : undone > 0 ? 'revert_partial' : batch.status;
+  if (status === batch.status && reversalIds.length === 0) return;
+
+  const prior = (batch.stats ?? {}) as { reverted?: Record<string, number>; reversalIds?: string[] };
+  const counts: Record<string, number> = { ...(prior.reverted ?? {}) };
+  for (const [kind, n] of Object.entries(removed)) counts[kind] = (counts[kind] ?? 0) + n;
+
+  await governedWrite(async (tx) => {
+    await tx.importBatch.update({
+      where: { id },
+      data: {
+        status,
+        revertedAt: new Date(),
+        stats: {
+          ...(batch.stats as object),
+          reverted: counts,
+          reversalIds: [...(prior.reversalIds ?? []), ...reversalIds],
+        } as never,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'import_batch',
+      subjectId: id,
+      before: { status: batch.status },
+      after: { status, reversed: reversalIds.length, failed: failedCount },
+      tx,
+    });
+    // Once per batch per run, after the rows: the batch's own announcement.
+    if (reversalIds.length > 0 || status !== batch.status) {
+      await emit({
+        name: EVENTS.IMPORT_REVERTED,
+        subject: { entityType: 'import_batch', entityId: id },
+        newState: { status, removed: counts, unmatched, failed: failedCount },
+        impact: { domains: ['fin'] },
+        tx,
+      });
+    }
+  });
+}
+
+/**
+ * One row's undo, inside the transaction that will hold its status. Throws
+ * with the reason when the row cannot be undone; the caller records it.
+ *
+ * A row committed since ImportRow.created exists is undone by that list, and
+ * nothing else: a record the row only matched belongs to another entry. A row
+ * committed before the column is refused whole before any row is touched (see
+ * revertUnderLock) when it is of a kind that can over-revert; the rest are
+ * undone by entityType, as they always were.
+ */
+async function revertRowIn(tx: DbTx, row: ImportRow, batch: ImportBatch): Promise<RowRevert> {
+  const reason = `Import ${batch.recordCode} reverted`;
+  const created = row.created as CreatedRecord[] | null;
+
+  if (created === null) return revertLegacyRowIn(tx, row, batch, reason);
+
+  if (row.status === 'matched') {
+    // The record it matched stays. What the row created is reversed.
+    const { reversalIds, unmatched, messages } = await undoCreatedIn(tx, created, batch, reason);
+    return {
       status: 'reverted',
-      revertedAt: new Date(),
-      stats: { ...(batch.stats as object), reverted: removed } as never,
+      reversalIds,
+      unmatched,
+      message: ['The record this row matched stays on file. Only what the row created is reversed.', ...messages].join(
+        ' ',
+      ),
+    };
+  }
+
+  const undoable = created.filter((c) => !KEPT_KINDS.has(c.entityType));
+  if (undoable.length === 0) return keptRowRevert(created[0]?.entityType ?? row.entityType ?? 'record');
+  const { reversalIds, unmatched, messages } = await undoCreatedIn(tx, undoable, batch, reason);
+  return { status: 'reverted', reversalIds, unmatched, message: messages.length > 0 ? messages.join(' ') : null };
+}
+
+/** A record an import row created, as ImportRow.created lists it. */
+interface CreatedRecord {
+  entityType: string;
+  entityId: string;
+  /**
+   * Set on a pay record this row superseded rather than created. A revert then
+   * restores that record to Effective, if nothing has replaced it since; it never
+   * voids it.
+   */
+  action?: 'superseded';
+}
+
+/**
+ * Masters an import creates or finds: accounts, categories, courses, cohorts,
+ * organisations and vendor bills. A revert keeps them, because a later import
+ * may already use them, and accounts and categories are almost always right
+ * even when the transactions are not. A row that made one reports it as kept.
+ */
+const KEPT_KINDS = new Set(['ledgerAccount', 'ledgerCategory', 'course', 'cohort', 'organization', 'vendorBill']);
+
+function keptRowRevert(entityType: string): RowRevert {
+  return {
+    status: 'kept',
+    reversalIds: [],
+    unmatched: 0,
+    message: `Kept: a revert does not remove a ${entityType} record.`,
+  };
+}
+
+/** A row committed before ImportRow.created existed: undone by its entityType, as before. */
+async function revertLegacyRowIn(tx: DbTx, row: ImportRow, batch: ImportBatch, reason: string): Promise<RowRevert> {
+  if (!row.entityId || !row.entityType) throw new Error('This row has no record on file to undo.');
+  if (KEPT_KINDS.has(row.entityType)) return keptRowRevert(row.entityType);
+  if (row.entityType === 'workAttendance') {
+    await legacyVoidAttendanceIn(tx, row, batch, reason);
+    return { status: 'reverted', reversalIds: [], unmatched: 0, message: null };
+  }
+  const { reversalIds, unmatched, message } = await undoRecordIn(
+    tx,
+    { entityType: row.entityType, entityId: row.entityId },
+    batch,
+    reason,
+  );
+  return { status: 'reverted', reversalIds, unmatched, message: message ?? null };
+}
+
+async function undoCreatedIn(tx: DbTx, items: CreatedRecord[], batch: ImportBatch, reason: string) {
+  const reversalIds: string[] = [];
+  const messages: string[] = [];
+  let unmatched = 0;
+  for (const item of items) {
+    const one = await undoRecordIn(tx, item, batch, reason);
+    reversalIds.push(...one.reversalIds);
+    unmatched += one.unmatched;
+    if (one.message) messages.push(one.message);
+  }
+  return { reversalIds, unmatched, messages };
+}
+
+/** Undoes one record a batch created. Throws with the reason when it cannot. */
+async function undoRecordIn(
+  tx: DbTx,
+  item: CreatedRecord,
+  batch: ImportBatch,
+  reason: string,
+): Promise<{ reversalIds: string[]; unmatched: number; message?: string }> {
+  const auth = currentAuth();
+  switch (item.entityType) {
+    case 'transaction': {
+      const original = await tx.transaction.findFirst({
+        where: { id: item.entityId, tenantId: auth.tenantId, deletedAt: null },
+        select: { id: true, txnDate: true },
+      });
+      if (!original) throw new Error('The entry this row wrote is no longer on file.');
+      await refuseIfGstFiled(tx, original.txnDate);
+      const split = await tx.lineDistribution.count({
+        where: { tenantId: auth.tenantId, transactionId: original.id },
+      });
+      if (split > 0) {
+        throw ApiError.unprocessable(
+          'This entry is split across business lines. Remove the split before reverting the import.',
+        );
+      }
+      const reversal = await reverseTransactionIn(tx, original.id, { reason, batchId: batch.id });
+      const unmatched = await unmatchBankLinesIn(tx, original.id);
+      return { reversalIds: [reversal.id], unmatched };
+    }
+
+    case 'compensationRecord': {
+      if (item.action === 'superseded') {
+        const message = await restoreSupersededIn(tx, item, batch, reason);
+        return { reversalIds: [], unmatched: 0, message };
+      }
+      const record = await tx.compensationRecord.findFirst({
+        where: { id: item.entityId, tenantId: auth.tenantId, voidedAt: null },
+        select: { id: true },
+      });
+      if (!record) throw new Error('The pay record this row wrote is no longer on file.');
+      await tombstoneIn(tx, 'compensation_record', record.id, reason, batch.id);
+      // Pay rows carry no unique key, so a tombstoned one does not block a later import.
+      return { reversalIds: [], unmatched: 0 };
+    }
+
+    case 'workAttendance': {
+      await voidAttendanceDayIn(tx, item.entityId, batch, reason);
+      return { reversalIds: [], unmatched: 0 };
+    }
+
+    case 'shareTransaction': {
+      // Imported by the opening register. Reversed by the share register's own
+      // rule, which keeps the original, cancels its certificate and writes the
+      // reversal row.
+      const { reverseShareTransactionIn } = await import('../domains/equity.js');
+      const { reversal } = await reverseShareTransactionIn(tx, item.entityId, reason);
+      return { reversalIds: [reversal.id], unmatched: 0 };
+    }
+
+    case 'person': {
+      // Soft-deleted rather than removed. A person may already be referenced by a
+      // leave request or an employment record by now, and the statutory retention
+      // floor on an employee affiliation means deleting one is not the platform's
+      // call anyway. Only a person this batch created is listed here: a matched
+      // person is another entry's and is never undone.
+      const before = await tx.person.findFirstOrThrow({
+        where: { id: item.entityId, tenantId: auth.tenantId },
+        select: { deletedAt: true },
+      });
+      const at = new Date();
+      await tx.person.update({ where: { id: item.entityId }, data: { deletedAt: at } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'person',
+        subjectId: item.entityId,
+        before: { deletedAt: before.deletedAt },
+        after: { deletedAt: at, reason },
+        tx,
+      });
+      await emit({
+        name: EVENTS.PERSON_DELETED,
+        subject: { entityType: 'person', entityId: item.entityId },
+        newState: { deletedAt: at },
+        impact: { domains: ['idn'] },
+        tx,
+      });
+      return { reversalIds: [], unmatched: 0 };
+    }
+
+    case 'enrollment': {
+      // Withdrawn rather than deleted. An enrolment with attendance or a fee
+      // receipted against it is a record of something that happened, and
+      // reverting the import that created it does not unhappen that.
+      const before = await tx.enrollment.findFirstOrThrow({
+        where: { id: item.entityId, tenantId: auth.tenantId },
+        select: { status: true },
+      });
+      await tx.enrollment.update({ where: { id: item.entityId }, data: { status: 'withdrawn' } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'enrollment',
+        subjectId: item.entityId,
+        before: { status: before.status },
+        after: { status: 'withdrawn', reason },
+        tx,
+      });
+      await emit({
+        name: EVENTS.ENROLLMENT_WITHDRAWN,
+        subject: { entityType: 'enrollment', entityId: item.entityId },
+        newState: { status: 'withdrawn' },
+        impact: { domains: ['edu'] },
+        tx,
+      });
+      return { reversalIds: [], unmatched: 0 };
+    }
+
+    case 'studentProfile': {
+      // The learner record a register import made for a new student. Soft-deleted
+      // as the person is: the register, and any billing read off it, keep the
+      // fact that the learner was on file.
+      const live = await tx.studentProfile.findFirst({
+        where: { id: item.entityId, tenantId: auth.tenantId, deletedAt: null },
+        select: { id: true, status: true },
+      });
+      if (!live) throw new Error('The student record this row wrote is no longer on file.');
+      const at = new Date();
+      await tx.studentProfile.update({ where: { id: live.id }, data: { deletedAt: at } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'student_profile',
+        subjectId: live.id,
+        before: { status: live.status },
+        after: { deletedAt: at, reason },
+        tx,
+      });
+      await emit({
+        name: EVENTS.STUDENT_PROFILE_ENDED,
+        subject: { entityType: 'student_profile', entityId: live.id },
+        newState: { deletedAt: at },
+        impact: { domains: ['edu'] },
+        tx,
+      });
+      return { reversalIds: [], unmatched: 0 };
+    }
+
+    case 'affiliation':
+    case 'employmentRelationship':
+    case 'position':
+    case 'assignment':
+      await endCreatedIn(tx, item, batch, reason);
+      return { reversalIds: [], unmatched: 0 };
+
+    default:
+      throw new Error(`No revert path for a row written as ${item.entityType}.`);
+  }
+}
+
+/**
+ * Puts back the pay record a batch superseded, if the batch's own record is the
+ * only thing that replaced it. A record that is voided, or that a later record
+ * has replaced, stays as it is, and the row says why. Returns the reason the
+ * record was not restored, or nothing when it was.
+ */
+async function restoreSupersededIn(
+  tx: DbTx,
+  item: CreatedRecord,
+  batch: ImportBatch,
+  reason: string,
+): Promise<string | undefined> {
+  const auth = currentAuth();
+  const prior = await tx.compensationRecord.findFirst({
+    where: { id: item.entityId, tenantId: auth.tenantId },
+    select: { id: true, status: true, voidedAt: true, effectiveTo: true, employmentRelationshipId: true },
+  });
+  if (!prior) return 'Not restored: the pay record this import superseded is no longer on file.';
+  if (prior.voidedAt !== null || prior.status !== 'Superseded') {
+    const state = prior.voidedAt !== null ? 'voided' : prior.status;
+    return `Not restored: the pay record this import superseded is ${state}, so it stays as it is.`;
+  }
+  const later = await tx.compensationRecord.findFirst({
+    where: {
+      tenantId: auth.tenantId,
+      employmentRelationshipId: prior.employmentRelationshipId,
+      id: { not: prior.id },
+      voidedAt: null,
+      status: { not: 'Superseded' },
     },
+    select: { id: true },
   });
+  if (later) return `Not restored: a later pay record (${later.id}) replaced it, so it stays Superseded.`;
 
+  await tx.compensationRecord.update({
+    where: { id: prior.id },
+    data: { status: 'Effective', effectiveTo: null },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'compensation_record',
+    subjectId: prior.id,
+    before: { status: 'Superseded', effectiveTo: prior.effectiveTo },
+    after: { status: 'Effective', effectiveTo: null, reason, batchId: batch.id },
+    tx,
+  });
   await emit({
-    name: EVENTS.IMPORT_REVERTED,
-    subject: { entityType: 'import_batch', entityId: id },
-    newState: { removed },
-    impact: { domains: ['fin'] },
+    name: EVENTS.COMPENSATION_RECORD_RESTORED,
+    subject: { entityType: 'compensation_record', entityId: prior.id },
+    newState: { status: 'Effective' },
+    impact: { domains: ['hr'] },
+    tx,
   });
+  return undefined;
+}
 
-  return { removed };
+/**
+ * Ends a record an employee or contact import created, for a matched person or
+ * a new one. None of these has a void column, so each is ended by the model's
+ * own state (deletedAt, or the superseded state an assignment already uses),
+ * with an audit row naming the batch and an event for the end. The row stays
+ * for the register.
+ */
+async function endCreatedIn(tx: DbTx, item: CreatedRecord, batch: ImportBatch, reason: string) {
+  const auth = currentAuth();
+  const at = new Date();
+  const subjectId = item.entityId;
+  switch (item.entityType) {
+    case 'affiliation': {
+      const live = await tx.affiliation.findFirst({
+        where: { id: subjectId, tenantId: auth.tenantId, deletedAt: null },
+        select: { status: true },
+      });
+      if (!live) throw new Error('The affiliation this row wrote is no longer on file.');
+      await tx.affiliation.update({ where: { id: subjectId }, data: { status: 'ended', deletedAt: at } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'affiliation',
+        subjectId,
+        before: { status: live.status },
+        after: { status: 'ended', reason },
+        tx,
+      });
+      await emit({
+        name: EVENTS.AFFILIATION_ENDED,
+        subject: { entityType: 'affiliation', entityId: subjectId },
+        newState: { status: 'ended' },
+        impact: { domains: ['idn'] },
+        tx,
+      });
+      return;
+    }
+
+    case 'employmentRelationship': {
+      const live = await tx.employmentRelationship.findFirst({
+        where: { id: subjectId, tenantId: auth.tenantId, deletedAt: null },
+        select: { status: true },
+      });
+      if (!live) throw new Error('The employment this row wrote is no longer on file.');
+      await tx.employmentRelationship.update({ where: { id: subjectId }, data: { deletedAt: at } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'employment_relationship',
+        subjectId,
+        before: { status: live.status },
+        after: { deletedAt: at, reason },
+        tx,
+      });
+      await emit({
+        name: EVENTS.EMPLOYMENT_RELATIONSHIP_ENDED,
+        subject: { entityType: 'employment_relationship', entityId: subjectId },
+        newState: { deletedAt: at },
+        impact: { domains: ['hr'] },
+        tx,
+      });
+      return;
+    }
+
+    case 'position': {
+      const live = await tx.position.findFirst({
+        where: { id: subjectId, tenantId: auth.tenantId, deletedAt: null },
+        select: { status: true },
+      });
+      if (!live) throw new Error('The position this row wrote is no longer on file.');
+      await tx.position.update({ where: { id: subjectId }, data: { deletedAt: at } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'position',
+        subjectId,
+        before: { status: live.status },
+        after: { deletedAt: at, reason },
+        tx,
+      });
+      await emit({
+        name: EVENTS.POSITION_ENDED,
+        subject: { entityType: 'position', entityId: subjectId },
+        newState: { deletedAt: at },
+        impact: { domains: ['hr'] },
+        tx,
+      });
+      return;
+    }
+
+    case 'assignment': {
+      const live = await tx.assignment.findFirst({
+        where: { id: subjectId, tenantId: auth.tenantId, rowStatus: 'Effective' },
+        select: { rowStatus: true },
+      });
+      if (!live) throw new Error('The assignment this row wrote is no longer on file.');
+      await tx.assignment.update({
+        where: { id: subjectId },
+        data: { rowStatus: 'Superseded', effectiveTo: at },
+      });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'assignment',
+        subjectId,
+        before: { rowStatus: live.rowStatus },
+        after: { rowStatus: 'Superseded', effectiveTo: at, reason },
+        tx,
+      });
+      await emit({
+        name: EVENTS.ASSIGNMENT_ENDED,
+        subject: { entityType: 'assignment', entityId: subjectId },
+        newState: { rowStatus: 'Superseded', effectiveTo: at },
+        impact: { domains: ['hr'] },
+        tx,
+      });
+      return;
+    }
+
+    default:
+      throw new Error(`No end path for a ${item.entityType} record.`);
+  }
+}
+
+/** pending A14 (owner): the GST filing lock is applied to an import revert by default, until the owner decides. */
+async function refuseIfGstFiled(tx: DbTx, txnDate: Date): Promise<void> {
+  const filed = await filedReturnFor(txnDate, tx);
+  if (!filed) return;
+  throw ApiError.unprocessable(
+    `This entry is dated ${filed.period}, and ${filed.returnType} for ${filed.period} was filed as ${filed.recordCode}. ` +
+      'Reverting it would change a month already reported, so this row is not reverted.',
+    { period: filed.period, filing: filed.recordCode, returnType: filed.returnType },
+  );
+}
+
+/** Clears the match on every bank line that points at a reversed entry, and audits each. */
+async function unmatchBankLinesIn(tx: DbTx, transactionId: string): Promise<number> {
+  const auth = currentAuth();
+  const lines = await tx.bankStatementLine.findMany({
+    where: { tenantId: auth.tenantId, matchedTransactionId: transactionId },
+    select: { id: true, matchedAt: true },
+  });
+  for (const line of lines) {
+    await tx.bankStatementLine.update({
+      where: { id: line.id },
+      data: { matchedTransactionId: null, matchedAt: null },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'bank_statement_line',
+      subjectId: line.id,
+      before: { matchedTransactionId: transactionId, matchedAt: line.matchedAt },
+      after: { matchedTransactionId: null, matchedAt: null },
+      tx,
+    });
+    await emit({
+      name: EVENTS.BANK_STATEMENT_LINE_UNMATCHED,
+      subject: { entityType: 'bank_statement_line', entityId: line.id },
+      related: [{ relation: 'was_matched_to', entityType: 'transaction', entityId: transactionId }],
+      newState: { matchedTransactionId: null },
+      impact: { domains: ['fin'] },
+      tx,
+    });
+  }
+  return lines.length;
+}
+
+/**
+ * Tombstones a pay or attendance row: the record stays, every reader leaves it
+ * out, and the void names the batch that made it.
+ */
+async function tombstoneIn(
+  tx: DbTx,
+  subjectType: 'compensation_record' | 'work_attendance',
+  id: string,
+  reason: string,
+  batchId: string,
+) {
+  const auth = currentAuth();
+  const voidedAt = new Date();
+  const data = { voidedAt, voidedById: auth.partyId, voidReason: reason, voidBatchId: batchId };
+  if (subjectType === 'compensation_record') {
+    await tx.compensationRecord.update({ where: { id }, data });
+  } else {
+    await tx.workAttendance.update({ where: { id }, data });
+  }
+  await auditWrite({
+    action: 'update',
+    subjectType,
+    subjectId: id,
+    before: { voidedAt: null },
+    after: { voidedAt, voidReason: reason, voidBatchId: batchId },
+    tx,
+  });
+  await emit({
+    name: subjectType === 'compensation_record' ? EVENTS.COMPENSATION_RECORD_VOIDED : EVENTS.WORK_ATTENDANCE_VOIDED,
+    subject: { entityType: subjectType, entityId: id },
+    newState: { voidedAt, voidBatchId: batchId },
+    impact: { domains: ['hr'] },
+    tx,
+  });
+}
+
+/**
+ * Voids one attendance day a batch created, by its id. The day is named on the
+ * row's `created` list only when that batch wrote it: a day it found already
+ * live belongs to the batch that wrote it, and is never named here, which is why
+ * this takes an id and not the row's date set.
+ */
+async function voidAttendanceDayIn(tx: DbTx, id: string, batch: ImportBatch, reason: string) {
+  const auth = currentAuth();
+  const day = await tx.workAttendance.findFirst({
+    where: { id, tenantId: auth.tenantId, voidedAt: null },
+    select: { id: true, status: true },
+  });
+  if (!day) throw new Error('The attendance day this row wrote is no longer on file.');
+  if (day.status === 'Locked') {
+    throw ApiError.unprocessable('Payroll has locked this attendance, so it cannot be reverted.');
+  }
+  await tombstoneIn(tx, 'work_attendance', day.id, reason, batch.id);
+}
+
+/**
+ * Rows committed before ImportRow.created existed (FX-71a). The attendance a
+ * batch wrote for one employee, taken as the days in its own staged row where
+ * the row still says the import wrote them. That can name a day another batch
+ * wrote, so it is kept only for those old rows, which have no list to go by. A
+ * day someone has since edited no longer says so, and is left alone.
+ */
+async function legacyVoidAttendanceIn(tx: DbTx, row: ImportRow, batch: ImportBatch, reason: string) {
+  const auth = currentAuth();
+  const data = openStagedNormalised(row.normalised);
+  const days = Array.isArray(data?.days) ? (data!.days as Array<{ date: string }>) : [];
+  const workDates = days.map((d) => new Date(d.date));
+  const found = await tx.workAttendance.findMany({
+    where: {
+      tenantId: auth.tenantId,
+      employmentRelationshipId: row.entityId!,
+      workDate: { in: workDates },
+      note: { startsWith: 'Imported:' },
+      voidedAt: null,
+    },
+    select: { id: true, status: true },
+  });
+  if (found.length === 0) {
+    throw new Error('The attendance this row wrote has since been changed or is no longer on file.');
+  }
+  if (found.some((r) => r.status === 'Locked')) {
+    throw ApiError.unprocessable('Payroll has locked this attendance, so it cannot be reverted.');
+  }
+  for (const r of found) {
+    await tombstoneIn(tx, 'work_attendance', r.id, reason, batch.id);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1149,7 +1976,7 @@ async function commitCourseRow(data: Record<string, unknown>) {
   if (!code || !name) return null;
 
   const existing = await prisma.course.findFirst({ where: { tenantId: auth.tenantId, code } });
-  if (existing) return { entityType: 'course', entityId: existing.id };
+  if (existing) return { entityType: 'course', entityId: existing.id, matched: true };
 
   const course = await prisma.course.create({
     data: {
@@ -1176,7 +2003,7 @@ async function commitBatchRow(data: Record<string, unknown>) {
   }
 
   const existing = await prisma.cohort.findFirst({ where: { tenantId: auth.tenantId, name } });
-  if (existing) return { entityType: 'cohort', entityId: existing.id };
+  if (existing) return { entityType: 'cohort', entityId: existing.id, matched: true };
 
   let institutionId: string | null = null;
   const collegeName = text(data.institutionName);
@@ -1217,17 +2044,17 @@ async function commitBatchRow(data: Record<string, unknown>) {
  */
 async function organizationFor(name: string, kind: 'institution' | 'organization') {
   const existing = await organizationByName(name);
-  if (existing) return existing;
+  if (existing) return { org: existing, matched: true };
   const { createOrganization } = await import('../domains/organizations.js');
   const created = await createOrganization({ name, kind });
-  return { ...created, institutionProfile: null as { id: string } | null };
+  return { org: { ...created, institutionProfile: null as { id: string } | null }, matched: false };
 }
 
 async function commitCollegeRow(data: Record<string, unknown>) {
   const name = text(data.name);
   if (!name) return null;
 
-  const org = await organizationFor(name, 'institution');
+  const { org, matched } = await organizationFor(name, 'institution');
   const { attachInstitutionProfile, attachAccount } = await import('../domains/organizations.js');
 
   if (!org.institutionProfile) {
@@ -1252,14 +2079,14 @@ async function commitCollegeRow(data: Record<string, unknown>) {
     if (!account) await attachAccount(org.id, {});
   }
 
-  return { entityType: 'organization', entityId: org.id };
+  return { entityType: 'organization', entityId: org.id, matched };
 }
 
 async function commitClientRow(data: Record<string, unknown>) {
   const name = text(data.name);
   if (!name) return null;
 
-  const org = await organizationFor(name, 'organization');
+  const { org, matched } = await organizationFor(name, 'organization');
   const { attachAccount } = await import('../domains/organizations.js');
 
   const account = await prisma.account.findFirst({ where: { organizationId: org.id } });
@@ -1276,7 +2103,7 @@ async function commitClientRow(data: Record<string, unknown>) {
     await prisma.organization.update({ where: { id: org.id }, data: { website: text(data.website) } });
   }
 
-  return { entityType: 'organization', entityId: org.id };
+  return { entityType: 'organization', entityId: org.id, matched };
 }
 
 async function commitStudentRow(data: Record<string, unknown>) {
@@ -1304,8 +2131,8 @@ async function commitStudentRow(data: Record<string, unknown>) {
   // typed one are the same act: the same college check, the same guardian rule,
   // the same student affiliation, the same refusal to enrol somebody twice.
   const ageBasis = learnerAgeBasis(data);
-  const { enrolStudent } = await import('../domains/education.js');
-  const enrollment = await enrolStudent({
+  const { enrolStudentRecorded } = await import('../domains/education.js');
+  const recorded = await enrolStudentRecorded({
     cohortId: cohort.id,
     fullName: text(data.fullName) ?? undefined,
     primaryPhone: text(data.primaryPhone),
@@ -1316,7 +2143,12 @@ async function commitStudentRow(data: Record<string, unknown>) {
     guardianName: text(data.guardianName),
     guardianPhone: text(data.guardianPhone),
   });
-  return { entityType: 'enrollment', entityId: enrollment.id };
+  const enrollment = recorded.enrollment;
+  return {
+    entityType: 'enrollment',
+    entityId: enrollment.id,
+    created: [...recorded.created, { entityType: 'enrollment', entityId: enrollment.id }],
+  };
 }
 
 /**
@@ -1440,8 +2272,8 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
   // Through the same function the form calls, so an imported student and a typed
   // one are the same act: the same phone-and-email matching, the same refusal to
   // enrol somebody twice, the same student affiliation.
-  const { enrolStudent } = await import('../domains/education.js');
-  const enrollment = await enrolStudent({
+  const { enrolStudentRecorded } = await import('../domains/education.js');
+  const recorded = await enrolStudentRecorded({
     cohortId: cohort.id,
     fullName,
     primaryPhone: text(data.primaryPhone),
@@ -1451,6 +2283,8 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
     guardianName: text(data.guardianName),
     guardianPhone: text(data.guardianPhone),
   });
+  const enrollment = recorded.enrollment;
+  const created: CreatedRecord[] = [...recorded.created];
 
   // The register's own identifiers and dates, which the enrolment is the right
   // place for: they are facts about this student's run of the course, not about
@@ -1485,14 +2319,34 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
     // row failing.
     const numberFree =
       !registrationNumber || !(await prisma.studentProfile.findFirst({ where: { registrationNumber } }));
-    await prisma.studentProfile.create({
-      data: {
-        tenantId: auth.tenantId,
-        personId: enrollment.personId,
-        registrationNumber: numberFree ? registrationNumber : null,
-        status: 'active',
-      },
+    // Written as the student route writes one: the profile, its audit row, and
+    // the person-created event that route emits for the learner it makes.
+    const profile = await governedWrite(async (tx) => {
+      const made = await tx.studentProfile.create({
+        data: {
+          tenantId: auth.tenantId,
+          personId: enrollment.personId,
+          registrationNumber: numberFree ? registrationNumber : null,
+          status: 'active',
+        },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'student_profile',
+        subjectId: made.id,
+        after: { registrationNumber: made.registrationNumber, status: made.status },
+        tx,
+      });
+      await emit({
+        name: EVENTS.PERSON_CREATED,
+        subject: { entityType: 'person', entityId: enrollment.personId },
+        related: [{ relation: 'specialises', entityType: 'student_profile', entityId: made.id }],
+        newState: { student: true, status: made.status },
+        tx,
+      });
+      return made;
     });
+    created.push({ entityType: 'studentProfile', entityId: profile.id });
   } else if (registrationNumber && !existingStudent.registrationNumber) {
     const taken = await prisma.studentProfile.findFirst({ where: { registrationNumber } });
     if (!taken) {
@@ -1503,7 +2357,11 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
     }
   }
 
-  return { entityType: 'enrollment', entityId: enrollment.id };
+  return {
+    entityType: 'enrollment',
+    entityId: enrollment.id,
+    created: [...created, { entityType: 'enrollment', entityId: enrollment.id }],
+  };
 }
 
 /** "C.C++ & Java" and "C C++ and Java" are the same course. */
@@ -1558,6 +2416,9 @@ async function commitContactRow(data: Record<string, unknown>) {
         })
       : null;
 
+  // What this row makes for its revert: a new person, and the affiliation it
+  // writes to an organisation. A matched person is not listed as made.
+  const created: CreatedRecord[] = [];
   const person =
     existing ??
     (await prisma.person.create({
@@ -1570,6 +2431,7 @@ async function commitContactRow(data: Record<string, unknown>) {
         source: 'import',
       },
     }));
+  if (!existing) created.push({ entityType: 'person', entityId: person.id });
 
   const orgName = text(data.organizationName);
   if (orgName) {
@@ -1588,16 +2450,17 @@ async function commitContactRow(data: Record<string, unknown>) {
     });
     if (!held) {
       const { createAffiliation } = await import('../domains/identity.js');
-      await createAffiliation({
+      const madeAffiliation = await createAffiliation({
         partyId: person.id,
         affiliationType,
         counterpartyId: org.id,
         counterpartyName: org.name,
       });
+      created.push({ entityType: 'affiliation', entityId: madeAffiliation.id });
     }
   }
 
-  return { entityType: 'person', entityId: person.id };
+  return { entityType: 'person', entityId: person.id, matched: existing !== null, created };
 }
 
 // ---------------------------------------------------------------------------
@@ -1701,7 +2564,7 @@ async function commitLedgerAccountTemplateRow(data: Record<string, unknown>) {
   if (!name) return null;
 
   const existing = await prisma.ledgerAccount.findFirst({ where: { tenantId: auth.tenantId, name } });
-  if (existing) return { entityType: 'ledgerAccount', entityId: existing.id };
+  if (existing) return { entityType: 'ledgerAccount', entityId: existing.id, matched: true };
 
   const { createAccount } = await import('../domains/books.js');
   const account = await createAccount({
@@ -1720,7 +2583,7 @@ async function commitLedgerCategoryTemplateRow(data: Record<string, unknown>) {
   if (!name) return null;
 
   const existing = await prisma.ledgerCategory.findFirst({ where: { tenantId: auth.tenantId, name } });
-  if (existing) return { entityType: 'ledgerCategory', entityId: existing.id };
+  if (existing) return { entityType: 'ledgerCategory', entityId: existing.id, matched: true };
 
   let parentId: string | null = null;
   const parentName = text(data.parentName);
@@ -1752,7 +2615,7 @@ async function commitVendorBillTemplateRow(data: Record<string, unknown>) {
   if (!vendorName || !billNumber) return null;
 
   const existing = await prisma.vendorBill.findFirst({ where: { tenantId: auth.tenantId, vendorName, billNumber } });
-  if (existing) return { entityType: 'vendorBill', entityId: existing.id };
+  if (existing) return { entityType: 'vendorBill', entityId: existing.id, matched: true };
 
   let categoryId: string | null = null;
   const categoryName = text(data.categoryName);
@@ -1900,6 +2763,9 @@ async function commitOpeningRegisterRow(data: Record<string, unknown>) {
       tenantId: auth.tenantId,
       shareClassId: shareClass.id,
       status: 'effective',
+      // A reversal carries its original's range and nets it to nothing, so it
+      // does not hold the range; a reversed original is not 'effective' at all.
+      reversalOfId: null,
       distinctiveFrom: { not: null, lte: distinctiveTo },
       distinctiveTo: { not: null, gte: distinctiveFrom },
     },

@@ -4616,7 +4616,15 @@ model CompensationRecord {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Set when an import revert voids this row (FX-71a). A voided row keeps its
+  /// figures and is left out by every reader; it is never deleted.
+  voidedAt    DateTime?
+  voidedById  String?
+  voidReason  String?
+  voidBatchId String?
+
   @@index([tenantId, employmentRelationshipId, status])
+  @@index([tenantId, voidBatchId])
   @@map("compensation_records")
 }
 
@@ -4740,8 +4748,16 @@ model WorkAttendance {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Set when an import revert voids this day (FX-71a). A voided row keeps its
+  /// figures and is left out by every reader; it is never deleted.
+  voidedAt    DateTime?
+  voidedById  String?
+  voidReason  String?
+  voidBatchId String?
+
   @@unique([employmentRelationshipId, workDate])
   @@index([tenantId, workDate])
+  @@index([tenantId, voidBatchId])
   @@map("work_attendances")
 }
 
@@ -5457,13 +5473,24 @@ model ImportRow {
   /// What it became. Null until mapping runs.
   normalised Json?
 
-  /// pending | ready | duplicate | error | committed | skipped
+  /// pending | ready | duplicate | error | committed | skipped | matched | reverted | kept
+  /// `matched`: the row reused a record another entry made (its entityId names
+  /// that record), so this batch's revert leaves it. `reverted` and `kept`: see
+  /// imports/commit.ts revertImport.
   status  String  @default("pending")
   message String?
 
   /// What it turned into, once committed.
   entityType String?
   entityId   String?
+
+  /// Every record this row created, as `[{ entityType, entityId }]`, including
+  /// the children written for a matched person (employment, affiliation) and the
+  /// attendance days it actually wrote. A revert undoes exactly this list, and a
+  /// matched row's list is what its revert reverses while the matched record
+  /// stays. Null on rows committed before this column existed: a revert takes
+  /// those by `entityType`, as it always did (FX-71a).
+  created Json?
 
   /// Stable identity for this line, so re-importing an overlapping statement
   /// recognises what it has already seen.

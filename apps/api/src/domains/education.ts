@@ -32,7 +32,18 @@ type PersonRow = NonNullable<Awaited<ReturnType<typeof prisma.person.findFirst>>
 export const ENROLLMENT_STATUSES = ['reserved', 'confirmed', 'active', 'completed', 'withdrawn', 'deferred'] as const;
 export type EnrollmentStatus = (typeof ENROLLMENT_STATUSES)[number];
 
+/** The enrolment, as the enrolment route returns it. */
 export async function enrolStudent(input: unknown) {
+  return (await enrolStudentRecorded(input)).enrollment;
+}
+
+/**
+ * The same enrolment, with what it made: the person, only when this call created
+ * them, and the student affiliation, only when it wrote one. An import revert
+ * undoes exactly that list (imports/commit.ts ImportRow.created), so a learner
+ * already on file is never listed as made.
+ */
+export async function enrolStudentRecorded(input: unknown) {
   await assertCan({ resource: 'education', verb: 'create' });
   const auth = currentAuth();
 
@@ -175,6 +186,7 @@ export async function enrolStudent(input: unknown) {
   // there is a person to attach it to.
   const minor = assertMinorHasGuardian({ dateOfBirth, adultAttested, guardianName, guardianPhone });
 
+  const created: Array<{ entityType: string; entityId: string }> = [];
   let person: PersonRow;
   if (existing) {
     person = existing;
@@ -206,6 +218,7 @@ export async function enrolStudent(input: unknown) {
       subjectId: person.id,
       after: { source: 'enrollment', recordCode: person.recordCode },
     });
+    created.push({ entityType: 'person', entityId: person.id });
   }
 
   // The consent a minor's enrolment rests on. Written only after every refusal
@@ -260,12 +273,13 @@ export async function enrolStudent(input: unknown) {
     where: { tenantId: auth.tenantId, partyId: person.id, affiliationType: 'student', status: 'active' },
   });
   if (!alreadyAStudent) {
-    await createAffiliation({
+    const madeAffiliation = await createAffiliation({
       partyId: person.id,
       affiliationType: 'student',
       counterpartyId: body.institutionId ?? null,
       counterpartyName: collegeName,
     });
+    created.push({ entityType: 'affiliation', entityId: madeAffiliation.id });
   }
 
   await emit({
@@ -288,10 +302,13 @@ export async function enrolStudent(input: unknown) {
   // Handed back in the clear to the caller who supplied them; what is stored
   // is the ciphertext.
   return {
-    ...enrollment,
-    guardianName: readRegulated(enrollment.guardianName),
-    guardianPhone: readRegulated(enrollment.guardianPhone),
-    guardianEmail: readRegulated(enrollment.guardianEmail),
+    enrollment: {
+      ...enrollment,
+      guardianName: readRegulated(enrollment.guardianName),
+      guardianPhone: readRegulated(enrollment.guardianPhone),
+      guardianEmail: readRegulated(enrollment.guardianEmail),
+    },
+    created,
   };
 }
 

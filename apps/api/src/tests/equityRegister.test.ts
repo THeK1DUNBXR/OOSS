@@ -541,7 +541,9 @@ describe('EQT-REG-010 — the opening-register template imports holders, classes
       txnAfter: await scopedPrisma.shareTransaction.findFirst({ where: { id: txn!.id } }),
       certAfter: await scopedPrisma.shareCertificate.findFirst({ where: { id: cert!.id } }),
     }));
-    expect(txnAfter).toBeNull();
-    expect(certAfter).toBeNull();
+    // FX-71a: the revert reverses the allotment and cancels its certificate;
+    // neither row is deleted, so the register keeps the history.
+    expect(txnAfter?.status).toBe('reversed');
+    expect(certAfter?.status).toBe('cancelled');
   });
 });
