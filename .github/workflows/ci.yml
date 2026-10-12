@@ -58,6 +58,21 @@ jobs:
       # here rather than in the database job below.
       - run: pnpm gates:fail-first:test
 
+  # The web suite (vitest + jsdom, with the axe checks in a11y.test.tsx) needs no
+  # database and no Prisma client. It was only ever run by hand, so an axe
+  # violation could merge green.
+  web-tests:
+    name: web tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kaizen/shared build
+      - run: pnpm test:web
+
   test:
     name: api tests
     runs-on: ubuntu-latest
@@ -253,6 +268,29 @@ jobs:
           DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen?schema=public
       - run: pnpm --filter @kaizen/e2e exec playwright install --with-deps chromium
       - run: pnpm test:e2e
+      # G12. Lighthouse scores the built client, served by the built API on one
+      # origin, after Playwright has stopped its dev servers. A page below the
+      # threshold fails the job; the threshold is not lowered to pass a page.
+      - name: Build the client and the API for Lighthouse
+        run: pnpm --filter @kaizen/web build && pnpm --filter @kaizen/api build
+      - name: Serve the built app and run Lighthouse accessibility
+        env:
+          WEB_DIST_DIR: ${{ github.workspace }}/apps/web/dist
+          E2E_BASE_URL: http://127.0.0.1:4000
+          LH_REPORT_DIR: lighthouse-reports
+        run: |
+          node apps/api/dist/server.js > api-lighthouse.log 2>&1 &
+          curl -sf --retry 60 --retry-connrefused --retry-delay 1 http://127.0.0.1:4000/health > /dev/null
+          pnpm --filter @kaizen/e2e lighthouse
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: lighthouse-reports
+          path: |
+            e2e/lighthouse-reports/
+            api-lighthouse.log
+          if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

@@ -16,6 +16,7 @@
     "grants:reconcile": "pnpm --filter @kaizen/api grants:reconcile",
     "db:reset": "pnpm --filter @kaizen/api db:reset",
     "test": "pnpm --filter @kaizen/api test",
+    "test:web": "pnpm --filter @kaizen/web test",
     "test:e2e": "pnpm --filter @kaizen/e2e test",
     "typecheck": "pnpm --filter @kaizen/shared build && pnpm --filter @kaizen/semantic build && pnpm -r typecheck",
     "lint": "eslint . && node scripts/check-tailwind-tokens.mjs --check",

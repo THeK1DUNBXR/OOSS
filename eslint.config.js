@@ -58,7 +58,14 @@ export default tseslint.config(
   // Node contexts
   // ---------------------------------------------------------------------
   {
-    files: ['apps/api/**/*.ts', 'packages/**/*.ts', 'scripts/**/*.mjs', 'worker/**/*.ts', 'e2e/**/*.ts'],
+    files: [
+      'apps/api/**/*.ts',
+      'packages/**/*.ts',
+      'scripts/**/*.mjs',
+      'worker/**/*.ts',
+      'e2e/**/*.ts',
+      'e2e/**/*.mjs',
+    ],
     languageOptions: {
       globals: { process: 'readonly', console: 'readonly', Buffer: 'readonly', __dirname: 'readonly' },
     },

@@ -8,7 +8,7 @@
  * before it is written anywhere.
  */
 
-import pino, { type DestinationStream, type Logger } from 'pino';
+import pino, { type Bindings, type ChildLoggerOptions, type DestinationStream, type Logger } from 'pino';
 import { config } from './config.js';
 
 export const SAFE_FIELDS: ReadonlySet<string> = new Set([
@@ -44,6 +44,27 @@ export function allowlistFields(obj: Record<string, unknown>): Record<string, un
   return kept;
 }
 
+/**
+ * An error keeps its type, message, stack and a string code, and nothing else.
+ * pino's own serializer copies every enumerable property of the error onto the
+ * output, and `err` is on the allowlist as a whole, so a property an error was
+ * built with would reach the log past the field filter. An error built from a
+ * record (`Object.assign(new Error(), { guardianPhone })`) is the case this closes.
+ * The message is not scanned: a driver message that quotes a value is still a
+ * value in the log, and no field-name rule can see it.
+ */
+export function serialiseError(err: unknown): unknown {
+  if (typeof err !== 'object' || err === null) return err;
+  const e = err as { name?: unknown; message?: unknown; stack?: unknown; code?: unknown };
+  if (typeof e.message !== 'string') return { type: 'NonError' };
+  return {
+    type: typeof e.name === 'string' ? e.name : 'Error',
+    message: e.message,
+    stack: typeof e.stack === 'string' ? e.stack : undefined,
+    ...(typeof e.code === 'string' ? { code: e.code } : {}),
+  };
+}
+
 export interface LoggerOptions {
   destination?: DestinationStream;
   level?: string;
@@ -57,10 +78,18 @@ export function createLogger({ destination, level = 'info' }: LoggerOptions = {}
       log: allowlistFields,
     },
     serializers: {
-      err: pino.stdSerializers.err,
+      err: serialiseError,
     },
   };
-  return destination ? pino(options, destination) : pino(options);
+  const root = destination ? pino(options, destination) : pino(options);
+  // pino 10 writes a child's bindings outside `formatters.log`, and runs
+  // `formatters.bindings` on the base only. Without this a logger.child({ pan })
+  // would put the value on every line of the child. Nested children inherit the
+  // wrapped method from their parent.
+  const rawChild = root.child.bind(root);
+  root.child = (<C extends string = never>(bindings: Bindings, opts?: ChildLoggerOptions<C>) =>
+    rawChild(allowlistFields(bindings), opts)) as Logger['child'];
+  return root;
 }
 
 // Silent under test so the suite's output stays readable; the hardening tests
