@@ -42,6 +42,12 @@ jobs:
       - run: pnpm --filter @kaizen/api db:validate
       - run: pnpm typecheck
       - run: pnpm lint
+      # Refuses mock calls in the API suite, unregistered or forced governed
+      # writes, and new money or UTC-period sites; the baselines only shrink.
+      - run: pnpm gates
+      # The scans have their own tests, so a scan that stops catching what it
+      # claims fails here instead of passing silently.
+      - run: pnpm gates:test
       # Formatting is enforced from Wave 1 on. The one reformat commit is in
       # .git-blame-ignore-revs so blame still points at real changes.
       - run: pnpm format:check
