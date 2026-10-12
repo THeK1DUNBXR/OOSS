@@ -62,12 +62,16 @@ describe('(b) an error carrying a regulated field, logged and answered over HTTP
 
   beforeAll(() => {
     const probes = FIELDS.map((field) => ({ field, sentinel: sentinelOf(field) }));
-    const child = spawnSync(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('./logRedaction.child.ts', import.meta.url))], {
-      cwd: fileURLToPath(new URL('../..', import.meta.url)),
-      env: { ...process.env, NODE_ENV: 'development', LOG_REDACTION_PROBES: JSON.stringify(probes) },
-      encoding: 'utf8',
-      timeout: 120_000,
-    });
+    const child = spawnSync(
+      process.execPath,
+      ['--import', 'tsx', fileURLToPath(new URL('./logRedaction.child.ts', import.meta.url))],
+      {
+        cwd: fileURLToPath(new URL('../..', import.meta.url)),
+        env: { ...process.env, NODE_ENV: 'development', LOG_REDACTION_PROBES: JSON.stringify(probes) },
+        encoding: 'utf8',
+        timeout: 120_000,
+      },
+    );
     status = child.status;
     output = `${child.stdout}\n${child.stderr}`;
   });

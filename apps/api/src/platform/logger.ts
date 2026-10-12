@@ -87,7 +87,7 @@ export function createLogger({ destination, level = 'info' }: LoggerOptions = {}
   // would put the value on every line of the child. Nested children inherit the
   // wrapped method from their parent.
   const rawChild = root.child.bind(root);
-  root.child = ((bindings: Bindings, opts?: ChildLoggerOptions) =>
+  root.child = (<C extends string = never>(bindings: Bindings, opts?: ChildLoggerOptions<C>) =>
     rawChild(allowlistFields(bindings), opts)) as Logger['child'];
   return root;
 }
