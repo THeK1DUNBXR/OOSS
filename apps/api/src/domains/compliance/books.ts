@@ -125,20 +125,22 @@ async function ensurePeriod(period: string): Promise<{ id: string; status: strin
     const created = await tx.accountingPeriod.findFirstOrThrow({ where: { tenantId: auth.tenantId, period } });
     if (made.count === 0) return created;
     // Opening a period is itself a books write: it is the row a close is later
-    // requested against, so its creation is a fact the chain should carry.
+    // requested against, so its creation is a fact the chain should carry. The audit
+    // row goes first, as every governed write does (CLAUDE.md rule 5), so the event
+    // is never recorded for a change the audit log does not hold.
+    await auditWrite({
+      action: 'create',
+      subjectType: 'accounting_period',
+      subjectId: created.id,
+      after: { period, status: 'open' },
+      tx,
+    });
     await emit({
       name: EVENTS.ACCOUNTING_PERIOD_OPENED,
       subject: { entityType: 'accounting_period', entityId: created.id },
       newState: { period, status: 'open' },
       impact: { domains: ['fin'] },
       confidentiality: 'confidential',
-      tx,
-    });
-    await auditWrite({
-      action: 'create',
-      subjectType: 'accounting_period',
-      subjectId: created.id,
-      after: { period, status: 'open' },
       tx,
     });
     return created;

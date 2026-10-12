@@ -4,7 +4,7 @@
  * calls `getAdapter(channelKey)` and never constructs an adapter itself.
  *
  * Selection env vars:
- *   MARKETING_EMAIL_ADAPTER     = 'http' | 'console'   (default: not configured)
+ *   MARKETING_EMAIL_ADAPTER     = 'http' | 'console' | 'fake'   (default: not configured)
  *   MARKETING_SMS_ADAPTER       = 'msg91' | 'console'  (default: not configured)
  *   MARKETING_WHATSAPP_ADAPTER  = 'cloud' | 'console'  (default: not configured)
  * Every other channel key (social/ads/etc.) currently has no provider
@@ -19,6 +19,7 @@
 import type { ChannelAdapter, ChannelKey, ChannelKind } from './types.js';
 import { NotConfiguredAdapter } from './notConfigured.js';
 import { ConsoleAdapter } from './console.js';
+import { FakeEmailAdapter } from './fake.js';
 import { HttpEmailAdapter } from './httpEmail.js';
 import { Msg91Adapter } from './msg91.js';
 import { WhatsAppCloudAdapter } from './whatsappCloud.js';
@@ -51,6 +52,7 @@ function buildAdapter(channelKey: ChannelKey): ChannelAdapter {
     const selection = process.env.MARKETING_EMAIL_ADAPTER;
     if (selection === 'http') return new HttpEmailAdapter();
     if (selection === 'console') return new ConsoleAdapter(channelKey, 'email');
+    if (selection === 'fake') return new FakeEmailAdapter(channelKey);
     return new NotConfiguredAdapter(channelKey, 'email');
   }
 

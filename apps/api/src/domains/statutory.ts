@@ -8,7 +8,12 @@ import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { emit } from '../platform/eventBus.js';
 import { governedWrite } from '../platform/governedWrite.js';
 
-registerGovernedEntities('cmp_statutory', ['statutory_rule', 'einvoice_submission', 'payroll_statutory_line']);
+registerGovernedEntities('cmp_statutory', [
+  'statutory_rule',
+  'einvoice_submission',
+  'payroll_statutory_line',
+  'duty_assignment',
+]);
 
 export interface StatutoryRuleInput {
   domain: string;
@@ -60,18 +65,164 @@ export async function createStatutoryRule(input: StatutoryRuleInput) {
 }
 
 /**
+ * The duty that approves a statutory rule. The owner has not named the key (round 27,
+ * "what was not done"), and onboarding may rename it. It is spelled here once, so a
+ * rename moves every holder check with it.
+ */
+export const STATUTORY_APPROVER_DUTY = 'statutory.approver';
+
+const DUTY_KEY = /^[a-z][a-z0-9_.]{2,63}$/;
+
+function isExclusionViolation(err: unknown): boolean {
+  return /23P01|exclusion/i.test(String((err as Error)?.message ?? err));
+}
+
+/**
+ * The holder of a duty at an instant, in the tenant of the request. The tenant is read
+ * from the context, never from an argument, so a caller cannot ask about another
+ * tenant's holder by naming it.
+ *
+ * Instants, not IST dates: a holder changes hands at a moment, and the approval that
+ * happens in that moment must see the holder then.
+ */
+export async function resolveDutyHolder(dutyKey: string, at: Date = new Date()) {
+  const auth = currentAuth();
+  return prisma.dutyAssignment.findFirst({
+    where: {
+      tenantId: auth.tenantId,
+      dutyKey,
+      effectiveFrom: { lte: at },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }],
+    },
+    orderBy: { effectiveFrom: 'desc' },
+  });
+}
+
+export interface DutyAssignmentInput {
+  dutyKey: string;
+  partyId: string;
+  effectiveFrom?: Date;
+}
+
+/**
+ * Names a person as the holder of a duty from an instant. Refused with 409 if another
+ * holder already covers any part of that period: the database has the last word, and
+ * handing a duty over is an end followed by an assign, not an overlap.
+ *
+ * Granting a duty is granting authority, so it is governed by the verb that governs
+ * granting access today (access_assignments approve, as sod.ts uses for overrides).
+ */
+export async function assignDuty(input: DutyAssignmentInput) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'access_assignments', verb: 'approve' });
+  if (!DUTY_KEY.test(input.dutyKey)) {
+    throw ApiError.badRequest('A duty key is lower-case letters, digits, dots or underscores, starting with a letter.');
+  }
+  const assignedBy = auth.partyId;
+  if (!assignedBy) throw ApiError.forbidden('Only a person can assign a duty.');
+  // Granting yourself a duty is not a check. The person who grants the authority and the
+  // person who exercises it would be one, which is the maker-checker failure the statutory
+  // approver duty exists to prevent. Refused for every duty, because the reasoning holds for
+  // any duty that approves or releases something.
+  if (input.partyId === assignedBy) {
+    throw new ApiError(403, 'FORBIDDEN', 'A person cannot name themselves to a duty they would then exercise.', {
+      reasonCode: 'duty_self_assignment',
+    });
+  }
+  const person = await prisma.person.findFirst({ where: { id: input.partyId } });
+  if (!person) throw ApiError.notFound('Person');
+  const effectiveFrom = input.effectiveFrom ?? new Date();
+  try {
+    return await governedWrite(async (tx) => {
+      const row = await tx.dutyAssignment.create({
+        data: { tenantId: auth.tenantId, dutyKey: input.dutyKey, partyId: input.partyId, effectiveFrom, assignedBy },
+      });
+      await auditWrite({ action: 'create', subjectType: 'duty_assignment', subjectId: row.id, after: row, tx });
+      await emit({
+        name: EVENTS.DUTY_ASSIGNED,
+        subject: { entityType: 'duty_assignment', entityId: row.id },
+        newState: { dutyKey: row.dutyKey, partyId: row.partyId, effectiveFrom: row.effectiveFrom.toISOString() },
+        impact: { domains: ['cmp'] },
+        tx,
+      });
+      return row;
+    });
+  } catch (err) {
+    if (isExclusionViolation(err)) {
+      throw ApiError.conflict(`${input.dutyKey} already has a holder over that period. End the current holder first.`);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Who holds a duty now, for a caller who may see access assignments. The holder is
+ * the approver of statutory rules, so reading it is access-governed like any other
+ * access record. resolveDutyHolder stays unchecked, because approval calls it.
+ */
+export async function getDutyHolder(dutyKey: string, at: Date = new Date()) {
+  await assertCan({ resource: 'access_assignments', verb: 'view' });
+  return resolveDutyHolder(dutyKey, at);
+}
+
+/**
+ * Ends the current holder of a duty, from now. The row is kept as history. A holder
+ * whose start has not yet arrived cannot be ended (the end would precede the start):
+ * there is no delete, so such a row stands until its start passes and is then ended.
+ */
+export async function endDuty(id: string) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'access_assignments', verb: 'approve' });
+  const endedBy = auth.partyId;
+  if (!endedBy) throw ApiError.forbidden('Only a person can end a duty.');
+  const row = await prisma.dutyAssignment.findFirst({ where: { id } });
+  if (!row) throw ApiError.notFound('Duty assignment');
+  if (row.effectiveTo) throw ApiError.conflict('This duty assignment has already ended.');
+  const at = new Date();
+  if (at <= row.effectiveFrom) {
+    throw ApiError.unprocessable('This assignment has not started yet, so it cannot be ended before it begins.', {
+      reasonCode: 'duty_not_yet_started',
+    });
+  }
+  return governedWrite(async (tx) => {
+    const next = await tx.dutyAssignment.update({ where: { id }, data: { effectiveTo: at, endedBy } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'duty_assignment',
+      subjectId: id,
+      before: { effectiveTo: null },
+      after: { effectiveTo: at, endedBy },
+      tx,
+    });
+    await emit({
+      name: EVENTS.DUTY_ENDED,
+      subject: { entityType: 'duty_assignment', entityId: id },
+      previousState: { dutyKey: row.dutyKey, partyId: row.partyId },
+      newState: { dutyKey: row.dutyKey, partyId: row.partyId, effectiveTo: at.toISOString() },
+      impact: { domains: ['cmp'] },
+      tx,
+    });
+    return next;
+  });
+}
+
+/**
  * Thrown instead of falling back to a constant. A missing statutory parameter
  * is a stop, because a silent default is a wrong payslip that surfaces later as
  * a notice.
  */
-export class StatutoryRuleNotFoundError extends Error {
-  readonly code = 'STATUTORY_RULE_NOT_FOUND';
+export class StatutoryRuleNotFoundError extends ApiError {
   constructor(
     readonly key: string,
     readonly jurisdiction: string,
     readonly onDate: string,
   ) {
-    super(`No approved statutory rule for ${key} in ${jurisdiction} effective on ${onDate} (IST).`);
+    super(
+      422,
+      'UNPROCESSABLE',
+      `No APPROVED statutory rule for ${key} in ${jurisdiction} covers ${onDate} (IST). Statutory features are awaiting the accountant's setup.`,
+      { reasonCode: 'statutory_rule_not_approved', key, jurisdiction, onDate },
+    );
     this.name = 'StatutoryRuleNotFoundError';
   }
 }
@@ -107,13 +258,47 @@ export async function ruleAt(domain: string, key: string, jurisdiction: string, 
   return row;
 }
 
+const UNVERIFIED = 'UNVERIFIED:';
+
 /**
- * Makes a DRAFT or HELD rule resolvable. Three things happen, and their order
+ * The source an approved rule carries. An UNVERIFIED rule needs a replacement citation
+ * that is not itself UNVERIFIED. A verified rule takes none.
+ */
+function approvalSource(current: string, replacement: string | undefined): string {
+  if (!current.startsWith(UNVERIFIED)) {
+    if (replacement !== undefined) {
+      throw ApiError.unprocessable('A replacement source is accepted only for a rule whose source is UNVERIFIED.', {
+        reasonCode: 'source_replacement_not_needed',
+      });
+    }
+    return current;
+  }
+  const next = replacement?.trim() ?? '';
+  if (!next) {
+    throw ApiError.unprocessable(
+      "This rule's source is UNVERIFIED. Supply the citation it should carry before it is approved.",
+      { reasonCode: 'source_unverified' },
+    );
+  }
+  if (next.startsWith(UNVERIFIED)) {
+    throw ApiError.unprocessable('A replacement source cannot itself be UNVERIFIED.', {
+      reasonCode: 'source_unverified',
+    });
+  }
+  return next;
+}
+
+/**
+ * Makes a DRAFT or HELD rule resolvable. Four things are checked, and their order
  * is the control:
  *
  * - The approver must not be the author. One person typing a rate and
  *   accepting it is not a check. A row with no recorded author cannot be shown
  *   to pass it, so it is refused too.
+ * - The approver must hold the statutory approver duty at this instant. A tenant
+ *   with no holder approves nothing (422, awaiting setup); a holder who is not the
+ *   caller is refused (403). The holder is resolved, never named in code.
+ * - A row whose citation is UNVERIFIED takes a verified replacement, or stays DRAFT.
  * - An open-ended APPROVED rule for the same series ends the day this one
  *   begins. That makes "next year's rate" a switch rather than an overlap.
  *   It is the only automatic change to another row, and it happens only when
@@ -122,7 +307,7 @@ export async function ruleAt(domain: string, key: string, jurisdiction: string, 
  * - The exclusion constraint has the last word. A rule that overlaps an
  *   APPROVED one is refused by the database, and that surfaces as a conflict.
  */
-export async function approveStatutoryRule(id: string) {
+export async function approveStatutoryRule(id: string, opts: { source?: string } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'rate_tables', verb: 'approve' });
 
@@ -136,7 +321,29 @@ export async function approveStatutoryRule(id: string) {
   }
   if (row.createdBy === auth.partyId) throw ApiError.forbidden('The author of a statutory rule cannot approve it.');
 
+  // The approver is whoever holds the statutory approver duty at this instant (round 27 c).
+  // No holder means no approver exists yet, so nothing becomes APPROVED: the refusal says
+  // so, and names the setup rather than a person. A holder who is not the caller is a 403.
   const approvedAt = new Date();
+  const holder = await resolveDutyHolder(STATUTORY_APPROVER_DUTY, approvedAt);
+  if (!holder) {
+    throw new ApiError(
+      422,
+      'UNPROCESSABLE',
+      "No one holds the statutory approver duty for this tenant, so this rule is awaiting the accountant's setup.",
+      { reasonCode: 'statutory_approver_not_set' },
+    );
+  }
+  const approverId = auth.partyId;
+  if (!approverId || holder.partyId !== approverId) {
+    throw new ApiError(403, 'FORBIDDEN', 'Only the current statutory approver can approve a statutory rule.', {
+      reasonCode: 'not_statutory_approver',
+    });
+  }
+  // A rule whose citation is UNVERIFIED (the seeds are, see seed/compliance/statutory.ts)
+  // is approved only with a verified citation supplied now, which is audited beside the
+  // old one. A verified rule takes no replacement: changing a citation is a new decision.
+  const source = approvalSource(row.source, opts.source);
   // One transaction for the whole approval: the rule, the supersession of the
   // rule it replaces, their audit rows and the event. A failure in any of them
   // must not leave an APPROVED rule with no record of who approved it.
@@ -170,14 +377,29 @@ export async function approveStatutoryRule(id: string) {
       }
       const next = await tx.statutoryRule.update({
         where: { id },
-        data: { status: 'APPROVED', approvedBy: auth.partyId, approvedAt },
+        data: { status: 'APPROVED', approvedBy: approverId, approvedAt, source },
       });
+      // The record names the approver as resolved (not as typed), the time, and the rule
+      // version: enough to show, years later, which rate a payslip was computed under.
+      // value is copied rather than hashed: a JSON hash depends on key order.
       await auditWrite({
         action: 'update',
         subjectType: 'statutory_rule',
         subjectId: id,
-        before: { status: row.status, approvedBy: row.approvedBy, approvedAt: row.approvedAt },
-        after: { status: 'APPROVED', approvedBy: auth.partyId, approvedAt },
+        before: { status: row.status, approvedBy: row.approvedBy, approvedAt: row.approvedAt, source: row.source },
+        after: { status: 'APPROVED', approvedBy: approverId, approvedAt, source },
+        meta: {
+          approver: { partyId: holder.partyId, dutyKey: holder.dutyKey, dutyAssignmentId: holder.id },
+          ruleVersion: {
+            id,
+            domain: row.domain,
+            key: row.key,
+            jurisdiction: row.jurisdiction,
+            effectiveFrom: row.effectiveFrom,
+            effectiveTo: row.effectiveTo,
+            value: row.value,
+          },
+        },
         tx,
       });
       await emit({
@@ -191,7 +413,7 @@ export async function approveStatutoryRule(id: string) {
       return next;
     });
   } catch (err) {
-    if (/23P01|exclusion/i.test(String((err as Error)?.message ?? err))) {
+    if (isExclusionViolation(err)) {
       throw ApiError.conflict('This rule overlaps an APPROVED rule for the same domain, key and jurisdiction.');
     }
     throw err;

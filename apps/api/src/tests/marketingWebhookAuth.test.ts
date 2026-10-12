@@ -76,7 +76,7 @@ async function ensureMarketingPurposeNotice() {
 /**
  * A marketing email already dispatched, so its recipient carries a
  * providerMessageId that a delivery webhook can name. Dispatch runs against the
- * console adapter; the webhook is parsed by the http adapter (the only email
+ * fake adapter; the webhook is parsed by the http adapter (the only email
  * adapter whose parseInboundWebhook reads a payload).
  */
 async function dispatchedRecipient(): Promise<{ personId: string; sendId: string; providerMessageId: string }> {
@@ -106,7 +106,7 @@ async function dispatchedRecipient(): Promise<{ personId: string; sendId: string
   await asUser(CREATOR, () => submitForReview(template.id));
   await asUser(APPROVER, () => approveTemplate(template.id));
 
-  process.env.MARKETING_EMAIL_ADAPTER = 'console';
+  process.env.MARKETING_EMAIL_ADAPTER = 'fake';
   resetAdapterCacheForTests();
   const send = await asUser(CREATOR, () =>
     createSend({ templateId: template.id, channelKey: 'email', personIds: [person.id] } as never),
