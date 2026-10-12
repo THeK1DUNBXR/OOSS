@@ -642,7 +642,7 @@ export async function pendingSurveysForMe() {
 export const HR_CASE_STATUSES = ['open', 'in_progress', 'waiting', 'resolved', 'closed'] as const;
 type HrCaseStatus = (typeof HR_CASE_STATUSES)[number];
 
-const HR_CASE_SLA_HOURS: Record<string, number> = {
+export const HR_CASE_SLA_HOURS: Record<string, number> = {
   urgent: 24,
   high: 48,
   normal: 96,
@@ -650,7 +650,8 @@ const HR_CASE_SLA_HOURS: Record<string, number> = {
 };
 
 export interface HrCaseInput {
-  category: 'payroll' | 'leave' | 'policy' | 'it' | 'grievance' | 'other';
+  /** access_mapping is opened by an access assignment answered by HR (PR12, access/assignments.ts). */
+  category: 'payroll' | 'leave' | 'policy' | 'it' | 'grievance' | 'other' | 'access_mapping';
   priority?: 'low' | 'normal' | 'high' | 'urgent';
   subject: string;
   body: string;

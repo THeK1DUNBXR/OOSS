@@ -963,6 +963,8 @@ export const EVENTS = {
   ACCESS_ASSIGNMENT_CONFIRMED: 'kz.gov.access_assignment.confirmed',
   ACCESS_ASSIGNMENT_EXPIRED: 'kz.gov.access_assignment.expired',
   ACCESS_ASSIGNMENT_COMPILED: 'kz.gov.access_assignment.compiled',
+  // A founder's recorded override of a blocked separation-of-duties pair (PR12; sod.ts).
+  ACCESS_SOD_OVERRIDE_RECORDED: 'kz.gov.access_sod_override.recorded',
 } as const;
 
 /**

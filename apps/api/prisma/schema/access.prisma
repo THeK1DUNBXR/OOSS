@@ -166,10 +166,17 @@ model AccessAssignment {
   /// that the overlap be recorded with a compensating reviewer, which is why it is logged.
   soleConfirmerReason String?
 
+  /// The HR case that records this mapping, when HR answered it (PR12; O9 A). Composite
+  /// FK to the case; null for a suggestion the founder or a Head made directly.
+  hrCaseId String?
+
   placements AccessPlacement[]
   duties     AccessDuty[]
   /// The Grant rows compiled from this assignment (PR11b). Written on confirm, removed on expiry.
   grants     Grant[]
+  /// Founder overrides of blocked separation-of-duties pairs on this assignment (PR12).
+  sodOverrides AccessSodOverride[]
+  hrCase     HrCase? @relation(fields: [tenantId, hrCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -224,4 +231,27 @@ model AccessDuty {
 
   @@unique([tenantId, assignmentId, dutyCode])
   @@map("access_duties")
+}
+
+/// A founder's recorded override of one blocked separation-of-duties pair on one
+/// assignment (PR12; ACCESS-MODEL-PLAN s.8: "founder override needs a logged reason,
+/// shown in the exceptions view"). A confirm passes that pair only; nothing is deleted.
+model AccessSodOverride {
+  id       String @id @default(cuid())
+  tenantId String
+
+  assignmentId String
+  /// A built-in pair code (packages/shared sod.ts). Tenant-added pairs come later.
+  pairCode     String
+  /// Non-empty (CHECK in the migration). Why the founder accepts the overlap.
+  reason       String
+  overriddenById String
+  overriddenAt   DateTime @default(now())
+  /// The exception raised for the overlap, so it shows in the founder view (O11).
+  exceptionId String?
+
+  assignment AccessAssignment @relation(fields: [tenantId, assignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([tenantId, assignmentId, pairCode])
+  @@map("access_sod_overrides")
 }
