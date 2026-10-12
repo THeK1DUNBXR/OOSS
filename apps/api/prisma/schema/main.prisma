@@ -5418,7 +5418,10 @@ model ImportRow {
   /// What it became. Null until mapping runs.
   normalised Json?
 
-  /// pending | ready | duplicate | error | committed | skipped
+  /// pending | ready | duplicate | error | committed | skipped | matched | reverted | kept
+  /// `matched`: the row reused a record another entry made (its entityId names
+  /// that record), so this batch's revert leaves it. `reverted` and `kept`: see
+  /// imports/commit.ts revertImport.
   status  String  @default("pending")
   message String?
 

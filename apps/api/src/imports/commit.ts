@@ -370,7 +370,7 @@ async function commitRowOutsideChunk(row: ImportRow, kind: string, options: Reco
     return;
   }
   try {
-    let outcome: { entityType: string; entityId: string } | null = null;
+    let outcome: { entityType: string; entityId: string; matched?: boolean } | null = null;
     switch (kind) {
       case 'chart_of_accounts':
         outcome = await commitAccountRow(data);
@@ -424,7 +424,20 @@ async function commitRowOutsideChunk(row: ImportRow, kind: string, options: Reco
         throw new Error(`No commit path for an import of kind "${kind}".`);
     }
 
-    if (outcome) {
+    if (outcome?.matched) {
+      // Not counted as created: the row names a record another entry made.
+      tally.skipped += 1;
+      await prisma.importRow.update({
+        where: { id: row.id },
+        data: {
+          status: 'matched',
+          entityType: outcome.entityType,
+          entityId: outcome.entityId,
+          message:
+            'Matched an existing record for this person and amount. This import did not create it, so a revert leaves it.',
+        },
+      });
+    } else if (outcome) {
       tally.created[outcome.entityType] = (tally.created[outcome.entityType] ?? 0) + 1;
       await prisma.importRow.update({
         where: { id: row.id },
@@ -888,8 +901,10 @@ async function commitSalaryRow(data: Record<string, unknown>) {
   const existing = await prisma.compensationRecord.findFirst({
     where: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, status: 'Effective', voidedAt: null },
   });
+  // Matched, not created: the record belongs to whichever entry made it, so this
+  // batch's revert must leave it (revertRowIn voids only rows still 'committed').
   if (existing && Number(existing.amount) === amount) {
-    return { entityType: 'compensationRecord', entityId: existing.id };
+    return { entityType: 'compensationRecord', entityId: existing.id, matched: true };
   }
 
   const record = await prisma.compensationRecord.create({
