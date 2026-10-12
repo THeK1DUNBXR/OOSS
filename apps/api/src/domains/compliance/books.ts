@@ -45,6 +45,7 @@ import { registerHook } from '../../platform/hooks.js';
 import { registerGovernedEntities } from '../../platform/audit.js';
 import { emit } from '../../platform/eventBus.js';
 import { raiseException } from '../../platform/exceptions.js';
+import { lockPeriodRows } from '../../platform/periodLock.js';
 
 export { verifyAuditChain };
 
@@ -93,31 +94,55 @@ async function ensurePeriod(period: string): Promise<{ id: string; status: strin
   const [year, month] = period.split('-').map(Number);
   const existing = await prisma.accountingPeriod.findFirst({ where: { tenantId: auth.tenantId, period } });
   if (existing) return existing;
-  // A legacy write into the same month can create the row between the read above and
-  // this insert (platform/periodLock.ts). A plain create would then fail on the unique
-  // key, so the insert skips a duplicate and the row is read back.
-  const made = await prisma.accountingPeriod.createMany({
-    data: [{ tenantId: auth.tenantId, period, fy: fyOf(new Date(Date.UTC(year, month - 1, 1))), status: 'open' }],
-    skipDuplicates: true,
+  // The creation runs under the tenant's period-row lock, taken before the first read in
+  // the transaction, so the later-closed check below is made under it. A close that
+  // commits between an unlocked check and the insert would otherwise leave an open row
+  // beneath it (platform/periodLock.ts lockPeriodRows). Lock order: the advisory lock,
+  // then the period rows, then the audit and event rows, which go in this transaction too.
+  return prisma.$transaction(async (tx) => {
+    await lockPeriodRows(tx, auth.tenantId);
+    const found = await tx.accountingPeriod.findFirst({ where: { tenantId: auth.tenantId, period } });
+    if (found) return found;
+    // The order rule, as holdPeriodRow applies it: a month with no row under a closed later
+    // month is closed, and a row made here would sit open beneath it. Refused, not made.
+    const [laterClosed] = await tx.accountingPeriod.findMany({
+      where: { tenantId: auth.tenantId, period: { gt: period }, status: 'closed' },
+      select: { period: true },
+      take: 1,
+    });
+    if (laterClosed) {
+      throw ApiError.unprocessable(
+        `${period} is a closed accounting period. A later month is closed and this month has no row, so it cannot be requested for close.`,
+        { period, status: 'closed', reasonCode: 'accounting_period_closed' },
+      );
+    }
+    // Under the lock no other creation can have committed since the read above. The unique
+    // key still guards the insert, so a duplicate is skipped and the row read back.
+    const made = await tx.accountingPeriod.createMany({
+      data: [{ tenantId: auth.tenantId, period, fy: fyOf(new Date(Date.UTC(year, month - 1, 1))), status: 'open' }],
+      skipDuplicates: true,
+    });
+    const created = await tx.accountingPeriod.findFirstOrThrow({ where: { tenantId: auth.tenantId, period } });
+    if (made.count === 0) return created;
+    // Opening a period is itself a books write: it is the row a close is later
+    // requested against, so its creation is a fact the chain should carry.
+    await emit({
+      name: EVENTS.ACCOUNTING_PERIOD_OPENED,
+      subject: { entityType: 'accounting_period', entityId: created.id },
+      newState: { period, status: 'open' },
+      impact: { domains: ['fin'] },
+      confidentiality: 'confidential',
+      tx,
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'accounting_period',
+      subjectId: created.id,
+      after: { period, status: 'open' },
+      tx,
+    });
+    return created;
   });
-  const created = await prisma.accountingPeriod.findFirstOrThrow({ where: { tenantId: auth.tenantId, period } });
-  if (made.count === 0) return created;
-  // Opening a period is itself a books write: it is the row a close is later
-  // requested against, so its creation is a fact the chain should carry.
-  await emit({
-    name: EVENTS.ACCOUNTING_PERIOD_OPENED,
-    subject: { entityType: 'accounting_period', entityId: created.id },
-    newState: { period, status: 'open' },
-    impact: { domains: ['fin'] },
-    confidentiality: 'confidential',
-  });
-  await auditWrite({
-    action: 'create',
-    subjectType: 'accounting_period',
-    subjectId: created.id,
-    after: { period, status: 'open' },
-  });
-  return created;
 }
 
 /** Whether `date`'s month is closed to new or edited entries. Read by the write-path hook below. */
@@ -283,6 +308,11 @@ export async function closePeriod(period: string) {
   const { to } = monthRange(period);
   const asOf = new Date(to.getTime() - 1);
   const updated = await governedWrite(async (tx) => {
+    // The advisory lock comes before the row locks below. A creation of a period row
+    // (ensurePeriod, holdPeriodRow) takes it before it inserts, so a row this close cannot
+    // see yet, because it is uncommitted, cannot slip in under the close's month
+    // (platform/periodLock.ts lockPeriodRows). Lock order: the advisory lock, then the rows.
+    await lockPeriodRows(tx, auth.tenantId);
     // Every row of the tenant up to this month, locked in ascending month order, so
     // the order rule is checked on rows no other transaction can change under it. A
     // reopen of an earlier month locks from its own month upward, in the same order,
@@ -349,6 +379,10 @@ export async function reopenPeriod(period: string, reason: string) {
   // close of a later month could commit between this check and the update, and the
   // reopened month would sit under a closed one.
   const updated = await governedWrite(async (tx) => {
+    // The advisory lock first, in the order closePeriod takes it (lockPeriodRows). A reopen
+    // creates no row, so this is the lock order, not a race it closes: every path that
+    // holds period rows takes the advisory lock before them.
+    await lockPeriodRows(tx, auth.tenantId);
     const rows = await tx.$queryRaw<Array<{ period: string; status: string }>>`
       SELECT "period", "status" FROM "cmp_accounting_periods"
       WHERE "tenantId" = ${auth.tenantId} AND "period" >= ${period}
