@@ -144,8 +144,11 @@ export interface GstBreakdown {
 /**
  * @deprecated Float rounding, and one paisa low on some ties at crore
  * magnitudes (KNOWN in apps/api/src/tests/financeCharacterisation.test.ts).
- * The GST arithmetic still runs on it: moving that changes GST figures, which
- * is the accountant's decision (D-02). New money code uses packages/shared/src/money.ts.
+ * This is the single round2 now: the ten private copies were deleted so every
+ * money path rounds the same way. The exact half-away-from-zero path is
+ * toMinorHalfUp in money.ts; switching this export to it changes GST figures
+ * and negative ties, so it waits for the finance head's sign-off (D-02,
+ * DECISIONS.md). New money code uses packages/shared/src/money.ts.
  */
 export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;

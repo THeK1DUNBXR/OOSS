@@ -26,6 +26,7 @@ import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { assertCan, scopeFor } from '../platform/permissions.js';
 import { notify, raiseException } from '../platform/exceptions.js';
 import { entryStage, loadPipelineWithStages, stageFor, validateTransition } from './pipelines.js';
+import { round2 } from '@kaizen/shared';
 
 export interface OpportunityInput {
   title: string;
@@ -577,10 +578,6 @@ export async function forecastRollup(opts: { blended?: boolean } = {}): Promise<
       ? 'Blended total requested explicitly. Weighted values across motions with different forecast methods are not directly comparable.'
       : 'Per-pipeline totals shown side by side. Blending across incompatible motions is available only on explicit request.',
   };
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
 }
 
 /**

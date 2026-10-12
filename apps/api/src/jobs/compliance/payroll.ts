@@ -1,11 +1,7 @@
 import type { JobDefinition, JobResult } from '../scheduler.js';
-import { istYearMonth } from '@kaizen/shared';
+import { istYearMonth, round2 } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
-
-function round2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
-}
 
 /**
  * Monthly gratuity accrual, on the 1st. One row per active employee

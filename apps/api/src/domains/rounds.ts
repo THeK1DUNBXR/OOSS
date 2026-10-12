@@ -42,6 +42,7 @@ import { governedWrite } from '../platform/governedWrite.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { raiseException } from '../platform/exceptions.js';
 import { effectiveBalance, shareTransactionView, holderView, outgoingCount } from './equity.js';
+import { round2 } from '@kaizen/shared';
 
 // ---------------------------------------------------------------------------
 // Rounds
@@ -488,10 +489,6 @@ export function fundingRoundView(row: {
     tribunalOrderRef: row.tribunalOrderRef,
     notes: row.notes,
   };
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
 }
 
 // ---------------------------------------------------------------------------
