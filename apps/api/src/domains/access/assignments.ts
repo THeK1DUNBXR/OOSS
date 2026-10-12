@@ -93,8 +93,21 @@ async function resolvePlacements(inputs: PlacementInput[]) {
   }
   const verticals = await prisma.accessVertical.findMany({
     where: { code: { in: inputs.map((p) => p.verticalCode) } },
-    select: { id: true, code: true },
+    select: { id: true, code: true, businessLineId: true },
   });
+  // No SQL foreign key reaches business_lines (a relation broke invoicing.ts typechecking),
+  // so the line is checked here. The scoped client reads only this tenant's lines.
+  const lineIds = verticals.map((v) => v.businessLineId).filter((id): id is string => id !== null);
+  const ownLines = lineIds.length
+    ? new Set(
+        (await prisma.businessLine.findMany({ where: { id: { in: lineIds } }, select: { id: true } })).map((l) => l.id),
+      )
+    : new Set<string>();
+  for (const v of verticals) {
+    if (v.businessLineId !== null && !ownLines.has(v.businessLineId)) {
+      throw ApiError.unprocessable(`Vertical ${v.code} names a business line this tenant does not have.`);
+    }
+  }
   const levels = await prisma.accessLevel.findMany({
     where: { code: { in: inputs.map((p) => p.levelCode) } },
     select: { id: true, code: true },
