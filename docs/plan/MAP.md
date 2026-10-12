@@ -340,7 +340,7 @@
 
 **`apps/api/src/imports/classify.ts`** (113 lines) — LedgerClass:15 · classifyLedger:18 · isAccountName:81 · divisionFor:92 · JOURNAL_ACCOUNT_NAME:111 · JOURNAL_ACCOUNT_TYPE:112
 
-**`apps/api/src/imports/commit.ts`** (2820 lines) — CommitResult:48 · commitImport:194 · revertImport:1183
+**`apps/api/src/imports/commit.ts`** (2827 lines) — CommitResult:55 · commitImport:201 · revertImport:1190
 
 **`apps/api/src/imports/detect.ts`** (320 lines) — ImportKind:18 · Detection:47 · findHeaderRow:73 · detectGrid:106 · detectWorkbook:236 · isTallyLedgerSheet:286 · countLedgers:290 · detectSourceFormat:303
 
