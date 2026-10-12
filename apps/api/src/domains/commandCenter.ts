@@ -25,6 +25,7 @@ import {
   compare,
   parseMinor,
   type DeltaItem,
+  type NotMeasuredFigure,
   type SeverityCode,
 } from '@kaizen/shared';
 import { createHash } from 'node:crypto';
@@ -32,7 +33,7 @@ import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { wireInt } from '../platform/wire.js';
 import { latestPulse } from './health.js';
-import { findThreshold, missingThreshold } from './thresholds.js';
+import { findThreshold } from './thresholds.js';
 
 /** Why an item sits where it does in the queue, in words rather than codes. */
 const SEVERITY_REASON: Record<string, string> = {
@@ -65,24 +66,27 @@ const ADMITTED_EVENT_NAMES = new Set<string>([
   EVENTS.AGENT_AUTHORITY_SHORTFALL,
 ]);
 
+const MATERIALITY_KEY = 'command_center.materiality_floor';
+const WINDOW_KEY = 'command_center.narrative_window_hours';
+
 /**
- * The materiality floor in paise. A missing row is refused with a 409, not
- * replaced by a literal: the floor decides what reaches the Chairman, and a
- * default nobody set is a silent policy.
+ * The materiality floor in paise, or null when the row is absent. Null is not a
+ * default: the caller reports the figure as not measured, so a floor nobody set
+ * is never quietly a number.
  */
-export async function materialityFloorMinor(): Promise<bigint> {
-  const key = 'command_center.materiality_floor';
-  const t = await findThreshold(key);
-  if (!t || t.valueMinor === null) throw missingThreshold(key);
-  return t.valueMinor;
+export async function materialityFloorMinor(): Promise<bigint | null> {
+  const t = await findThreshold(MATERIALITY_KEY);
+  return t?.valueMinor ?? null;
 }
 
-/** Hours, from the integer column. Shipped as a THRESHOLD row because the source flags the figure as unvalidated. */
-export async function narrativeWindowHours(): Promise<number> {
-  const key = 'command_center.narrative_window_hours';
-  const t = await findThreshold(key);
-  if (!t || t.valueInt === null) throw missingThreshold(key);
-  return t.valueInt;
+/** Hours, from the integer column, or null when the row is absent. Shipped as a THRESHOLD row because the source flags the figure as unvalidated. */
+export async function narrativeWindowHours(): Promise<number | null> {
+  const t = await findThreshold(WINDOW_KEY);
+  return t?.valueInt ?? null;
+}
+
+function notConfigured(figure: NotMeasuredFigure['figure'], thresholdKey: string): NotMeasuredFigure {
+  return { figure, thresholdKey, reason: `threshold ${thresholdKey} is not configured` };
 }
 
 /**
@@ -164,6 +168,9 @@ export async function whatChanged() {
   const since = watermark?.lastSeenAt ?? new Date(Date.now() - 24 * 3_600_000);
   const floor = await materialityFloorMinor();
   const windowHours = await narrativeWindowHours();
+  const notMeasured: NotMeasuredFigure[] = [];
+  if (floor === null) notMeasured.push(notConfigured('materiality_floor', MATERIALITY_KEY));
+  if (windowHours === null) notMeasured.push(notConfigured('narrative_window', WINDOW_KEY));
 
   const events = await prisma.eventRecord.findMany({
     where: { tenantId: auth.tenantId, recordedAt: { gt: since }, legacyName: null },
@@ -187,9 +194,10 @@ export async function whatChanged() {
     const severity = e.impactSeverity as SeverityCode | null;
 
     // Materiality floor: an item with neither material value nor a severity of
-    // S2 or higher does not earn a place on this surface.
+    // S2 or higher does not earn a place on this surface. With no floor set the
+    // materiality leg cannot be applied, so only the severity leg admits.
     const passesFloor =
-      clearsMaterialityFloor(rawMateriality, floor) ||
+      (floor !== null && clearsMaterialityFloor(rawMateriality, floor)) ||
       (severity !== null && SEVERITY_RANK[severity] >= SEVERITY_RANK.S2_WARNING);
     if (!passesFloor) {
       suppressed += 1;
@@ -214,7 +222,7 @@ export async function whatChanged() {
   }
 
   const elapsed = (Date.now() - since.getTime()) / 3_600_000;
-  const narrativeWindowElapsed = elapsed >= windowHours;
+  const narrativeWindowElapsed = windowHours === null ? null : elapsed >= windowHours;
 
   return {
     watermark: since.toISOString(),
@@ -222,7 +230,9 @@ export async function whatChanged() {
     narrativeWindowElapsed,
     narrative: narrativeWindowElapsed ? await buildNarrative(items, since) : null,
     items: items.slice(0, 50),
-    suppressedBelowMateriality: suppressed,
+    // Not measured without a floor: the count of what the floor held back does not exist.
+    suppressedBelowMateriality: floor === null ? null : suppressed,
+    notMeasured,
   };
 }
 

@@ -615,7 +615,11 @@ function WhatChanged({ data, onSeen }: { data: CommandCenterResponse['whatChange
   return (
     <Card
       title="What changed"
-      subtitle={`Since you last looked, ${new Date(data.watermark).toLocaleString('en-IN')}. ${data.suppressedBelowMateriality} smaller changes are not listed — they were too minor to be worth your time.`}
+      subtitle={`Since you last looked, ${new Date(data.watermark).toLocaleString('en-IN')}. ${
+        data.suppressedBelowMateriality === null
+          ? 'Smaller changes are not counted: no materiality floor is set.'
+          : `${data.suppressedBelowMateriality} smaller changes are not listed — they were too minor to be worth your time.`
+      }`}
       actions={
         <button className="btn-ghost" onClick={onSeen}>
           I have read this
@@ -629,6 +633,16 @@ function WhatChanged({ data, onSeen }: { data: CommandCenterResponse['whatChange
               flourish. Every claim below resolves to an admitted delta item. */}
           <p className="text-xs font-medium text-ink-100">{data.narrative.reconciliationLine}</p>
           <p className="mt-1.5 text-2xs leading-relaxed text-ink-400">{data.narrative.body}</p>
+        </div>
+      )}
+
+      {data.notMeasured.length > 0 && (
+        <div className="border-b border-ink-800 p-4">
+          {data.notMeasured.map((n) => (
+            <p key={n.thresholdKey} className="text-2xs text-ink-400">
+              {n.reason}
+            </p>
+          ))}
         </div>
       )}
 

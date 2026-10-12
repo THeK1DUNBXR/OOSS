@@ -17,7 +17,7 @@ import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { minorOf, type DecimalLike } from '../platform/wire.js';
-import { findThreshold, missingThreshold } from './thresholds.js';
+import { findThreshold } from './thresholds.js';
 import { assertCan } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
@@ -28,15 +28,18 @@ import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 registerGovernedEntities('gov', ['lesson']);
 import { governedWrite } from '../platform/governedWrite.js';
 
-const DEFAULT_VALUE_THRESHOLD = 500_000;
 const GRACE_PERIOD_DAYS = 10;
 
-/** The commercial value that makes a review mandatory, in paise. A missing row is a 409, not DEFAULT_VALUE_THRESHOLD. */
-export async function valueThresholdMinor(): Promise<bigint> {
-  const key = 'win_loss_review.value_threshold';
-  const t = await findThreshold(key);
-  if (!t || t.valueMinor === null) throw missingThreshold(key);
-  return t.valueMinor;
+const VALUE_THRESHOLD_KEY = 'win_loss_review.value_threshold';
+
+/**
+ * The commercial value that makes a review mandatory, in paise, or null when the
+ * row is absent. The caller does not fall back to a figure: a missing threshold
+ * makes the review required, with the reason recorded.
+ */
+export async function valueThresholdMinor(): Promise<bigint | null> {
+  const t = await findThreshold(VALUE_THRESHOLD_KEY);
+  return t?.valueMinor ?? null;
 }
 
 /**
@@ -74,12 +77,19 @@ export async function ensureWinLossReview(subjectType: 'opportunity' | 'mou', su
   const strategicValue = (subject as { strategicValue: string | null }).strategicValue;
   const threshold = await valueThresholdMinor();
 
-  // The OR gate, computed once.
+  // The OR gate, computed once. With no threshold configured the money leg cannot
+  // be decided, so the review is required rather than waved through: failing safe
+  // here means one review too many, never one missing from the record.
   const byStrategic = strategicValue === 'high';
-  const byValue = commercialClearsThreshold(commercial, threshold);
-  const mandatory = byStrategic || byValue;
+  const byValue = threshold !== null && commercialClearsThreshold(commercial, threshold);
+  const unconfigured = threshold === null;
+  const mandatory = byStrategic || byValue || unconfigured;
   const basis = mandatory
-    ? [byStrategic ? 'strategic_value=high' : null, byValue ? `commercial_value>=${formatMinor(threshold)}` : null]
+    ? [
+        byStrategic ? 'strategic_value=high' : null,
+        byValue ? `commercial_value>=${formatMinor(threshold!)}` : null,
+        unconfigured ? `threshold ${VALUE_THRESHOLD_KEY} is not configured` : null,
+      ]
         .filter(Boolean)
         .join(' OR ')
     : 'not_mandatory';
@@ -101,7 +111,7 @@ export async function ensureWinLossReview(subjectType: 'opportunity' | 'mou', su
       // Frozen at terminal-state entry.
       strategicValueSnapshot: strategicValue,
       commercialValueSnapshot: commercial === null ? undefined : formatMinor(commercial),
-      thresholdUsedSnapshot: formatMinor(threshold),
+      thresholdUsedSnapshot: threshold === null ? null : formatMinor(threshold),
       lostReason: subjectType === 'opportunity' ? (subject as { lostReason: string | null }).lostReason : null,
       dueAt: mandatory ? new Date(Date.now() + GRACE_PERIOD_DAYS * 86_400_000) : null,
     },
