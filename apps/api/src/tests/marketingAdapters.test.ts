@@ -141,6 +141,23 @@ describe('console adapter', () => {
     expect(adapter).toBeInstanceOf(ConsoleAdapter);
     expect(adapter.isConfigured()).toBe(true);
   });
+
+  it('refuses in production even when MARKETING_<KIND>_ADAPTER=console, and does not send', async () => {
+    const savedNodeEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = 'production';
+      process.env.MARKETING_EMAIL_ADAPTER = 'console';
+      const adapter = new ConsoleAdapter('email', 'email');
+      expect(adapter.isConfigured()).toBe(false);
+      const result = await adapter.send({ to: { personId: 'p1', address: 'a@b.com' }, body: 'personal body' });
+      expect(result.status).toBe('not_configured');
+      expect(result.providerMessageId).toBeUndefined();
+      expect(result.error).toMatch(/production/i);
+    } finally {
+      if (savedNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = savedNodeEnv;
+    }
+  });
 });
 
 describe('msg91 adapter (India DLT)', () => {
