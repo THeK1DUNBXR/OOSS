@@ -13,9 +13,15 @@
  * owns the submit, the pending state and the failure message.
  */
 
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useState, type BaseSyntheticEvent, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Modal } from './ui.js';
+import { SubmitButton } from './zodForm.js';
+
+/** What a modal needs from a react-hook-form instance: its handleSubmit, typed to the parsed values. */
+export interface ZodFormSubmit<V> {
+  handleSubmit: (onValid: (values: V) => void) => (event?: BaseSyntheticEvent) => unknown;
+}
 
 // ---------------------------------------------------------------------------
 // Controls
@@ -189,12 +195,13 @@ export function Row({ children }: { children: ReactNode }) {
  * "Something went wrong" would be throwing away the most useful thing the API
  * produces.
  */
-export function CreateModal({
+export function CreateModal<V = undefined>({
   open,
   title,
   submitLabel = 'Create',
   onClose,
   onSubmit,
+  form,
   invalidate,
   onCreated,
   children,
@@ -204,7 +211,13 @@ export function CreateModal({
   title: string;
   submitLabel?: string;
   onClose: () => void;
-  onSubmit: () => Promise<unknown>;
+  /** Receives the parsed values when `form` is given; takes none otherwise. */
+  onSubmit: (values: V) => Promise<unknown>;
+  /**
+   * The react-hook-form instance behind the fields. Its validation gates the
+   * submit, so a field error stays in the modal and the request is not sent.
+   */
+  form?: ZodFormSubmit<V>;
   /** Query keys to refetch once it lands. */
   invalidate?: string[][];
   onCreated?: (result: unknown) => void;
@@ -225,11 +238,19 @@ export function CreateModal({
     onError: (e: unknown) => setError(messageOf(e)),
   });
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
+  const run = (values: V) => {
     setError(null);
-    mutation.mutate();
+    mutation.mutate(values);
   };
+
+  // The no-form path has no values to pass: its onSubmit closes over state.
+  const submit = form
+    ? form.handleSubmit(run)
+    : (event: FormEvent) => {
+        event.preventDefault();
+        setError(null);
+        mutation.mutate(undefined as V);
+      };
 
   const close = () => {
     setError(null);
@@ -247,13 +268,11 @@ export function CreateModal({
           <button type="button" className="btn" onClick={close}>
             Cancel
           </button>
-          <button type="submit" form="create-form" className="btn-primary" disabled={mutation.isPending}>
-            {mutation.isPending ? 'Saving…' : submitLabel}
-          </button>
+          <SubmitButton form="create-form" pending={mutation.isPending} idleLabel={submitLabel} />
         </>
       }
     >
-      <form id="create-form" onSubmit={submit} className="flex flex-col gap-3">
+      <form id="create-form" onSubmit={submit} noValidate={form ? true : undefined} className="flex flex-col gap-3">
         {error && (
           <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
             {error}
