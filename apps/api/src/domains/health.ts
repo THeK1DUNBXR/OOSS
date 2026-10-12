@@ -42,6 +42,7 @@ import { emit } from '../platform/eventBus.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { raiseException } from '../platform/exceptions.js';
+import { findThreshold } from './thresholds.js';
 
 /**
  * What each area is called on screen. The codes stay as the identifiers — the
@@ -122,7 +123,12 @@ export async function computeCommercialHealth(): Promise<ComputeResult> {
     const probability = (stage?.defaultProbability ?? 0) / 100;
     weightedPipeline += (num(opp.expectedValue) ?? 0) * probability;
   }
-  const quarterTarget = await targetFor('h_com.quarter_target', 20_000_000);
+  // Not measured, not zero and not a guessed target: with no target set there is
+  // no coverage to score, and a score against an invented figure would read as a
+  // measurement. The target is paise; the ratio and the narrative are in rupees.
+  const quarterTargetPaise = await quarterTargetMinor();
+  if (quarterTargetPaise === null) return notYetMeasured('H_COM');
+  const quarterTarget = Number(quarterTargetPaise) / 100;
   const coverageValue = weightedPipeline / Math.max(quarterTarget, 1);
   const coverageTarget = 3; // 3x coverage is the standard benchmark
 
@@ -1105,8 +1111,8 @@ function fmt(n: number): string {
   return n.toFixed(0);
 }
 
-async function targetFor(key: string, fallback: number): Promise<number> {
-  const auth = currentAuth();
-  const t = await prisma.threshold.findFirst({ where: { tenantId: auth.tenantId, thresholdKey: key } });
-  return t?.value ?? fallback;
+/** The quarter's sales target in paise, or null when the row is absent. */
+export async function quarterTargetMinor(): Promise<bigint | null> {
+  const t = await findThreshold('h_com.quarter_target');
+  return t?.valueMinor ?? null;
 }

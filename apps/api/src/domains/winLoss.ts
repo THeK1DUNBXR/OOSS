@@ -10,12 +10,14 @@
  * retroactively changes whether the review was mandatory.
  */
 
-import { EVENTS } from '@kaizen/shared';
-import { prisma, num } from '../platform/db.js';
+import { EVENTS, formatMinor } from '@kaizen/shared';
+import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
+import { minorOf, type DecimalLike } from '../platform/wire.js';
+import { findThreshold, missingThreshold } from './thresholds.js';
 import { assertCan } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
@@ -29,12 +31,20 @@ import { governedWrite } from '../platform/governedWrite.js';
 const DEFAULT_VALUE_THRESHOLD = 500_000;
 const GRACE_PERIOD_DAYS = 10;
 
-async function valueThreshold(): Promise<number> {
-  const auth = currentAuth();
-  const threshold = await prisma.threshold.findFirst({
-    where: { tenantId: auth.tenantId, thresholdKey: 'win_loss_review.value_threshold' },
-  });
-  return threshold ? threshold.value : DEFAULT_VALUE_THRESHOLD;
+/** The commercial value that makes a review mandatory, in paise. A missing row is a 409, not DEFAULT_VALUE_THRESHOLD. */
+export async function valueThresholdMinor(): Promise<bigint> {
+  const key = 'win_loss_review.value_threshold';
+  const t = await findThreshold(key);
+  if (!t || t.valueMinor === null) throw missingThreshold(key);
+  return t.valueMinor;
+}
+
+/**
+ * The OR gate's money leg. A commercial value that is not measured (null) does
+ * not make a review mandatory on its own; the strategic leg still can.
+ */
+export function commercialClearsThreshold(commercial: bigint | null, threshold: bigint): boolean {
+  return commercial !== null && commercial >= threshold;
 }
 
 /**
@@ -55,19 +65,21 @@ export async function ensureWinLossReview(subjectType: 'opportunity' | 'mou', su
       : await prisma.mou.findFirst({ where: { id: subjectId } });
   if (!subject) throw ApiError.notFound('Subject');
 
-  const commercialValue =
+  const commercialMinor = minorOf(
     subjectType === 'opportunity'
-      ? num((subject as { expectedValue: unknown }).expectedValue as never)
-      : num((subject as { commercialValue: unknown }).commercialValue as never);
+      ? (subject as { expectedValue: DecimalLike | null }).expectedValue
+      : (subject as { commercialValue: DecimalLike | null }).commercialValue,
+  );
+  const commercial = commercialMinor === null ? null : BigInt(commercialMinor);
   const strategicValue = (subject as { strategicValue: string | null }).strategicValue;
-  const threshold = await valueThreshold();
+  const threshold = await valueThresholdMinor();
 
   // The OR gate, computed once.
   const byStrategic = strategicValue === 'high';
-  const byValue = (commercialValue ?? 0) >= threshold;
+  const byValue = commercialClearsThreshold(commercial, threshold);
   const mandatory = byStrategic || byValue;
   const basis = mandatory
-    ? [byStrategic ? 'strategic_value=high' : null, byValue ? `commercial_value>=${threshold}` : null]
+    ? [byStrategic ? 'strategic_value=high' : null, byValue ? `commercial_value>=${formatMinor(threshold)}` : null]
         .filter(Boolean)
         .join(' OR ')
     : 'not_mandatory';
@@ -88,8 +100,8 @@ export async function ensureWinLossReview(subjectType: 'opportunity' | 'mou', su
       mandatoryBasis: basis,
       // Frozen at terminal-state entry.
       strategicValueSnapshot: strategicValue,
-      commercialValueSnapshot: commercialValue ?? undefined,
-      thresholdUsedSnapshot: threshold,
+      commercialValueSnapshot: commercial === null ? undefined : formatMinor(commercial),
+      thresholdUsedSnapshot: formatMinor(threshold),
       lostReason: subjectType === 'opportunity' ? (subject as { lostReason: string | null }).lostReason : null,
       dueAt: mandatory ? new Date(Date.now() + GRACE_PERIOD_DAYS * 86_400_000) : null,
     },

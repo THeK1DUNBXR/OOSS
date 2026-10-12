@@ -4282,7 +4282,11 @@ model Threshold {
   tenantId String
 
   thresholdKey String
-  value        Float
+  // Typed by unit (see packages/shared/src/thresholds.ts): a currency threshold is
+  // bigint paise in valueMinor, every other unit is a whole number in valueInt.
+  // The CHECK in 20261013160000_threshold_minor holds exactly one of them set.
+  valueMinor   BigInt?
+  valueInt     Int?
   unit         String  @default("count")
   description  String?
 

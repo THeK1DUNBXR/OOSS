@@ -317,7 +317,8 @@ export interface DeltaItem {
   detail: string;
   domain: string;
   severity: SeverityCode | null;
-  materiality: number | null;
+  /** Paise as a digit string, or null when the event carried no measured amount. */
+  materiality: string | null;
   /** Distinguishes "new to your view" from "changed in the world". */
   newToView: boolean;
   handledWithoutYou: boolean;

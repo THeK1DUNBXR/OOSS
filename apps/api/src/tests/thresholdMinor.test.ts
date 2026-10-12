@@ -414,7 +414,9 @@ describe('the threshold migration (20261013160000_threshold_minor)', () => {
 
       const after = new PrismaClient({ datasourceUrl: dbUrl(name) });
       try {
-        const [row] = await after.$queryRaw<{ value: number }[]>`SELECT "value" FROM "thresholds" WHERE "id" = 'thr-frac'`;
+        const [row] = await after.$queryRaw<
+          { value: number }[]
+        >`SELECT "value" FROM "thresholds" WHERE "id" = 'thr-frac'`;
         expect(row?.value).toBe(12.345);
       } finally {
         await after.$disconnect();

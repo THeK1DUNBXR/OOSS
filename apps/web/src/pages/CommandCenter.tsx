@@ -657,7 +657,7 @@ function WhatChanged({ data, onSeen }: { data: CommandCenterResponse['whatChange
                   </div>
                   <p className="mt-0.5 text-2xs text-ink-400">
                     {d.detail} · {relative(d.occurredAt)}
-                    {d.materiality !== null && ` · ${money(d.materiality)}`}
+                    {d.materiality !== null && ` · ${money(Number(d.materiality) / 100)}`}
                   </p>
                 </div>
                 <Link to={d.drillPath} className="shrink-0 text-2xs text-accent-soft hover:underline">
