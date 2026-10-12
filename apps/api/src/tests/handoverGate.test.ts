@@ -618,6 +618,33 @@ describe('the 409 shows the caller only the blockers they may view', () => {
     });
     expect(await offboardingStatus(l.offboardingId)).toBe('FFSettlementPending');
   });
+
+  it('a view grant scoped to own does not name the leaver rows, which belong to the leaver and not the caller', async () => {
+    const l = await leaver('http-own-scope', ['commitment']);
+    const commitment = await unscopedPrisma.commitment.findUniqueOrThrow({
+      where: { id: must(l.rows.commitmentId) },
+    });
+
+    await withFixtureRole(
+      {
+        slug: 'w6_own_view',
+        grants: [
+          { resource: 'employees', verbs: ['edit'] },
+          { resource: 'commitments', verbs: ['view'], scope: 'own' },
+        ],
+      },
+      async (caller) => {
+        const res = await exitOverHttp(l.offboardingId, caller);
+
+        expect(res.status).toBe(409);
+        expect(res.body.error?.details?.blockers).toEqual([{ kind: 'commitment', count: 1, withheld: true }]);
+        const wire = JSON.stringify(res.body);
+        expect(wire).not.toContain(commitment.id);
+        if (commitment.recordCode) expect(wire).not.toContain(commitment.recordCode);
+      },
+    );
+    expect(await offboardingStatus(l.offboardingId)).toBe('FFSettlementPending');
+  });
 });
 
 /** The outcome of a call that may reject: the value, or the rejection with its status and details. */
