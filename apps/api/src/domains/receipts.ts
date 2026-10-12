@@ -412,6 +412,19 @@ async function issueFinalInvoice(invoiceId: string, input: { note?: string | nul
       where: { id: old.id },
       data: { status: 'superseded', supersededById: final.id },
     });
+  }
+
+  await auditWrite({
+    action: 'create',
+    subjectType: 'final_invoice',
+    subjectId: final.id,
+    after: { recordCode, against: invoiceLabel(invoice), totalReceived, balance, receipts: rows.length },
+  });
+  // Rule 5 orders auditWrite before emit, so the events wait for the audit row
+  // of the invoice that superseded them. The exception goes after the superseded
+  // events, not before the audit, so the events still reach subscribers in the
+  // order they always did: superseded, then the exception, then the raised invoice.
+  for (const old of previous) {
     await emit({
       name: EVENTS.FINAL_INVOICE_SUPERSEDED,
       subject: { entityType: 'final_invoice', entityId: old.id, recordCode: old.recordCode },
@@ -419,7 +432,6 @@ async function issueFinalInvoice(invoiceId: string, input: { note?: string | nul
       impact: { domains: ['fin'] },
     });
   }
-
   if (dating.moved) {
     await raiseException({
       code: 'EX-FIN-009',
@@ -433,12 +445,6 @@ async function issueFinalInvoice(invoiceId: string, input: { note?: string | nul
       ladderRung: 1,
     });
   }
-  await auditWrite({
-    action: 'create',
-    subjectType: 'final_invoice',
-    subjectId: final.id,
-    after: { recordCode, against: invoiceLabel(invoice), totalReceived, balance, receipts: rows.length },
-  });
   await emit({
     name: EVENTS.FINAL_INVOICE_RAISED,
     subject: { entityType: 'final_invoice', entityId: final.id, recordCode },
