@@ -1,6 +1,9 @@
 /**
- * Ledger gates L1 to L3 and the posting rules around them (ORDERED-PLAN Wave 3,
- * items 1.1 to 1.3; MONEY-LEDGER-CONTRACT decisions 7 to 11 and 16).
+ * Wave 3 refusal checks, named L1 to L3 here. These are not the CI-GATES-DRAFT
+ * gates of the same names: those are ledgerProperty.test.ts (L1) and
+ * concurrency/allocations200.test.ts (L3). The postings, reversals and periods
+ * below are the refusals the ledger owes (ORDERED-PLAN Wave 3, items 1.1 to 1.3;
+ * MONEY-LEDGER-CONTRACT decisions 7 to 11 and 16).
  *
  * Real Postgres, real contexts, no mocks. The database checks are asserted as
  * the application role (kaizen_app), with raw SQL, because that is the writer
