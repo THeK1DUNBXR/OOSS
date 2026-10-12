@@ -779,7 +779,7 @@ describe('a student register revert undoes the person, profile and affiliation i
   it('withdraws the enrolment and ends the new person, their student profile and their student affiliation', async () => {
     const tag = `W5STU${Date.now()}`;
     const name = uniqueName('STUDENT');
-    const course = `W5REV Course ${tag}`;
+    const course = uniqueName('Course');
     const phone = `9${String(Math.floor(Math.random() * 1e9)).padStart(9, '0')}`;
     const rowCells = [
       name,
