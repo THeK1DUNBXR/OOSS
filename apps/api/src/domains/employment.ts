@@ -802,11 +802,10 @@ export async function updateEmployeeProfile(employmentId: string, input: Employe
     ...(input.bloodGroup !== undefined ? { bloodGroup: input.bloodGroup } : {}),
   };
 
-  // PAN and the bank fields are encrypted at rest on the way in, exactly as
-  // `compliance/payroll.ts`'s `setBankDetails` already does — this is a second
-  // write path onto the same regulated columns, so it has to keep the same
-  // contract. UAN and the ESIC number are regulated (excluded from every
-  // response) but not encrypted, matching the backfill's own field list.
+  // PAN, UAN, the ESIC number and the bank fields are encrypted at rest on the
+  // way in, exactly as `compliance/payroll.ts`'s `setBankDetails` does. This is
+  // a second write path onto the same regulated columns, so it keeps the same
+  // contract as the backfill's field list (FX-64).
   const employmentData: Record<string, unknown> = {
     ...(input.hireEffectiveDate !== undefined ? { hireEffectiveDate: new Date(input.hireEffectiveDate) } : {}),
     ...(input.noticePeriodDays !== undefined ? { noticePeriodDays: input.noticePeriodDays } : {}),
@@ -814,8 +813,8 @@ export async function updateEmployeeProfile(employmentId: string, input: Employe
     ...(input.emergencyContactName !== undefined ? { emergencyContactName: input.emergencyContactName } : {}),
     ...(input.emergencyContactPhone !== undefined ? { emergencyContactPhone: input.emergencyContactPhone } : {}),
     ...(input.panNumber !== undefined ? { panNumber: input.panNumber ? encryptField(input.panNumber) : null } : {}),
-    ...(input.uanNumber !== undefined ? { uanNumber: input.uanNumber } : {}),
-    ...(input.esicNumber !== undefined ? { esicNumber: input.esicNumber } : {}),
+    ...(input.uanNumber !== undefined ? { uanNumber: input.uanNumber ? encryptField(input.uanNumber) : null } : {}),
+    ...(input.esicNumber !== undefined ? { esicNumber: input.esicNumber ? encryptField(input.esicNumber) : null } : {}),
     ...(input.bankAccountNumber !== undefined
       ? { bankAccountNumber: input.bankAccountNumber ? encryptField(input.bankAccountNumber) : null }
       : {}),
