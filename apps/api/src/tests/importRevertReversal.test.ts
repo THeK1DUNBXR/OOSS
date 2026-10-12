@@ -622,3 +622,89 @@ describe('a contact row that matched a person on file does not soft-delete that 
     expect((await batchFor(staged.batchId)).status).toBe('reverted');
   });
 });
+
+/** A staff member imported on a batch of their own, so the attendance a test writes is its alone. */
+async function stageStaffMember(label: string): Promise<{ name: string; personId: string; employmentId: string }> {
+  const name = uniqueName(label);
+  const code = `KD/S/2026/${String(Math.floor(Math.random() * 9000) + 1000)}`;
+  const csv = ['Name,Designation,Employee Code', `${name},Analyst,${code}`].join('\n');
+  const staged = await asUser(CHAIRMAN, () =>
+    stageImport({ fileName: `${uniqueTag('STAFF')}.csv`, buffer: Buffer.from(csv, 'utf8') }),
+  );
+  expect((await asUser(CHAIRMAN, () => commitImport(staged.batchId))).errors).toEqual([]);
+  const person = await unscopedPrisma.person.findFirstOrThrow({ where: { tenantId: TENANT, fullName: name } });
+  const employment = await unscopedPrisma.employmentRelationship.findFirstOrThrow({
+    where: { tenantId: TENANT, personId: person.id },
+  });
+  return { name, personId: person.id, employmentId: employment.id };
+}
+
+const stageAttendance = (fileName: string, csv: string) =>
+  asUser(CHAIRMAN, () => stageImport({ fileName, buffer: Buffer.from(csv, 'utf8'), kindOverride: 'attendance' }));
+
+const liveAttendanceIds = async (employmentId: string) =>
+  (await asUser(CHAIRMAN, () => attendanceForPeriod(employmentId, '2013-08'))).map((r) => r.id).sort();
+
+describe('an attendance batch that overlaps an earlier batch reverts only the days it created', () => {
+  it('reverting the later batch leaves the days the earlier one wrote live and voids only its own new days', async () => {
+    const { name, employmentId } = await stageStaffMember('ATTOVL');
+
+    // Batch A writes 1 and 2 August 2013 (month first, as extractAttendance reads them).
+    const a = await stageAttendance(
+      `${uniqueTag('ATT-A')}.csv`,
+      ['Name,08/01/2013,08/02/2013', `${name},P,A`].join('\n'),
+    );
+    expect((await asUser(CHAIRMAN, () => commitImport(a.batchId))).errors).toEqual([]);
+    const daysA = await liveAttendanceIds(employmentId);
+    expect(daysA).toHaveLength(2);
+
+    // Batch B names 2, 3 and 4 August. Day 2 is A's and already live, so B writes 3 and 4 only.
+    const b = await stageAttendance(
+      `${uniqueTag('ATT-B')}.csv`,
+      ['Name,08/02/2013,08/03/2013,08/04/2013', `${name},P,P,A`].join('\n'),
+    );
+    expect((await asUser(CHAIRMAN, () => commitImport(b.batchId))).errors).toEqual([]);
+    const daysB = (await liveAttendanceIds(employmentId)).filter((id) => !daysA.includes(id));
+    expect(daysB).toHaveLength(2);
+
+    await asUser(CHAIRMAN, () => revertImport(b.batchId));
+
+    expect(await liveAttendanceIds(employmentId)).toEqual(daysA);
+    const voided = await unscopedPrisma.workAttendance.findMany({
+      where: { tenantId: TENANT, id: { in: daysB } },
+    });
+    expect(voided).toHaveLength(2);
+    expect(voided.every((v) => v.voidedAt !== null && v.voidBatchId === b.batchId)).toBe(true);
+  });
+});
+
+describe('a matched employee keeps the person on revert, and the employment the batch created is reversed', () => {
+  it('soft-deletes nothing of the person and reverses the employment row this batch made', async () => {
+    const name = uniqueName('EMPCHILD');
+    // Entered by hand: the person exists before the batch, and has no employment yet.
+    const handPerson = await unscopedPrisma.person.create({
+      data: { tenantId: TENANT, recordCode: uniqueTag('PER'), fullName: name, source: 'manual' },
+    });
+
+    const csv = [
+      'Name,Designation,Employee Code',
+      `${name},Analyst,KD/S/2026/${String(Math.floor(Math.random() * 9000) + 1000)}`,
+    ].join('\n');
+    const staged = await asUser(CHAIRMAN, () =>
+      stageImport({ fileName: `${uniqueTag('EMPCHILD')}.csv`, buffer: Buffer.from(csv, 'utf8') }),
+    );
+    expect((await asUser(CHAIRMAN, () => commitImport(staged.batchId))).errors).toEqual([]);
+    const made = await unscopedPrisma.employmentRelationship.findMany({
+      where: { tenantId: TENANT, personId: handPerson.id },
+    });
+    expect(made).toHaveLength(1);
+
+    await asUser(CHAIRMAN, () => revertImport(staged.batchId));
+
+    const person = await unscopedPrisma.person.findUniqueOrThrow({ where: { id: handPerson.id } });
+    expect(person.deletedAt).toBeNull();
+    expect(person.fullName).toBe(name);
+    const employment = await unscopedPrisma.employmentRelationship.findUniqueOrThrow({ where: { id: made[0].id } });
+    expect(employment.deletedAt).not.toBeNull();
+  });
+});
