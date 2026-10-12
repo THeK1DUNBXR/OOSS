@@ -55,7 +55,7 @@ beforeAll(async () => {
     orderBy: { payPeriod: 'desc' },
     select: { payPeriod: true },
   });
-  if (latest) RUN_YEAR = Number(latest.payPeriod.slice(0, 4)) + 1;
+  if (latest) RUN_YEAR = parseInt(latest.payPeriod.slice(0, 4), 10) + 1;
 });
 
 /** A throwaway employee, hired by Operations. Mirrors hr.test.ts's makeEmployee. */
