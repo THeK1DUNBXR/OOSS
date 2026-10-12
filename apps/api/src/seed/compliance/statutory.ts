@@ -1,5 +1,6 @@
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { FOUNDER_DUTY, resolveDutyHolder, STATUTORY_APPROVER_DUTY } from '../../domains/statutory.js';
 
 const EFFECTIVE_FROM = new Date('2025-09-22T00:00:00.000Z');
 
@@ -84,5 +85,51 @@ export async function seedStatutory(): Promise<void> {
         data: { source: rule.source, createdBy: SEED_CREATED_BY },
       });
     }
+  }
+}
+
+/** The assignedBy of a seeded holder row: no human granted it, so no human is named. */
+const SEED_DUTY_ASSIGNED_BY = 'system:statutory-seed';
+
+/**
+ * Names the owner's person as founder and as statutory approver, once. Owner ruling, 2026-10-12:
+ * "the founder (unless changed during onboarding)" holds the approver duty. Onboarding may name
+ * another holder, so a tenant that already has a founder is left alone: a second run changes
+ * nothing, and a duty onboarding named stays named.
+ *
+ * Called from bootstrap after the founding accounts are written, not from seedStatutory: the
+ * seed runs compliance before the accounts, so the owner's person does not exist yet there.
+ *
+ * The person is the one bootstrap wrote the owner account to, passed in rather than looked up
+ * by role. The role alone is not unique: the demo dataset loads a second active affiliation with
+ * the chairman role, so a lookup by role would find two people and name neither. The affiliation
+ * is still checked: no active owner-role affiliation means nothing is assigned, and the seed says so.
+ */
+export async function seedFounderDuty(ownerPartyId: string, ownerRoleSlug: string): Promise<void> {
+  const tenantId = currentAuth().tenantId;
+  if (await resolveDutyHolder(FOUNDER_DUTY)) return;
+  const affiliation = await prisma.affiliation.findFirst({
+    where: { tenantId, partyId: ownerPartyId, roleSlug: ownerRoleSlug, status: 'active' },
+    select: { id: true },
+  });
+  if (!affiliation) {
+    console.log(`  founder duty not assigned: the owner's person holds no active ${ownerRoleSlug} affiliation`);
+    return;
+  }
+  const founderId = ownerPartyId;
+  const effectiveFrom = new Date();
+  await prisma.dutyAssignment.create({
+    data: { tenantId, dutyKey: FOUNDER_DUTY, partyId: founderId, effectiveFrom, assignedBy: SEED_DUTY_ASSIGNED_BY },
+  });
+  if (!(await resolveDutyHolder(STATUTORY_APPROVER_DUTY))) {
+    await prisma.dutyAssignment.create({
+      data: {
+        tenantId,
+        dutyKey: STATUTORY_APPROVER_DUTY,
+        partyId: founderId,
+        effectiveFrom,
+        assignedBy: SEED_DUTY_ASSIGNED_BY,
+      },
+    });
   }
 }
