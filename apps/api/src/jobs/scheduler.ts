@@ -20,6 +20,7 @@ import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { prisma, unscopedPrisma } from '../platform/db.js';
 import { config } from '../platform/config.js';
+import { logger } from '../platform/logger.js';
 import {
   CATCH_UP_MS,
   HEARTBEAT_MS,
@@ -963,7 +964,7 @@ async function emitJobFailed(
     );
   } catch (err) {
     // Losing the event must not fail the tick; the claim row already holds the state.
-    console.error(`[scheduler] could not record failure of ${jobName}`, err);
+    logger.error({ component: 'scheduler', err }, `could not record failure of ${jobName}`);
   }
 }
 
@@ -991,7 +992,7 @@ async function sweepTenant(tenantId: string, notBefore: Date, oneShotJobs: strin
 
   for (const row of swept) {
     await emitJobFailed(tenantId, row.jobName, row.scheduledFor, row.attempt, row.lastError ?? 'abandoned', true);
-    console.error(`[scheduler] ${row.jobName} dead-lettered for tenant ${tenantId}: ${row.lastError ?? 'abandoned'}`);
+    logger.error({ component: 'scheduler', tenantId }, `${row.jobName} dead-lettered: ${row.lastError ?? 'abandoned'}`);
   }
 }
 
@@ -1147,7 +1148,7 @@ export async function tickOnce(now: Date = new Date(), opts: TickOptions = {}): 
             break;
           case 'dead':
             outcome.deadLettered++;
-            console.error(`[scheduler] ${job.name} dead-lettered for tenant ${tenant.id}: ${r.error}`);
+            logger.error({ component: 'scheduler', tenantId: tenant.id }, `${job.name} dead-lettered: ${r.error}`);
             break;
           default:
             outcome.skipped++;
@@ -1187,12 +1188,13 @@ export function startScheduler(tickMs: number = TICK_MS): void {
     try {
       const outcome = await tickOnce(new Date());
       if (outcome.ran.length || outcome.deadLettered || outcome.failed) {
-        console.log(
-          `[scheduler] ran ${outcome.ran.length}, failed ${outcome.failed}, skipped ${outcome.skipped}, dead-lettered ${outcome.deadLettered}`,
+        logger.info(
+          { component: 'scheduler' },
+          `ran ${outcome.ran.length}, failed ${outcome.failed}, skipped ${outcome.skipped}, dead-lettered ${outcome.deadLettered}`,
         );
       }
     } catch (err) {
-      console.error('[scheduler] tick failed', err);
+      logger.error({ component: 'scheduler', err }, 'tick failed');
     }
   };
 

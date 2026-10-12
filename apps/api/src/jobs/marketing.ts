@@ -16,6 +16,7 @@
 
 import type { JobDefinition, JobResult } from './scheduler.js';
 import { prisma } from '../platform/db.js';
+import { logger } from '../platform/logger.js';
 import { currentAuth } from '../platform/context.js';
 import { istDateKey, istMidnight } from '@kaizen/shared';
 import { computeAttribution } from '../domains/marketing/attribution.js';
@@ -71,14 +72,14 @@ async function callDetector(
     const loader = MODULE_LOADERS[mod];
     if (!loader) {
       const message = `no loader registered for domains/marketing/${mod}.js`;
-      console.warn(`[jobs/marketing] skipping — ${message}`);
+      logger.warn({ component: 'jobs/marketing' }, `skipping — ${message}`);
       return { count: 0, error: message };
     }
     const imported = await loader();
     const target = imported[fn];
     if (typeof target !== 'function') {
       const message = `${mod}.${fn} is not exported yet`;
-      console.warn(`[jobs/marketing] skipping — ${message}`);
+      logger.warn({ component: 'jobs/marketing' }, `skipping — ${message}`);
       return { count: 0, error: message };
     }
     const result = await (target as (...a: unknown[]) => unknown)(...args);
@@ -94,7 +95,7 @@ async function callDetector(
     // `completed` on a database error, which is how the attribution recompute
     // went unnoticed while every write was failing.
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[jobs/marketing] ${mod}.${fn} failed: ${message}`);
+    logger.error({ component: 'jobs/marketing', err }, `${mod}.${fn} failed: ${message}`);
     throw err;
   }
 }

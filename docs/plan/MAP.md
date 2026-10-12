@@ -320,7 +320,7 @@
 
 **`apps/api/src/platform/llm.ts`** (319 lines) — LlmRegion:11 · LlmTask:12 · ApprovalClassification:13 · PERSONAL_DATA_FIELDS:22 · ModelGatewayConfig:69 · ModelGatewayCall:90 · ModelGatewayResult:97 · BriefingMetricSpec:106 · normalizeAction:112 · classifyAction:116 · assertActionAllowed:131 · isIndiaRegionRequired:142 · allowInferenceRegion:148 · redactPersonalFields:159 · sanitizeForModel:184 · ModelGateway:202 · createGateway:292 · safeBriefingComposition:296 · assertAllowedSemanticQuery:309
 
-**`apps/api/src/platform/logger.ts`** (69 lines) — SAFE_FIELDS:14 · allowlistFields:39 · LoggerOptions:47 · createLogger:52 · logger:68
+**`apps/api/src/platform/logger.ts`** (98 lines) — SAFE_FIELDS:14 · allowlistFields:39 · serialiseError:56 · LoggerOptions:68 · createLogger:73 · logger:97
 
 **`apps/api/src/platform/marketingSync.ts`** (50 lines) — MarketingSyncResult:24 · reconcileMarketingDefaults:30 · reconcileMarketingDefaultsForAllTenants:39
 
@@ -430,11 +430,11 @@
 
 **`apps/api/src/jobs/it/vendors.ts`** (305 lines) — runVendorContractNoticeLadder:42 · runVendorAssessmentOverdueJob:179 · runVendorDpaMissingJob:240 · JOBS:276
 
-**`apps/api/src/jobs/marketing.ts`** (253 lines) — MARKETING_JOBS:186
+**`apps/api/src/jobs/marketing.ts`** (254 lines) — MARKETING_JOBS:187
 
 **`apps/api/src/jobs/schedule.ts`** (136 lines) — SCHEDULE_TZ:20 · TICK_MS:23 · MAX_ATTEMPTS:26 · isValidCron:46 · nextFireAfter:56 · dueOccurrence:74 · occurrencesBetween:95 · backoffMs:113 · CATCH_UP_MS:126 · LEASE_MS:134 · HEARTBEAT_MS:135
 
-**`apps/api/src/jobs/scheduler.ts`** (1207 lines) — JobResult:58 · SideEffects:69 · JobDefinition:71 · PendingJobDefinition:100 · ALL_JOBS:112 · escalateApprovalStep:479 · computeDailyMetrics:530 · RunOptions:575 · claimFiring:611 · runJobsForTenant:735 · runAllTenants:761 · runManualJobs:794 · retryLimit:820 · ClaimStatus:824 · ClaimResult:826 · AttemptFence:837 · claimAttempt:859 · heartbeatAttempt:890 · finishAttempt:901 · failAttempt:919 · runClaimedOccurrence:1012 · TickOutcome:1079 · TickOptions:1090 · tickOnce:1106 · assertSchedulable:1166 · startScheduler:1180 · stopScheduler:1203
+**`apps/api/src/jobs/scheduler.ts`** (1209 lines) — JobResult:59 · SideEffects:70 · JobDefinition:72 · PendingJobDefinition:101 · ALL_JOBS:113 · escalateApprovalStep:480 · computeDailyMetrics:531 · RunOptions:576 · claimFiring:612 · runJobsForTenant:736 · runAllTenants:762 · runManualJobs:795 · retryLimit:821 · ClaimStatus:825 · ClaimResult:827 · AttemptFence:838 · claimAttempt:860 · heartbeatAttempt:891 · finishAttempt:902 · failAttempt:920 · runClaimedOccurrence:1013 · TickOutcome:1080 · TickOptions:1091 · tickOnce:1107 · assertSchedulable:1167 · startScheduler:1181 · stopScheduler:1205
 
 **`apps/api/src/lib/auth.ts`** (1243 lines) — assertProductionSecrets:89 · TokenPayload:121 · SelectionTokenPayload:136 · signToken:141 · hashRefreshSecret:146 · liveSessionFor:155 · verifyToken:189 · MfaChallengePayload:197 · hashPassword:228 · ensureSignInPrincipal:248 · EntitySelectionResult:320 · assertPasswordAllowed:331 · LoginResult:388 · MfaRequiredResult:396 · login:419 · verifyMfaAndLogin:559 · enrolMfa:591 · confirmMfa:597 · changePassword:613 · principalHoldsOtherEntities:642 · recoverSignIn:666 · entitiesForToken:712 · identifySwitchCaller:727 · switchEntity:769 · SessionRefresh:831 · refreshSession:858 · logoutWithRefreshCookie:1021 · logoutSession:1074 · buildSessionUser:1084 · toAuthContext:1166 · switchContext:1198
 
