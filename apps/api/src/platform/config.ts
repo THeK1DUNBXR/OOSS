@@ -32,6 +32,9 @@ const here = dirname(fileURLToPath(import.meta.url));
  * whether the process may run at all.
  */
 function loadDotEnv(): void {
+  // The boot-refusal tests remove a variable on purpose, in a child process.
+  // Without this switch a developer's own apps/api/.env would put it back.
+  if (process.env.KAIZEN_SKIP_DOTENV === '1') return;
   for (const candidate of [resolve(here, '../../.env'), resolve(here, '../../../../.env')]) {
     try {
       // Node 20.12+. Values already in the real environment win, which is what
@@ -85,15 +88,17 @@ export const envSchema = z
 
     /**
      * Keys AES-256-GCM encryption of PAN, Aadhaar and bank values (privacy.ts).
-     * Required in production because the only other option is a constant that
-     * is printed in this repository: encryption under it protects nothing from
-     * anyone who has read the source. Outside production the development key is
-     * allowed, with a warning, so a laptop does not need a secret to boot.
+     * Required in every environment. The fallback it replaced was a constant
+     * printed in this repository: a deploy that forgot the variable ran with a
+     * key anyone could compute. Dev, CI and the test stack each set their own
+     * value (.env.example, scripts/, .github/workflows/ci.yml).
      */
     FIELD_ENCRYPTION_KEY: z
-      .string()
-      .min(32, 'must be at least 32 characters — generate one, do not invent it')
-      .optional(),
+      .string({
+        required_error:
+          'is required in every environment — it keys encryption of PAN, Aadhaar and bank values. Generate one with: openssl rand -base64 48',
+      })
+      .min(32, 'must be at least 32 characters — generate one, do not invent it'),
 
     /**
      * Signs the public unsubscribe links. Optional because JWT_SECRET is a
@@ -147,13 +152,6 @@ export const envSchema = z
     SEED_EMAIL_DOMAIN: z.string().default('kaizen.co.in'),
   })
   .superRefine((env, ctx) => {
-    if (env.NODE_ENV === 'production' && !env.FIELD_ENCRYPTION_KEY) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['FIELD_ENCRYPTION_KEY'],
-        message: 'is required when NODE_ENV is production — it keys encryption of PAN, Aadhaar and bank values',
-      });
-    }
     // Without a role that bypasses RLS, the cross-tenant jobs (outbox drain, audit
     // chain, scheduler) and the seed see no rows and do not say so. Production
     // refuses to start rather than run them that way.
@@ -197,7 +195,10 @@ export function parseEnv(raw: NodeJS.ProcessEnv): Config {
       // message says which, because "invalid" sends somebody looking for a typo
       // in a variable they never set.
       const missing = i.code === 'invalid_type' && 'received' in i && i.received === 'undefined';
-      return missing ? `${name} is not set` : `${name} ${i.message}`;
+      // A schema may say why the variable matters (`required_error`); zod's own
+      // "Required" says nothing, so the default phrasing stands in that case.
+      if (missing) return i.message === 'Required' ? `${name} is not set` : `${name} ${i.message}`;
+      return `${name} ${i.message}`;
     });
     throw new ConfigError(issues);
   }
