@@ -451,7 +451,8 @@ export interface DecisionView {
   subjectId: string;
   subjectLabel: string;
   authorityBasis: string;
-  requiredAuthorityValue: number | null;
+  /** Paise, as a decimal string: a JavaScript number cannot hold every bigint paise amount exactly. */
+  requiredAuthorityMinor: string | null;
   currency: string | null;
   confidence: number | null;
   deferUntil: string | null;

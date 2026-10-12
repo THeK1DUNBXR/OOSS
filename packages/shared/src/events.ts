@@ -393,6 +393,7 @@ export const EVENTS = {
   DECISION_DELEGATED: 'kz.gov.decision.delegated',
   DECISION_DEFERRED: 'kz.gov.decision.deferred',
   DECISION_EVIDENCE_REQUESTED: 'kz.gov.decision.evidence_requested',
+  DECISION_LINKED: 'kz.gov.decision.linked',
   // A commitment's state changes. `missed` is also written by the scheduled job,
   // so a subscriber must not assume a person did it: the actor is null then.
   COMMITMENT_PROPOSED: 'kz.gov.commitment.proposed',

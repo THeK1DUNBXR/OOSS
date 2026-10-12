@@ -16,8 +16,16 @@
  * There is no AI disposition authority anywhere on this surface.
  */
 
-import { EVENTS, EVIDENCE_PACK_COMPONENTS, parseMinor, type DecisionDisposition } from '@kaizen/shared';
-import { prisma, num } from '../platform/db.js';
+import {
+  DECISION_LINK_TYPES,
+  EVENTS,
+  EVIDENCE_PACK_COMPONENTS,
+  formatMinor,
+  isDecisionLinkType,
+  type DecisionDisposition,
+  type DecisionLinkType,
+} from '@kaizen/shared';
+import { prisma, Prisma, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -26,11 +34,15 @@ import { assertCan, resolveAuthorityCeiling } from '../platform/permissions.js';
 import { drillPathFor } from './commandCenter.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { governedWrite } from '../platform/governedWrite.js';
+import { wireInt } from '../platform/wire.js';
 
 // A lesson is what closes the decision loop (see reviewDecision). Without a
 // registration here its create would be silently unaudited, leaving a review
 // that closed a decision with no record of the lesson it was closed on.
 registerGovernedEntities('gov', ['lesson']);
+// A link is written by linkDecision; unregistered, its audit row would be
+// dropped silently (auditWrite no-ops on an unknown subject type).
+registerGovernedEntities('gov', ['decision_link']);
 
 export interface RaiseDecisionInput {
   question: string;
@@ -38,7 +50,8 @@ export interface RaiseDecisionInput {
   subjectId: string;
   subjectLabel?: string;
   authorityBasis: string;
-  requiredAuthorityValue?: number | null;
+  /** Paise. A JavaScript number never reaches here: the route parses the wire string into bigint. */
+  requiredAuthorityMinor?: bigint | null;
   currency?: string;
   routedToRole?: string;
   pointOfNoReturn?: Date | null;
@@ -65,7 +78,7 @@ export async function raiseDecision(input: RaiseDecisionInput) {
         subjectId: input.subjectId,
         subjectLabel: input.subjectLabel ?? input.subjectId,
         authorityBasis: input.authorityBasis,
-        requiredAuthorityValue: input.requiredAuthorityValue ?? undefined,
+        requiredAuthorityMinor: input.requiredAuthorityMinor ?? undefined,
         currency: input.currency ?? 'INR',
         routedToRole: input.routedToRole ?? 'chairman',
         evidencePack: evidencePack as never,
@@ -146,9 +159,12 @@ async function assembleEvidencePack(input: RaiseDecisionInput) {
       lesson: lessons[i]?.body ?? 'No lesson recorded for this precedent.',
     })),
     constraintsAndGrant: {
-      constraint: input.requiredAuthorityValue
-        ? `Requires ${input.authorityBasis} authority for ${input.requiredAuthorityValue} ${input.currency ?? 'INR'}.`
-        : `Requires ${input.authorityBasis} authority.`,
+      // A zero requirement is still a requirement, so this tests for null, not truthiness:
+      // 0n is falsy and would print the constraint as if none were set.
+      constraint:
+        input.requiredAuthorityMinor !== undefined && input.requiredAuthorityMinor !== null
+          ? `Requires ${input.authorityBasis} authority for ${formatMinor(input.requiredAuthorityMinor)} ${input.currency ?? 'INR'}.`
+          : `Requires ${input.authorityBasis} authority.`,
       grantExercised: ceiling !== null ? `${input.authorityBasis} ceiling ${ceiling}` : 'no ceiling held',
     },
     // Explicitly labelled as a model, not a fact.
@@ -205,7 +221,7 @@ export async function decisionQueue() {
       subjectId: d.subjectId,
       subjectLabel: d.subjectLabel ?? d.subjectId,
       authorityBasis: d.authorityBasis,
-      requiredAuthorityValue: num(d.requiredAuthorityValue),
+      requiredAuthorityMinor: d.requiredAuthorityMinor === null ? null : wireInt(d.requiredAuthorityMinor),
       currency: d.currency,
       confidence: d.confidence,
       deferUntil: d.deferUntil?.toISOString() ?? null,
@@ -266,14 +282,16 @@ export async function disposeDecision(input: DispositionInput) {
   if (input.disposition === 'decide') {
     if (!input.chosenOption) throw ApiError.badRequest('Decide requires a chosen option.');
 
-    // Authority is checked at write time.
-    if (decision.requiredAuthorityValue) {
+    // Authority is checked at write time. Tested for null, not truthiness: a
+    // requirement of 0n is falsy, and a truthiness test would skip the check
+    // that the Decimal column never skipped.
+    if (decision.requiredAuthorityMinor !== null) {
       await assertCan({
         resource: 'decisions',
         verb: 'approve',
         magnitude: {
           authorityClass: decision.authorityBasis,
-          value: parseMinor(decision.requiredAuthorityValue.toFixed(2)),
+          value: decision.requiredAuthorityMinor,
           currency: decision.currency ?? 'INR',
         },
       });
@@ -443,6 +461,112 @@ export async function disposeDecision(input: DispositionInput) {
 
     return updated;
   });
+}
+
+/**
+ * Ties a decision to the record it concerns: the task that acts on it, the
+ * commitment or case it bears on, the exception it raised, the document that
+ * evidences it. A link is append-only (the database refuses UPDATE and DELETE),
+ * so a link that was wrong stays, and the record of what was tied to what is
+ * never rewritten.
+ *
+ * The target must exist in this tenant. The domain checks it, because the target
+ * is one of several tables; a foreign or missing id is a 422 and writes nothing.
+ * The check runs inside the transaction, so the target read and the link write
+ * see the same state.
+ */
+export async function linkDecision(decisionId: string, input: { linkType: DecisionLinkType; linkId: string }) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'decisions', verb: 'edit' });
+
+  if (!isDecisionLinkType(input.linkType)) {
+    throw ApiError.unprocessable(
+      `"${input.linkType}" is not a link type. The link types are ${DECISION_LINK_TYPES.join(', ')}.`,
+    );
+  }
+  if (input.linkType === 'subject') {
+    throw ApiError.unprocessable(
+      'A subject link is refused. A decision names its subject as a string pair with no table behind it, so there is nothing to check the link against.',
+    );
+  }
+
+  const decision = await prisma.decision.findFirst({ where: { id: decisionId, tenantId: auth.tenantId } });
+  if (!decision) throw ApiError.notFound('Decision');
+
+  // Narrowed once here: the narrowing on `input.linkType` does not survive into
+  // the transaction callback below.
+  const linkType: Exclude<DecisionLinkType, 'subject'> = input.linkType;
+  const linkId = input.linkId;
+
+  try {
+    return await governedWrite(async (tx) => {
+      await assertLinkTargetExists(tx, linkType, linkId);
+
+      const link = await tx.decisionLink.create({
+        data: {
+          tenantId: auth.tenantId,
+          decisionId,
+          linkType,
+          linkId,
+          createdByPartyId: auth.partyId ?? null,
+        },
+      });
+      await auditWrite({ action: 'create', subjectType: 'decision_link', subjectId: link.id, after: link, tx });
+
+      await emit({
+        name: EVENTS.DECISION_LINKED,
+        subject: { entityType: 'decision', entityId: decisionId, recordCode: decision.recordCode },
+        related: [{ relation: 'links_to', entityType: linkType, entityId: linkId }],
+        newState: { linkType, linkId },
+        confidentiality: 'confidential',
+        tx,
+      });
+
+      return link;
+    });
+  } catch (err) {
+    // The unique index is the floor under the domain: two concurrent links of the
+    // same target both pass the existence check, and the second is refused here.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw ApiError.conflict('This decision is already linked to that record.', { linkType, linkId });
+    }
+    throw err;
+  }
+}
+
+export async function listDecisionLinks(decisionId: string) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'decisions', verb: 'view' });
+  const decision = await prisma.decision.findFirst({
+    where: { id: decisionId, tenantId: auth.tenantId },
+    select: { id: true },
+  });
+  if (!decision) throw ApiError.notFound('Decision');
+  return prisma.decisionLink.findMany({
+    where: { tenantId: auth.tenantId, decisionId },
+    orderBy: { createdAt: 'asc' },
+  });
+}
+
+/**
+ * The per-type existence check. Each finder is tenant-scoped by its own where
+ * clause as well as by the Prisma extension: the check should not depend on the
+ * extension being present to refuse another tenant's row.
+ */
+async function assertLinkTargetExists(tx: DbTx, linkType: Exclude<DecisionLinkType, 'subject'>, linkId: string) {
+  const tenantId = currentAuth().tenantId;
+  const where = { id: linkId, tenantId };
+  const finders: Record<Exclude<DecisionLinkType, 'subject'>, () => Promise<{ id: string } | null>> = {
+    task: () => tx.task.findFirst({ where, select: { id: true } }),
+    commitment: () => tx.commitment.findFirst({ where, select: { id: true } }),
+    case: () => tx.case.findFirst({ where, select: { id: true } }),
+    exception: () => tx.exceptionRecord.findFirst({ where, select: { id: true } }),
+    document: () => tx.document.findFirst({ where, select: { id: true } }),
+  };
+  const found = await finders[linkType]();
+  if (!found) {
+    throw ApiError.unprocessable(`No ${linkType} with that id exists in this tenant. A link needs a live target.`);
+  }
 }
 
 /**

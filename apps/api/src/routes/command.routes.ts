@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { HEALTH_DOMAINS, type SeverityCode } from '@kaizen/shared';
+import { DECISION_LINK_TYPES, HEALTH_DOMAINS, type SeverityCode } from '@kaizen/shared';
 import { handler, str, bool, numeric } from '../lib/http.js';
 import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
@@ -23,10 +23,25 @@ import {
   raiseDecision,
   reviewDecision,
   decisionCalibration,
+  linkDecision,
+  listDecisionLinks,
 } from '../domains/decisions.js';
 import { forecastRollup } from '../domains/opportunities.js';
 
 const router = Router();
+
+/**
+ * A body that does not match its schema is the caller's error, a 400. A bare
+ * `schema.parse` throws a ZodError that the handler does not map, so it reaches
+ * the client as a 500; these routes carry money and must say what was wrong.
+ */
+function parseBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.output<T> {
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    throw ApiError.badRequest(parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
+  }
+  return parsed.data;
+}
 
 /** The whole surface in one round trip. */
 router.get(
@@ -169,7 +184,13 @@ router.post(
       subjectId: z.string(),
       subjectLabel: z.string().optional(),
       authorityBasis: z.string(),
-      requiredAuthorityValue: z.number().nullish(),
+      // Paise as a string of digits, the same wire form as Case.remedyAmountMinor.
+      // A JSON number is refused: a float cannot carry every paise amount exactly.
+      requiredAuthorityMinor: z
+        .string()
+        .regex(/^-?\d+$/, 'A requirement is a whole number of paise, sent as a string.')
+        .nullish()
+        .transform((value) => (value === null || value === undefined ? null : BigInt(value))),
       routedToRole: z.string().optional(),
       pointOfNoReturn: z.string().nullish(),
       rejectedOptions: z
@@ -177,7 +198,7 @@ router.post(
         .optional(),
       noActionConsequence: z.object({ statement: z.string(), by: z.string() }).optional(),
     });
-    const input = schema.parse(req.body);
+    const input = parseBody(schema, req.body);
     const decision = await raiseDecision({
       ...input,
       pointOfNoReturn: input.pointOfNoReturn ? new Date(input.pointOfNoReturn) : null,
@@ -232,6 +253,25 @@ router.post(
 router.get(
   '/decisions/calibration',
   handler(async () => decisionCalibration()),
+);
+
+router.get(
+  '/decisions/:id/links',
+  handler(async (req) => listDecisionLinks(req.params.id)),
+);
+
+router.post(
+  '/decisions/:id/links',
+  handler(async (req, res) => {
+    const schema = z.object({
+      linkType: z.enum(DECISION_LINK_TYPES),
+      linkId: z.string().min(1),
+    });
+    const input = parseBody(schema, req.body);
+    const link = await linkDecision(req.params.id, input);
+    res.status(201).json(link);
+    return undefined;
+  }),
 );
 
 // ---------------------------------------------------------------------------
