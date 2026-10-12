@@ -466,6 +466,9 @@ export interface SpinOutPreview {
   openingAllotment: { note: string };
 }
 
+/** The opening class name when the caller gives none; the preflight checks the same name the commit writes. */
+const DEFAULT_CLASS_NAME = 'Equity';
+
 /** Finds the subsidiary tenant a spin-out for this division would target, if one exists. */
 async function findSubsidiary(holdingTenantId: string, division: Division) {
   const children = await unscopedPrisma.tenant.findMany({ where: { parentTenantId: holdingTenantId } });
@@ -486,6 +489,7 @@ export async function previewSpinOut(
   holdingTenantId: string,
   division: Division,
   deep = true,
+  className = DEFAULT_CLASS_NAME,
 ): Promise<SpinOutPreview> {
   const holding = await unscopedPrisma.tenant.findFirstOrThrow({ where: { id: holdingTenantId } });
   const subsidiaryTenant = await findSubsidiary(holdingTenantId, division);
@@ -509,6 +513,22 @@ export async function previewSpinOut(
     if (registerCount > 0) {
       blockers.push(
         `"${subsidiaryTenant.slug}" already has ${registerCount} share class(es) on its register. A spin-out is only the first thing that happens to a subsidiary.`,
+      );
+    }
+    // The name of a reverted class stays taken on the register (FX-71), so a redo that
+    // repeats it would hit the ShareClass (tenantId, name) unique key inside the commit.
+    // Refused here, before any write, so the caller sees a blocker rather than a raw Prisma error.
+    const takenByRevert = await asSystem(
+      subsidiaryTenant.id,
+      async () =>
+        await prisma.shareClass.findFirst({
+          where: { tenantId: subsidiaryTenant.id, name: className, spinOutRevertedAt: { not: null } },
+          select: { spinOutBatchId: true },
+        }),
+    );
+    if (takenByRevert) {
+      blockers.push(
+        `The class name "${className}" is still on the statutory register from reverted batch ${takenByRevert.spinOutBatchId}, so choose a different className.`,
       );
     }
     const signatories = await asSystem(
@@ -568,7 +588,7 @@ export interface SpinOutCommitResult {
 }
 
 export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutCommitResult> {
-  const preview = await previewSpinOut(input.holdingTenantId, input.division);
+  const preview = await previewSpinOut(input.holdingTenantId, input.division, true, input.className);
   if (!preview.ready || !preview.subsidiary) {
     throw new Error(`Cannot commit — ${preview.blockers.join(' ')}`);
   }
@@ -854,7 +874,7 @@ export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutC
   let openingShareClassId = '';
   await asSystem(subsidiaryTenantId, async () => {
     const shareClass = await createShareClass({
-      name: input.className ?? 'Equity',
+      name: input.className ?? DEFAULT_CLASS_NAME,
       kind: 'equity',
       instrument: 'equity',
       faceValue: input.faceValue ?? 10,

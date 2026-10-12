@@ -169,7 +169,12 @@ async function main() {
 
   // `previewSpinOut` takes the tenant explicitly and manages its own
   // `asSystem` scoping internally — no ambient context needed here.
-  const preview = await previewSpinOut(holding.id, division as DivisionArg);
+  const preview = await previewSpinOut(
+    holding.id,
+    division as DivisionArg,
+    true,
+    args.class ? String(args.class) : undefined,
+  );
   printPreview(preview);
 
   if (!args.yes) process.exit(0);
