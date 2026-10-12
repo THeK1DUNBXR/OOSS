@@ -268,7 +268,7 @@
 
 **`apps/api/src/domains/spinOutPreview.ts`** (71 lines) — spinOutPreview:22 · SpinOutDivisionSummary:33 · SpinOutDivisionsView:40 · spinOutDivisionsSummary:46
 
-**`apps/api/src/domains/statutory.ts`** (548 lines) — StatutoryRuleInput:18 · listStatutoryRules:28 · createStatutoryRule:43 · STATUTORY_APPROVER_DUTY:72 · FOUNDER_DUTY:88 · FounderOverride:91 · isFounder:94 · resolveDutyHolder:115 · DutyAssignmentInput:128 · assignDuty:142 · getDutyHolder:222 · endDuty:232 · StatutoryRuleNotFoundError:280 · ruleAt:305 · approveStatutoryRule:378 · holdStatutoryRule:513
+**`apps/api/src/domains/statutory.ts`** (553 lines) — StatutoryRuleInput:18 · listStatutoryRules:28 · createStatutoryRule:43 · STATUTORY_APPROVER_DUTY:72 · FOUNDER_DUTY:88 · FounderOverride:91 · isFounder:94 · resolveDutyHolder:115 · DutyAssignmentInput:128 · assignDuty:142 · getDutyHolder:222 · endDuty:232 · StatutoryRuleNotFoundError:280 · ruleAt:305 · approveStatutoryRule:378 · holdStatutoryRule:518
 
 **`apps/api/src/domains/students.ts`** (562 lines) — STUDENT_STATUSES:48 · StudentStatus:49 · StudentInput:51 · StudentView:82 · createStudent:201 · attachStudentProfile:234 · updateStudent:336 · StudentQuery:410 · listStudents:422 · loadStudent:468 · studentOf:479 · isBillable:517
 
