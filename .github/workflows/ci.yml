@@ -54,6 +54,9 @@ jobs:
       # The map is the index every session reads instead of searching. A stale
       # one is worse than none, because it is believed.
       - run: pnpm map:check
+      # The gate's own tests (G6). They need git and nothing else, so they run
+      # here rather than in the database job below.
+      - run: pnpm gates:fail-first:test
 
   test:
     name: api tests
@@ -113,6 +116,67 @@ jobs:
         env:
           DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public
       - run: pnpm --filter @kaizen/api test
+
+  # Failing-test-first (G6). A red commit's named tests run against its parent,
+  # where they must fail, and at the head, where they must pass, so this job needs
+  # the same database as the api tests. The head is checked out by SHA: the
+  # default checkout of a pull request is a merge commit, which would make the
+  # base look like part of the PR's own history.
+  fail-first:
+    name: failing-test-first
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: kaizen
+          POSTGRES_PASSWORD: kaizen
+          POSTGRES_DB: kaizen_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      # Same split as the test job (FX-51).
+      DATABASE_URL: postgresql://kaizen_app:kaizen_app@127.0.0.1:5432/kaizen_test?schema=public
+      MIGRATION_DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public
+      UNSCOPED_DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public
+      TEST_DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public
+      NODE_ENV: test
+      JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Every branch is fetched, so origin/<base> exists for the merge-base.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kaizen/shared build
+      - run: pnpm --filter @kaizen/semantic build
+      - name: Create the application role
+        env:
+          PGPASSWORD: kaizen
+        run: psql -h 127.0.0.1 -U kaizen -d kaizen_test -v ON_ERROR_STOP=1 -f scripts/app-role.sql
+      - run: pnpm --filter @kaizen/api db:deploy
+      - run: pnpm --filter @kaizen/api exec prisma generate
+      - run: pnpm db:seed
+        env:
+          DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public
+      - run: pnpm --filter @kaizen/api seed:demo
+        env:
+          DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public
+      # Title, labels and base ref are untrusted text. They reach the script
+      # through the environment, never through the shell source.
+      - name: Check the red tests
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: node scripts/ci/fail-first.mjs --base "origin/$BASE_REF" --title "$PR_TITLE" --labels "$PR_LABELS"
 
   build:
     name: build
