@@ -93,3 +93,38 @@ model PayrollStatutoryLine {
   @@index([tenantId, employmentRelationshipId, payPeriod])
   @@map("payroll_statutory_lines")
 }
+
+/// A tenant-level holder of a named duty, from one instant to another (round 27 c:
+/// the statutory approver is resolved from this, never from a role name or a person
+/// in code; round 23 d: who holds it is decided at onboarding).
+///
+/// Not AccessDuty: that row hangs off an access assignment, is unique per
+/// assignment, and carries an expiry, not a start. It cannot say one holder per
+/// tenant at a time. ACCESS-MODEL-PLAN.md:278 names the statutory approver as an
+/// extra duty, and DECISIONS.md round 27 c names it as a tenant-level duty; the two
+/// should be reconciled when onboarding names the holder.
+/// At most one holder per (tenant, dutyKey) over any instant is an EXCLUDE
+/// constraint in the migration, which Prisma cannot model.
+model DutyAssignment {
+  id       String @id @default(cuid())
+  tenantId String
+  /// A duty key. The statutory approver's key is STATUTORY_APPROVER_DUTY in
+  /// domains/statutory.ts, and the owner has not named it.
+  dutyKey  String
+  /// The person holding the duty (AuthContext.partyId). Plain id, as
+  /// AccessAssignment.personId is; checked by the domain when assigned.
+  partyId  String
+
+  effectiveFrom DateTime
+  /// Null is open-ended. Ending a holder sets this; the row is kept as history.
+  effectiveTo   DateTime?
+
+  assignedBy String
+  endedBy    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, dutyKey, effectiveFrom])
+  @@map("duty_assignments")
+}
