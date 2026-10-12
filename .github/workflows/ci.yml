@@ -58,6 +58,21 @@ jobs:
       # here rather than in the database job below.
       - run: pnpm gates:fail-first:test
 
+  # The web suite (vitest + jsdom, with the axe checks in a11y.test.tsx) needs no
+  # database and no Prisma client. It was only ever run by hand, so an axe
+  # violation could merge green.
+  web-tests:
+    name: web tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kaizen/shared build
+      - run: pnpm test:web
+
   test:
     name: api tests
     runs-on: ubuntu-latest
