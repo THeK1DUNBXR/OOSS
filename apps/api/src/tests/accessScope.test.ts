@@ -8,11 +8,20 @@
  * legacy answer is a regression, not a feature.
  */
 
-import { describe, expect, it } from 'vitest';
-import { evaluate, scopeWhere, visibilityWhere } from '../platform/permissions.js';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { assertScopeAll, evaluate, scopeWhere, visibilityWhere } from '../platform/permissions.js';
 import type { AuthContext } from '../platform/context.js';
-import { asPrincipal, tenantId } from './helpers.js';
-import { authOf, grantIndividual, makePerson, uniqCode } from './access/factories.js';
+import { unscopedPrisma } from '../platform/db.js';
+import { asPrincipal, expectReject, tenantId } from './helpers.js';
+import {
+  authOf,
+  grantIndividual,
+  grantVertical,
+  makePerson,
+  makeResourceBinding,
+  makeVertical,
+  uniqCode,
+} from './access/factories.js';
 
 let tid: string;
 
@@ -78,5 +87,149 @@ describe('PR11b characterisation: legacy grants (design test 12)', () => {
     const wrongVerb = await ev({ resource, verb: 'edit', record: { ownerPartyId: holder.id }, auth });
     expect(wrongVerb.deniedBy).toBe('WHO');
     expect(wrongVerb.reasonCode).toBe('no_permission');
+  });
+});
+
+/**
+ * PR11b scope tests (P11-DESIGN c, e tests 1-4 and 6). Each one is red on the base:
+ * the access-grant branches do not exist yet, so a vertical grant is read as the
+ * legacy grant it looks like. Grants are written in the compile's row shape, so the
+ * scope axis is tested on its own, before the compile is in place.
+ */
+describe('PR11b scope: vertical access grants', () => {
+  beforeAll(async () => {
+    tid = tid ?? (await tenantId());
+  });
+
+  it('T1: a vertical Head is not company-wide, so an aggregate refuses it', async () => {
+    const resource = resourceName();
+    const company = resourceName();
+    const v = await makeVertical(tid, 'shared');
+    await makeResourceBinding(tid, resource, 'field', { column: 'division' });
+    const head = await makePerson(tid, 'Head');
+    await grantVertical({
+      tenantId: tid,
+      partyId: head.id,
+      resource,
+      verbs: ['view'],
+      scope: 'all',
+      verticalCode: v.code,
+    });
+    await grantIndividual(tid, head.id, company, ['view'], 'all');
+    const auth = authOf(tid, head.id);
+    await asPrincipal(auth, async () => {
+      await assertScopeAll(company, 'view', auth);
+      const err = await expectReject(() => assertScopeAll(resource, 'view', auth));
+      expect(err.status).toBe(403);
+    });
+  });
+
+  it('T2: an owner-only vertical grant on a resource with no binding is denied', async () => {
+    const resource = resourceName();
+    const v = await makeVertical(tid, 'shared');
+    const p = await makePerson(tid);
+    await grantVertical({
+      tenantId: tid,
+      partyId: p.id,
+      resource,
+      verbs: ['view'],
+      scope: 'own',
+      verticalCode: v.code,
+    });
+    const auth = authOf(tid, p.id);
+    const decision = await asPrincipal(auth, () =>
+      evaluate({ resource, verb: 'view', record: { ownerPartyId: p.id, verticalCode: v.code }, auth }),
+    );
+    expect(decision.allowed).toBe(false);
+    expect(decision.deniedBy).toBe('WHERE');
+  });
+
+  it("T3: a Head's list is narrowed to the rows in its vertical", async () => {
+    const resource = resourceName();
+    const inV = await makeVertical(tid, 'shared');
+    const outV = await makeVertical(tid, 'shared');
+    await makeResourceBinding(tid, resource, 'field', { column: 'division' });
+    const head = await makePerson(tid, 'Head');
+    const auth = authOf(tid, head.id);
+    await grantVertical({
+      tenantId: tid,
+      partyId: head.id,
+      resource,
+      verbs: ['view'],
+      scope: 'all',
+      verticalCode: inV.code,
+    });
+    const inRow = await unscopedPrisma.orgUnit.create({
+      data: { tenantId: tid, name: `in ${inV.code}`, division: inV.code },
+      select: { id: true },
+    });
+    const outRow = await unscopedPrisma.orgUnit.create({
+      data: { tenantId: tid, name: `out ${outV.code}`, division: outV.code },
+      select: { id: true },
+    });
+    const where = await asPrincipal(auth, () => visibilityWhere(resource, 'id', auth));
+    const listed = await unscopedPrisma.orgUnit.findMany({
+      where: { AND: [{ tenantId: tid, id: { in: [inRow.id, outRow.id] } }, where] },
+      select: { id: true },
+    });
+    expect(listed.map((r) => r.id)).toEqual([inRow.id]);
+  });
+
+  it('T4: staff see their own rows in their vertical, and no one else in it or any other', async () => {
+    const resource = resourceName();
+    const v = await makeVertical(tid, 'shared');
+    const other = await makeVertical(tid, 'shared');
+    await makeResourceBinding(tid, resource, 'field', { column: 'division' });
+    const staff = await makePerson(tid, 'Staff');
+    const colleague = await makePerson(tid, 'Colleague');
+    const auth = authOf(tid, staff.id);
+    await grantVertical({
+      tenantId: tid,
+      partyId: staff.id,
+      resource,
+      verbs: ['view'],
+      scope: 'own',
+      verticalCode: v.code,
+    });
+    const ev = (record: { ownerPartyId: string; verticalCode: string }) =>
+      asPrincipal(auth, () => evaluate({ resource, verb: 'view', record, auth }));
+    expect((await ev({ ownerPartyId: staff.id, verticalCode: v.code })).allowed).toBe(true);
+    expect((await ev({ ownerPartyId: staff.id, verticalCode: other.code })).allowed).toBe(false);
+    expect((await ev({ ownerPartyId: colleague.id, verticalCode: v.code })).allowed).toBe(false);
+  });
+
+  it.each([
+    ['no binding', null],
+    ['a derived binding', 'derived'],
+    ['a none binding', 'none'],
+  ] as const)('T6: fails closed on read, list, create and update with %s', async (_label, kind) => {
+    const resource = resourceName();
+    const v = await makeVertical(tid, 'shared');
+    if (kind) await makeResourceBinding(tid, resource, kind);
+    const head = await makePerson(tid, 'Head');
+    const auth = authOf(tid, head.id);
+    await grantVertical({
+      tenantId: tid,
+      partyId: head.id,
+      resource,
+      verbs: ['view', 'create', 'edit'],
+      scope: 'all',
+      verticalCode: v.code,
+    });
+    const record = { ownerPartyId: head.id, verticalCode: v.code };
+    for (const verb of ['view', 'create', 'edit'] as const) {
+      const d = await asPrincipal(auth, () => evaluate({ resource, verb, record, auth }));
+      expect(d.allowed, verb).toBe(false);
+    }
+    const where = await asPrincipal(auth, () => visibilityWhere(resource, 'id', auth));
+    const row = await unscopedPrisma.orgUnit.create({
+      data: { tenantId: tid, name: `row ${v.code}`, division: v.code },
+      select: { id: true },
+    });
+    const listed = await unscopedPrisma.orgUnit.findMany({
+      where: { AND: [{ tenantId: tid, id: row.id }, where] },
+      select: { id: true },
+    });
+    expect(listed).toEqual([]);
   });
 });

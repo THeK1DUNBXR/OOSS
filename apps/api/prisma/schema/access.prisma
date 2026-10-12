@@ -163,6 +163,8 @@ model AccessAssignment {
 
   placements AccessPlacement[]
   duties     AccessDuty[]
+  /// The Grant rows compiled from this assignment (PR11b). Written on confirm, removed on expiry.
+  grants     Grant[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

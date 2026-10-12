@@ -110,6 +110,10 @@ export interface ScopedRecord {
   /** For the `batch_member` scope resolver. */
   cohortId?: string | null;
   trainerPartyId?: string | null;
+  /** For the `vertical` scope resolver (PR11b): the vertical code the record belongs to, read from its binding column. */
+  verticalCode?: string | null;
+  /** For the `vertical` scope resolver (PR11b): the unit code, when the record carries one. */
+  unitCode?: string | null;
 }
 
 export interface EvaluateInput {

@@ -782,12 +782,19 @@ model Grant {
   scopeResolver String?
   conditions    Json    @default("{}")
 
+  /// PR11b: the confirmed assignment this row was compiled from (ACCESS-MODEL-PLAN
+  /// s.5.5). Null for every role and individual grant, which keep the legacy path in
+  /// platform/permissions.ts. A recompile or an expiry touches only rows with an id here.
+  accessAssignmentId String?
+  accessAssignment   AccessAssignment? @relation(fields: [tenantId, accessAssignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
   effectiveFrom DateTime  @default(now())
   effectiveTo   DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   @@index([tenantId, roleId, resource])
+  @@index([tenantId, accessAssignmentId])
   @@index([tenantId, principalId, resource])
   @@map("grants")
 }
