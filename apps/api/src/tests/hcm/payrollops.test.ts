@@ -23,6 +23,7 @@ import {
 import { hire, transitionEmployment } from '../../domains/employment.js';
 import { encryptField, readRegulated } from '../../domains/compliance/privacy.js';
 import { asSystem } from '../../platform/context.js';
+import { readyPayrollPosting } from './payrollLedgerFixture.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import {
   createPayItem,
@@ -406,6 +407,15 @@ describe('payroll journal', () => {
 
     // hrOps holds `payroll_journals:create` but not `approve` at all — a
     // structural refusal, before the Self-Dealing Bar's own-record check.
+    // The accrual posts with the cash leg (FX-73). It needs the 6,000 deduction as a statutory
+    // component, as computeInstruction stores it: a lump deduction does not reconcile to a liability.
+    await unscopedPrisma.payrollInstruction.updateMany({
+      where: { tenantId: TENANT, payrollRunId: run.id },
+      data: { pfEmployee: 6000 },
+    });
+    // The employee above needs a ledger entity, and 2032-03 an open period.
+    await readyPayrollPosting(TENANT, { months: ['2032-03'], divisions: ['software'] });
+
     const opsJournal = await asUser('operations@kaizen.co.in', () => generatePayrollJournal(run.id));
     const noGrant = await expectReject(() =>
       asUser('operations@kaizen.co.in', () => postPayrollJournal(opsJournal.id, bankAccount.id)),

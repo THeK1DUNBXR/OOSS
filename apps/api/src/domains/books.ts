@@ -41,13 +41,14 @@ import { governedWrite } from '../platform/governedWrite.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
-import { lockLegacyPeriod } from '../platform/periodLock.js';
+import { lockLegacyPeriod, lockLegacyPeriods } from '../platform/periodLock.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney, assertScopeAll } from '../platform/permissions.js';
 import { paiseSum } from '../platform/wire.js';
 import { raiseException } from '../platform/exceptions.js';
 import { runHooks } from '../platform/hooks.js';
 import { registerGovernedEntities, auditWrite } from '../platform/audit.js';
+import { accrueRunLiabilities, payMonthEnd } from './hcm/payrollAccrual.js';
 
 // The audit-trail proviso to Companies (Accounts) Rules 2014, Rule 3(1): the
 // software must record every change to these in a trail that cannot be
@@ -1655,13 +1656,20 @@ export async function postPayrollToBooks(payrollRunId: string, accountId: string
 
   const created = await governedWrite(async (tx) => {
     await lockPayrollRunForPosting(tx, auth.tenantId, run.id);
+    // Both months' period rows come before the accrual's first audit or event lock. Taking the
+    // cash month's row after it would invert the order periodLock.ts documents, and a close of
+    // that month could then deadlock with this post.
+    const cashDate = run.disbursedAt ?? new Date();
+    await lockLegacyPeriods(tx, auth.tenantId, [payMonthEnd(run.payPeriod), cashDate]);
+    // The liabilities post under the same lock as the cash legs (FX-73), so either route posts both.
+    await accrueRunLiabilities(tx, run);
     const legs: Awaited<ReturnType<typeof writeTransactionMinor>>[] = [];
     for (const [division, paise] of byDivision) {
       if (paise <= 0n) continue;
       legs.push(
         await writeTransactionMinor(
           {
-            txnDate: run.disbursedAt ?? new Date(),
+            txnDate: cashDate,
             direction: 'out',
             amount: paise,
             accountId,

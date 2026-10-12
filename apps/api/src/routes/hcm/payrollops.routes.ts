@@ -35,6 +35,11 @@ import {
   respondToPayrollQuery,
   closePayrollQuery,
 } from '../../domains/hcm/payrollops.js';
+import {
+  listPayrollDivisionLines,
+  setPayrollDivisionLine,
+  endPayrollDivisionLine,
+} from '../../domains/hcm/payrollDivisionLines.js';
 
 const router = Router();
 
@@ -177,6 +182,35 @@ router.post(
   handler(async (req) => {
     const body = z.object({ accountId: z.string() }).parse(req.body);
     return postPayrollJournal(req.params.id, body.accountId);
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Payroll division lines (FX-73): the division-to-business-line map a run posts through
+// ---------------------------------------------------------------------------
+
+router.get(
+  '/division-lines',
+  handler(async () => listPayrollDivisionLines()),
+);
+router.post(
+  '/division-lines',
+  handler(async (req) => {
+    const body = z
+      .object({
+        division: z.string().min(1),
+        lineId: z.string().min(1),
+        effectiveFrom: z.string().min(1),
+      })
+      .parse(req.body);
+    return setPayrollDivisionLine(body);
+  }),
+);
+router.post(
+  '/division-lines/:id/end',
+  handler(async (req) => {
+    const body = z.object({ effectiveTo: z.string().min(1) }).parse(req.body);
+    return endPayrollDivisionLine(req.params.id, body.effectiveTo);
   }),
 );
 
