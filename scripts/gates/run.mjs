@@ -6,6 +6,7 @@
 import { runG4 } from './g4-mock.mjs';
 import { runG8, collectG8 } from './g8-governed.mjs';
 import { runG9, collectMoney, collectIst, MONEY_RULES, IST_RULES } from './g9-ratchet.mjs';
+import { runG10, collectRoles, G10_RULES } from './g10-roles.mjs';
 import { writeAllowlist } from './lib.mjs';
 
 const ORDER_RULES = ['emit-before-auditWrite', 'auditWrite-before-assertCan'];
@@ -30,6 +31,14 @@ if (process.argv.includes('--write-baseline')) {
       defaultReason:
         'Baselined at Wave 7 (W7-A). Derive this period through packages/shared/src/time.ts (FX-40, FX-41); do not raise the count.',
     }),
+    writeAllowlist('g10-roles', {
+      gate: 'G10 roles',
+      description:
+        'Ratchet for G10 check (c)(1): no role label or holder email literal in finance, HCM, compliance or shared code. The approver is resolved from a tenant duty. Per-file counts; a count may only fall. Regenerate with node scripts/gates/run.mjs --write-baseline.',
+      findings: collectRoles(),
+      managedRules: G10_RULES,
+      defaultReason: 'Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count.',
+    }),
     writeAllowlist('g8-governed', {
       gate: 'G8',
       description:
@@ -44,12 +53,15 @@ if (process.argv.includes('--write-baseline')) {
   process.exit(0);
 }
 
-const results = [runG4(), runG8(), ...runG9()];
+const results = [runG4(), runG8(), ...runG9(), runG10()];
 let failures = 0;
 for (const r of results) {
   const status = r.problems.length === 0 ? 'ok' : 'FAIL';
   console.log(`${r.id} ${r.title}: ${status}. ${r.summary}`);
   for (const p of r.problems) console.log(`  ${p}`);
+  // Notes are not failures. A count that fell below its baseline is reported here so
+  // the baseline gets lowered; until then a count can rise back to the old cap.
+  for (const n of r.notes ?? []) console.log(`  note: ${n}`);
   failures += r.problems.length;
 }
 
