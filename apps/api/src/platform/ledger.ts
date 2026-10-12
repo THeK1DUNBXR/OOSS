@@ -118,7 +118,7 @@ async function highestEntryNumber(tx: DbTx, tenantId: string, entityId: string, 
   for (const row of rows) {
     const tail = row.entryNumber.slice(prefix.length);
     if (!/^\d+$/.test(tail)) continue;
-    highest = Math.max(highest, Number(tail));
+    highest = Math.max(highest, Number.parseInt(tail, 10));
   }
   return highest;
 }
