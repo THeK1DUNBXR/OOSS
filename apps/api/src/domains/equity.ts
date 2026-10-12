@@ -1537,12 +1537,6 @@ export async function reverseShareTransactionIn(tx: DbTx, id: string, reason: st
   });
   for (const cert of issued) {
     await tx.shareCertificate.update({ where: { id: cert.id }, data: { status: 'cancelled' } });
-    await emit({
-      name: EVENTS.CERTIFICATE_CANCELLED,
-      subject: { entityType: 'share_certificate', entityId: cert.id, recordCode: cert.recordCode },
-      newState: { status: 'cancelled', reason },
-      tx,
-    });
   }
   const superseded = await tx.shareCertificate.findMany({
     where: { tenantId: auth.tenantId, supersededById: { in: issued.map((c) => c.id) } },
@@ -1559,6 +1553,16 @@ export async function reverseShareTransactionIn(tx: DbTx, id: string, reason: st
     after: { status: 'reversed' },
     tx,
   });
+  // The cancellation events follow the audit row for the reversal: rule 5
+  // orders auditWrite before emit, and every certificate write is done above.
+  for (const cert of issued) {
+    await emit({
+      name: EVENTS.CERTIFICATE_CANCELLED,
+      subject: { entityType: 'share_certificate', entityId: cert.id, recordCode: cert.recordCode },
+      newState: { status: 'cancelled', reason },
+      tx,
+    });
+  }
   await emit({
     name: EVENTS.SHARE_TRANSACTION_REVERSED,
     subject: { entityType: 'share_transaction', entityId: id, recordCode: txn.recordCode },

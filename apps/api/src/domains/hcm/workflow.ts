@@ -462,11 +462,41 @@ export async function decide(requestId: string, approve: boolean, note?: string)
   const chain = request.type.approvalChain as unknown as ApprovalChain;
   const isFinalLevel = request.currentLevel >= chain.length;
 
+  // Writes, then the audit, then the events (rule 5). The events describe the
+  // request as it stood before this decision, so `request` is still the source.
+  const nextLevel = request.currentLevel + 1;
   if (!approve) {
     await prisma.hrRequest.update({
       where: { id: requestId },
       data: { status: 'rejected', currentLevel: 0, closedAt: new Date() },
     });
+  } else if (isFinalLevel) {
+    await prisma.hrRequest.update({
+      where: { id: requestId },
+      data: { status: 'closed', currentLevel: 0, closedAt: new Date() },
+    });
+  } else {
+    await prisma.hrRequest.update({ where: { id: requestId }, data: { currentLevel: nextLevel } });
+    const delegations = await activeDelegations(auth.tenantId);
+    await openLevel(
+      auth.tenantId,
+      requestId,
+      chain,
+      nextLevel,
+      { subjectEmploymentId: request.subjectEmploymentId, requestedById: request.requestedById, subjectPartyId },
+      delegations,
+    );
+  }
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'hr_request',
+    subjectId: requestId,
+    before: { level: approval.level, decision: 'pending' } as never,
+    after: { level: approval.level, decision: approve ? 'approved' : 'rejected', note } as never,
+  });
+
+  if (!approve) {
     await emit({
       name: EVENTS.HR_REQUEST_REJECTED,
       subject: { entityType: 'hr_request', entityId: requestId, recordCode: request.recordCode },
@@ -475,10 +505,6 @@ export async function decide(requestId: string, approve: boolean, note?: string)
       reason: { reasonCode: 'declined' },
     });
   } else if (isFinalLevel) {
-    await prisma.hrRequest.update({
-      where: { id: requestId },
-      data: { status: 'closed', currentLevel: 0, closedAt: new Date() },
-    });
     await emit({
       name: EVENTS.HR_REQUEST_APPROVED,
       subject: { entityType: 'hr_request', entityId: requestId, recordCode: request.recordCode },
@@ -492,17 +518,6 @@ export async function decide(requestId: string, approve: boolean, note?: string)
       newState: { status: 'closed' },
     });
   } else {
-    const nextLevel = request.currentLevel + 1;
-    await prisma.hrRequest.update({ where: { id: requestId }, data: { currentLevel: nextLevel } });
-    const delegations = await activeDelegations(auth.tenantId);
-    await openLevel(
-      auth.tenantId,
-      requestId,
-      chain,
-      nextLevel,
-      { subjectEmploymentId: request.subjectEmploymentId, requestedById: request.requestedById, subjectPartyId },
-      delegations,
-    );
     await emit({
       name: EVENTS.HR_REQUEST_APPROVED,
       subject: { entityType: 'hr_request', entityId: requestId, recordCode: request.recordCode },
@@ -511,14 +526,6 @@ export async function decide(requestId: string, approve: boolean, note?: string)
       reason: { reasonCode: 'approved' },
     });
   }
-
-  await auditWrite({
-    action: 'update',
-    subjectType: 'hr_request',
-    subjectId: requestId,
-    before: { level: approval.level, decision: 'pending' } as never,
-    after: { level: approval.level, decision: approve ? 'approved' : 'rejected', note } as never,
-  });
 
   return getRequest(requestId);
 }

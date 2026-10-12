@@ -49,8 +49,8 @@ const CSP_DIRECTIVES = {
   baseUri: ["'self'"],
   formAction: ["'self'"],
   frameAncestors: ["'none'"],
-  // Caddy terminates TLS. Upgrading http subresources here would break a local
-  // http run of this process, and gains nothing behind Caddy.
+  // The reverse proxy terminates TLS. Upgrading http subresources here would break a local
+  // http run of this process, and gains nothing behind the reverse proxy.
   upgradeInsecureRequests: null,
 };
 
@@ -60,7 +60,7 @@ export function createApp({
 }: { webDistDir?: string; corsOrigins?: string[] } = {}) {
   const app = express();
 
-  // Caddy is the only thing that reaches this process, over loopback. Without
+  // The reverse proxy is the only thing that reaches this process, over loopback. Without
   // this every request's req.ip is 127.0.0.1 and the per-IP rate limits in
   // marketing/capture.ts and compliance/corporate/rateLimit.ts count the whole
   // internet as one client.
@@ -70,8 +70,8 @@ export function createApp({
   // come back as a 500 with no hint of which column it was.
   app.set('json replacer', bigintReplacer);
 
-  // HSTS is deliberately not set here: Caddy sends it on every response
-  // (deploy/Caddyfile), and two copies that disagree about max-age are worse
+  // HSTS is deliberately not set here: the reverse proxy sends it on every response,
+  // and two copies that disagree about max-age are worse
   // than one.
   app.use(
     helmet({

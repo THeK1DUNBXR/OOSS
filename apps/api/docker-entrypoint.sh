@@ -2,8 +2,8 @@
 #
 # Brings the database to a usable state before the API accepts traffic.
 #
-# Idempotent by construction: the schema push is a no-op when the schema already
-# matches, and the seed is skipped entirely when a tenant already exists — so
+# Idempotent by construction: applying migrations is a no-op when they are already
+# applied, and the seed is skipped entirely when a tenant already exists — so
 # restarting the stack never overwrites your data.
 #
 set -euo pipefail
@@ -26,8 +26,11 @@ done
 
 # Called by path rather than through npx: the binary is right here under the
 # pnpm layout, and npx would otherwise be free to reach for the network.
-say "applying the schema"
-./node_modules/.bin/prisma db push --skip-generate
+# Migrations, not `db push`: db push skips the migration history, so the RLS and
+# trigger migrations (SQL only, nothing in the schema file) would never reach a
+# container database, which would then run a schema the drift gate never checked.
+say "applying migrations"
+./node_modules/.bin/prisma migrate deploy
 
 TENANTS="$(node -e '
   const { PrismaClient } = require("@prisma/client");

@@ -2,7 +2,7 @@
  * The public lead-capture endpoint's per-IP limit, as a caller on the internet
  * meets it: over HTTP, through createApp(), counted in Postgres.
  *
- * Caddy is the only peer that reaches the API, and it appends the real client
+ * The reverse proxy is the only peer that reaches the API, and it appends the real client
  * address to X-Forwarded-For. A caller can prepend anything it likes, so the
  * limit must key on the address Express derives from the trusted proxy chain
  * (req.ip), not on the first header value (which the caller wrote).
@@ -61,7 +61,7 @@ function submit(token: string, n: number, forwardedFor: string) {
 describe('public lead capture rate limit (per IP, Postgres-backed)', () => {
   it('the 31st submission from one address in a minute is refused with 429', async () => {
     const token = await publishedToken();
-    // Caddy's appended address is the rightmost entry. The leftmost entries
+    // The reverse proxy's appended address is the rightmost entry. The leftmost entries
     // are whatever the caller claims, and change on every request.
     const statuses: number[] = [];
     let last: { error: { code: string } } | undefined;
