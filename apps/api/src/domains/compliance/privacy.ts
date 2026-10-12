@@ -1462,32 +1462,15 @@ async function privacyOwnerPartyId(tenantId: string): Promise<string | null> {
 // paths still write plaintext.
 // ---------------------------------------------------------------------------
 
-const DEV_ENCRYPTION_KEY = 'kaizen-dev-field-encryption-key-DO-NOT-USE-IN-PRODUCTION';
-let warnedAboutDevKey = false;
+// There is no fallback key. platform/config.ts refuses to boot without
+// FIELD_ENCRYPTION_KEY, so the key is present by the time this runs; a constant
+// here would encrypt regulated data under a value printed in this repository.
 let derivedKey: { material: string; key: Buffer } | null = null;
 
 function encryptionKey(): Buffer {
-  const secret = config.FIELD_ENCRYPTION_KEY;
-  if (!secret) {
-    // config.ts refuses to boot in production without the key, so this throw
-    // only guards a path that somehow got past the gate. Failing here is
-    // cheaper than encrypting regulated data under a public constant.
-    if (config.NODE_ENV === 'production') {
-      throw new Error('FIELD_ENCRYPTION_KEY is required in production');
-    }
-    if (!warnedAboutDevKey) {
-      warnedAboutDevKey = true;
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[compliance/privacy] FIELD_ENCRYPTION_KEY is not set. Falling back to a well-known development key — ' +
-          'regulated fields encrypted under it are not protected against anyone with the source. Set ' +
-          'FIELD_ENCRYPTION_KEY before this reaches a real deployment.',
-      );
-    }
-  }
+  const material = config.FIELD_ENCRYPTION_KEY;
   // scrypt is deliberately slow, and a register read decrypts every holder's
   // PAN. Deriving once per secret keeps a list read from paying that per row.
-  const material = secret ?? DEV_ENCRYPTION_KEY;
   if (derivedKey?.material === material) return derivedKey.key;
   const key = scryptSync(material, 'kaizen-field-encryption-v1', 32);
   derivedKey = { material, key };

@@ -95,10 +95,9 @@ that pins each requirement. Tests live in
   `AccessReview` row and raises `CMP_DPD_STALE_ACCESS` for each.
 
 - **Field-level encryption at rest.** `encryptField`/`decryptField`
-  (AES-256-GCM, keyed from `FIELD_ENCRYPTION_KEY`; required when
-  `NODE_ENV=production` — the process refuses to boot without it, see
-  `platform/config.ts` — and outside production a named development fallback
-  with a startup warning) and `readRegulated`, the
+  (AES-256-GCM, keyed from `FIELD_ENCRYPTION_KEY`; required in every
+  environment — the process refuses to boot without it, see
+  `platform/config.ts`; there is no development fallback) and `readRegulated`, the
   read-side helper any write path should call. `POST
 /compliance/privacy/encrypt-at-rest/backfill` (chairman only, via
   `security_settings:edit`) encrypts existing plaintext PAN, Aadhaar and bank

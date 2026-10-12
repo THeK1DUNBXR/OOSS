@@ -174,16 +174,27 @@ say "Configuring the environment"
 
 if [ -f apps/api/.env ]; then
   ok "apps/api/.env already present, left untouched"
+  # The API refuses to boot without FIELD_ENCRYPTION_KEY. An existing file from
+  # before that rule has none, and a new key is not written over it silently:
+  # data encrypted under a different key stops decrypting.
+  if ! grep -Eq '^FIELD_ENCRYPTION_KEY=.+' apps/api/.env; then
+    warn "apps/api/.env has no FIELD_ENCRYPTION_KEY, so the API will not start."
+    warn "Add one: FIELD_ENCRYPTION_KEY=\"\$(openssl rand -base64 48)\" (see apps/api/.env.example)"
+  fi
 else
   cp apps/api/.env.example apps/api/.env
-  # A development secret that is at least unique to this machine.
+  # Development secrets that are at least unique to this machine.
   SECRET="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
-  node - "$SECRET" <<'NODE'
+  FIELD_KEY="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
+  node - "$SECRET" "$FIELD_KEY" <<'NODE'
 const fs = require('fs');
 const p = 'apps/api/.env';
-fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace(/^JWT_SECRET=.*$/m, `JWT_SECRET="${process.argv[2]}"`));
+const [jwt, field] = process.argv.slice(2);
+fs.writeFileSync(p, fs.readFileSync(p, 'utf8')
+  .replace(/^JWT_SECRET=.*$/m, `JWT_SECRET="${jwt}"`)
+  .replace(/^FIELD_ENCRYPTION_KEY=.*$/m, `FIELD_ENCRYPTION_KEY="${field}"`));
 NODE
-  ok "wrote apps/api/.env with a generated JWT secret"
+  ok "wrote apps/api/.env with generated JWT and field-encryption secrets"
 fi
 
 # ---------------------------------------------------------------------------
