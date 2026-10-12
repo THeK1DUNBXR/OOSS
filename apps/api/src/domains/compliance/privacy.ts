@@ -609,6 +609,8 @@ async function assembleAccessExport(tenantId: string, personId: string) {
     bankAccountNumber: readRegulated(e.bankAccountNumber),
     bankAccountName: readRegulated(e.bankAccountName),
     bankIfsc: readRegulated(e.bankIfsc),
+    uanNumber: readRegulated(e.uanNumber),
+    esicNumber: readRegulated(e.esicNumber),
   }));
 
   return {
@@ -1456,9 +1458,8 @@ async function privacyOwnerPartyId(tenantId: string): Promise<string | null> {
 // workstream does not own — the write path there is structural exclusion from
 // responses, not encryption at rest. `encryptField`/`decryptField` are offered
 // here for any write path to call; `readRegulated` is the read-side helper.
-// Until employment.ts's own write path calls `encryptField` (outside this
-// workstream's files), `backfillEncryptAtRest` closes the gap for what is
-// already on disk. See docs/compliance/privacy.md for exactly which write
+// employment.ts and compliance/payroll.ts's setBankDetails encrypt on the way
+// in (FX-64); `backfillEncryptAtRest` closes the gap for what was already on disk. See docs/compliance/privacy.md for exactly which write
 // paths still write plaintext.
 // ---------------------------------------------------------------------------
 
@@ -1509,13 +1510,17 @@ export function readRegulated(value: string | null | undefined): string | null {
 
 /** EmploymentRelationship columns backfill touches. Bank IFSC is a routing
  * code rather than an identifier on its own, but it sits next to the account
- * number on the same regulated row, so it travels with it. */
+ * number on the same regulated row, so it travels with it. UAN and the ESIC
+ * number are identifiers in their own right; rows written before they were
+ * encrypted on the way in (FX-64) are caught here. */
 const REGULATED_EMPLOYMENT_FIELDS = [
   'panNumber',
   'aadhaarReference',
   'bankAccountNumber',
   'bankAccountName',
   'bankIfsc',
+  'uanNumber',
+  'esicNumber',
 ] as const;
 
 export async function backfillEncryptAtRest(): Promise<{
@@ -1535,6 +1540,8 @@ export async function backfillEncryptAtRest(): Promise<{
       bankAccountNumber: true,
       bankAccountName: true,
       bankIfsc: true,
+      uanNumber: true,
+      esicNumber: true,
     },
   });
 
@@ -1578,7 +1585,15 @@ export async function encryptionStatus() {
 
   const rows = await unscopedPrisma.employmentRelationship.findMany({
     where: { tenantId: auth.tenantId },
-    select: { panNumber: true, aadhaarReference: true, bankAccountNumber: true, bankAccountName: true, bankIfsc: true },
+    select: {
+      panNumber: true,
+      aadhaarReference: true,
+      bankAccountNumber: true,
+      bankAccountName: true,
+      bankIfsc: true,
+      uanNumber: true,
+      esicNumber: true,
+    },
   });
   let plaintext = 0;
   let encrypted = 0;

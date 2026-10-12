@@ -171,17 +171,15 @@ const tenantScoped = basePrisma.$extends({
 
         if (READ_OPS.has(operation) || UPDATE_OPS.has(operation)) {
           if (operation === 'findUnique' || operation === 'findUniqueOrThrow') {
-            // A unique lookup cannot take an arbitrary filter, so it is
-            // rewritten to a findFirst-shaped scoped query by the caller-facing
-            // helpers below. Here we degrade safely: fetch, then verify tenancy.
-            // Row-level security has already withheld another tenant's row by
-            // the time it reaches here; this check is the second line, kept for
-            // the case where the row is returned but its tenant is not selected.
-            const result = await runScoped(model, operation, next, tenantId, query);
-            if (result && typeof result === 'object' && 'tenantId' in (result as any)) {
-              if ((result as any).tenantId !== tenantId) return null;
-            }
-            return result;
+            // The tenant goes into the statement. A unique id names a row in
+            // whichever tenant holds it, so the lookup has to say which tenant
+            // it means, or it fetches another tenant's row and only then looks
+            // at the tenantId (FX-51). Prisma accepts the extra filter beside a
+            // unique key. The old check after the fetch was skipped whenever a
+            // `select` omitted tenantId, which is how it leaked. RLS sits
+            // beneath this (migration 20261010235900_tenant_rls).
+            next.where = scopeWhere(next.where, tenantId);
+            return runScoped(model, operation, next, tenantId, query);
           }
           if (operation === 'upsert') {
             next.where = scopeWhere(next.where, tenantId);
