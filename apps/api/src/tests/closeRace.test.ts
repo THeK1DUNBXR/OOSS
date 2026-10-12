@@ -20,6 +20,8 @@ import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from './helper
 import { recordTransaction, writeTransactionMinor } from '../domains/books.js';
 import { closePeriod, openAccountingDate, requestClosePeriod, trialBalance } from '../domains/compliance/books.js';
 import { assertTrialBalance, journalTrialBalance } from '../platform/balances.js';
+import { stageImport, setImportOptions } from '../imports/service.js';
+import { commitImport } from '../imports/commit.js';
 
 const FINANCE = 'finance@kaizen.co.in';
 const CHAIRMAN = 'chairman@kaizen.co.in';
@@ -333,3 +335,127 @@ describe('T70-14: a legacy write into a month with no period row creates the row
     await assertJournalBalances();
   });
 });
+
+describe('an import chunk that spans two months, and a close of its second month', () => {
+  it('the chunk and the close both finish with no deadlock, and each month keeps its row', async () => {
+    // The chunk writes the earlier month first, then the later one. A close of the later
+    // month takes that month's row and then the audit lock. Taken in the other order, the
+    // chunk holds the audit lock and waits for the later row, and Postgres aborts one side.
+    const months = [freshMonth(), freshMonth()];
+    while (months[1] === months[0]) months[1] = freshMonth();
+    const [first, second] = months.sort();
+    await openPeriodForTest(first);
+    await openPeriodForTest(second);
+    // The second month is requested for close before the chunk runs. The request is its own
+    // committed write, so it holds nothing afterwards: the close that waits is the approval
+    // (closePeriod), which takes the month row FOR UPDATE and then the audit lock.
+    await asUser(FINANCE, () => requestClosePeriod(second));
+
+    const tag = `W5-CHUNK-${Math.random().toString(36).slice(2, 10)}`;
+    const staged = await stageBankStatement(tag, [
+      { month: first, amount: '250.00', direction: 'out' },
+      { month: second, amount: '75.00', direction: 'in' },
+    ]);
+
+    // Connection X holds the event chain lock, which emit takes after the audit lock
+    // (platform/eventBus.ts). The chunk writes its first row, takes the audit lock, then
+    // queues on the chain, so it holds the audit lock while it waits. The close can only
+    // queue on that same audit lock, behind the chunk. Nothing is left to race: the cycle
+    // forms as soon as X lets go.
+    let releaseHolder!: () => void;
+    const holderGate = new Promise<void>((resolve) => (releaseHolder = resolve));
+    let holderHeld!: () => void;
+    const holderReady = new Promise<void>((resolve) => (holderHeld = resolve));
+    const holder = unscopedPrisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${EVENT_CHAIN_NAMESPACE}::int, hashtext(${TENANT}))`;
+        holderHeld();
+        await holderGate;
+      },
+      { timeout: 60_000, maxWait: 10_000 },
+    );
+    await holderReady;
+
+    const chunk = settle(asUser(CHAIRMAN, () => commitImport(staged.batchId)));
+    await waitFor(async () => (await lockWaiters()) >= 1, 'the import chunk to queue on the audit lock');
+
+    const close = settle(asUser(CHAIRMAN, () => closePeriod(second)));
+    await waitFor(async () => (await lockWaiters()) >= 2, 'the close to queue behind the chunk');
+
+    releaseHolder();
+    const [holderOut, chunkOut, closeOut] = await Promise.all([settle(holder), chunk, close]);
+
+    expect(holderOut.status).toBe('fulfilled');
+    const failures = [chunkOut, closeOut].flatMap((o) => (o.status === 'rejected' ? [o.reason as Error] : []));
+    expect(failures.filter(isDeadlock).map((e) => e.message)).toEqual([]);
+    expect(failures.map((e) => e.message)).toEqual([]);
+
+    // The first month's row is written. The second month's row is refused, as a row in a
+    // closing month is, and the close then completes.
+    expect(await countTransactions(`${tag}-1`)).toBe(1);
+    expect(await countTransactions(`${tag}-2`)).toBe(0);
+    const chunkResult = (chunkOut as PromiseFulfilledResult<{ errors: Array<{ message: string }> }>).value;
+    expect(chunkResult.errors.map((e) => e.message).join(' ')).toContain('closing accounting period');
+    const after = await unscopedPrisma.accountingPeriod.findFirstOrThrow({
+      where: { tenantId: TENANT, period: second },
+    });
+    expect(after.status).toBe('closed');
+  }, 60_000);
+});
+
+const CSV_HEADER = 'Date,Narration,Withdrawal,Deposit,Reference';
+/** The namespace of the event chain lock (platform/eventBus.ts:237). */
+const EVENT_CHAIN_NAMESPACE = 4711;
+
+/** Stages a bank statement with one line in each given IST month, mid-month, for the test bank account. */
+async function stageBankStatement(tag: string, rows: Array<{ month: string; amount: string; direction: 'in' | 'out' }>) {
+  const body = rows.map((r, i) => {
+    const [year, month] = r.month.split('-');
+    const withdrawal = r.direction === 'out' ? r.amount : '';
+    const deposit = r.direction === 'in' ? r.amount : '';
+    return `15/${month}/${year},${tag} line ${i + 1},${withdrawal},${deposit},${tag}-${i + 1}`;
+  });
+  return asUser(CHAIRMAN, async () => {
+    const staged = await stageImport({
+      fileName: `${tag}.csv`,
+      buffer: Buffer.from([CSV_HEADER, ...body].join('\n'), 'utf8'),
+      kindOverride: 'bank_statement',
+    });
+    await setImportOptions(staged.batchId, { accountId: ACCOUNT_ID });
+    return staged;
+  });
+}
+
+/**
+ * Backends queued on a lock in this database. pg_locks, not pg_stat_activity: the
+ * application role's sessions show no wait event to the superuser test client, so
+ * a waiting chunk would otherwise never be counted.
+ */
+async function lockWaiters(): Promise<number> {
+  const rows = await unscopedPrisma.$queryRaw<Array<{ n: number }>>`
+    SELECT count(DISTINCT pid)::int AS n FROM pg_locks
+    WHERE NOT granted
+      AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`;
+  return rows[0]?.n ?? 0;
+}
+
+function settle<T>(promise: Promise<T>): Promise<PromiseSettledResult<T>> {
+  return promise.then(
+    (value) => ({ status: 'fulfilled', value }),
+    (reason: unknown) => ({ status: 'rejected', reason }),
+  );
+}
+
+async function waitFor(condition: () => Promise<boolean>, what: string): Promise<void> {
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    if (await condition()) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}
+
+/** Postgres deadlock (40P01), or Prisma's wrapper for it (P2034). */
+function isDeadlock(error: Error): boolean {
+  return /deadlock detected|40P01|P2034/.test(`${error.message} ${(error as { code?: string }).code ?? ''}`);
+}
