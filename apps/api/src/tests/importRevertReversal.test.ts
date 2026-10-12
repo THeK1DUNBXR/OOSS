@@ -14,6 +14,7 @@
  * while building it.
  */
 
+import { Prisma } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import { EVENTS, istMonthKey, parseMinor } from '@kaizen/shared';
@@ -706,5 +707,211 @@ describe('a matched employee keeps the person on revert, and the employment the 
     expect(person.fullName).toBe(name);
     const employment = await unscopedPrisma.employmentRelationship.findUniqueOrThrow({ where: { id: made[0].id } });
     expect(employment.deletedAt).not.toBeNull();
+  });
+});
+
+const stageSalaryFor = (name: string, period: string, amount: number) => {
+  const book = XLSX.utils.book_new();
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ['Name', 'Designation', 'Actual Salary'],
+    [name, 'Analyst', amount],
+  ]);
+  XLSX.utils.book_append_sheet(book, sheet, period);
+  const buffer = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  return asUser(CHAIRMAN, () => stageImport({ fileName: `${uniqueTag('SAL')}.xlsx`, buffer, kindOverride: 'salary' }));
+};
+
+const compensationOf = (id: string) => unscopedPrisma.compensationRecord.findUniqueOrThrow({ where: { id } });
+
+describe('a batch committed before per-row tracking is refused, not reverted by entity type', () => {
+  it('refuses an attendance batch whose row has no created list, with a 409, and changes nothing', async () => {
+    const { name, employmentId } = await stageStaffMember('LEGACY');
+    const batch = await stageAttendance(`${uniqueTag('ATT-LEG')}.csv`, ['Name,08/01/2013', `${name},P`].join('\n'));
+    expect((await asUser(CHAIRMAN, () => commitImport(batch.batchId))).errors).toEqual([]);
+    const before = await liveAttendanceIds(employmentId);
+    expect(before).toHaveLength(1);
+
+    // A row committed before ImportRow.created existed: the column is null on it.
+    await unscopedPrisma.importRow.updateMany({
+      where: { tenantId: TENANT, batchId: batch.batchId },
+      data: { created: Prisma.DbNull },
+    });
+
+    const err = await asUser(CHAIRMAN, () => revertImport(batch.batchId)).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toMatchObject({ status: 409 });
+    expect(String((err as Error).message)).toMatch(/predates per-row tracking/);
+    expect(await liveAttendanceIds(employmentId)).toEqual(before);
+    expect((await batchFor(batch.batchId)).status).toBe('committed');
+    expect((await rowsFor(batch.batchId)).map((r) => r.status)).toEqual(['committed']);
+  });
+});
+
+describe('a student register revert undoes the person, profile and affiliation it made, with the enrolment', () => {
+  const HEADER = [
+    'NAME',
+    'REGISTRATION NUMBER',
+    'CONTACT',
+    'MAIL-ID',
+    'COURSE',
+    'ACTUAL FEES',
+    'Excluding GST',
+    'GST',
+    'Discount of Rs',
+    'DISCOUNT',
+    'Including GST',
+    'REGISTRATION DATE',
+    'COURSE START DATE',
+    'COURSE END DATE',
+    'IST INSTALLMENT',
+    'DATE',
+    'Receipt NUMBER',
+    '2ND INSTALLMENT',
+    'DATE',
+    'Receipt NUMBER',
+    '3RD  INSTALLMENT',
+    'DATE',
+    'Receipt NUMBER',
+  ];
+
+  it('withdraws the enrolment and ends the new person, their student profile and their student affiliation', async () => {
+    const tag = `W5STU${Date.now()}`;
+    const name = uniqueName('STUDENT');
+    const course = `W5REV Course ${tag}`;
+    const phone = `9${String(Math.floor(Math.random() * 1e9)).padStart(9, '0')}`;
+    const rowCells = [
+      name,
+      `KI-${tag}/1`,
+      phone,
+      '',
+      course,
+      '24000',
+      '15000',
+      '2700',
+      '6300',
+      '26.25%',
+      '17700',
+      '7/8/26',
+      '7/8/26',
+      '9/9/26',
+      '10000',
+      '7/8/26',
+      `KIPL/${tag}`,
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      'Yes',
+    ];
+    const sheet = XLSX.utils.aoa_to_sheet([[...HEADER, 'Adult (18 or over)'], rowCells]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, sheet, 'Sheet1');
+    const buffer = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as ArrayBuffer);
+    const staged = await asUser(CHAIRMAN, () => stageImport({ fileName: `${tag}.xlsx`, buffer }));
+    expect(staged.kind).toBe('student_register');
+    const committed = await asUser(CHAIRMAN, () => commitImport(staged.batchId));
+    expect(committed.errors).toEqual([]);
+    expect(committed.created.enrollment).toBe(1);
+
+    const enrolment = await unscopedPrisma.enrollment.findFirstOrThrow({
+      where: { tenantId: TENANT, legacyReference: `KI-${tag}/1` },
+    });
+    const profile = await unscopedPrisma.studentProfile.findFirstOrThrow({
+      where: { tenantId: TENANT, personId: enrolment.personId },
+    });
+    const affiliation = await unscopedPrisma.affiliation.findFirstOrThrow({
+      where: { tenantId: TENANT, partyId: enrolment.personId, affiliationType: 'student' },
+    });
+
+    await asUser(CHAIRMAN, () => revertImport(staged.batchId));
+
+    expect((await unscopedPrisma.enrollment.findUniqueOrThrow({ where: { id: enrolment.id } })).status).toBe(
+      'withdrawn',
+    );
+    expect(
+      (await unscopedPrisma.person.findUniqueOrThrow({ where: { id: enrolment.personId } })).deletedAt,
+    ).not.toBeNull();
+    expect(
+      (await unscopedPrisma.studentProfile.findUniqueOrThrow({ where: { id: profile.id } })).deletedAt,
+    ).not.toBeNull();
+    expect(
+      (await unscopedPrisma.affiliation.findUniqueOrThrow({ where: { id: affiliation.id } })).deletedAt,
+    ).not.toBeNull();
+  });
+});
+
+describe('a revert of a pay record a batch superseded restores that record, unless something later replaced it', () => {
+  it('reverting the batch that superseded a pay record makes the earlier record Effective again', async () => {
+    const { name, employmentId } = await stageStaffMember('PAYRESTORE');
+    const sal50000 = await stageSalaryFor(name, 'January salary', 50000);
+    expect((await asUser(CHAIRMAN, () => commitImport(sal50000.batchId))).errors).toEqual([]);
+    const recordA = await unscopedPrisma.compensationRecord.findFirstOrThrow({
+      where: { tenantId: TENANT, employmentRelationshipId: employmentId, status: 'Effective' },
+    });
+
+    const b = await stageSalaryFor(name, 'February salary', 60000);
+    expect((await asUser(CHAIRMAN, () => commitImport(b.batchId))).errors).toEqual([]);
+    expect((await compensationOf(recordA.id)).status).toBe('Superseded');
+
+    await asUser(CHAIRMAN, () => revertImport(b.batchId));
+
+    const restored = await compensationOf(recordA.id);
+    expect(restored.status).toBe('Effective');
+    expect(restored.voidedAt).toBeNull();
+    expect(restored.effectiveTo).toBeNull();
+    expect((await asUser(CHAIRMAN, () => currentCompensation(employmentId)))?.id).toBe(recordA.id);
+  });
+
+  it('a later pay record that replaced the superseded one stops the restore, and the row says why', async () => {
+    const { name, employmentId } = await stageStaffMember('PAYLATER');
+    const sal50000 = await stageSalaryFor(name, 'January salary', 50000);
+    expect((await asUser(CHAIRMAN, () => commitImport(sal50000.batchId))).errors).toEqual([]);
+    const recordA = await unscopedPrisma.compensationRecord.findFirstOrThrow({
+      where: { tenantId: TENANT, employmentRelationshipId: employmentId, status: 'Effective' },
+    });
+    const b = await stageSalaryFor(name, 'February salary', 60000);
+    expect((await asUser(CHAIRMAN, () => commitImport(b.batchId))).errors).toEqual([]);
+    const c = await stageSalaryFor(name, 'March salary', 70000);
+    expect((await asUser(CHAIRMAN, () => commitImport(c.batchId))).errors).toEqual([]);
+
+    await asUser(CHAIRMAN, () => revertImport(b.batchId));
+
+    expect((await compensationOf(recordA.id)).status).toBe('Superseded');
+    const rowB = (await rowsFor(b.batchId)).find((r) => r.entityType === 'compensationRecord');
+    expect(rowB?.message).toMatch(/Not restored/);
+    expect((await asUser(CHAIRMAN, () => currentCompensation(employmentId)))?.amount.toString()).toBe('70000');
+  });
+});
+
+describe('ending a record a revert undoes writes a past-tense event for it', () => {
+  it('emits the employment, position and assignment the batch created as ended', async () => {
+    const name = uniqueName('ENDEVT');
+    const csv = [
+      'Name,Designation,Employee Code',
+      `${name},Analyst,KD/S/2026/${Math.floor(Math.random() * 9000) + 1000}`,
+    ].join('\n');
+    const staged = await asUser(CHAIRMAN, () =>
+      stageImport({ fileName: `${uniqueTag('ENDEVT')}.csv`, buffer: Buffer.from(csv, 'utf8') }),
+    );
+    expect((await asUser(CHAIRMAN, () => commitImport(staged.batchId))).errors).toEqual([]);
+    const person = await unscopedPrisma.person.findFirstOrThrow({ where: { tenantId: TENANT, fullName: name } });
+    const employment = await unscopedPrisma.employmentRelationship.findFirstOrThrow({
+      where: { tenantId: TENANT, personId: person.id },
+    });
+    const assignment = await unscopedPrisma.assignment.findFirstOrThrow({
+      where: { tenantId: TENANT, employmentRelationshipId: employment.id },
+    });
+
+    await asUser(CHAIRMAN, () => revertImport(staged.batchId));
+
+    const count = (eventName: string, subjectEntityId: string) =>
+      unscopedPrisma.eventRecord.count({ where: { tenantId: TENANT, eventName, subjectEntityId } });
+    expect(await count('kz.hr.employment.ended', employment.id)).toBe(1);
+    expect(await count('kz.hr.assignment.ended', assignment.id)).toBe(1);
+    expect(await count('kz.org.position.ended', assignment.positionId)).toBe(1);
   });
 });
