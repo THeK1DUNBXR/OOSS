@@ -39,9 +39,13 @@ import { emit } from './eventBus.js';
 import { ApiError } from './errors.js';
 import { POSTABLE_PERIOD_STATUSES } from './ledger.js';
 
-/** A period row the transaction holds FOR SHARE. `created` says this call made the row. */
+/**
+ * A period row the transaction holds FOR SHARE. `created` says this call made the row.
+ * `id` is null for a month with no row under a closed later month: it is closed by the
+ * order rule, and no row is made for it (holdPeriodRow).
+ */
 interface HeldPeriod {
-  id: string;
+  id: string | null;
   status: string;
   period: string;
   fy: string;
@@ -53,10 +57,25 @@ interface HeldPeriod {
  * month has none. It takes no audit or event lock and refuses nothing: the caller
  * decides what the status allows, and writes the creation's audit row only after
  * every period row it needs is held (auditOpenedPeriods).
+ *
+ * A month with no row under a closed later month counts as closed (the order rule),
+ * and no row is created for it. A row created there would be open beneath a closed
+ * month, and the order rule has no way to see it until the month is reopened.
  */
 async function holdPeriodRow(tx: DbTx, tenantId: string, date: Date): Promise<HeldPeriod> {
   const period = istMonthKey(date);
   const fy = financialYearOf(date);
+  const [existing] = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "cmp_accounting_periods"
+    WHERE "tenantId" = ${tenantId} AND "period" = ${period}
+    FOR SHARE`;
+  if (!existing) {
+    const [laterClosed] = await tx.$queryRaw<Array<{ period: string }>>`
+      SELECT "period" FROM "cmp_accounting_periods"
+      WHERE "tenantId" = ${tenantId} AND "period" > ${period} AND "status" = 'closed'
+      LIMIT 1`;
+    if (laterClosed) return { id: null, status: 'closed', period, fy, created: false };
+  }
   const created = await tx.accountingPeriod.createMany({
     data: [{ tenantId, period, fy, status: 'open' }],
     skipDuplicates: true,
@@ -72,7 +91,7 @@ async function holdPeriodRow(tx: DbTx, tenantId: string, date: Date): Promise<He
 /** The audit and event rows for periods this call created. They take the advisory locks, so they come after every period row. */
 async function auditOpenedPeriods(tx: DbTx, held: HeldPeriod[]): Promise<void> {
   for (const h of held) {
-    if (!h.created) continue;
+    if (!h.created || h.id === null) continue;
     await auditWrite({
       action: 'create',
       subjectType: 'accounting_period',
@@ -100,7 +119,7 @@ export async function lockLegacyPeriod(tx: DbTx, tenantId: string, date: Date): 
   const held = await holdPeriodRow(tx, tenantId, date);
   await auditOpenedPeriods(tx, [held]);
 
-  if (!POSTABLE_PERIOD_STATUSES.includes(held.status)) {
+  if (held.id === null || !POSTABLE_PERIOD_STATUSES.includes(held.status)) {
     throw ApiError.unprocessable(
       held.status === 'closing'
         ? `${held.period} is a closing accounting period: its close has been requested and not yet approved. It takes no entries until the close completes.`

@@ -8,12 +8,15 @@
  */
 
 import { unscopedPrisma, prisma } from '../platform/db.js';
-import { newRequestContext, runWithContext, type AuthContext } from '../platform/context.js';
+import { asSystem, newRequestContext, runWithContext, type AuthContext } from '../platform/context.js';
 import { invalidateGrantCache } from '../platform/permissions.js';
 import { registerSubscribers } from '../events/handlers.js';
 import { ROLE_CLASSIFICATION_CEILING, type SensitivityClass } from '@kaizen/shared';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { hashRefreshSecret, signToken } from '../lib/auth.js';
+import { hashPassword, hashRefreshSecret, signToken } from '../lib/auth.js';
+import { ROLE_DEFINITIONS, ROLE_GRANT_MATRIX, parseCell } from '../seed/grants.js';
+import { seedBooks } from '../seed/compliance/books.js';
+import { closePeriod, reopenPeriod, requestClosePeriod } from '../domains/compliance/books.js';
 
 export interface TestPrincipal {
   tenantId: string;
@@ -245,6 +248,219 @@ export async function sessionToken(p: {
     },
   });
   return signToken({ ...p, jti });
+}
+
+/**
+ * A books tenant of its own, for a file that closes and reopens accounting periods.
+ *
+ * The period order rule (domains/compliance/books.ts, requestClosePeriod and
+ * closePeriod) reads every earlier month of the tenant, so a file that closes a
+ * month in the shared `kaizen` tenant freezes whatever other files wrote into its
+ * earlier months. A tenant of its own keeps a file's months to itself.
+ *
+ * Find-or-create by slug: the database outlives a run, so a second run finds the
+ * tenant, the entity, the accounts and the principals the first run made.
+ *
+ * The principals are built the way the seed gives a founding account its role
+ * (seed/bootstrap.ts, seedAccount and seedGrants): a Principal with a hashed
+ * credential, a Person, a User, and an active Affiliation whose roleSlug names an
+ * AccessRole. The role's grants are the matrix rows the seed writes for it
+ * (ROLE_GRANT_MATRIX through parseCell), so the evaluator decides with the same
+ * rows it decides with in `kaizen`. Nothing here bypasses the evaluator.
+ */
+export interface BooksTenant {
+  tenantId: string;
+  entityId: string;
+  /** An account of type `bank`, the one the books' own writes post to. */
+  bankAccountId: string;
+  /** A ledger category the books' own writes file under. */
+  categoryId: string;
+  /** An organisation the books' invoices are raised against. */
+  organizationId: string;
+  /** The finance head: asks for a close, and is refused approving it. */
+  finance: string;
+  /** The chairman: approves a close and reopens a period. */
+  chairman: string;
+}
+
+async function ensurePrincipalForRole(
+  tid: string,
+  slug: string,
+  roleSlug: string,
+  email: string,
+  name: string,
+): Promise<string> {
+  const role = await ensureRoleWithGrants(tid, roleSlug);
+  const principal =
+    (await unscopedPrisma.principal.findFirst({ where: { email } })) ??
+    (await unscopedPrisma.principal.create({
+      data: { email, passwordHash: await hashPassword(randomUUID()) },
+    }));
+  const person =
+    (await unscopedPrisma.person.findFirst({ where: { tenantId: tid, primaryEmail: email } })) ??
+    (await unscopedPrisma.person.create({
+      data: {
+        tenantId: tid,
+        recordCode: `PER-${slug.toUpperCase()}-${roleSlug.toUpperCase()}`,
+        fullName: name,
+        primaryEmail: email,
+        primaryEmailNormalised: email,
+        source: 'test',
+      },
+    }));
+  const affiliation = await unscopedPrisma.affiliation.findFirst({
+    where: { tenantId: tid, partyId: person.id, roleSlug: role.slug },
+  });
+  if (!affiliation) {
+    await unscopedPrisma.affiliation.create({
+      data: {
+        tenantId: tid,
+        partyId: person.id,
+        affiliationType: 'employee',
+        counterpartyName: `Books fixture ${slug}`,
+        roleSlug: role.slug,
+        primaryFlag: true,
+        status: 'active',
+      },
+    });
+  }
+  const user = await unscopedPrisma.user.findFirst({ where: { tenantId: tid, email } });
+  if (!user) {
+    await unscopedPrisma.user.create({
+      data: { tenantId: tid, personId: person.id, email, principalId: principal.id },
+    });
+  }
+  return email;
+}
+
+/** The seed's role row and grant rows for one role (seed/bootstrap.ts, seedGrants), without the policy version the seed also stamps. */
+async function ensureRoleWithGrants(tid: string, roleSlug: string) {
+  const def = ROLE_DEFINITIONS.find((d) => d.slug === roleSlug);
+  if (!def) throw new Error(`No role definition for ${roleSlug} in seed/grants.ts`);
+  const role = await unscopedPrisma.accessRole.upsert({
+    where: { tenantId_slug: { tenantId: tid, slug: def.slug } },
+    create: {
+      tenantId: tid,
+      slug: def.slug,
+      name: def.name,
+      description: def.description,
+      archetype: def.archetype,
+      classificationCeiling: def.classificationCeiling,
+      isSystem: true,
+    },
+    update: {},
+  });
+  for (const spec of ROLE_GRANT_MATRIX[def.slug] ?? []) {
+    const parsed = parseCell(spec.cell);
+    if (!parsed) continue;
+    const existing = await unscopedPrisma.grant.findFirst({
+      where: { tenantId: tid, roleId: role.id, resource: spec.resource, scope: parsed.scope },
+    });
+    if (existing) continue;
+    await unscopedPrisma.grant.create({
+      data: {
+        tenantId: tid,
+        principalType: 'role',
+        roleId: role.id,
+        resource: spec.resource,
+        verbs: parsed.verbs,
+        scope: parsed.scope,
+        scopeResolver: spec.scopeResolver ?? null,
+        conditions: (spec.conditions ?? {}) as never,
+      },
+    });
+  }
+  return role;
+}
+
+export async function booksTenant(slug: string): Promise<BooksTenant> {
+  const tenant = await unscopedPrisma.tenant.upsert({
+    where: { slug },
+    create: { name: `Books fixture ${slug}`, slug, status: 'active' },
+    update: {},
+  });
+  const tid = tenant.id;
+  const entity =
+    (await unscopedPrisma.ledgerEntity.findFirst({ where: { tenantId: tid, code: 'BOOKS' } })) ??
+    (await unscopedPrisma.ledgerEntity.create({
+      data: { tenantId: tid, code: 'BOOKS', legalName: `Books fixture ${slug}`, stateCode: '27' },
+    }));
+  const bank =
+    (await unscopedPrisma.ledgerAccount.findFirst({
+      where: { tenantId: tid, accountType: 'bank', deletedAt: null },
+    })) ?? (await unscopedPrisma.ledgerAccount.create({ data: { tenantId: tid, name: 'Bank', accountType: 'bank' } }));
+  const category =
+    (await unscopedPrisma.ledgerCategory.findFirst({ where: { tenantId: tid } })) ??
+    (await unscopedPrisma.ledgerCategory.create({ data: { tenantId: tid, name: 'Books fixture', kind: 'expense' } }));
+  // The books' dated tables (retention policies, useful lives, IT blocks): the seed's own writer.
+  await asSystem(tid, () => seedBooks());
+  const organization =
+    (await unscopedPrisma.organization.findFirst({
+      where: { tenantId: tid, recordCode: `ORG-BOOKS-${slug.toUpperCase()}` },
+    })) ??
+    (await unscopedPrisma.organization.create({
+      data: {
+        tenantId: tid,
+        recordCode: `ORG-BOOKS-${slug.toUpperCase()}`,
+        kind: 'institution',
+        name: `Books fixture ${slug}`,
+      },
+    }));
+  const finance = await ensurePrincipalForRole(tid, slug, 'finance_head', `finance@${slug}.books.test`, 'Finance Head');
+  const chairman = await ensurePrincipalForRole(tid, slug, 'chairman', `chairman@${slug}.books.test`, 'Chairman');
+  invalidateGrantCache();
+  return {
+    tenantId: tid,
+    entityId: entity.id,
+    bankAccountId: bank.id,
+    categoryId: category.id,
+    organizationId: organization.id,
+    finance,
+    chairman,
+  };
+}
+
+/**
+ * Closes, in ascending month order, every month of the tenant that is not closed yet, up to
+ * and including `month`. The proposer requests, the chairman approves. The order rule
+ * refuses a close while an earlier month is open, so this walk is the only way to reach a
+ * later month. A month with no row yet is created by its request, as the books do.
+ */
+export async function closeThrough(f: BooksTenant, month: string): Promise<string[]> {
+  const pending = await unscopedPrisma.accountingPeriod.findMany({
+    where: { tenantId: f.tenantId, period: { lte: month }, status: { not: 'closed' } },
+    select: { period: true },
+    orderBy: { period: 'asc' },
+  });
+  const months = [...new Set([...pending.map((r) => r.period), month])].sort();
+  const closed: string[] = [];
+  for (const period of months) {
+    const row = await unscopedPrisma.accountingPeriod.findFirst({ where: { tenantId: f.tenantId, period } });
+    if (row?.status === 'closed') continue;
+    if (!row || row.status === 'open' || row.status === 'reopened') {
+      await asUser(f.finance, () => requestClosePeriod(period));
+    }
+    await asUser(f.chairman, () => closePeriod(period));
+    closed.push(period);
+  }
+  return closed;
+}
+
+/**
+ * Reopens every closed month of the tenant, latest first: the order rule refuses a reopen
+ * while a later month is closed or closing. Run at the end of a window, so the file's
+ * writes into earlier months are postable again.
+ */
+export async function reopenLatestFirst(f: BooksTenant, reason: string): Promise<string[]> {
+  const closed = await unscopedPrisma.accountingPeriod.findMany({
+    where: { tenantId: f.tenantId, status: 'closed' },
+    select: { period: true },
+    orderBy: { period: 'desc' },
+  });
+  for (const { period } of closed) {
+    await asUser(f.chairman, () => reopenPeriod(period, reason));
+  }
+  return closed.map((r) => r.period);
 }
 
 export { prisma, unscopedPrisma };

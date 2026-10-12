@@ -3,15 +3,26 @@
  * row each, and a dated write into a closed accounting period is refused
  * before anything is written.
  *
- * Real Postgres, real contexts. Periods here are in 2017, far from the demo
- * dataset, and are closed by this file in beforeAll; the test files run one
- * after another (vitest.config fileParallelism: false), so no other file reads
- * them while they are closed.
+ * Real Postgres, real contexts. The file runs in a books tenant of its own
+ * (booksTenant), so the months it closes are not read by any other file. A close
+ * is a window: a describe closes the months its probes need in ascending order
+ * (closeThrough), and reopens them latest first when it ends (reopenLatestFirst),
+ * so the next describe's fixture writes into earlier months are postable again.
+ * The order rule refuses a write into a closed month that has no row of its own,
+ * which is why no earlier-dated fixture is written inside a window.
  */
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { monthKey } from '@kaizen/shared';
-import { asUser, expectReject, tenantId, unscopedPrisma } from './helpers.js';
+import {
+  asUser,
+  booksTenant,
+  closeThrough,
+  expectReject,
+  reopenLatestFirst,
+  unscopedPrisma,
+  type BooksTenant,
+} from './helpers.js';
 import {
   recordTransaction,
   reverseTransaction,
@@ -26,8 +37,6 @@ import {
 import { createInvoice } from '../domains/invoicing.js';
 import {
   requestClosePeriod,
-  closePeriod,
-  reopenPeriod,
   importBankStatement,
   matchBankLines,
   sweepRetention,
@@ -35,28 +44,27 @@ import {
 
 const CLOSED = '2017-10';
 const OPEN_NEXT = '2017-11';
-const FINANCE = 'finance@kaizen.co.in';
-const CHAIRMAN = 'chairman@kaizen.co.in';
 
+let FIXTURE: BooksTenant;
 let TENANT: string;
+let FINANCE: string;
+let CHAIRMAN: string;
 let ACCOUNT_ID: string;
 let CATEGORY_ID: string;
 
 beforeAll(async () => {
-  TENANT = await tenantId();
-  const account = await unscopedPrisma.ledgerAccount.findFirstOrThrow({
-    where: { tenantId: TENANT, accountType: 'bank', deletedAt: null },
-  });
-  ACCOUNT_ID = account.id;
-  const category = await unscopedPrisma.ledgerCategory.findFirstOrThrow({ where: { tenantId: TENANT } });
-  CATEGORY_ID = category.id;
+  FIXTURE = await booksTenant('books-audit-period');
+  TENANT = FIXTURE.tenantId;
+  FINANCE = FIXTURE.finance;
+  CHAIRMAN = FIXTURE.chairman;
+  ACCOUNT_ID = FIXTURE.bankAccountId;
+  CATEGORY_ID = FIXTURE.categoryId;
+  // A run that stopped inside a close window leaves months closed. Reopen them before this run writes.
+  await reopenLatestFirst(FIXTURE, 'Test fixture reset at the start of the run');
+});
 
-  // The database outlives a run, so a second run finds the period already closed.
-  const row = await unscopedPrisma.accountingPeriod.findFirst({ where: { tenantId: TENANT, period: CLOSED } });
-  if (row?.status !== 'closed') {
-    await asUser(FINANCE, () => requestClosePeriod(CLOSED));
-    await asUser(CHAIRMAN, () => closePeriod(CLOSED));
-  }
+afterAll(async () => {
+  await reopenLatestFirst(FIXTURE, 'Books audit and period tests finished; reopening the months they closed');
 });
 
 /** Every audit row this subject has, oldest first. */
@@ -94,10 +102,14 @@ describe('Audit — each books write leaves one audit row for the change it made
 
   it('requesting the close of a period audits the period row it creates', async () => {
     const period = '2017-05';
-    const existing = await unscopedPrisma.accountingPeriod.findFirst({ where: { tenantId: TENANT, period } });
-    const row = existing ?? (await asUser(FINANCE, () => requestClosePeriod(period)));
+    // The order rule refuses a close while an earlier month is open: close the earlier
+    // months, request this one, and close it so the window can reopen everything after.
+    await closeThrough(FIXTURE, '2017-04');
+    const row = await asUser(FINANCE, () => requestClosePeriod(period));
+    await closeThrough(FIXTURE, period);
     const rows = await auditRows('accounting_period', row.id);
     expect(rows.some((r) => r.action === 'create')).toBe(true);
+    await reopenLatestFirst(FIXTURE, 'Audit probe finished; reopening the months it closed');
   });
 
   it('a bank statement import audits every line it creates', async () => {
@@ -211,6 +223,36 @@ describe('Audit — each books write leaves one audit row for the change it made
 // ===========================================================================
 
 describe('Closed period — a dated write inside it is refused and writes nothing', () => {
+  let original: { id: string };
+  let payBill: { id: string };
+
+  beforeAll(async () => {
+    // Written before the window closes: the months they land in are closed for every probe below.
+    payBill = await asUser(FINANCE, () =>
+      recordVendorBill({
+        vendorName: unique('W2 pay vendor'),
+        billDate: new Date('2016-06-01T06:00:00Z'),
+        subtotal: 300,
+      }),
+    );
+    original = await asUser(FINANCE, () =>
+      recordTransaction({
+        txnDate: new Date('2016-06-10T06:00:00Z'),
+        direction: 'in',
+        amount: 75,
+        accountId: ACCOUNT_ID,
+        categoryId: CATEGORY_ID,
+        note: unique('reverse-in-closed'),
+        source: 'manual',
+      }),
+    );
+    await closeThrough(FIXTURE, CLOSED);
+  });
+
+  afterAll(async () => {
+    await reopenLatestFirst(FIXTURE, 'Closed-period tests finished; reopening the months they closed');
+  });
+
   it('a vendor bill dated in the closed period is refused, and no bill is created', async () => {
     const vendorName = unique('W2 closed bill');
     const err = await expectReject(() =>
@@ -268,20 +310,13 @@ describe('Closed period — a dated write inside it is refused and writes nothin
   });
 
   it('paying a bill on a date inside the closed period is refused, and the bill does not move', async () => {
-    const bill = await asUser(FINANCE, () =>
-      recordVendorBill({
-        vendorName: unique('W2 pay vendor'),
-        billDate: new Date('2016-06-01T06:00:00Z'),
-        subtotal: 300,
-      }),
-    );
     const err = await expectReject(() =>
       asUser(FINANCE, () =>
-        payVendorBill(bill.id, { amount: 100, accountId: ACCOUNT_ID, paidOn: new Date('2017-10-15T06:00:00Z') }),
+        payVendorBill(payBill.id, { amount: 100, accountId: ACCOUNT_ID, paidOn: new Date('2017-10-15T06:00:00Z') }),
       ),
     );
     expect(err.status).toBe(422);
-    const after = await unscopedPrisma.vendorBill.findUniqueOrThrow({ where: { id: bill.id } });
+    const after = await unscopedPrisma.vendorBill.findUniqueOrThrow({ where: { id: payBill.id } });
     expect(after.status).toBe('open');
     expect(Number(after.paidAmount)).toBe(0);
   });
@@ -307,28 +342,18 @@ describe('Closed period — a dated write inside it is refused and writes nothin
   });
 
   it('reversing an entry is refused while today falls in a closed period, and nothing is reversed', async () => {
-    const original = await asUser(FINANCE, () =>
-      recordTransaction({
-        txnDate: new Date('2016-06-10T06:00:00Z'),
-        direction: 'in',
-        amount: 75,
-        accountId: ACCOUNT_ID,
-        categoryId: CATEGORY_ID,
-        note: unique('reverse-in-closed'),
-        source: 'manual',
-      }),
-    );
     // A reversal is stamped now, so the period it lands in is the current IST
     // month. Close that month for the probe and reopen it after; faking the
     // clock instead trips the grant validity check before the period check.
+    // Today is later than every month this file writes, so closing it closes
+    // the rest of the window's months first (ascending), and the reopen undoes all.
     const today = monthKey(new Date());
-    await asUser(FINANCE, () => requestClosePeriod(today));
-    await asUser(CHAIRMAN, () => closePeriod(today));
+    await closeThrough(FIXTURE, today);
     try {
       const err = await expectReject(() => asUser(FINANCE, () => reverseTransaction(original.id, 'W2 probe')));
       expect(err.status).toBe(422);
     } finally {
-      await asUser(CHAIRMAN, () => reopenPeriod(today, 'W2 probe finished; reopening the current month'));
+      await reopenLatestFirst(FIXTURE, 'W2 probe finished; reopening the current month');
     }
     const after = await unscopedPrisma.transaction.findUniqueOrThrow({ where: { id: original.id } });
     expect(after.reversedById).toBeNull();
@@ -341,6 +366,14 @@ describe('Closed period — a dated write inside it is refused and writes nothin
 // ===========================================================================
 
 describe('Closed period — the IST boundary decides which month a write is in', () => {
+  beforeAll(async () => {
+    await closeThrough(FIXTURE, CLOSED);
+  });
+
+  afterAll(async () => {
+    await reopenLatestFirst(FIXTURE, 'IST boundary tests finished; reopening the months they closed');
+  });
+
   it('00:30 IST on 1 October is in the closed October, so a bill dated then is refused', async () => {
     const err = await expectReject(() =>
       asUser(FINANCE, () =>

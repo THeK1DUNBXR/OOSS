@@ -125,7 +125,15 @@ export async function periodStatus(date: Date): Promise<string> {
   const auth = currentAuth();
   const period = periodKeyOf(date);
   const row = await prisma.accountingPeriod.findFirst({ where: { tenantId: auth.tenantId, period } });
-  return row?.status ?? 'open';
+  if (row) return row.status;
+  // A month with no row under a closed later month is closed, not open: the order rule
+  // closes every earlier month first, and a row created here later would sit beneath a
+  // closed month (platform/periodLock.ts holdPeriodRow refuses to make it).
+  const laterClosed = await prisma.accountingPeriod.findFirst({
+    where: { tenantId: auth.tenantId, period: { gt: period }, status: 'closed' },
+    select: { id: true },
+  });
+  return laterClosed ? 'closed' : 'open';
 }
 
 /**
@@ -152,6 +160,49 @@ export async function openAccountingDate(now: Date): Promise<Date> {
   throw ApiError.unprocessable('No open accounting period in the next two years to record this payment in.');
 }
 
+/**
+ * The order rule (owner decision, 2026-10-12). A closed month's snapshot is cumulative:
+ * a posting that lands in an open earlier month later changes figures that were frozen,
+ * and the nightly check raises EX-LED-001 on them. So a month closes only after every
+ * earlier month of the tenant is closed, and reopens only while no later month is closed
+ * or closing.
+ */
+async function earlierPeriodsNotClosed(tenantId: string, period: string) {
+  return prisma.accountingPeriod.findMany({
+    where: { tenantId, period: { lt: period }, status: { not: 'closed' } },
+    select: { period: true, status: true },
+    orderBy: { period: 'asc' },
+  });
+}
+
+function refuseEarlierOpen(period: string, blocking: ReadonlyArray<{ period: string; status: string }>): void {
+  if (blocking.length === 0) return;
+  const [first] = blocking;
+  const message =
+    blocking.length === 1 && first
+      ? `${first.period} is still ${first.status}; close earlier periods first.`
+      : `${blocking.map((b) => b.period).join(', ')} are still not closed; close earlier periods first.`;
+  throw ApiError.unprocessable(message, {
+    period,
+    blockingPeriods: blocking,
+    reasonCode: 'accounting_period_out_of_order',
+  });
+}
+
+function refuseLaterClosed(period: string, blocking: ReadonlyArray<{ period: string; status: string }>): void {
+  if (blocking.length === 0) return;
+  const [first] = blocking;
+  const message =
+    blocking.length === 1 && first
+      ? `${first.period} is still ${first.status}; reopen later periods first, latest first.`
+      : `${blocking.map((b) => b.period).join(', ')} are still closed or closing; reopen later periods first, latest first.`;
+  throw ApiError.unprocessable(message, {
+    period,
+    blockingPeriods: blocking,
+    reasonCode: 'accounting_period_out_of_order',
+  });
+}
+
 /** Step one of the two-party close: any accounting_periods `edit` holder asks for a period to be closed. */
 export async function requestClosePeriod(period: string) {
   const auth = currentAuth();
@@ -160,6 +211,9 @@ export async function requestClosePeriod(period: string) {
   if (row.status !== 'open' && row.status !== 'reopened') {
     throw ApiError.unprocessable(`${period} is ${row.status}, not open — nothing to request closing.`);
   }
+  // Refused here as well as at approval, so the proposer learns it before an approver
+  // is asked. closePeriod checks again under the period locks; this check is only advice.
+  refuseEarlierOpen(period, await earlierPeriodsNotClosed(auth.tenantId, period));
   const updated = await prisma.accountingPeriod.update({
     where: { id: row.id },
     data: { status: 'closing', requestedById: auth.partyId, requestedAt: new Date() },
@@ -229,13 +283,23 @@ export async function closePeriod(period: string) {
   const { to } = monthRange(period);
   const asOf = new Date(to.getTime() - 1);
   const updated = await governedWrite(async (tx) => {
-    const [locked] = await tx.$queryRaw<Array<{ status: string }>>`
-      SELECT "status" FROM "cmp_accounting_periods"
-      WHERE "id" = ${row.id}
+    // Every row of the tenant up to this month, locked in ascending month order, so
+    // the order rule is checked on rows no other transaction can change under it. A
+    // reopen of an earlier month locks from its own month upward, in the same order,
+    // so the two cannot wait on each other in a cycle.
+    const rows = await tx.$queryRaw<Array<{ period: string; status: string }>>`
+      SELECT "period", "status" FROM "cmp_accounting_periods"
+      WHERE "tenantId" = ${auth.tenantId} AND "period" <= ${period}
+      ORDER BY "period"
       FOR UPDATE`;
+    const locked = rows.find((r) => r.period === period);
     if (locked?.status !== 'closing') {
       throw ApiError.unprocessable(`${period} changed while this close waited; it is no longer closing.`);
     }
+    refuseEarlierOpen(
+      period,
+      rows.filter((r) => r.period < period && r.status !== 'closed'),
+    );
     const legacy = await trialBalance(asOf, tx);
     const journal = await journalTrialBalance(asOf, tx);
     const snapshot = {
@@ -280,9 +344,30 @@ export async function reopenPeriod(period: string, reason: string) {
   if (!row) throw ApiError.notFound('Accounting period');
   if (row.status !== 'closed') throw ApiError.unprocessable(`${period} is ${row.status}, not closed.`);
 
-  const updated = await prisma.accountingPeriod.update({
-    where: { id: row.id },
-    data: { status: 'reopened', reopenedById: auth.partyId, reopenedAt: new Date(), reopenReason: reason },
+  // The check and the update run under the period locks, from this month upward in
+  // ascending order: the order closePeriod takes its locks in. Without the lock, a
+  // close of a later month could commit between this check and the update, and the
+  // reopened month would sit under a closed one.
+  const updated = await governedWrite(async (tx) => {
+    const rows = await tx.$queryRaw<Array<{ period: string; status: string }>>`
+      SELECT "period", "status" FROM "cmp_accounting_periods"
+      WHERE "tenantId" = ${auth.tenantId} AND "period" >= ${period}
+      ORDER BY "period"
+      FOR UPDATE`;
+    const locked = rows.find((r) => r.period === period);
+    if (locked?.status !== 'closed') {
+      throw ApiError.unprocessable(
+        `${period} changed while this reopen waited; it is ${locked?.status ?? 'missing'}, not closed.`,
+      );
+    }
+    refuseLaterClosed(
+      period,
+      rows.filter((r) => r.period > period && (r.status === 'closed' || r.status === 'closing')),
+    );
+    return tx.accountingPeriod.update({
+      where: { id: row.id },
+      data: { status: 'reopened', reopenedById: auth.partyId, reopenedAt: new Date(), reopenReason: reason },
+    });
   });
   await auditWrite({
     action: 'update',
