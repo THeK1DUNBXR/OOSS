@@ -67,7 +67,7 @@ export function passesFourPropertyTest(input: RaiseExceptionInput): boolean {
  * WHERE predicate of exception_records_open_natural_key in the migration; a
  * resolved row releases the key so the same problem can be raised again.
  */
-const OPEN_STATES = ['open', 'acknowledged', 'escalated'] as const;
+export const OPEN_STATES = ['open', 'acknowledged', 'escalated'] as const;
 
 /**
  * Audit and event writes take the caller's transaction only when there is one.

@@ -56,6 +56,9 @@ export function CommandCenter() {
         subtitle="How the business is doing, and what needs you."
         actions={
           <>
+            <Link to="/command/founder-view" className="btn-ghost">
+              Founder view
+            </Link>
             <button className="btn-ghost" onClick={() => recompute.mutate()} disabled={recompute.isPending}>
               {recompute.isPending ? 'Refreshing…' : 'Refresh the numbers'}
             </button>

@@ -37,6 +37,7 @@ const Filings = lazy(() => import('./pages/equity/Filings.js').then((m) => ({ de
 const Sh4Sheet = lazy(() => import('./pages/equity/Sh4Sheet.js').then((m) => ({ default: m.Sh4Sheet })));
 const MyOptions = lazy(() => import('./pages/MyOptions.js').then((m) => ({ default: m.MyOptions })));
 const CommandCenter = lazy(() => import('./pages/CommandCenter.js').then((m) => ({ default: m.CommandCenter })));
+const FounderView = lazy(() => import('./pages/FounderView.js').then((m) => ({ default: m.FounderView })));
 const Workspace = lazy(() => import('./pages/Workspace.js').then((m) => ({ default: m.Workspace })));
 const Exceptions = lazy(() => import('./pages/Workspace.js').then((m) => ({ default: m.Exceptions })));
 const Pipeline = lazy(() => import('./pages/Pipeline.js').then((m) => ({ default: m.Pipeline })));
@@ -338,6 +339,7 @@ function Routed() {
 
           <Route path="/command" element={<CommandCenter />} />
           <Route path="/command/decisions" element={<Decisions />} />
+          <Route path="/command/founder-view" element={<FounderView />} />
           <Route path="/command/health/:domainCode" element={<CommandCenter />} />
           <Route path="/workspace" element={<Workspace />} />
           <Route path="/exceptions" element={<Exceptions />} />

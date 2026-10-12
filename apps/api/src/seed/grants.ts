@@ -351,6 +351,7 @@ export const ALL_RESOURCES = [
   'commitments', // Wave 6 (OP:115); kept in lockstep with RESOURCES in shared/permissions.ts
   'cases', // Wave 6 (OP:116); kept in lockstep with RESOURCES in shared/permissions.ts
   'account_recovery', // Wave 6 (ORDERED-PLAN); kept in lockstep with RESOURCES in shared/permissions.ts
+  'founder_view', // Wave 6 (OP:120); kept in lockstep with RESOURCES in shared/permissions.ts
 ] as const;
 
 /** Everything, at every scope, with no exceptions. */

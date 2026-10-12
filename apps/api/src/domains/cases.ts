@@ -502,7 +502,7 @@ async function canReach(row: Case, verb: 'view' | 'edit'): Promise<boolean> {
 }
 
 /** The tiers at or below a ceiling, in the rank order the evaluator uses. */
-function tiersClearedBy(ceiling: SensitivityClass): SensitivityClass[] {
+export function tiersClearedBy(ceiling: SensitivityClass): SensitivityClass[] {
   return SENSITIVITY_CLASSES.filter((tier) => SENSITIVITY_RANK[tier] <= SENSITIVITY_RANK[ceiling]);
 }
 

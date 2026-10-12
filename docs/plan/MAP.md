@@ -24,7 +24,7 @@
 
 **`apps/api/src/domains/capability.ts`** (586 lines) — listSkills:51 · createSkill:57 · CapabilityView:83 · capabilitiesForParty:105 · assertClaim:152 · addEvidence:212 · verifyClaim:335 · recordContradiction:431 · changeClaimState:487 · claimFromLearningCompletion:530 · findCapableParties:556
 
-**`apps/api/src/domains/cases.ts`** (509 lines) — CASE_KINDS:46 · CaseKind:47 · CASE_STATES:49 · CaseState:50 · CASE_TRANSITIONS:57 · CASE_EXCEPTION_CODE:69 · OpenCaseInput:82 · CaseFilter:98 · openCase:114 · acknowledgeCase:175 · resolveCase:196 · closeCase:200 · withdrawCase:205 · raiseExceptionFromCase:216 · listCases:288 · getCase:307 · flagCaseOverdue:322
+**`apps/api/src/domains/cases.ts`** (509 lines) — CASE_KINDS:46 · CaseKind:47 · CASE_STATES:49 · CaseState:50 · CASE_TRANSITIONS:57 · CASE_EXCEPTION_CODE:69 · OpenCaseInput:82 · CaseFilter:98 · openCase:114 · acknowledgeCase:175 · resolveCase:196 · closeCase:200 · withdrawCase:205 · raiseExceptionFromCase:216 · listCases:288 · getCase:307 · flagCaseOverdue:322 · tiersClearedBy:464
 
 **`apps/api/src/domains/ceo/board.detectors.ts`** (11 lines) — detectors:10
 
@@ -92,7 +92,7 @@
 
 **`apps/api/src/domains/courses.ts`** (495 lines) — CourseFeePlanInput:33 · CourseAddonInput:38 · CourseInput:46 · listCourses:67 · createCourse:186 · updateCourse:263 · retireCourse:367 · AssignCourseInput:436 · assignCourse:464
 
-**`apps/api/src/domains/decisions.ts`** (516 lines) — RaiseDecisionInput:35 · raiseDecision:49 · decisionQueue:178 · DispositionInput:226 · disposeDecision:238 · reviewDecision:446 · decisionCalibration:491
+**`apps/api/src/domains/decisions.ts`** (522 lines) — RaiseDecisionInput:35 · raiseDecision:49 · OPEN_DECISION_STATES:182 · decisionQueue:184 · DispositionInput:232 · disposeDecision:244 · reviewDecision:452 · decisionCalibration:497
 
 **`apps/api/src/domains/documents.ts`** (536 lines) — DOCUMENT_EVENTS:39 · DOCUMENT_LIFECYCLE:47 · DocumentLifecycleStatus:48 · DOCUMENT_SOURCES:50 · DocumentSource:51 · DOCUMENT_TRANSITIONS:58 · MAX_DOCUMENT_BYTES:69 · sha256Hex:75 · RegisterUploadInput:222 · registerUpload:239 · AddVersionInput:282 · addVersion:294 · ChangeLifecycleInput:371 · changeLifecycleStatus:383 · SetRetentionInput:420 · setRetentionClass:432 · getDocument:485 · DocumentFilter:491 · listDocuments:502 · readContent:525
 
@@ -107,6 +107,8 @@
 **`apps/api/src/domains/filings.ts`** (1000 lines) — assertDematCompliant:60 · assertFemaPricingFloor:99 · handleAllotmentEffectiveForFema:156 · handleTransferEffectiveForFema:182 · runFlaReturn:225 · checkDematRequirements:321 · latestHalfYearEnd:382 · runPas6HalfYearly:391 · pas6:426 · mgt1Register:534 · mgt2Register:556 · mgt1Export:625 · mgt2Export:644 · pas3AllotteeList:666 · pas3Export:746 · sh4Data:799 · RecordFilingInput:871 · recordFiling:883 · listFilings:959
 
 **`apps/api/src/domains/finance.ts`** (591 lines) — issueFeeInstalments:78 · recordPayment:115 · reversePayment:219 · allocatePayment:275 · issueCreditNote:473 · rehydrateReceivables:536 · detectOverduePayments:544
+
+**`apps/api/src/domains/founderView.ts`** (313 lines) — FounderSource:47 · FOUNDER_SOURCES:253 · founderView:299
 
 **`apps/api/src/domains/group.ts`** (1499 lines) — lastCompleteMonthKey:116 · buildEntitySnapshot:246 · publishEntitySnapshot:389 · publishNow:503 · refreshGroup:516 · groupStructure:536 · groupHolders:624 · groupFinancials:759 · groupCompliance:854 · entitySnapshotView:906 · aoc1:963 · aoc1Export:1067 · groupBenCandidates:1360 · benCandidatesExport:1419 · publishDirtySnapshots:1472 · publishNightlySnapshot:1482 · markSnapshotDirty:1489
 
@@ -288,7 +290,7 @@
 
 **`apps/api/src/platform/eventBus.ts`** (635 lines) — EmitInput:34 · Subscriber:60 · Registration:62 · emittedEvents:71 · setEventCapture:74 · subscribe:79 · subscribersFor:93 · subscriberCount:97 · clearSubscribers:101 · computeHash:116 · computeHashV2:130 · CURRENT_HASH_VERSION:139 · hashFor:145 · ChainFields:157 · chainBodyOf:179 · emit:362 · wouldLoop:553 · ChainVerification:569 · verifyChain:593
 
-**`apps/api/src/platform/exceptions.ts`** (445 lines) — RaiseExceptionInput:33 · passesFourPropertyTest:59 · raiseException:114 · acknowledgeException:282 · resolveException:297 · escalateException:325 · severityToPriority:400 · NotifyInput:415 · notify:427
+**`apps/api/src/platform/exceptions.ts`** (445 lines) — RaiseExceptionInput:33 · passesFourPropertyTest:59 · OPEN_STATES:70 · raiseException:114 · acknowledgeException:282 · resolveException:297 · escalateException:325 · severityToPriority:400 · NotifyInput:415 · notify:427
 
 **`apps/api/src/platform/governedWrite.ts`** (29 lines) — governedWrite:26
 
@@ -464,6 +466,8 @@
 
 **`packages/shared/src/finance.ts`** (841 lines) — DIVISIONS:19 · Division:20 · DIVISION_LABELS:22 · isDivision:29 · CATEGORY_KINDS:37 · CategoryKind:38 · NON_TRADING_KINDS:49 · isTrading:51 · CATEGORY_BEHAVIOURS:60 · CategoryBehaviour:61 · TRANSACTION_SOURCES:63 · TransactionSource:73 · LEDGER_GROUPS:75 · LedgerGroup:76 · monthKey:86 · monthRange:96 · financialYearOf:102 · financialYearRange:107 · monthsBack:112 · GstLineInput:126 · GstBreakdown:133 · round2:150 · computeGst:166 · isInterState:206 · GST_RATES:212 · GST_STATE_CODES:226 · stateNameFor:269 · placeOfSupplyLabel:275 · stateCodeOf:282 · isValidGstin:300 · gstinCheckDigit:317 · supplyTypeOf:338 · GstHeads:346 · GstSetOff:352 · setOffInputCredit:374 · outstandingOfMinor:427 · outstandingOf:438 · paymentTypeForMinor:454 · paymentTypeFor:465 · invoicePayableMinor:492 · invoicePayable:502 · amountInWords:570 · PaymentSchedule:643 · computePaymentSchedule:655 · DepreciationPeriod:668 · DepreciationInput:675 · depreciationSchedule:693 · bookValueAt:732 · AmortisationPeriod:747 · emi:757 · amortisationSchedule:767 · loanBalanceAt:806 · runwayMonths:836
 
+**`packages/shared/src/founderView.ts`** (54 lines) — FOUNDER_SOURCE_KINDS:11 · FounderSourceKind:12 · FOUNDER_SOURCE_LABELS:14 · FounderTimestampKind:23 · FounderRow:25 · FounderSourceStatus:43 · FounderViewResponse:48
+
 **`packages/shared/src/hcm/analytics.ts`** (237 lines) — HCM_ANALYTICS_MODULE:18 · Measured:24 · NotMeasured:29 · Metric:37 · measured:39 · notMeasured:43 · ANALYTICS_REPORTS:51 · AnalyticsReport:58 · trailingMonths:70 · TENURE_BUCKETS:79 · TenureBucket:80 · tenureYears:83 · tenureBucket:88 · dailyRateFromBasic:102 · annualizedAttritionRate:113 · isEarlyAttrition:119 · absenteeismRate:125 · hiringOfferAcceptanceRate:141 · averageTimeToHireDays:147 · SpanOfControlStats:162 · spanOfControlStats:170 · distribution:186 · distributionList:197 · COMP_RATIO_BUCKETS:210 · CompRatioBucket:211 · compRatioBucket:214 · SLA_BUCKETS:227 · SlaBucket:228 · slaBucket:231
 
 **`packages/shared/src/hcm/assets.ts`** (123 lines) — HCM_ASSETS_MODULE:10 · ASSET_CATEGORIES:16 · AssetCategory:17 · HCM_ASSET_STATUSES:19 · HcmAssetStatus:20 · ASSET_CONDITIONS:22 · AssetCondition:23 · canTransitionAsset:33 · TRAVEL_MODES:41 · TravelMode:42 · TRAVEL_REQUEST_STATUSES:44 · TravelRequestStatus:45 · canTransitionTravelRequest:48 · isSelfDealingApproval:59 · LETTER_REQUEST_KINDS:67 · LetterRequestKind:68 · LETTER_REQUEST_STATUSES:70 · LetterRequestStatus:71 · canTransitionLetterRequest:73 · fulfilsViaHrLetter:86 · buildOwnLetterBody:91
@@ -514,7 +518,7 @@
 
 **`packages/shared/src/money.ts`** (146 lines) — add:16 · sub:20 · neg:24 · abs:28 · compare:33 · isZero:37 · parseMinor:47 · formatMinor:60 · mulRatio:73 · allocate:97 · applyBps:122 · convertPpm:131
 
-**`packages/shared/src/permissions.ts`** (554 lines) — VERBS:22 · VerbLetter:32 · Verb:33 · DISTINCT_GRANT_VERBS:36 · SCOPES:38 · Scope:39 · ParsedGrant:41 · parseGrant:52 · formatGrant:84 · RESOURCES:103 · Resource:366 · ROLE_SLUGS:394 · RoleSlug:408 · APPROVAL_LADDER:411 · APPROVAL_EXCLUDED_ROLES:413 · MONEY_FIELDS:419 · REGULATED_EXCLUDED_FIELDS:469 · AXES:496 · AxisCode:507 · AxisOutcome:509 · PermissionDecision:515 · ROLE_CLASSIFICATION_CEILING:530
+**`packages/shared/src/permissions.ts`** (559 lines) — VERBS:22 · VerbLetter:32 · Verb:33 · DISTINCT_GRANT_VERBS:36 · SCOPES:38 · Scope:39 · ParsedGrant:41 · parseGrant:52 · formatGrant:84 · RESOURCES:103 · Resource:371 · ROLE_SLUGS:399 · RoleSlug:413 · APPROVAL_LADDER:416 · APPROVAL_EXCLUDED_ROLES:418 · MONEY_FIELDS:424 · REGULATED_EXCLUDED_FIELDS:474 · AXES:501 · AxisCode:512 · AxisOutcome:514 · PermissionDecision:520 · ROLE_CLASSIFICATION_CEILING:535
 
 **`packages/shared/src/planes.ts`** (390 lines) — PLANES:8 · PlaneCode:71 · BOUNDED_CONTEXTS:78 · BoundedContext:103 · ModuleRegisterEntry:110 · MODULE_REGISTER:119
 
@@ -536,7 +540,7 @@
 
 **`apps/web/src/pages/Books.tsx`** (857 lines) — Ledger:98 · Payables:343 · Budget:547 · Assets:702
 
-**`apps/web/src/pages/CommandCenter.tsx`** (803 lines) — CommandCenter:30
+**`apps/web/src/pages/CommandCenter.tsx`** (806 lines) — CommandCenter:30
 
 **`apps/web/src/pages/Commercial.tsx`** (966 lines) — Offerings:35 · Quotes:220 · Proposals:335 · Agreements:448 · Approvals:638 · WinLoss:735
 
@@ -551,6 +555,8 @@
 **`apps/web/src/pages/FinalInvoiceDocument.tsx`** (302 lines) — FinalInvoiceDocument:43 · FinalInvoices:201
 
 **`apps/web/src/pages/Finance.tsx`** (688 lines) — Invoices:60 · Payments:446 · Receivables:623
+
+**`apps/web/src/pages/FounderView.tsx`** (156 lines) — FounderView:43
 
 **`apps/web/src/pages/GstReturns.tsx`** (1107 lines) — GstReturns:71 · CompanyDetails:722
 
