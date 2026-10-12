@@ -955,6 +955,13 @@ export const EVENTS = {
   // --- Organisation: tunable thresholds (SPINE-CONTRACT s.1.10). Emitted by
   // apps/api/src/domains/thresholds.ts, one per governed write.
   THRESHOLD_UPDATED: 'kz.org.threshold.updated',
+
+  // --- Governance: level-based access assignments (ACCESS-MODEL-PLAN s.7). Emitted by
+  // apps/api/src/domains/access/assignments.ts, one per governed write. The domain is
+  // `gov`, a bounded context; `kz.access` is refused by EVENT_NAME_PATTERN (4 letters max).
+  ACCESS_ASSIGNMENT_SUGGESTED: 'kz.gov.access_assignment.suggested',
+  ACCESS_ASSIGNMENT_CONFIRMED: 'kz.gov.access_assignment.confirmed',
+  ACCESS_ASSIGNMENT_EXPIRED: 'kz.gov.access_assignment.expired',
 } as const;
 
 /**

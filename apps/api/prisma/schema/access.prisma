@@ -1,0 +1,225 @@
+// Level-based access, PR11a (ACCESS-MODEL-PLAN s.2, s.5-s.7; P11-DESIGN a, O1-O5,
+// O8, O15, O17).
+//
+// A person's access is one or more placements (vertical, optional unit, level)
+// inside an assignment, plus named extra duties. An assignment is suggested,
+// then confirmed by someone other than the person and the answerer, or it
+// expires. A suggestion grants nothing: PR11b compiles confirmed assignments into
+// Grant rows. Until then these tables hold data and nothing reads them for
+// authority.
+//
+// What Prisma cannot express is raw SQL in migration 20261013180000_access_model:
+// the closed value lists, the non-empty checks, the status and expiry rules, and
+// row-level security with its grant to the application role. The rules are
+// tested in src/tests/accessAssignment.test.ts.
+
+model AccessVertical {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// Immutable. Grants, bindings and capability rules name a vertical by this.
+  code           String
+  name           String
+  /// business | shared. A business vertical is one BusinessLine; a shared one is a
+  /// function (Finance, HR, ...) whose records bind by fixed owner, not by line.
+  kind           String
+  /// The BusinessLine of a business vertical. A plain reference, checked by the domain:
+  /// a relation to BusinessLine broke invoicing.ts typechecking (see personId).
+  businessLineId String?
+
+  rules        AccessCapabilityRule[]
+  placements   AccessPlacement[]
+  bindings     AccessResourceBinding[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, id])
+  @@map("access_verticals")
+}
+
+model AccessLevel {
+  id       String @id @default(cuid())
+  tenantId String
+
+  code  String
+  name  String
+  /// Orders levels for display and review. It grants nothing by itself.
+  rank  Int
+  /// own | team | unit | vertical | company. Which records the level reaches.
+  reach String
+
+  limits     AccessLevelLimit[]
+  rules      AccessCapabilityRule[]
+  placements AccessPlacement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, rank])
+  @@unique([tenantId, id])
+  @@map("access_levels")
+}
+
+/// How far a level may approve, per class of approval. Money is bigint paise
+/// (CLAUDE.md rule 1); the limit is tenant data, never a constant in code.
+model AccessLevelLimit {
+  id       String @id @default(cuid())
+  tenantId String
+
+  levelId        String
+  authorityClass String
+  /// Paise. Never negative (CHECK in the migration).
+  limitMinor     BigInt
+  currency       String
+
+  level AccessLevel @relation(fields: [tenantId, levelId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, levelId, authorityClass])
+  @@map("access_level_limits")
+}
+
+/// Which verbs a level may use on one resource inside one vertical (AMP s.2.4,
+/// WHAT VERBS). `unitCode` narrows the rule to a unit; '' means the whole
+/// vertical. A missing rule grants nothing: the compile fails closed.
+model AccessCapabilityRule {
+  id       String @id @default(cuid())
+  tenantId String
+
+  verticalId String
+  levelId    String
+  /// A unit's code, or '' for the whole vertical. Not a row id: unit rows are versioned.
+  unitCode   String   @default("")
+  /// Must be in RESOURCES (a startup test checks it).
+  resource   String
+  /// A non-empty subset of the verb vocabulary (CHECK in the migration).
+  verbs      String[]
+
+  vertical AccessVertical @relation(fields: [tenantId, verticalId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  level    AccessLevel    @relation(fields: [tenantId, levelId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, verticalId, levelId, unitCode, resource])
+  @@index([tenantId, verticalId, levelId])
+  @@map("access_capability_rules")
+}
+
+/// How a resource says which vertical its records belong to (AMP s.4, the record
+/// binding table). A vertical-scoped grant on a resource with no binding denies.
+model AccessResourceBinding {
+  id       String @id @default(cuid())
+  tenantId String
+
+  resource    String
+  /// field | fixed | derived | none (CHECK in the migration).
+  bindingKind String
+  /// For `field`: the column that holds the vertical code on the resource's table.
+  column      String?
+  /// For `fixed`: the shared vertical that owns every record of the resource.
+  verticalId  String?
+
+  vertical AccessVertical? @relation(fields: [tenantId, verticalId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, resource])
+  @@map("access_resource_bindings")
+}
+
+model AccessAssignment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// A person id, checked by the domain when suggested. No relation field: a plain
+  /// party reference, as Case.ownerPartyId is. A relation to Person changed the
+  /// client's type graph enough to break invoicing.ts typechecking (P11 PR11a).
+  personId     String
+  /// employee | founder | non_employee (CHECK). A non-employee must carry an expiry.
+  identityType String
+  /// suggested | confirmed | expired (CHECK). Only confirmed rows grant access, from PR11b.
+  status       String @default("suggested")
+
+  /// The HR answerer. Plain ids, not a relation: the answerer may be a person
+  /// who has since been merged, and the event log keeps the name.
+  suggestedById String
+  suggestedAt   DateTime  @default(now())
+  confirmedById String?
+  confirmedAt   DateTime?
+  expiredById   String?
+  expiredAt     DateTime?
+
+  /// Set for a non-employee: at most twelve months from confirmation, IST
+  /// (CLAUDE.md rule 3; the domain counts the days, the CHECK is a backstop).
+  expiresAt DateTime?
+  reason    String
+  /// The founder's reason for confirming an assignment they answered, when no other
+  /// eligible confirmer exists (owner answer O7). Null otherwise; a CHECK in the
+  /// migration keeps it null unless the row was confirmed. ACCESS-MODEL-PLAN s.8 asks
+  /// that the overlap be recorded with a compensating reviewer, which is why it is logged.
+  soleConfirmerReason String?
+
+  placements AccessPlacement[]
+  duties     AccessDuty[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, id])
+  @@index([tenantId, personId, status])
+  @@index([tenantId, status, expiresAt])
+  @@map("access_assignments")
+}
+
+/// One vertical, unit and level a person holds inside an assignment. A person may
+/// hold several, each at its own level (D round 19a (f)).
+model AccessPlacement {
+  id       String @id @default(cuid())
+  tenantId String
+
+  assignmentId String
+  /// The assignment's person. Equal to it by construction; the domain enforces this.
+  personId     String
+  verticalId   String
+  levelId      String
+  /// A unit's code, or '' for none (see AccessCapabilityRule.unitCode).
+  unitCode     String @default("")
+
+  assignment AccessAssignment @relation(fields: [tenantId, assignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  vertical   AccessVertical   @relation(fields: [tenantId, verticalId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  level      AccessLevel      @relation(fields: [tenantId, levelId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, assignmentId, verticalId, unitCode])
+  @@index([tenantId, personId])
+  @@map("access_placements")
+}
+
+/// A named extra duty inside an assignment (AMP s.2.3). Sensitive duties need the
+/// founder to confirm; the sensitivity comes from the duty vocabulary in code, not
+/// from the caller.
+model AccessDuty {
+  id       String @id @default(cuid())
+  tenantId String
+
+  assignmentId String
+  /// A code from the duty vocabulary (domains/access/rules.ts).
+  dutyCode     String
+  sensitive    Boolean
+  expiresAt    DateTime?
+
+  assignment AccessAssignment @relation(fields: [tenantId, assignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, assignmentId, dutyCode])
+  @@map("access_duties")
+}
