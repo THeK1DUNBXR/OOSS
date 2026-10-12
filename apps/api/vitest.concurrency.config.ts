@@ -40,6 +40,9 @@ export default defineConfig({
       NODE_ENV: 'test',
       DOCUMENT_STORAGE_DIR: process.env.TEST_DOCUMENT_STORAGE_DIR ?? join(tmpdir(), 'kaizen-test-documents'),
       JWT_SECRET: 'test-only-secret-not-used-anywhere-else-0123456789',
+      // The API refuses to boot without it (G5). The same key as vitest.config.ts: the
+      // concurrency suite reads the regulated fields the serial suite wrote.
+      FIELD_ENCRYPTION_KEY: 'test-only-field-encryption-key-not-used-anywhere-else-0123456789',
       JOBS_ENABLED: 'false',
     },
   },

@@ -15,23 +15,40 @@
  *   I4 reversals are links, never edits; no reversal of a reversal
  *   I5 each idempotency key names one entry; a replay adds no rows
  *   I6 no entry was posted into a period after it closed
- *   I7 entry numbers: gapless per tenant per FY (and see the per-entity note below)
- *   I8 every snapshot row equals the journal, for every closed period
+ *   I7 entry numbers: gapless per legal entity per FY (the owner's ruling on I7, 2026-10-12)
+ *   I8 every closed period's snapshot equals the journal (rows derived after each close)
  *   I9 every amount read back is a bigint
  *
  * The draft puts I7 to I9 every 100 operations. I1 to I6 run after every op here
  * as the draft asks, which is O(entries) per op. That is what makes a full run
  * slow; see the runtime note in proof-full.yml.
  *
- * Determinism. The sequence comes from fast-check with a fixed seed, printed on
- * every run (L1_SEED to replay). The database is shared and not empty, so the
- * outcome is not a function of the seed alone. The transcript hash below covers
- * only what the seed determines: the operations, their amounts, dates and accounts,
- * and each one's outcome. Two runs with the same seed print the same transcript
- * hash. A replay that does not is a finding.
+ * Periods. A month closes only after every earlier month of the tenant is closed,
+ * and reopens only while no later month is closed or closing (books.ts, the order
+ * rule). A close refused by that rule leaves its month `closing`, as closePeriod
+ * leaves it. Those refusals are part of the sequence, not avoided by it: the
+ * closes pick months in order and out of order, and the model predicts each one
+ * from the period rows the database holds. A post into a closing month, or into a
+ * closed one, is refused by the ledger's own period lock. Those refusals are checked
+ * by status and by the message. The order rule's refusal of a close is also checked
+ * by its reasonCode and by the periods it names, which must be the model's. The
+ * ledger's period lock gives no reasonCode.
  *
- * Refusals are checked by status and by the message the refusing code gives.
- * An unexpected error is a violation, not a refusal.
+ * The run has a books tenant of its own, new for each run (booksTenant, as
+ * ledgerGates.test.ts does). The order rule is tenant-wide, so another file's open
+ * month in a shared tenant would make every close here refused and leave I8 with
+ * nothing to check.
+ *
+ * Determinism. The sequence comes from fast-check with a fixed seed, printed on
+ * every run (L1_SEED to replay). Ids differ between runs, since each run has its
+ * own tenant, so the hashes name an entity or account by its position in the
+ * fixture. The transcript hash below covers only what the seed determines: the
+ * operations, their amounts, dates and accounts, and each one's outcome. Two runs
+ * with the same seed print the same transcript hash. A replay that does not is a
+ * finding.
+ *
+ * Refusals are checked by status, by the message the refusing code gives, and where
+ * the code gives one, by its reasonCode. An unexpected error is a violation, not a refusal.
  */
 
 import { createHash, randomUUID } from 'node:crypto';
@@ -44,16 +61,15 @@ import { balanceOf, post, postInTx, reverse, type JournalLineInput, type PostInp
 import { assertCan } from '../../platform/permissions.js';
 import { checkAccountBalanceSnapshots, journalTrialBalance } from '../../platform/balances.js';
 import { closePeriod } from '../../domains/compliance/books.js';
-import { asUser, tenantId } from '../helpers.js';
+import { asUser, booksTenant } from '../helpers.js';
 
-const OPS = Number(process.env.L1_OPS ?? 1000);
-const SEED = Number(process.env.L1_SEED ?? 20261012);
+const OPS = Number.parseInt(process.env.L1_OPS ?? '1000', 10);
+const SEED = Number.parseInt(process.env.L1_SEED ?? '20261012', 10);
 if (!Number.isInteger(OPS) || OPS < 1) throw new Error(`L1_OPS must be a positive integer, got ${OPS}`);
 
 /** Scales with the op count: the full run is slow by design, and a timeout would be a false failure. */
 const TIMEOUT_MS = Math.max(120_000, OPS * 1_000);
 
-const CHAIRMAN = 'chairman@kaizen.co.in';
 const APP_URL =
   process.env.TEST_APP_DATABASE_URL ??
   (process.env.TEST_DATABASE_URL ?? 'postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public').replace(
@@ -64,8 +80,9 @@ const app = new PrismaClient({ datasourceUrl: APP_URL });
 
 /** Thirteen IST months across two financial years: March 2030 (FY2029-30) to March 2031 (FY2030-31). */
 const MONTHS = Array.from({ length: 13 }, (_, i) => {
-  const d = new Date(Date.UTC(2030, 2 + i, 1));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  // Months counted from year 0 (March 2030 is 2030 * 12 + 2), so the labels are plain arithmetic and not a UTC read.
+  const index = 2030 * 12 + 2 + i;
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`;
 });
 
 /** An as-of date after any posting, as balances.ts uses for the whole-tenant trial balance. */
@@ -151,6 +168,8 @@ const opArb = fc.oneof(
 
 interface Fixture {
   tid: string;
+  /** The chairman principal (email): the close and reopen approver, and the actor for the reversals. */
+  chairman: string;
   entityIds: string[];
   accountIds: string[];
   controlId: string;
@@ -161,7 +180,14 @@ interface Fixture {
 let fx: Fixture;
 
 async function setUpFixture(): Promise<Fixture> {
-  const tid = await tenantId();
+  // A books tenant of this file's own (helpers.ts booksTenant). The order rule is tenant-wide,
+  // so the kaizen tenant's open months from other files would refuse every close here. The
+  // tenant is new for each run: the I1 to I3 checks read every entry of the tenant after each
+  // op, so a tenant kept across runs made each run slower than the one before (95s, then 306s,
+  // then past eleven minutes on the same DB), and an earlier run's cached snapshots would be
+  // read as this run's.
+  const books = await booksTenant(`ledger-property-${randomUUID().slice(0, 8)}`);
+  const tid = books.tenantId;
   const entityIds: string[] = [];
   for (const code of ['L1A', 'L1B']) {
     const e = await unscopedPrisma.ledgerEntity.upsert({
@@ -220,7 +246,7 @@ async function setUpFixture(): Promise<Fixture> {
     });
   }
 
-  return { tid, entityIds, accountIds, controlId, partyRequiredId, lineIds };
+  return { tid, chairman: books.chairman, entityIds, accountIds, controlId, partyRequiredId, lineIds };
 }
 
 // ---------------------------------------------------------------------------
@@ -277,14 +303,19 @@ interface Posted {
   input?: PostInput;
 }
 
-type Attempt<T> = { ok: true; value: T } | { ok: false; status?: number; message: string };
+type Attempt<T> =
+  | { ok: true; value: T }
+  | { ok: false; status?: number; message: string; details?: Record<string, unknown>; reasonCode?: string };
 
 async function attempt<T>(fn: () => Promise<T>): Promise<Attempt<T>> {
   try {
     return { ok: true, value: await fn() };
   } catch (err) {
-    const e = err as { status?: number; message: string };
-    return { ok: false, status: e.status, message: e.message };
+    const e = err as { status?: number; message: string; details?: unknown };
+    // ApiError.details: the close refusal carries its reasonCode and the blocking periods (books.ts refuseEarlierOpen).
+    const details = e.details && typeof e.details === 'object' ? (e.details as Record<string, unknown>) : undefined;
+    const reasonCode = typeof details?.reasonCode === 'string' ? details.reasonCode : undefined;
+    return { ok: false, status: e.status, message: e.message, details, reasonCode };
   }
 }
 
@@ -300,12 +331,33 @@ async function runOps(
 ): Promise<{ violations: string[]; report: Record<string, unknown> }> {
   const violations: string[] = [];
   const fail = (i: number, msg: string) => violations.push(`op ${i}: ${msg}`);
-  const { tid, entityIds, accountIds, controlId, partyRequiredId, lineIds } = fx;
+  const { tid, chairman, entityIds, accountIds, controlId, partyRequiredId, lineIds } = fx;
   const RUN = randomUUID().slice(0, 8);
 
-  // The model: what this run has written, and which months are open.
-  let open = [...MONTHS];
-  const closed = new Set<string>();
+  // The model of the periods: every row of the tenant as the database holds it when the run
+  // starts, then what this run's closes do. Nothing else writes periods during a run (the
+  // heavy lock), so the rows are the state the order rule is checked against.
+  const periodState = new Map<string, string>(
+    (
+      await unscopedPrisma.accountingPeriod.findMany({
+        where: { tenantId: tid },
+        select: { period: true, status: true },
+      })
+    ).map((r) => [r.period, r.status]),
+  );
+  const postable = (month: string) => {
+    const s = periodState.get(month);
+    return s === 'open' || s === 'reopened';
+  };
+  const openMonths = () => MONTHS.filter(postable);
+  /** The rows the order rule refuses a close for: every earlier row not closed, as closePeriod lists them. */
+  const blockingBefore = (month: string) =>
+    [...periodState.entries()]
+      .filter(([p, s]) => p < month && s !== 'closed')
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([period, status]) => ({ period, status }));
+
+  // The model: what this run has written.
   const posted: Posted[] = [];
   const runIds: string[] = [];
   const counts: Record<string, { ok: number; refused: number }> = {};
@@ -392,36 +444,33 @@ async function runOps(
         GROUP BY "idempotencyKey" HAVING COUNT(*) > 1) t`;
     if (dup[0]!.n !== 0) fail(i, `I5: ${dup[0]!.n} idempotency keys name more than one entry`);
 
-    // I7: entry numbers are gapless per tenant per financial year. The per-entity
-    // reading of the draft (gapless for each entity alone) is checked separately
-    // below, because the sequence is tenant-wide (allocateEntryNumber, ledger.ts).
+    // I7: entry numbers are gapless per legal entity per financial year (the owner's
+    // ruling, 2026-10-12). Entry numbers read as JRN-<year>-<seq> (formatRecordCode,
+    // packages/shared/src/domain.ts), so the split gives the year and the sequence.
+    // The tenant is not one series: two entities in it each number from 1.
     const numbers = await unscopedPrisma.journalEntry.findMany({
       where: { tenantId: tid },
       select: { entityId: true, entryNumber: true },
     });
-    const byYear = new Map<string, number[]>();
     const byEntityYear = new Map<string, number[]>();
     for (const row of numbers) {
       const [, year, seqText] = row.entryNumber.split('-');
-      const seq = Number(seqText);
-      if (!byYear.has(year!)) byYear.set(year!, []);
-      byYear.get(year!)!.push(seq);
       const key = `${row.entityId}|${year}`;
       if (!byEntityYear.has(key)) byEntityYear.set(key, []);
-      byEntityYear.get(key)!.push(seq);
+      byEntityYear.get(key)!.push(Number.parseInt(seqText ?? '', 10));
     }
     const gapless = (seqs: number[]) => {
       const sorted = [...seqs].sort((a, b) => a - b);
       return sorted.every((s, j) => s === j + 1);
     };
-    for (const [year, seqs] of byYear) {
-      if (!gapless(seqs)) fail(i, `I7: tenant entry numbers for year ${year} have a gap or do not start at 1`);
-    }
     for (const [key, seqs] of byEntityYear) {
-      if (!gapless(seqs)) fail(i, `I7 (per entity, as the draft words it): ${key} numbers have a gap`);
+      if (!gapless(seqs)) fail(i, `I7: ${key} entry numbers have a gap or do not start at 1`);
     }
 
     // I8: each closed period's snapshot equals the journal, for every account with a line by the period end.
+    // The rows are derived by the nightly check (balances.ts checkAccountBalanceSnapshots), which closeThenPost
+    // runs straight after each close, so every row here was derived after its period closed. Nothing is
+    // rebuilt here: a rebuild would absorb a change to a closed month, which is what this comparison must catch.
     const closedPeriods = await unscopedPrisma.accountingPeriod.findMany({
       where: { tenantId: tid, status: 'closed', period: { in: MONTHS } },
     });
@@ -519,7 +568,11 @@ async function runOps(
     });
   };
 
-  const pickOpen = (pick: number) => open[pick % open.length]!;
+  const pickOpen = (pick: number) => {
+    const candidates = openMonths();
+    if (candidates.length === 0) throw new Error('model: no open month to post into');
+    return candidates[pick % candidates.length]!;
+  };
 
   const recordOk = async (i: number, kind: string, input: PostInput, id: string, month: string, entityId: string) => {
     posted.push({ id, key: input.idempotencyKey, entityId, month, reversal: false, reversed: false, input });
@@ -527,7 +580,7 @@ async function runOps(
     await learn(id);
     bump(kind, false);
     transcript.update(
-      `${i}|${kind}|ok|${month}|${entityId}|${JSON.stringify(input.lines.map((l) => [l.accountId, String(l.amountMinor)]))}\n`,
+      `${i}|${kind}|ok|${month}|${entityIds.indexOf(entityId)}|${JSON.stringify(input.lines.map((l) => [allAccounts.indexOf(l.accountId), String(l.amountMinor)]))}\n`,
     );
   };
 
@@ -540,10 +593,26 @@ async function runOps(
     await recordOk(i, kind, input, result.value.id, month, entityId);
   };
 
-  const refuse = (i: number, kind: string, r: Attempt<unknown>, status: number, pattern: RegExp, detail: string) => {
+  /**
+   * A refusal the model predicted: the status, the message, and the reasonCode when the
+   * refusing code gives one (only the order rule does: books.ts refuseEarlierOpen and
+   * refuseLaterClosed). The ledger's own period refusals carry no reasonCode.
+   */
+  const refuse = (
+    i: number,
+    kind: string,
+    r: Attempt<unknown>,
+    status: number,
+    pattern: RegExp,
+    detail: string,
+    reasonCode?: string,
+  ) => {
     if (r.ok) return fail(i, `${kind}: ${detail} was recorded as success`);
     if (r.status !== status || !pattern.test(r.message)) {
       return fail(i, `${kind}: expected ${status} matching ${pattern}, got ${r.status}: ${r.message}`);
+    }
+    if (reasonCode !== undefined && r.reasonCode !== reasonCode) {
+      return fail(i, `${kind}: expected reasonCode ${reasonCode}, got ${r.reasonCode ?? 'none'}`);
     }
     bump(kind, true);
     transcript.update(`${i}|${kind}|refused:${status}\n`);
@@ -611,10 +680,19 @@ async function runOps(
           await balancedOp(op, i, 'balanced');
           continue;
         }
-        const isClosed = closed.has(original.month);
-        const r = await attempt(() => asUser(CHAIRMAN, () => reverse(original!.id, `L1 ${RUN} reverse ${i}`)));
-        if (isClosed) {
-          refuse(i, k, r, 422, /closed/, 'a reversal into a closed period');
+        // A reversal is dated on its original, so it takes the same period lock as a post: a
+        // closed month and a closing month both refuse it, with the ledger's own message.
+        const monthState = periodState.get(original.month);
+        const r = await attempt(() => asUser(chairman, () => reverse(original!.id, `L1 ${RUN} reverse ${i}`)));
+        if (!postable(original.month)) {
+          refuse(
+            i,
+            k,
+            r,
+            422,
+            monthState === 'closed' ? /is closed/ : /is being closed/,
+            `a reversal into ${monthState} ${original.month}`,
+          );
         } else if (!r.ok) {
           fail(i, `reverse: a reversal in an open period was refused: ${r.message}`);
         } else {
@@ -640,7 +718,7 @@ async function runOps(
           continue;
         }
         const target = reversals[pick % reversals.length]!;
-        const r = await attempt(() => asUser(CHAIRMAN, () => reverse(target.id, 'undo the undo')));
+        const r = await attempt(() => asUser(chairman, () => reverse(target.id, 'undo the undo')));
         refuse(i, k, r, 409, /cannot be reversed/, 'a reversal of a reversal');
       } else if (k === 'rawWrite') {
         // The application role must not be able to edit or remove a posted row (migration 20261012100000_ledger_gates).
@@ -673,26 +751,83 @@ async function runOps(
           transcript.update(`${i}|rawWrite|refused\n`);
         }
       } else if (k === 'closeThenPost') {
-        if (open.length <= 3) {
+        // Half the closes take the earliest unclosed month, so some succeed; the rest take any
+        // unclosed month, so the order rule refuses them. A month that was refused stays closing
+        // (closePeriod leaves the row as it found it) and is picked again later.
+        const pending = MONTHS.filter((m) => periodState.get(m) !== 'closed');
+        const month = op.which % 2 === 0 ? pending[0]! : pending[pick % pending.length]!;
+        // Closing an open month takes one of the three open months that posts still need. A month that is
+        // already closing takes none, so it can always be retried.
+        if (periodState.get(month) === 'open' && openMonths().length <= 3) {
           await balancedOp(op, i, 'balanced');
           continue;
         }
-        const month = pickOpen(pick);
-        await unscopedPrisma.accountingPeriod.update({
-          where: { tenantId_period: { tenantId: tid, period: month } },
-          data: { status: 'closing' },
-        });
-        const closedRow = await attempt(() => asUser(CHAIRMAN, () => closePeriod(month)));
-        if (!closedRow.ok) {
-          fail(i, `closeThenPost: closing ${month} was refused: ${closedRow.message}`);
-          break;
+        if (periodState.get(month) === 'open') {
+          // Stands in for requestClosePeriod and the approval: the row is closing before closePeriod runs.
+          await unscopedPrisma.accountingPeriod.update({
+            where: { tenantId_period: { tenantId: tid, period: month } },
+            data: { status: 'closing' },
+          });
+          periodState.set(month, 'closing');
         }
-        open = open.filter((m) => m !== month);
-        closed.add(month);
+
+        // The model's prediction, made before the close: every earlier row not closed refuses it.
+        const blocking = blockingBefore(month);
+        const closedRow = await attempt(() => asUser(chairman, () => closePeriod(month)));
+        if (blocking.length > 0) {
+          refuse(
+            i,
+            'closePeriod',
+            closedRow,
+            422,
+            /close earlier periods first/,
+            `closing ${month} while ${blocking.map((b) => `${b.period} is ${b.status}`).join(', ')}`,
+            'accounting_period_out_of_order',
+          );
+          // The refusal names the same periods, in order and with their statuses, as the model predicted.
+          const named = (
+            (closedRow.ok ? [] : (closedRow.details?.blockingPeriods ?? [])) as Array<{
+              period: string;
+              status: string;
+            }>
+          ).map((b) => `${b.period}:${b.status}`);
+          const predicted = blocking.map((b) => `${b.period}:${b.status}`);
+          if (named.join(',') !== predicted.join(','))
+            fail(i, `closePeriod: ${month} names [${named.join(', ')}], the model predicts [${predicted.join(', ')}]`);
+          transcript.update(`${i}|closeThenPost|${month}|refused\n`);
+        } else {
+          if (!closedRow.ok) {
+            fail(i, `closeThenPost: closing ${month} in order was refused: ${closedRow.message}`);
+            break;
+          }
+          periodState.set(month, 'closed');
+          // The nightly check runs straight after the close, as the job would. A row derived before the close is
+          // pending a rebuild, and the check rebuilds it from the journal as it stands: a change to the month
+          // after that would be absorbed, not flagged. Derived after the close, a changed figure is drift.
+          await asUser(chairman, () => checkAccountBalanceSnapshots(new Date()));
+          bump('closeOk', false);
+          transcript.update(`${i}|closeThenPost|${month}|closed\n`);
+        }
+        // The stored status is what the model says after the close, refused or not.
+        const stored = await unscopedPrisma.accountingPeriod.findFirst({
+          where: { tenantId: tid, period: month },
+          select: { status: true },
+        });
+        if (stored?.status !== periodState.get(month))
+          fail(
+            i,
+            `closeThenPost: ${month} is ${stored?.status} in the journal, the model says ${periodState.get(month)}`,
+          );
+
+        // A post into the month is refused by the ledger's period lock: closed, or closing.
         const entityId = entityIds[op.who]!;
         const lines = balancedLines(op);
         const { input, result } = await writeBalanced(op, i, { month, entityId, lines }, `L1:${RUN}:${i}`);
-        refuse(i, k, result, 422, /is closed/, `a post into closed ${month}`);
+        if (periodState.get(month) === 'closed') {
+          refuse(i, k, result, 422, /is closed/, `a post into closed ${month}`);
+        } else {
+          refuse(i, k, result, 422, /is being closed/, `a post into ${month} while it is closing`);
+        }
         const exists = await unscopedPrisma.journalEntry.count({
           where: { tenantId: tid, idempotencyKey: input.idempotencyKey },
         });
@@ -701,7 +836,7 @@ async function runOps(
         const ai = op.accounts[0]! % accountIds.length;
         const accountId = accountIds[ai]!;
         const asOf = instantIn(pickOpen(pick), op.offset, op.early);
-        const read = await asUser(CHAIRMAN, () => balanceOf(accountId, asOf));
+        const read = await asUser(chairman, () => balanceOf(accountId, asOf));
         if (typeof read !== 'bigint') fail(i, `I9: balanceOf returned ${typeof read}`);
         const expected = await unscopedPrisma.journalLine.aggregate({
           where: {
@@ -713,7 +848,7 @@ async function runOps(
         });
         if (read !== (expected._sum.amountMinor ?? 0n))
           fail(i, `balanceOf ${read} differs from the journal ${expected._sum.amountMinor}`);
-        await asUser(CHAIRMAN, () => checkAccountBalanceSnapshots(new Date()));
+        await asUser(chairman, () => checkAccountBalanceSnapshots(new Date()));
         bump(k, false);
         // The balance itself is not in the transcript: it includes earlier runs' entries, so it is not a function of the seed.
         transcript.update(`${i}|read|ok\n`);
@@ -733,19 +868,26 @@ async function runOps(
   }
 
   // The trial balance of this run's own entries, by entity and account: a function of the seed.
+  // Each tenant is new for each run, so the ids differ between runs; the hash names the entity
+  // and the account by their position in this run's fixture, and sorts on those positions.
   const perRun = runIds.length
     ? await unscopedPrisma.$queryRaw<{ e: string; a: string; s: string }[]>`
         SELECT e."entityId" AS e, l."accountId" AS a, SUM(l."amountMinor")::text AS s
         FROM "journal_lines" l JOIN "journal_entries" e ON e."id" = l."entryId"
         WHERE e."id" = ANY(${runIds}::text[])
-        GROUP BY 1, 2 ORDER BY 1, 2`
+        GROUP BY 1, 2`
     : [];
   const runHash = createHash('sha256')
-    .update(perRun.map((r) => `${r.e}|${r.a}|${String(r.s)}`).join('\n'))
+    .update(
+      perRun
+        .map((r) => `${entityIds.indexOf(r.e)}|${allAccounts.indexOf(r.a)}|${String(r.s)}`)
+        .sort()
+        .join('\n'),
+    )
     .digest('hex');
   // Every entry of the tenant, not only those dated today: this run posts into 2030 and 2031, and
   // journalTrialBalance(now) would leave them out, which made the first draft of this check vacuous.
-  const tb = await asUser(CHAIRMAN, () => journalTrialBalance(ALL_TIME));
+  const tb = await asUser(chairman, () => journalTrialBalance(ALL_TIME));
 
   return {
     violations,
@@ -785,7 +927,7 @@ describe('L1: a seeded sequence of ledger operations keeps the invariants', () =
       // operations, which is slow and tells nothing. The violations are asserted below.
       await fc.assert(
         fc.asyncProperty(fc.array(opArb, { minLength: OPS, maxLength: OPS }), async (ops) => {
-          outcome = await asUser(CHAIRMAN, () => runOps(ops));
+          outcome = await asUser(fx.chairman, () => runOps(ops));
           return true;
         }),
         { seed: SEED, numRuns: 1 },
