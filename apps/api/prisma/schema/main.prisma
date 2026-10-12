@@ -5429,6 +5429,14 @@ model ImportRow {
   entityType String?
   entityId   String?
 
+  /// Every record this row created, as `[{ entityType, entityId }]`, including
+  /// the children written for a matched person (employment, affiliation) and the
+  /// attendance days it actually wrote. A revert undoes exactly this list, and a
+  /// matched row's list is what its revert reverses while the matched record
+  /// stays. Null on rows committed before this column existed: a revert takes
+  /// those by `entityType`, as it always did (FX-71a).
+  created Json?
+
   /// Stable identity for this line, so re-importing an overlapping statement
   /// recognises what it has already seen.
   dedupeKey String?
