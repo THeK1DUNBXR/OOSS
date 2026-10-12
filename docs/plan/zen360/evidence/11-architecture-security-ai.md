@@ -155,7 +155,7 @@ Status key: EXISTS, PARTIAL, MISSING, FIX (existing code wrong for the purpose),
 | Telephony / managed calling                                                  | 55     | No                          | none                                                      | MISSING                 |
 | Speech-to-text / transcription                                               | 55     | No                          | none                                                      | MISSING                 |
 | E-signature (Aadhaar eSign or DSC provider)                                  | 55     | Interface only              | `domains/compliance/corporate/contracts.ts:84-108`        | PARTIAL                 |
-| E-invoicing / IRP (GSP)                                                      | 55, 56 | Interface only              | `domains/compliance/gst.ts:484-493`                       | PARTIAL                 |
+| E-invoicing / IRP (direct)                                                   | 55, 56 | Interface only              | `domains/compliance/gst.ts:484-493`                       | PARTIAL                 |
 | Object storage                                                               | 55     | No                          | `Document.storageKey` unused                              | MISSING                 |
 | Malware scanning                                                             | 55     | No                          | none                                                      | MISSING                 |
 | Search engine                                                                | 55     | DB ILIKE only               | `domains/surfaces.ts:167`                                 | PARTIAL                 |
