@@ -24,7 +24,7 @@ function stubBooksApi() {
     '/api/books/group-entities': [],
     '/api/books/transactions': { id: 'txn-1' },
   };
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async (input) => {
     const path = String(input);
     if (path in answers) return json(200, answers[path]);
     return json(404, { error: { code: 'NOT_STUBBED', message: `no stub for ${path}` } });

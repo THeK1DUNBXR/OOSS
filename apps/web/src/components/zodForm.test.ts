@@ -12,7 +12,7 @@ const positive = moneyField({ positive: true });
 const signed = moneyField();
 const optional = moneyField({ optional: true });
 
-function parsed<T>(schema: z.ZodType<T>, text: string) {
+function parsed(schema: z.ZodTypeAny, text: string) {
   return schema.safeParse(text);
 }
 
