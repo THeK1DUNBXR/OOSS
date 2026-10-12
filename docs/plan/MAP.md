@@ -12,13 +12,13 @@
 
 ## API domains
 
-**`apps/api/src/domains/access/assignments.ts`** (526 lines) — ConfirmAssignmentInput:55 · PlacementInput:66 · DutyInput:73 · SuggestAssignmentInput:78 · suggestAssignment:276 · confirmAssignment:387 · expireAssignment:485
+**`apps/api/src/domains/access/assignments.ts`** (524 lines) — ConfirmAssignmentInput:55 · PlacementInput:66 · DutyInput:73 · SuggestAssignmentInput:78 · suggestAssignment:274 · confirmAssignment:385 · expireAssignment:483
 
 **`apps/api/src/domains/access/compile.ts`** (216 lines) — CompileRule:26 · CompilePlacement:31 · CompileInput:40 · GrantRowSpec:47 · compileRows:64 · loadCompileInput:90 · compileAssignmentTx:134 · removeCompiledGrantsTx:164 · recompileAssignment:190 · listUnboundVerticalGrants:202
 
 **`apps/api/src/domains/access/rules.ts`** (138 lines) — IDENTITY_TYPES:12 · IdentityType:13 · REACHES:15 · Reach:16 · DUTY_SENSITIVITY:23 · PlacementFact:33 · ConfirmContext:38 · ConfirmRule:65 · soleConfirmerExceptionApplies:80 · ConfirmViolation:90 · checkConfirmRules:105 · expiryWithinCap:132
 
-**`apps/api/src/domains/access/sod.ts`** (221 lines) — SodGrant:31 · SodFinding:36 · sodFindings:45 · grantedAfterConfirmTx:57 · overriddenPairCodesTx:105 · RecordSodOverrideInput:130 · recordSodOverride:142
+**`apps/api/src/domains/access/sod.ts`** (226 lines) — SodGrant:31 · SodFinding:36 · sodFindings:45 · grantedAfterConfirmTx:57 · overriddenPairCodesTx:105 · RecordSodOverrideInput:130 · recordSodOverride:142
 
 **`apps/api/src/domains/accountRecovery.ts`** (184 lines) — RECOVERY_REASON_MIN_CHARS:36 · RecoverAccountInput:52 · RecoverAccountResult:62 · recoverAccount:71
 

@@ -84,14 +84,12 @@ export interface SuggestAssignmentInput {
   expiresAt?: string | null;
   reason: string;
   /**
-   * An existing HR case of category access_mapping that records this mapping. Left out,
-   * an answer by HR opens one (O9 A).
+   * An existing HR case of category access_mapping, in this tenant, that records this
+   * mapping. Left out, the suggestion opens a new one. Every suggestion is the HR
+   * questionnaire's answer, and nothing classifies the answerer (O9 A).
    */
   hrCaseId?: string | null;
 }
-
-/** The role slug of HR's answerer (ROLE_SLUGS, permissions.ts:409). Its mappings are recorded in an HR case. */
-const HR_ANSWERER_ROLE = 'hr_ops_manager';
 
 /** The normal-priority HR SLA in hours (engagement.ts:645). An access mapping is not urgent by default. */
 const ACCESS_MAPPING_SLA_HOURS = 96;
@@ -293,7 +291,7 @@ export async function suggestAssignment(input: SuggestAssignmentInput): Promise<
   }
 
   // A new case is numbered before the transaction, as createHrCase does (engagement.ts:667).
-  const newCaseCode = auth.roleSlug === HR_ANSWERER_ROLE && !input.hrCaseId ? await nextRecordCode('CASE') : null;
+  const newCaseCode = input.hrCaseId ? null : await nextRecordCode('CASE');
 
   return governedWrite(async (tx) => {
     let hrCaseId: string | null = null;
@@ -307,7 +305,7 @@ export async function suggestAssignment(input: SuggestAssignmentInput): Promise<
         throw ApiError.unprocessable('An access mapping can only be recorded on an access_mapping HR case.');
       }
       hrCaseId = linked.id;
-    } else if (newCaseCode) {
+    } else if (newCaseCode !== null) {
       // Confidential: a mapping names who holds what, and the general HR listing must not show it.
       const opened = await tx.hrCase.create({
         data: {

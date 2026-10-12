@@ -161,7 +161,9 @@ describe('PR12 HR mapping case (design test 4)', () => {
       ),
     );
     expect(foreignLink.status).toBe(404);
-    expect(await unscopedPrisma.accessAssignment.count({ where: { tenantId: tid, personId: subject.id } })).toBe(before);
+    expect(await unscopedPrisma.accessAssignment.count({ where: { tenantId: tid, personId: subject.id } })).toBe(
+      before,
+    );
   });
 
   it('a suggestion may link an existing access_mapping case, and refuses a case of another category', async () => {

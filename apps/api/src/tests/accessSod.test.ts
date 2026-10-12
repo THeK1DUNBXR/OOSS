@@ -299,6 +299,12 @@ describe('PR12 founder override', () => {
     });
     expect(event.subjectEntityType).toBe('access_sod_override');
 
+    // The view reads the oldest 50 open exceptions (founderView.ts ROW_CAP). Other runs leave older
+    // open items in this tenant, so the fixture row sorts first, as founderView.test.ts does (FV-002).
+    await unscopedPrisma.exceptionRecord.update({
+      where: { id: override.exceptionId! },
+      data: { raisedAt: new Date('2001-01-01T00:00:00Z') },
+    });
     const view = await asFounder(() => founderView());
     const exception = view.rows.find((r) => r.sourceKind === 'exception' && r.sourceId === override.exceptionId);
     expect(exception).toBeDefined();
@@ -333,11 +339,13 @@ describe('PR12 founder override', () => {
         where: { tenantId: tid, subjectType: 'access_assignment', subjectId: row.id },
       }),
     ).toBe(0);
-    expect(await unscopedPrisma.auditRecord.count({ where: { tenantId: tid, subjectType: 'access_sod_override' } })).toBe(
-      auditBefore,
-    );
     expect(
-      await unscopedPrisma.eventRecord.count({ where: { tenantId: tid, eventName: 'kz.gov.access_sod_override.recorded' } }),
+      await unscopedPrisma.auditRecord.count({ where: { tenantId: tid, subjectType: 'access_sod_override' } }),
+    ).toBe(auditBefore);
+    expect(
+      await unscopedPrisma.eventRecord.count({
+        where: { tenantId: tid, eventName: 'kz.gov.access_sod_override.recorded' },
+      }),
     ).toBe(eventsBefore);
   });
 

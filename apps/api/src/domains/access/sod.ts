@@ -157,9 +157,14 @@ export async function recordSodOverride(input: RecordSodOverrideInput): Promise<
 
   const assignment = await prisma.accessAssignment.findFirst({
     where: { id: input.assignmentId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, personId: true },
   });
   if (!assignment) throw ApiError.notFound('Access assignment');
+  // Nobody accepts their own overlap, as nobody confirms their own access (checkConfirmRules,
+  // rules.ts:108, the self rule). The founder may record an override on anyone else's assignment.
+  if (assignment.personId === auth.partyId) {
+    throw ApiError.forbidden('Nobody accepts a separation-of-duties overlap on their own assignment.');
+  }
   if (assignment.status !== 'suggested') {
     throw ApiError.unprocessable(
       `An override is recorded before confirmation; this assignment is ${assignment.status}.`,
