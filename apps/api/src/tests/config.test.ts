@@ -122,9 +122,18 @@ describe('field encryption key and marketing unsubscribe secret', () => {
     }
   });
 
-  it('allows an absent FIELD_ENCRYPTION_KEY outside production, so development still boots', () => {
-    expect(() => parseEnv({ ...valid, NODE_ENV: 'development' })).not.toThrow();
-    expect(() => parseEnv({ ...valid, NODE_ENV: 'test' })).not.toThrow();
+  it('refuses an absent FIELD_ENCRYPTION_KEY in development and test too, and names it', () => {
+    // Outside production this used to fall back to a constant printed in
+    // privacy.ts. Encryption under a public key protects nothing, so every
+    // environment supplies its own key; dev and CI do so in their own config.
+    for (const NODE_ENV of ['development', 'test']) {
+      expect(() => parseEnv({ ...valid, NODE_ENV })).toThrow(ConfigError);
+      try {
+        parseEnv({ ...valid, NODE_ENV });
+      } catch (err) {
+        expect((err as ConfigError).message).toContain('FIELD_ENCRYPTION_KEY');
+      }
+    }
   });
 
   it('does not sign marketing unsubscribe tokens with the literal dev-secret-change-me', async () => {
