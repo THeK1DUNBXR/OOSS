@@ -41,6 +41,12 @@ import type { Server } from 'node:http';
 const CHAIRMAN = 'chairman@kaizen.co.in';
 const NON_FOUNDER = 'controller@kaizen.co.in';
 const DAY = 86_400_000;
+// The view reads the oldest ROW_CAP (50) rows of each source, oldest first
+// (domains/founderView.ts). Other files leave more older open items in KAIZEN, so
+// rows created here sort past the cap and FV-002 failed depending on file order.
+// An early sort key keeps these rows on the first page; the view's order and its
+// count are unchanged.
+const EARLY = new Date('2001-01-01T00:00:00Z');
 
 function uniq(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -168,6 +174,7 @@ describe('FV-002 — rows from each source appear, each with its drillTo', () =>
         ownerPartyId: owner,
         notify: false,
       });
+      await unscopedPrisma.exceptionRecord.update({ where: { id: exception.id }, data: { raisedAt: EARLY } });
       ids.exception = exception.id;
 
       const commitment = await proposeCommitment({
@@ -184,7 +191,7 @@ describe('FV-002 — rows from each source appear, each with its drillTo', () =>
       // Confirmed and past its due instant: overdue, though the job has not run.
       await unscopedPrisma.commitment.update({
         where: { id: commitment.id },
-        data: { dueAt: new Date(Date.now() - DAY) },
+        data: { dueAt: EARLY },
       });
       ids.commitment = commitment.id;
 
@@ -200,6 +207,7 @@ describe('FV-002 — rows from each source appear, each with its drillTo', () =>
       });
       await confirmCommitment(missed.id);
       await markCommitmentMissed(missed.id);
+      await unscopedPrisma.commitment.update({ where: { id: missed.id }, data: { dueAt: EARLY } });
       ids.missedCommitment = missed.id;
 
       const proposed = await proposeCommitment({
@@ -222,6 +230,7 @@ describe('FV-002 — rows from each source appear, each with its drillTo', () =>
         requiredAuthorityMinor: null,
         routedToRole: 'chairman',
       });
+      await unscopedPrisma.decision.update({ where: { id: decision.id }, data: { raisedAt: EARLY } });
       ids.decision = decision.id;
 
       const kase = await openCase({
@@ -235,7 +244,7 @@ describe('FV-002 — rows from each source appear, each with its drillTo', () =>
       });
       await unscopedPrisma.case.update({
         where: { id: kase.id },
-        data: { responseDueAt: new Date(Date.now() - DAY) },
+        data: { responseDueAt: EARLY },
       });
       ids.case = kase.id;
     });
@@ -248,6 +257,7 @@ describe('FV-002 — rows from each source appear, each with its drillTo', () =>
         subjectLabel: 'Founder view test MoU',
         action: 'mou.approve',
         requestedById: owner,
+        requestedAt: EARLY,
         state: 'open',
         escalationRung: 2,
       },
