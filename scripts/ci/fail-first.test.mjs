@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 import { buildPlan, parseLabels, parseRedTestTrailers, requirement, runnerFor } from './fail-first.mjs';
 
-const CLI = fileURLToPath(new URL('./fail-first.mjs', import.meta.url));
+const CLI = join(dirname(fileURLToPath(import.meta.url)), 'fail-first.mjs');
 const msg = (subject, ...body) => [subject, '', ...body].join('\n');
 
 describe('parseRedTestTrailers', () => {
@@ -109,7 +109,12 @@ describe('requirement', () => {
 });
 
 describe('buildPlan', () => {
-  const commit = (sha, subject, body = []) => ({ sha, parent: `parent-of-${sha}`, subject, message: msg(subject, ...body) });
+  const commit = (sha, subject, body = []) => ({
+    sha,
+    parent: `parent-of-${sha}`,
+    subject,
+    message: msg(subject, ...body),
+  });
 
   test('a valid red commit is planned with its parent and its paths', () => {
     const commits = [
@@ -160,7 +165,10 @@ describe('buildPlan', () => {
     });
     assert.equal(plan.errors.length, 1);
     assert.match(plan.errors[0], /malformed trailer/);
-    assert.deepEqual(plan.redCommits.map((c) => c.paths), [['a.test.ts']]);
+    assert.deepEqual(
+      plan.redCommits.map((c) => c.paths),
+      [['a.test.ts']],
+    );
   });
 
   test('red commits stay in range order', () => {
@@ -171,7 +179,10 @@ describe('buildPlan', () => {
         commit('b2', 'test: second', ['Red-Test: two.test.mjs']),
       ],
     });
-    assert.deepEqual(plan.redCommits.map((c) => c.sha), ['a1', 'b2']);
+    assert.deepEqual(
+      plan.redCommits.map((c) => c.sha),
+      ['a1', 'b2'],
+    );
   });
 });
 
@@ -208,7 +219,17 @@ describe('the CLI against a throwaway repository', () => {
   const git = (repo, args) =>
     execFileSync(
       'git',
-      ['-C', repo, '-c', 'user.name=gate', '-c', 'user.email=gate@example.invalid', '-c', 'commit.gpgsign=false', ...args],
+      [
+        '-C',
+        repo,
+        '-c',
+        'user.name=gate',
+        '-c',
+        'user.email=gate@example.invalid',
+        '-c',
+        'commit.gpgsign=false',
+        ...args,
+      ],
       { encoding: 'utf8' },
     ).trim();
 
