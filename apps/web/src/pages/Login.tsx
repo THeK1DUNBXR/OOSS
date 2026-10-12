@@ -72,6 +72,7 @@ function SignInForm({
   const [busy, setBusy] = useState(false);
   const emailId = useId();
   const passwordId = useId();
+  const codeId = useId();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,7 +100,7 @@ function SignInForm({
 
   if (mfaChallengeToken) {
     return (
-      <div className="flex min-h-full items-center justify-center p-6">
+      <main className="flex min-h-full items-center justify-center p-6">
         <div className="card w-full max-w-sm p-6">
           <h1 className="text-xl">Enter your code</h1>
           <p className="mt-1 text-2xs leading-relaxed text-ink-500">
@@ -107,8 +108,11 @@ function SignInForm({
           </p>
           <form onSubmit={submitCode} className="mt-4 space-y-3">
             <div>
-              <label className="label">Code</label>
+              <label htmlFor={codeId} className="label">
+                Code
+              </label>
               <input
+                id={codeId}
                 className="input"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
@@ -123,12 +127,12 @@ function SignInForm({
             </button>
           </form>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center p-6">
+    <main className="flex min-h-full items-center justify-center p-6">
       <div className="grid w-full max-w-4xl gap-6 lg:grid-cols-2">
         <div className="card p-6">
           <div className="mb-6 flex items-center gap-3">
@@ -205,7 +209,7 @@ function SignInForm({
           </p>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -240,7 +244,7 @@ function EntityPicker({
   const ordered = [...entities].sort((a, b) => (b.suggested ? 1 : 0) - (a.suggested ? 1 : 0));
 
   return (
-    <div className="flex min-h-full items-center justify-center p-6">
+    <main className="flex min-h-full items-center justify-center p-6">
       <div className="card w-full max-w-lg p-6">
         <div className="mb-4 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-sm border-2 border-gold bg-gold font-display text-lg font-black text-ink-100">
@@ -276,6 +280,6 @@ function EntityPicker({
 
         {error && <p className="mt-3 text-2xs text-band-critical">{error}</p>}
       </div>
-    </div>
+    </main>
   );
 }

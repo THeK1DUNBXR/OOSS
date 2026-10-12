@@ -582,7 +582,7 @@
 
 **`apps/web/src/pages/Leads.tsx`** (489 lines) — Leads:33 · LeadDetail:322
 
-**`apps/web/src/pages/Login.tsx`** (282 lines) — Login:35
+**`apps/web/src/pages/Login.tsx`** (286 lines) — Login:35
 
 **`apps/web/src/pages/MyOptions.tsx`** (7 lines) — MyOptions:4
 
@@ -826,4 +826,4 @@
 
 Generated or lock files. Nothing in them answers a question worth the tokens.
 
-- `pnpm-lock.yaml` (5293 lines)
+- `pnpm-lock.yaml` (6082 lines)
