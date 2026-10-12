@@ -147,6 +147,7 @@ async function basicPayFor(employmentRelationshipId: string, asOf = new Date()):
       tenantId: auth.tenantId,
       employmentRelationshipId,
       status: 'Effective',
+      voidedAt: null,
       effectiveFrom: { lte: asOf },
       OR: [{ effectiveTo: null }, { effectiveTo: { gt: asOf } }],
     },
@@ -412,6 +413,7 @@ export async function runWeeklyHoursCheck(): Promise<JobResult> {
         tenantId: auth.tenantId,
         employmentRelationshipId: employment.id,
         workDate: { gte: start, lt: endExclusive },
+        voidedAt: null,
       },
       _sum: { workedMinutes: true, overtimeMinutes: true },
     });
@@ -548,7 +550,7 @@ export async function registerMusterRoll(period: string): Promise<RegisterExport
   const from = new Date(Date.UTC(year, month - 1, 1));
   const to = new Date(Date.UTC(year, month, 1));
   const rows = await prisma.workAttendance.findMany({
-    where: { tenantId: auth.tenantId, workDate: { gte: from, lt: to } },
+    where: { tenantId: auth.tenantId, workDate: { gte: from, lt: to }, voidedAt: null },
     include: { employmentRelationship: { include: { person: true } } },
     orderBy: [{ employmentRelationshipId: 'asc' }, { workDate: 'asc' }],
   });

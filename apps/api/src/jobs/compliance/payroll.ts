@@ -48,7 +48,12 @@ export async function runGratuityAccrual(): Promise<JobResult> {
         : (num(
             (
               await prisma.compensationRecord.findFirst({
-                where: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, status: 'Effective' },
+                where: {
+                  tenantId: auth.tenantId,
+                  employmentRelationshipId: employment.id,
+                  status: 'Effective',
+                  voidedAt: null,
+                },
                 orderBy: { effectiveFrom: 'desc' },
               })
             )?.basicPay,

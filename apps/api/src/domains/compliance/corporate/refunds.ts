@@ -12,6 +12,7 @@
  * `approvedById` is compared against `requestedById`, not inferred from role.
  */
 
+import { parseMinor } from '@kaizen/shared';
 import { prisma } from '../../../platform/db.js';
 import { currentAuth } from '../../../platform/context.js';
 import { ApiError } from '../../../platform/errors.js';
@@ -20,7 +21,7 @@ import { auditWrite, registerGovernedEntities } from '../../../platform/audit.js
 import { assertStepUpForApprove } from './security.js';
 import { documentPrefix } from '../../companyProfile.js';
 import { nextDocumentNumber, DOCUMENT_SERIES } from '../../../platform/documentNumber.js';
-import { checkTransactionAllowed, writeTransaction } from '../../books.js';
+import { checkTransactionAllowed, writeTransactionMinor } from '../../books.js';
 
 // Registered beside the writer for the reason given in corporate/board.ts.
 registerGovernedEntities('cmp_corporate', ['refund', 'refund_policy']);
@@ -113,8 +114,9 @@ export async function approveRefund(id: string) {
 
 /**
  * Books the outward movement. Never touches the original invoice/receipt —
- * `writeTransaction` writes a new row, direction `out`, source `refund`, inside the
- * payment's own transaction.
+ * `writeTransactionMinor` writes a new row, direction `out`, source `refund`, inside the
+ * payment's own transaction. The refund amount stays bigint paise end to end: a Decimal
+ * read as a JavaScript number could round before the row is written.
  */
 export async function payRefund(id: string, input: { accountId: string; method?: string; reference?: string | null }) {
   await assertStepUpForApprove('Paying a refund');
@@ -145,11 +147,11 @@ export async function payRefund(id: string, input: { accountId: string; method?:
       );
     }
 
-    const txn = await writeTransaction(
+    const txn = await writeTransactionMinor(
       {
         txnDate: new Date(),
         direction: 'out',
-        amount: Number(refund.amount.toString()),
+        amount: parseMinor(refund.amount.toString()),
         accountId: input.accountId,
         method: input.method ?? 'bank_transfer',
         reference: input.reference ?? refund.recordCode,

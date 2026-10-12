@@ -255,9 +255,11 @@ export async function absenteeism(months = 3): Promise<AbsenteeismResult> {
   const end = monthEnd(keys[keys.length - 1]);
 
   const [totalDays, zeroMinuteDays] = await Promise.all([
-    prisma.workAttendance.count({ where: { tenantId: auth.tenantId, workDate: { gte: start, lt: end } } }),
     prisma.workAttendance.count({
-      where: { tenantId: auth.tenantId, workDate: { gte: start, lt: end }, workedMinutes: 0 },
+      where: { tenantId: auth.tenantId, workDate: { gte: start, lt: end }, voidedAt: null },
+    }),
+    prisma.workAttendance.count({
+      where: { tenantId: auth.tenantId, workDate: { gte: start, lt: end }, workedMinutes: 0, voidedAt: null },
     }),
   ]);
 
@@ -331,7 +333,12 @@ export async function leaveLiability(): Promise<LeaveLiabilityResult> {
   if (money && balances.length > 0) {
     const employmentIds = [...new Set(balances.map((b) => b.employmentRelationshipId))];
     const comp = await prisma.compensationRecord.findMany({
-      where: { tenantId: auth.tenantId, employmentRelationshipId: { in: employmentIds }, status: 'Effective' },
+      where: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: { in: employmentIds },
+        status: 'Effective',
+        voidedAt: null,
+      },
       orderBy: { effectiveFrom: 'desc' },
       select: { employmentRelationshipId: true, basicPay: true, amount: true },
     });
@@ -604,7 +611,12 @@ export async function compRatioDistribution(): Promise<Metric<Array<{ bucket: st
 
   const employmentIds = [...levelByEmployment.keys()];
   const comp = await prisma.compensationRecord.findMany({
-    where: { tenantId: auth.tenantId, employmentRelationshipId: { in: employmentIds }, status: 'Effective' },
+    where: {
+      tenantId: auth.tenantId,
+      employmentRelationshipId: { in: employmentIds },
+      status: 'Effective',
+      voidedAt: null,
+    },
     orderBy: { effectiveFrom: 'desc' },
     select: { employmentRelationshipId: true, amount: true },
   });
@@ -906,7 +918,12 @@ export async function exportLeaveLiabilityReport(): Promise<CsvExport> {
   if (money && balances.length > 0) {
     const employmentIds = [...new Set(balances.map((b) => b.employmentRelationshipId))];
     const comp = await prisma.compensationRecord.findMany({
-      where: { tenantId: auth.tenantId, employmentRelationshipId: { in: employmentIds }, status: 'Effective' },
+      where: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: { in: employmentIds },
+        status: 'Effective',
+        voidedAt: null,
+      },
       orderBy: { effectiveFrom: 'desc' },
       select: { employmentRelationshipId: true, basicPay: true, amount: true },
     });

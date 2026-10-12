@@ -177,6 +177,7 @@ export const EVENTS = {
   PERSON_CREATED: 'kz.idn.person.created',
   PERSON_RESOLVED: 'kz.idn.person.resolved',
   PERSON_UPDATED: 'kz.idn.person.updated',
+  PERSON_DELETED: 'kz.idn.person.deleted',
   PERSON_MERGED: 'kz.idn.person.merged',
   MERGE_CANDIDATE_RAISED: 'kz.idn.merge_candidate.raised',
   MERGE_CANDIDATE_CONFIRMED: 'kz.idn.merge_candidate.confirmed',
@@ -348,6 +349,7 @@ export const EVENTS = {
   /// fact: it is what closes out that course's temp invoice with a final
   /// (tax) invoice, dated the day of withdrawal — see `finalizeCourseFeeInvoice`.
   ENROLLMENT_WITHDRAWN: 'kz.edu.enrollment.withdrawn',
+  STUDENT_PROFILE_ENDED: 'kz.edu.student_profile.ended',
   LEARNER_RISK_DETECTED: 'kz.edu.learner.risk_detected',
   ATTENDANCE_RECORDED: 'kz.edu.attendance.recorded',
   PROGRESS_RECORDED: 'kz.edu.progress.recorded',
@@ -424,15 +426,21 @@ export const EVENTS = {
   // generic "updated". These are the events that exist outside a transition.
   EMPLOYMENT_RELATIONSHIP_CREATED: 'kz.hr.employment.created',
   EMPLOYMENT_CONFIRMATION_CHANGED: 'kz.hr.employment.confirmation_changed',
+  EMPLOYMENT_RELATIONSHIP_ENDED: 'kz.hr.employment.ended',
   ONBOARDING_INITIATED: 'kz.hr.onboarding.initiated',
   OFFBOARDING_INITIATED: 'kz.hr.offboarding.initiated',
   REQUISITION_CREATED: 'kz.hr.requisition.created',
   APPLICATION_CREATED: 'kz.hr.application.created',
   ASSIGNMENT_CREATED: 'kz.hr.assignment.created',
+  ASSIGNMENT_ENDED: 'kz.hr.assignment.ended',
   COMPENSATION_RECORD_CREATED: 'kz.hr.compensation.created',
+  COMPENSATION_RECORD_VOIDED: 'kz.hr.compensation.voided',
+  COMPENSATION_RECORD_SUPERSEDED: 'kz.hr.compensation.superseded',
+  COMPENSATION_RECORD_RESTORED: 'kz.hr.compensation.restored',
   LEAVE_REQUEST_CREATED: 'kz.hr.leave.created',
   LEAVE_BALANCE_POSTED: 'kz.hr.leave_balance.posted',
   WORK_ATTENDANCE_RECORDED: 'kz.hr.work_attendance.recorded',
+  WORK_ATTENDANCE_VOIDED: 'kz.hr.work_attendance.voided',
   GOAL_CREATED: 'kz.hr.goal.created',
   PERFORMANCE_EVIDENCE_RECORDED: 'kz.hr.performance_evidence.recorded',
   LEARNING_RECORD_ENROLLED: 'kz.hr.learning_record.enrolled',
@@ -446,6 +454,7 @@ export const EVENTS = {
   PAYROLL_INSTRUCTION_CREATED: 'kz.hr.payroll_instruction.created',
   PAYROLL_RUN_CREATED: 'kz.hr.payroll_run.created',
   POSITION_CREATED: 'kz.org.position.created',
+  POSITION_ENDED: 'kz.org.position.ended',
 
   // --- HCM/HRMS (docs/plan/hcm.md), one group per workstream. Every state
   // change a workstream makes emits one of these; a read of regulated data
@@ -595,6 +604,7 @@ export const EVENTS = {
   ACCOUNTING_PERIOD_REOPENED: 'kz.fin.accounting_period.reopened',
   BANK_STATEMENT_IMPORTED: 'kz.fin.bank_statement.imported',
   BANK_STATEMENT_LINE_MATCHED: 'kz.fin.bank_statement_line.matched',
+  BANK_STATEMENT_LINE_UNMATCHED: 'kz.fin.bank_statement_line.unmatched',
   TRANSACTION_RECONCILED: 'kz.fin.transaction.reconciled',
   RETENTION_REVIEW_RECORDED: 'kz.fin.retention_review.recorded',
 

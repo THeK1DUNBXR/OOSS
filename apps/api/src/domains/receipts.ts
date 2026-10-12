@@ -40,7 +40,7 @@ import { auditWrite } from '../platform/audit.js';
 import { assertCan, visibilityWhere } from '../platform/permissions.js';
 import { invoiceLabel, isCourseFeeInvoice, loadInvoiceForRead, totalsOf } from './invoicing.js';
 import { companyProfile, documentNumbering } from './companyProfile.js';
-import { openAccountingDate, periodStatus as accountingPeriodStatus } from './compliance/books.js';
+import { openAccountingDate, periodRefusesEntries } from './compliance/books.js';
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../platform/documentNumber.js';
 
 // ---------------------------------------------------------------------------
@@ -486,7 +486,7 @@ async function issueFinalInvoice(invoiceId: string, input: { note?: string | nul
  */
 async function datingFor(settledByReceipt: boolean): Promise<{ issuedAt: Date; moved: boolean }> {
   const now = new Date();
-  const moved = settledByReceipt && (await accountingPeriodStatus(now)) === 'closed';
+  const moved = settledByReceipt && (await periodRefusesEntries(now));
   return { issuedAt: moved ? await openAccountingDate(now) : now, moved };
 }
 

@@ -452,6 +452,8 @@ export async function deriveAttendanceFromClockEvents(forDate: Date = yesterdayI
         where: { employmentRelationshipId_workDate: { employmentRelationshipId, workDate: day } },
       });
       if (existing?.status === 'Locked') continue; // A locked day is closed to the deriver too.
+      if (existing?.voidedAt) continue; // A day an import revert voided is taken back by a person, not by the deriver.
+      if (existing?.voidedAt) continue; // A day an import revert voided is taken back by a person, not by the deriver.
 
       await prisma.workAttendance.upsert({
         where: { employmentRelationshipId_workDate: { employmentRelationshipId, workDate: day } },
@@ -986,6 +988,16 @@ export async function submitRegularisation(input: { employmentRelationshipId: st
       employmentRelationshipId_workDate: { employmentRelationshipId: input.employmentRelationshipId, workDate: day },
     },
   });
+  if (attendance?.voidedAt) {
+    throw ApiError.unprocessable(
+      'This day was voided when an import was reverted. Record the day again before asking for it to be regularised.',
+    );
+  }
+  if (attendance?.voidedAt) {
+    throw ApiError.unprocessable(
+      'This day was voided when an import was reverted. Record the day again before asking for it to be regularised.',
+    );
+  }
   if (!attendance) {
     attendance = await prisma.workAttendance.create({
       data: {

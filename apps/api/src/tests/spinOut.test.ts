@@ -449,20 +449,32 @@ describe('EQT-SPN-002, 003, 004, 007 — commit', () => {
   });
 });
 
-describe('EQT-SPN-006 — revert removes only what the batch created and refuses once the subsidiary has its own rows', () => {
-  it('removes the batch and clears migratedToTenantId on the sources', async () => {
+describe('EQT-SPN-006 — revert reverses and marks what the batch created, and refuses once the subsidiary has its own rows', () => {
+  it('reverses the batch, keeps its rows marked, and clears migratedToTenantId on the sources', async () => {
     const result = await revertSpinOut({
       holdingTenantId: HOLD,
       subsidiaryTenantId: SUB,
       batchId: COMMIT_BATCH.batchId,
+      revertedBy: 'spin-out.test',
+      reason: 'EQT-SPN-006 revert',
     });
     expect(result.removed.transactions).toBe(1);
     expect(result.removed.shareTransactions).toBeGreaterThan(0);
 
-    const remainingShareClasses = await unscopedPrisma.shareClass.count({ where: { tenantId: SUB } });
-    expect(remainingShareClasses).toBe(0);
-    const remainingTxns = await unscopedPrisma.transaction.count({ where: { tenantId: SUB } });
-    expect(remainingTxns).toBe(0);
+    // Nothing is deleted (FX-71): the share class is still there, marked.
+    const shareClasses = await unscopedPrisma.shareClass.count({
+      where: { tenantId: SUB, spinOutBatchId: COMMIT_BATCH.batchId },
+    });
+    const markedShareClasses = await unscopedPrisma.shareClass.count({
+      where: { tenantId: SUB, spinOutBatchId: COMMIT_BATCH.batchId, spinOutRevertedAt: { not: null } },
+    });
+    expect(shareClasses).toBeGreaterThan(0);
+    expect(markedShareClasses).toBe(shareClasses);
+    // The books hold no live original: each one carries its reversal.
+    const liveTxns = await unscopedPrisma.transaction.count({
+      where: { tenantId: SUB, reversedById: null, reversalOfId: null, deletedAt: null },
+    });
+    expect(liveTxns).toBe(0);
 
     const sourceTxn = await unscopedPrisma.transaction.findFirstOrThrow({
       where: { tenantId: HOLD, division: 'education', invoiceId: null },
@@ -493,7 +505,13 @@ describe('EQT-SPN-006 — revert removes only what the batch created and refuses
     });
 
     const rejection = await expectReject(() =>
-      revertSpinOut({ holdingTenantId: HOLD, subsidiaryTenantId: SUB, batchId: second.batchId }),
+      revertSpinOut({
+        holdingTenantId: HOLD,
+        subsidiaryTenantId: SUB,
+        batchId: second.batchId,
+        revertedBy: 'spin-out.test',
+        reason: 'EQT-SPN-006 guard',
+      }),
     );
     expect(rejection.message).toMatch(/life of its own/);
   });

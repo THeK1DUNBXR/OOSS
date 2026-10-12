@@ -9,7 +9,7 @@
  */
 
 import { istCivilDay, istDateKey } from '@kaizen/shared';
-import { prisma } from './db.js';
+import { prisma, type DbTx } from './db.js';
 import { currentAuth } from './context.js';
 import { raiseException } from './exceptions.js';
 
@@ -37,19 +37,23 @@ export interface JournalTrialBalance {
  * and journal_entry_lines_check), so the two sides are equal by construction:
  * this function is the evidence the tenant's books say so.
  */
-export async function journalTrialBalance(asOf: Date): Promise<JournalTrialBalance> {
+export async function journalTrialBalance(asOf: Date, tx?: DbTx): Promise<JournalTrialBalance> {
+  // A caller inside an interactive transaction passes its `tx`: the scoped client
+  // throws there (platform/db.ts refuseOuterClientInTransaction). The close takes its
+  // snapshot this way, under the period lock.
+  const db = tx ?? (prisma as unknown as DbTx);
   const auth = currentAuth();
   const entry = { entryDate: { lte: istCivilDay(asOf) }, status: { in: LIVE_STATUSES } };
   const [debits, credits, lineCount] = await Promise.all([
-    prisma.journalLine.aggregate({
+    db.journalLine.aggregate({
       where: { tenantId: auth.tenantId, entry, amountMinor: { gt: 0n } },
       _sum: { amountMinor: true },
     }),
-    prisma.journalLine.aggregate({
+    db.journalLine.aggregate({
       where: { tenantId: auth.tenantId, entry, amountMinor: { lt: 0n } },
       _sum: { amountMinor: true },
     }),
-    prisma.journalLine.count({ where: { tenantId: auth.tenantId, entry } }),
+    db.journalLine.count({ where: { tenantId: auth.tenantId, entry } }),
   ]);
   return {
     asOf: istDateKey(asOf),

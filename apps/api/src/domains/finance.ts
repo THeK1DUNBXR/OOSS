@@ -34,7 +34,7 @@ import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
 import { runHooks } from '../platform/hooks.js';
-import { openAccountingDate, periodStatus as accountingPeriodStatus } from './compliance/books.js';
+import { openAccountingDate, periodRefusesEntries } from './compliance/books.js';
 import { invoiceLabel, paymentWire, receiptWire, rehydrateReceivablesFor, totalsOf } from './invoicing.js';
 import { withMinor } from '../platform/wire.js';
 import { governedWrite } from '../platform/governedWrite.js';
@@ -134,12 +134,14 @@ export async function recordPayment(input: {
   // Interim policy, pending the accountant's confirmation: money that has
   // arrived is never refused. A caller with no human behind it (a gateway
   // webhook, `partyId` null, as `Payment.recordedById` describes) whose money
-  // date falls in a closed period is recorded in the current open period, and
+  // date falls in a closed or closing period is recorded in the current open period, and
   // the arrival date is kept as `valueDate`. A member of staff entering the same
   // payment is still refused by the hook below. Nothing is written into the
-  // closed period either way; only the accounting date moves.
+  // closed period either way; only the accounting date moves. A closing period
+  // counts as closed here: the hook now refuses it, so without this the webhook
+  // would be refused and the money would never be recorded.
   const arrivedAt = input.receivedAt ?? new Date();
-  const movedFromClosed = auth.partyId === null && (await accountingPeriodStatus(arrivedAt)) === 'closed';
+  const movedFromClosed = auth.partyId === null && (await periodRefusesEntries(arrivedAt));
   if (!movedFromClosed) {
     await runHooks('accounting_document.before_write', { date: arrivedAt, what: 'This payment' });
   }

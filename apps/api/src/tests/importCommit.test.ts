@@ -161,7 +161,8 @@ describe('a row in a closed or closing period is a row error, and the rest of th
     const result = await asUser(CHAIRMAN, () => commitImport(staged.batchId));
 
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].message).toContain('being closed');
+    // The wording is the period lock's (platform/periodLock.ts), the same one every legacy write gets.
+    expect(result.errors[0].message).toContain('closing accounting period');
     expect(await countFor(tag)).toBe(0);
   });
 });
