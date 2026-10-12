@@ -454,6 +454,8 @@ model Organization {
   /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
   migratedToTenantId String?
   spinOutBatchId     String?
+  /// Set by the spin-out revert on a row it reversed or cancelled. The row stays (FX-71).
+  spinOutRevertedAt DateTime?
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, name])
@@ -2312,6 +2314,8 @@ model ShareClass {
   /// Names the spin-out batch that created this class (equity-portal plan
   /// §6b), for `--revert`.
   spinOutBatchId String?
+  /// Set by the spin-out revert on a row it reversed or cancelled. The row stays (FX-71).
+  spinOutRevertedAt DateTime?
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -2379,6 +2383,8 @@ model Holder {
   /// Names the spin-out batch that created this holder (equity-portal plan
   /// §6b), for `--revert`.
   spinOutBatchId String?
+  /// Set by the spin-out revert on a row it reversed or cancelled. The row stays (FX-71).
+  spinOutRevertedAt DateTime?
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -2456,6 +2462,8 @@ model ShareTransaction {
   /// Names the spin-out batch that created this row — the subsidiary's
   /// opening allotment (equity-portal plan §6b) — for `--revert`.
   spinOutBatchId String?
+  /// Set by the spin-out revert on a row it reversed or cancelled. The row stays (FX-71).
+  spinOutRevertedAt DateTime?
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -2509,6 +2517,8 @@ model ShareCertificate {
   /// Names the spin-out batch that issued this certificate (equity-portal
   /// plan §6b), for `--revert`.
   spinOutBatchId String?
+  /// Set by the spin-out revert on a row it reversed or cancelled. The row stays (FX-71).
+  spinOutRevertedAt DateTime?
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -2518,6 +2528,32 @@ model ShareCertificate {
   @@index([tenantId, holderId, status])
   @@index([tenantId, shareClassId])
   @@map("share_certificates")
+}
+
+/// One row per spin-out revert, written in the same transaction as the
+/// reversals, cancellations and marks it records (FX-71). The batch's rows are
+/// kept, marked; this row is what says who reverted them, when and why. Unique
+/// per subsidiary and batch, so a second revert of one batch cannot write a
+/// second tombstone even if the row lock were ever missed.
+model SpinOutTombstone {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// The subsidiary's spin-out batch that was reverted.
+  batchId         String
+  holdingTenantId String
+  /// The partyId of the caller, or null for the system principal.
+  revertedById    String?
+  /// The operator's label as given on the command line; kept because the
+  /// system principal has no partyId and the tombstone must still name a person.
+  revertedBy String
+  reason     String
+  revertedAt DateTime @default(now())
+  /// Counts of what was reversed, cancelled or marked, per model.
+  removed Json
+
+  @@unique([tenantId, batchId])
+  @@map("spinout_tombstones")
 }
 
 /// A recorded valuation: date, valuer, basis, per-class figure — or the
@@ -3565,6 +3601,8 @@ model Course {
   /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
   migratedToTenantId String?
   spinOutBatchId     String?
+  /// Set by the spin-out revert on a row it reversed or cancelled. The row stays (FX-71).
+  spinOutRevertedAt DateTime?
 
   @@unique([tenantId, recordCode])
   @@unique([tenantId, code])
@@ -3645,6 +3683,8 @@ model Cohort {
   /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
   migratedToTenantId String?
   spinOutBatchId     String?
+  /// Set by the spin-out revert on a row it reversed or cancelled. The row stays (FX-71).
+  spinOutRevertedAt DateTime?
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, trainerPartyId])
@@ -3706,6 +3746,8 @@ model Enrollment {
   /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
   migratedToTenantId String?
   spinOutBatchId     String?
+  /// Set by the spin-out revert on a row it reversed or cancelled. The row stays (FX-71).
+  spinOutRevertedAt DateTime?
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, cohortId, status])
@@ -4455,6 +4497,8 @@ model EmploymentRelationship {
   /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
   migratedToTenantId String?
   spinOutBatchId     String?
+  /// Set by the spin-out revert on a row it reversed or cancelled. The row stays (FX-71).
+  spinOutRevertedAt DateTime?
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, status])
@@ -4572,7 +4616,15 @@ model CompensationRecord {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Set when an import revert voids this row (FX-71a). A voided row keeps its
+  /// figures and is left out by every reader; it is never deleted.
+  voidedAt    DateTime?
+  voidedById  String?
+  voidReason  String?
+  voidBatchId String?
+
   @@index([tenantId, employmentRelationshipId, status])
+  @@index([tenantId, voidBatchId])
   @@map("compensation_records")
 }
 
@@ -4696,8 +4748,16 @@ model WorkAttendance {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Set when an import revert voids this day (FX-71a). A voided row keeps its
+  /// figures and is left out by every reader; it is never deleted.
+  voidedAt    DateTime?
+  voidedById  String?
+  voidReason  String?
+  voidBatchId String?
+
   @@unique([employmentRelationshipId, workDate])
   @@index([tenantId, workDate])
+  @@index([tenantId, voidBatchId])
   @@map("work_attendances")
 }
 
@@ -5413,13 +5473,24 @@ model ImportRow {
   /// What it became. Null until mapping runs.
   normalised Json?
 
-  /// pending | ready | duplicate | error | committed | skipped
+  /// pending | ready | duplicate | error | committed | skipped | matched | reverted | kept
+  /// `matched`: the row reused a record another entry made (its entityId names
+  /// that record), so this batch's revert leaves it. `reverted` and `kept`: see
+  /// imports/commit.ts revertImport.
   status  String  @default("pending")
   message String?
 
   /// What it turned into, once committed.
   entityType String?
   entityId   String?
+
+  /// Every record this row created, as `[{ entityType, entityId }]`, including
+  /// the children written for a matched person (employment, affiliation) and the
+  /// attendance days it actually wrote. A revert undoes exactly this list, and a
+  /// matched row's list is what its revert reverses while the matched record
+  /// stays. Null on rows committed before this column existed: a revert takes
+  /// those by `entityType`, as it always did (FX-71a).
+  created Json?
 
   /// Stable identity for this line, so re-importing an overlapping statement
   /// recognises what it has already seen.

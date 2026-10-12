@@ -344,6 +344,19 @@ export function filingPeriodOf(date: Date): string {
 }
 
 /**
+ * The filed GST return that covers a date's month, if there is one. The lock
+ * assertPeriodOpen enforces, read in the caller's transaction when one is given:
+ * the import revert checks it per row before it reverses anything (FX-71a).
+ */
+export async function filedReturnFor(date: Date, db: Pick<DbTx, 'gstFiling'> = prisma) {
+  const auth = currentAuth();
+  return db.gstFiling.findFirst({
+    where: { tenantId: auth.tenantId, period: filingPeriodOf(date), status: 'filed' },
+    orderBy: { filedAt: 'desc' },
+  });
+}
+
+/**
  * Refuses a change to an invoice whose month has been filed.
  *
  * A filed GSTR-1 is a statement of every outward supply in that month. Editing
@@ -353,12 +366,8 @@ export function filingPeriodOf(date: Date): string {
  * period, which this platform issues through `issueCreditNote`.
  */
 export async function assertPeriodOpen(date: Date, what: string): Promise<void> {
-  const auth = currentAuth();
   const period = filingPeriodOf(date);
-  const filed = await prisma.gstFiling.findFirst({
-    where: { tenantId: auth.tenantId, period, status: 'filed' },
-    orderBy: { filedAt: 'desc' },
-  });
+  const filed = await filedReturnFor(date);
   if (filed) {
     throw ApiError.unprocessable(
       `${what} is dated ${period}, and ${filed.returnType} for ${period} was filed as ${filed.recordCode}. ` +

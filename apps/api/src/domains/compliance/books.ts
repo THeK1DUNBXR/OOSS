@@ -33,7 +33,10 @@ import {
   toCsv,
   type ScheduleIIIStatement,
 } from '@kaizen/shared';
-import { prisma, num } from '../../platform/db.js';
+import { prisma, num, type DbTx } from '../../platform/db.js';
+import { governedWrite } from '../../platform/governedWrite.js';
+import { journalTrialBalance } from '../../platform/balances.js';
+import { POSTABLE_PERIOD_STATUSES } from '../../platform/ledger.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan, assertScopeAll, canSeeMoney } from '../../platform/permissions.js';
@@ -90,9 +93,15 @@ async function ensurePeriod(period: string): Promise<{ id: string; status: strin
   const [year, month] = period.split('-').map(Number);
   const existing = await prisma.accountingPeriod.findFirst({ where: { tenantId: auth.tenantId, period } });
   if (existing) return existing;
-  const created = await prisma.accountingPeriod.create({
-    data: { tenantId: auth.tenantId, period, fy: fyOf(new Date(Date.UTC(year, month - 1, 1))), status: 'open' },
+  // A legacy write into the same month can create the row between the read above and
+  // this insert (platform/periodLock.ts). A plain create would then fail on the unique
+  // key, so the insert skips a duplicate and the row is read back.
+  const made = await prisma.accountingPeriod.createMany({
+    data: [{ tenantId: auth.tenantId, period, fy: fyOf(new Date(Date.UTC(year, month - 1, 1))), status: 'open' }],
+    skipDuplicates: true,
   });
+  const created = await prisma.accountingPeriod.findFirstOrThrow({ where: { tenantId: auth.tenantId, period } });
+  if (made.count === 0) return created;
   // Opening a period is itself a books write: it is the row a close is later
   // requested against, so its creation is a fact the chain should carry.
   await emit({
@@ -120,6 +129,16 @@ export async function periodStatus(date: Date): Promise<string> {
 }
 
 /**
+ * Whether `date`'s month takes no entries: closing or closed. The same rule the
+ * ledger applies (POSTABLE_PERIOD_STATUSES), so a legacy write and a journal
+ * posting refuse the same months. Money that has already moved is booked on the
+ * next open date instead of being refused (openAccountingDate).
+ */
+export async function periodRefusesEntries(date: Date): Promise<boolean> {
+  return !POSTABLE_PERIOD_STATUSES.includes(await periodStatus(date));
+}
+
+/**
  * The first instant, from `now` onwards, that falls in an open accounting period.
  * `now` itself when its month is open; otherwise the IST start of the next month
  * that is open. Used only for money that has already arrived.
@@ -127,7 +146,7 @@ export async function periodStatus(date: Date): Promise<string> {
 export async function openAccountingDate(now: Date): Promise<Date> {
   let date = now;
   for (let i = 0; i < 24; i++) {
-    if ((await periodStatus(date)) !== 'closed') return date;
+    if (!(await periodRefusesEntries(date))) return date;
     date = monthRange(monthKey(date)).to;
   }
   throw ApiError.unprocessable('No open accounting period in the next two years to record this payment in.');
@@ -181,24 +200,35 @@ export async function closePeriod(period: string) {
     );
   }
 
+  // The lock comes first, and the snapshot is taken under it. The old order took
+  // the snapshot before the lock, so a legacy cashbook entry that committed between
+  // the two landed in the closed period and was missing from its snapshot: the
+  // closed figures disagreed with the books they were meant to freeze.
+  //
+  // What closes that window: the period is `closing` before this runs, so a legacy
+  // write that checks the status now is refused (refuseClosedPeriod). A posting and
+  // a legacy write each hold FOR SHARE on this row while they write
+  // (platform/ledger.ts lockPostablePeriod, platform/periodLock.ts lockLegacyPeriod),
+  // so this FOR UPDATE waits for them to commit first. Before the legacy lock, a write
+  // whose status check passed before the close was requested could commit after the
+  // figures were taken, and would then be missing from the snapshot.
+  //
+  // Both figures are taken: the legacy cashbook TB (it reads `Transaction`) and the
+  // journal TB (it reads the ledger), so the closed period carries both and the gap
+  // between them is visible (contract section 8, O11 a). The legacy TB keeps the
+  // top-level shape closed periods already store (asOf, rows, totals), with the
+  // journal figure beside it. Periods closed before this has no `journal` key.
+  // Money is kept as decimal strings: JSON cannot hold a bigint.
+  //
+  // One transaction, governedWrite: the status change, the snapshot, the audit row
+  // and the event commit together. A failure in any of them leaves the period
+  // `closing`, not half-closed.
   // The last instant of the IST month. Taking Date.UTC(y, m, 1) - 1ms here
   // (23:59:59.999 UTC on the last day, i.e. 05:29 IST on the 1st) put the
   // first five and a half hours of the next month into the closed snapshot.
-  // The snapshot is the legacy cashbook trial balance, which reads `Transaction`
-  // and not the journal, so a posting cannot change it. It is taken before the
-  // lock for that reason. When 1.5 makes the snapshot a journal balance it must
-  // move inside the lock below, or a posting that commits between the two
-  // would be missing from the closed period's figures.
   const { to } = monthRange(period);
-  const snapshot = await trialBalance(new Date(to.getTime() - 1));
-
-  // FOR UPDATE rather than the status read above: a posting holds FOR SHARE on
-  // this row while it writes (platform/ledger.ts lockPostablePeriod). Taking
-  // the lock here means no posting can start until the status has moved, and
-  // any posting already in flight has committed first. The status is re-read
-  // under the lock because it may have changed while this call waited.
-  const updated = await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${auth.tenantId}, true)`;
+  const asOf = new Date(to.getTime() - 1);
+  const updated = await governedWrite(async (tx) => {
     const [locked] = await tx.$queryRaw<Array<{ status: string }>>`
       SELECT "status" FROM "cmp_accounting_periods"
       WHERE "id" = ${row.id}
@@ -206,24 +236,38 @@ export async function closePeriod(period: string) {
     if (locked?.status !== 'closing') {
       throw ApiError.unprocessable(`${period} changed while this close waited; it is no longer closing.`);
     }
-    return tx.accountingPeriod.update({
+    const legacy = await trialBalance(asOf, tx);
+    const journal = await journalTrialBalance(asOf, tx);
+    const snapshot = {
+      ...legacy,
+      journal: {
+        asOf: journal.asOf,
+        debitsMinor: journal.debitsMinor.toString(),
+        creditsMinor: journal.creditsMinor.toString(),
+        lineCount: journal.lineCount,
+      },
+    };
+    const closed = await tx.accountingPeriod.update({
       where: { id: row.id },
       data: { status: 'closed', closedById: auth.partyId, closedAt: new Date(), snapshot: snapshot as never },
     });
-  });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'accounting_period',
-    subjectId: row.id,
-    before: { status: 'closing' },
-    after: { status: 'closed', closedById: auth.partyId },
-  });
-  await emit({
-    name: EVENTS.ACCOUNTING_PERIOD_CLOSED,
-    subject: { entityType: 'accounting_period', entityId: row.id },
-    newState: { period, status: 'closed' },
-    impact: { domains: ['fin'] },
-    confidentiality: 'confidential',
+    await auditWrite({
+      action: 'update',
+      subjectType: 'accounting_period',
+      subjectId: row.id,
+      before: { status: 'closing' },
+      after: { status: 'closed', closedById: auth.partyId },
+      tx,
+    });
+    await emit({
+      name: EVENTS.ACCOUNTING_PERIOD_CLOSED,
+      subject: { entityType: 'accounting_period', entityId: row.id },
+      newState: { period, status: 'closed' },
+      impact: { domains: ['fin'] },
+      confidentiality: 'confidential',
+      tx,
+    });
+    return closed;
   });
   return updated;
 }
@@ -269,11 +313,18 @@ export async function reopenPeriod(period: string, reason: string) {
  * when today's month is closed and never backdates into a closed one.
  */
 async function refuseClosedPeriod(date: Date, what: string): Promise<void> {
+  // `closing` is refused as `closed` is. A close that has been requested takes its
+  // snapshot under the period lock; a legacy write allowed in that state could land
+  // after the figures were taken and be missing from the closed period. That is the
+  // defect this guards: a write in a closed period that is not in its snapshot.
   const status = await periodStatus(date);
-  if (status === 'closed') {
+  if (!POSTABLE_PERIOD_STATUSES.includes(status)) {
+    const period = periodKeyOf(date);
     throw ApiError.unprocessable(
-      `${what} is dated ${periodKeyOf(date)}, which is a closed accounting period. Reopen it first, with a reason, before recording or editing anything dated inside it.`,
-      { period: periodKeyOf(date), reasonCode: 'accounting_period_closed' },
+      status === 'closing'
+        ? `${what} is dated ${period}, which is a closing accounting period: its close has been requested and not yet approved. It takes no entries until the close completes.`
+        : `${what} is dated ${period}, which is a closed accounting period. Reopen it first, with a reason, before recording or editing anything dated inside it.`,
+      { period, status, reasonCode: 'accounting_period_closed' },
     );
   }
 }
@@ -680,21 +731,26 @@ export async function depreciationReport(fyStartYear: number) {
  * `LedgerCategory`'s own note — so the two sides are brought to balance with
  * an explicit "Opening balances" plug rather than pretending the underlying
  * data is something it is not.
+ *
+ * A caller inside an interactive transaction passes its `tx` (the close does, under
+ * the period lock): the scoped client throws there, and the figures must be read in
+ * the same transaction as the lock.
  */
-export async function trialBalance(asOf: Date) {
+export async function trialBalance(asOf: Date, tx?: DbTx) {
+  const db = tx ?? (prisma as unknown as DbTx);
   const auth = currentAuth();
   const [accounts, categoryRows, categories] = await Promise.all([
-    prisma.ledgerAccount.findMany({ where: { tenantId: auth.tenantId, deletedAt: null } }),
-    prisma.transaction.groupBy({
+    db.ledgerAccount.findMany({ where: { tenantId: auth.tenantId, deletedAt: null } }),
+    db.transaction.groupBy({
       by: ['categoryId', 'direction'],
       where: { tenantId: auth.tenantId, deletedAt: null, txnDate: { lte: asOf } },
       _sum: { amount: true },
     }),
-    prisma.ledgerCategory.findMany({ where: { tenantId: auth.tenantId, deletedAt: null } }),
+    db.ledgerCategory.findMany({ where: { tenantId: auth.tenantId, deletedAt: null } }),
   ]);
   const categoryById = new Map(categories.map((c) => [c.id, c]));
 
-  const movementsByAccount = await prisma.transaction.groupBy({
+  const movementsByAccount = await db.transaction.groupBy({
     by: ['accountId', 'direction'],
     where: { tenantId: auth.tenantId, deletedAt: null, txnDate: { lte: asOf } },
     _sum: { amount: true },
