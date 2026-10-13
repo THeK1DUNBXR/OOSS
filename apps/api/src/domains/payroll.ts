@@ -21,7 +21,9 @@ import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { currentCompensation } from './employment.js';
 import { runHooks } from '../platform/hooks.js';
-import { computeInstruction } from './compliance/payroll.js';
+import { computeInstruction, PAYROLL_INSTRUCTION_MONEY, PAYROLL_RUN_MONEY } from './compliance/payroll.js';
+import { rupeesToMinor, withDecimalMinor } from '../platform/wire.js';
+import { minorToRupees } from './money.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { governedWrite } from '../platform/governedWrite.js';
 
@@ -38,11 +40,12 @@ function assertPayPeriod(payPeriod: string): void {
 export async function listPayrollRuns() {
   const auth = currentAuth();
   await assertCan({ resource: 'payroll', verb: 'view' });
-  return prisma.payrollRun.findMany({
+  const rows = await prisma.payrollRun.findMany({
     where: { tenantId: auth.tenantId },
     orderBy: { payPeriod: 'desc' },
     take: 36,
   });
+  return rows.map((row) => withDecimalMinor(row, PAYROLL_RUN_MONEY));
 }
 
 export async function getPayrollRun(id: string) {
@@ -62,7 +65,10 @@ export async function getPayrollRun(id: string) {
     },
   });
   if (!run) throw ApiError.notFound('Payroll run');
-  return run;
+  return {
+    ...withDecimalMinor(run, PAYROLL_RUN_MONEY),
+    instructions: run.instructions.map((i) => withDecimalMinor(i, PAYROLL_INSTRUCTION_MONEY)),
+  };
 }
 
 /**
@@ -136,8 +142,8 @@ export async function openPayrollRun(payPeriod: string) {
           employmentRelationshipId: line.employmentRelationshipId,
           payrollRunId: run.id,
           payPeriod,
-          grossAmount: line.gross,
-          netAmount: line.gross,
+          grossAmountMinor: rupeesToMinor(line.gross),
+          netAmountMinor: rupeesToMinor(line.gross),
           division: line.division,
         },
       });
@@ -145,7 +151,7 @@ export async function openPayrollRun(payPeriod: string) {
 
     const updated = await tx.payrollRun.update({
       where: { id: run.id },
-      data: { grossTotal, netTotal: grossTotal, headcount },
+      data: { grossTotalMinor: rupeesToMinor(grossTotal), netTotalMinor: rupeesToMinor(grossTotal), headcount },
     });
 
     await auditWrite({
@@ -165,7 +171,7 @@ export async function openPayrollRun(payPeriod: string) {
       tx,
     });
 
-    return updated;
+    return withDecimalMinor(updated, PAYROLL_RUN_MONEY);
   });
 }
 
@@ -190,19 +196,26 @@ export async function setInstructionAmounts(id: string, input: { grossAmount?: n
     );
   }
 
-  const gross = input.grossAmount ?? num(instruction.grossAmount) ?? 0;
-  const deductions = input.deductions ?? num(instruction.deductions) ?? 0;
+  const gross = input.grossAmount ?? minorToRupees(instruction.grossAmountMinor);
+  const deductions = input.deductions ?? minorToRupees(instruction.deductionsMinor);
 
   return governedWrite(async (tx) => {
     const updated = await tx.payrollInstruction.update({
       where: { id },
-      data: { grossAmount: gross, deductions, netAmount: gross - deductions },
+      data: {
+        grossAmountMinor: rupeesToMinor(gross),
+        deductionsMinor: rupeesToMinor(deductions),
+        netAmountMinor: rupeesToMinor(gross - deductions),
+      },
     });
     await auditWrite({
       action: 'update',
       subjectType: 'payroll_instruction',
       subjectId: id,
-      before: { grossAmount: String(instruction.grossAmount), deductions: String(instruction.deductions) },
+      before: {
+        grossAmount: String(minorToRupees(instruction.grossAmountMinor)),
+        deductions: String(minorToRupees(instruction.deductionsMinor)),
+      },
       after: { grossAmount: String(gross), deductions: String(deductions) },
       tx,
     });
@@ -212,7 +225,7 @@ export async function setInstructionAmounts(id: string, input: { grossAmount?: n
       impact: { domains: ['hr'] },
       tx,
     });
-    return updated;
+    return withDecimalMinor(updated, PAYROLL_INSTRUCTION_MONEY);
   });
 }
 
@@ -262,14 +275,14 @@ export async function transitionPayrollRun(id: string, event: PayrollEvent, note
     if (event === 'COMPUTE') {
       const totals = await tx.payrollInstruction.aggregate({
         where: { payrollRunId: id },
-        _sum: { grossAmount: true, netAmount: true },
+        _sum: { grossAmountMinor: true, netAmountMinor: true },
         _count: { _all: true },
       });
       await tx.payrollRun.update({
         where: { id },
         data: {
-          grossTotal: num(totals._sum.grossAmount) ?? 0,
-          netTotal: num(totals._sum.netAmount) ?? 0,
+          grossTotalMinor: totals._sum.grossAmountMinor ?? 0n,
+          netTotalMinor: totals._sum.netAmountMinor ?? 0n,
           headcount: totals._count._all,
         },
       });
@@ -296,7 +309,7 @@ export async function transitionPayrollRun(id: string, event: PayrollEvent, note
     await runHooks('payroll_run.approved', { run: updated, instructions });
   }
 
-  return updated;
+  return withDecimalMinor(updated, PAYROLL_RUN_MONEY);
 }
 
 /** Monthly pay cost by division — what the Command Center cuts revenue against. */
@@ -308,15 +321,15 @@ export async function payrollCostByDivision(payPeriod: string) {
   const rows = await prisma.payrollInstruction.groupBy({
     by: ['division'],
     where: { tenantId: auth.tenantId, payPeriod },
-    _sum: { grossAmount: true, netAmount: true },
+    _sum: { grossAmountMinor: true, netAmountMinor: true },
     _count: { _all: true },
   });
 
   return rows.map((row) => ({
     division: row.division ?? 'shared',
     headcount: row._count._all,
-    gross: num(row._sum.grossAmount) ?? 0,
-    net: num(row._sum.netAmount) ?? 0,
+    gross: minorToRupees(row._sum.grossAmountMinor ?? 0n),
+    net: minorToRupees(row._sum.netAmountMinor ?? 0n),
   }));
 }
 
@@ -334,8 +347,8 @@ export async function payrollTrend(months = 12) {
   return runs
     .map((run) => ({
       payPeriod: run.payPeriod,
-      gross: num(run.grossTotal) ?? 0,
-      net: num(run.netTotal) ?? 0,
+      gross: minorToRupees(run.grossTotalMinor),
+      net: minorToRupees(run.netTotalMinor),
       headcount: run.headcount,
       status: run.status,
     }))

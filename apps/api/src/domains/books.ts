@@ -46,7 +46,6 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { lockLegacyPeriod, lockLegacyPeriods } from '../platform/periodLock.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney, assertScopeAll } from '../platform/permissions.js';
-import { paiseSum } from '../platform/wire.js';
 import { raiseException } from '../platform/exceptions.js';
 import { runHooks } from '../platform/hooks.js';
 import { registerGovernedEntities, auditWrite } from '../platform/audit.js';
@@ -1655,7 +1654,7 @@ export async function postPayrollToBooks(payrollRunId: string, accountId: string
   const byDivision = new Map<string, bigint>();
   for (const i of run.instructions) {
     const key = i.division ?? 'shared';
-    byDivision.set(key, (byDivision.get(key) ?? 0n) + paiseSum([i.netAmount]));
+    byDivision.set(key, (byDivision.get(key) ?? 0n) + i.netAmountMinor);
   }
 
   const created = await governedWrite(async (tx) => {

@@ -58,6 +58,8 @@ import { assertEmploymentVisible } from '../platform/recordScope.js';
 import { normalisePhone, normaliseEmail } from './identity.js';
 import { runHooks } from '../platform/hooks.js';
 import { encryptField, readRegulated } from './compliance/privacy.js';
+import { OFFBOARDING_MONEY } from './money.js';
+import { withDecimalMinor } from '../platform/wire.js';
 import {
   authoriseHandover,
   executeHandover,
@@ -249,7 +251,12 @@ export async function getEmployment(id: string) {
     },
   });
   if (!employment) throw ApiError.notFound('Employment relationship');
-  return employment;
+  // The offboarding is a raw include: without this its settlement figures would
+  // leave with only their paise columns, and the rupee fields a screen reads would be gone.
+  return {
+    ...employment,
+    offboarding: employment.offboarding ? withDecimalMinor(employment.offboarding, OFFBOARDING_MONEY) : null,
+  };
 }
 
 /**
@@ -1414,7 +1421,7 @@ export async function transitionOffboarding(
       },
     },
   );
-  return updated;
+  return withDecimalMinor(updated, OFFBOARDING_MONEY);
 }
 
 /**

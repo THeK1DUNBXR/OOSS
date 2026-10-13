@@ -84,7 +84,7 @@ model PayrollStatutoryLine {
   statute          String
   contributionKind String // statutory | voluntary
   component        String
-  amount           Decimal @db.Decimal(14, 2)
+  amountMinor           BigInt
   ruleId           String?
 
   createdAt DateTime @default(now())

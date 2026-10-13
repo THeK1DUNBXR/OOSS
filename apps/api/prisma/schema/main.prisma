@@ -4978,9 +4978,9 @@ model PayrollInstruction {
 
   payPeriod   String // YYYY-MM
   status      String  @default("Draft")
-  grossAmount Decimal @default(0) @db.Decimal(14, 2)
-  deductions  Decimal @default(0) @db.Decimal(14, 2)
-  netAmount   Decimal @default(0) @db.Decimal(14, 2)
+  grossAmountMinor BigInt @default(0)
+  deductionsMinor  BigInt @default(0)
+  netAmountMinor   BigInt @default(0)
   currency    String  @default("INR")
   /// Which division carries the cost, so payroll lands in the same division
   /// cut as revenue does.
@@ -4989,18 +4989,18 @@ model PayrollInstruction {
   paymentId   String?
 
   // ---- Statutory lines (workstream E). Zero until computed; `computedFrom` names the rate-table versions used. ----
-  basicPay        Decimal   @default(0) @db.Decimal(14, 2)
-  hra             Decimal   @default(0) @db.Decimal(14, 2)
-  otherAllowances Decimal   @default(0) @db.Decimal(14, 2)
-  pfEmployee      Decimal   @default(0) @db.Decimal(14, 2)
-  pfEmployer      Decimal   @default(0) @db.Decimal(14, 2)
-  epsEmployer     Decimal   @default(0) @db.Decimal(14, 2)
-  esiEmployee     Decimal   @default(0) @db.Decimal(14, 2)
-  esiEmployer     Decimal   @default(0) @db.Decimal(14, 2)
-  professionalTax Decimal   @default(0) @db.Decimal(14, 2)
-  tdsAmount       Decimal   @default(0) @db.Decimal(14, 2)
-  lwfEmployee     Decimal   @default(0) @db.Decimal(14, 2)
-  lwfEmployer     Decimal   @default(0) @db.Decimal(14, 2)
+  basicPayMinor        BigInt   @default(0)
+  hraMinor             BigInt   @default(0)
+  otherAllowancesMinor BigInt   @default(0)
+  pfEmployeeMinor      BigInt   @default(0)
+  pfEmployerMinor      BigInt   @default(0)
+  epsEmployerMinor     BigInt   @default(0)
+  esiEmployeeMinor     BigInt   @default(0)
+  esiEmployerMinor     BigInt   @default(0)
+  professionalTaxMinor BigInt   @default(0)
+  tdsAmountMinor       BigInt   @default(0)
+  lwfEmployeeMinor     BigInt   @default(0)
+  lwfEmployerMinor     BigInt   @default(0)
   computedFrom    Json?
   /// A payslip, once issued, is final — like a tax invoice. Number from the `P` series.
   payslipNumber   String?
@@ -5022,8 +5022,8 @@ model PayrollRun {
 
   payPeriod  String
   status     String  @default("Draft")
-  grossTotal Decimal @default(0) @db.Decimal(16, 2)
-  netTotal   Decimal @default(0) @db.Decimal(16, 2)
+  grossTotalMinor BigInt @default(0)
+  netTotalMinor   BigInt @default(0)
   headcount  Int     @default(0)
 
   approvedById String?
@@ -5074,13 +5074,13 @@ model Offboarding {
   status           String   @default("Initiated")
   checklist        Json     @default("[]")
   disputeReason    String?
-  settlementAmount Decimal? @db.Decimal(14, 2)
+  settlementAmountMinor BigInt?
 
   // ---- Full-and-final components (workstreams E, F). `settlementAmount` stays the total. ----
-  gratuityAmount            Decimal?  @db.Decimal(14, 2)
-  leaveEncashmentAmount     Decimal?  @db.Decimal(14, 2)
-  bonusAmount               Decimal?  @db.Decimal(14, 2)
-  noticeRecoveryAmount      Decimal?  @db.Decimal(14, 2)
+  gratuityAmountMinor            BigInt?
+  leaveEncashmentAmountMinor     BigInt?
+  bonusAmountMinor               BigInt?
+  noticeRecoveryAmountMinor      BigInt?
   settlementComputedAt      DateTime?
   relievingLetterDocumentId String?
 

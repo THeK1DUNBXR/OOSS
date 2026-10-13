@@ -58,7 +58,7 @@ model AdHocPayLine {
   payItemId                String
   payrollRunId             String?
   payPeriod                String // YYYY-MM
-  amount                   Decimal @db.Decimal(14, 2)
+  amountMinor                   BigInt
   reason                   String
 
   /// Proposed | Approved | Rejected | Applied
@@ -87,7 +87,7 @@ model Arrear {
 
   employmentRelationshipId String
   fromPeriod               String // YYYY-MM the arrear is owed for
-  amount                   Decimal @db.Decimal(14, 2)
+  amountMinor                   BigInt
   reason                   String
 
   /// Proposed | Approved | Rejected | Paid
@@ -123,8 +123,8 @@ model PayrollJournal {
 
   /// [{ ledgerAccountCode, label, costCentre, debit, credit }, ...]
   lines       Json
-  totalDebit  Decimal @db.Decimal(16, 2)
-  totalCredit Decimal @db.Decimal(16, 2)
+  totalDebitMinor  BigInt
+  totalCreditMinor BigInt
 
   /// Prepared | Posted
   status        String    @default("Prepared")
@@ -158,7 +158,7 @@ model BankAdvice {
   /// audited) ever reads `fileText` or the unmasked account numbers here.
   rows         Json
   count        Int
-  total        Decimal @db.Decimal(16, 2)
+  totalMinor        BigInt
 
   generatedById String?
   generatedAt   DateTime @default(now())

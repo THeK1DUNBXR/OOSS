@@ -28,6 +28,8 @@ import {
 } from '@kaizen/shared';
 import { financialYearOf, istYearMonth } from '@kaizen/shared';
 import { prisma, num, unscopedPrisma, Prisma, type DbTx } from '../../platform/db.js';
+import { rupeesToMinor, withDecimalMinor } from '../../platform/wire.js';
+import { minorToRupees } from '../money.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { governedWrite } from '../../platform/governedWrite.js';
@@ -320,7 +322,7 @@ export async function encashLeave(employmentRelationshipId: string, input: { lea
         leaveTypeId: input.leaveTypeId,
         leaveTransactionId: t.id,
         days: input.days,
-        amount,
+        amountMinor: rupeesToMinor(amount),
         createdById: auth.partyId,
       },
     });
@@ -342,7 +344,7 @@ export async function encashLeave(employmentRelationshipId: string, input: { lea
     return [t, e] as const;
   });
 
-  return { transaction: txn, encashment };
+  return { transaction: txn, encashment: withDecimalMinor(encashment, ['amount']) };
 }
 
 // ---------------------------------------------------------------------------
@@ -440,10 +442,10 @@ export async function runWeeklyHoursCheck(): Promise<JobResult> {
           employmentRelationshipId: employment.id,
           isoWeek: week,
           hours: otHours,
-          rate: (basicPay / (26 * 8)) * otMultiplier,
-          amount,
+          rateMinor: rupeesToMinor((basicPay / (26 * 8)) * otMultiplier),
+          amountMinor: rupeesToMinor(amount),
         },
-        update: { hours: otHours, amount, computedAt: new Date() },
+        update: { hours: otHours, amountMinor: rupeesToMinor(amount), computedAt: new Date() },
       });
     }
 
@@ -470,10 +472,11 @@ export async function runWeeklyHoursCheck(): Promise<JobResult> {
 export async function overtimeAccruals(employmentRelationshipId: string) {
   await assertEmploymentVisible('attendance', employmentRelationshipId);
   const auth = currentAuth();
-  return prisma.overtimeAccrual.findMany({
+  const rows = await prisma.overtimeAccrual.findMany({
     where: { tenantId: auth.tenantId, employmentRelationshipId },
     orderBy: { isoWeek: 'desc' },
   });
+  return rows.map((r) => withDecimalMinor(r, ['rate', 'amount']));
 }
 
 // ---------------------------------------------------------------------------
@@ -509,14 +512,14 @@ export async function registerWages(period: string): Promise<RegisterExport> {
     rows.map((r) => [
       r.employmentRelationship.person.fullName,
       r.employmentRelationship.legalEntity,
-      num(r.grossAmount),
-      num(r.pfEmployee),
-      num(r.pfEmployer),
-      num(r.esiEmployee),
-      num(r.esiEmployer),
-      num(r.professionalTax),
-      num(r.deductions),
-      num(r.netAmount),
+      minorToRupees(r.grossAmountMinor),
+      minorToRupees(r.pfEmployeeMinor),
+      minorToRupees(r.pfEmployerMinor),
+      minorToRupees(r.esiEmployeeMinor),
+      minorToRupees(r.esiEmployerMinor),
+      minorToRupees(r.professionalTaxMinor),
+      minorToRupees(r.deductionsMinor),
+      minorToRupees(r.netAmountMinor),
     ]),
   );
   await auditExport('payroll_instruction', `wages:${period}`, rows.length);

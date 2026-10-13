@@ -232,8 +232,8 @@ describe('HCM-ANALYTICS-005 — overtime hours', () => {
           employmentRelationshipId: employment.id,
           isoWeek: `${isoWeek}-${fixtureSeq}`,
           hours: 6,
-          rate: 250,
-          amount: 1500,
+          rateMinor: 25_000n,
+          amountMinor: 150_000n,
           computedAt: now,
         },
       });
