@@ -57,9 +57,9 @@ describe('MONEY-S6 wire sweep: every money column that leaves the API keeps its 
       createEvent({ name: `S6 wire open ${stamp()}`, kind: 'webinar', startAt: new Date(), costPlanned: 2500.5 }),
     );
     const opened = wire(await asUser(CHAIRMAN, () => openEvent(created.id)));
-    expect(Number(opened.costPlanned)).toBe(2500.5);
+    expect(opened.costPlanned).toBe('2500.5');
     expect(opened.costPlannedMinor).toBe('250050');
-    expect(Number(opened.costActual)).toBe(0);
+    expect(opened.costActual).toBe('0');
     expect(opened.costActualMinor).toBe('0');
   });
 
@@ -69,7 +69,7 @@ describe('MONEY-S6 wire sweep: every money column that leaves the API keeps its 
     );
     const cancelled = wire(await asUser(CHAIRMAN, () => cancelEvent(created.id, 'S6 wire sweep')));
     expect(cancelled.status).toBe('cancelled');
-    expect(Number(cancelled.costPlanned)).toBe(75.1);
+    expect(cancelled.costPlanned).toBe('75.1');
     expect(cancelled.costPlannedMinor).toBe('7510');
     expect(cancelled.costActualMinor).toBe('0');
   });
