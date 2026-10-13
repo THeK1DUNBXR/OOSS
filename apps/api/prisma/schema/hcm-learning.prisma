@@ -21,7 +21,7 @@ model TrainingProgram {
   provider String?
 
   durationHours  Decimal? @db.Decimal(6, 2)
-  cost           Decimal  @default(0) @db.Decimal(12, 2)
+  costMinor           BigInt @default(0)
   skillIds       String[] @default([])
   /// Null for a program with no expiry — most classroom/online courses.
   /// Set for a certification-kind program whose completion issues a
@@ -189,7 +189,7 @@ model TrainingBudget {
 
   fy       String
   division String?
-  amount   Decimal @db.Decimal(14, 2)
+  amountMinor   BigInt
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

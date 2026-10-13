@@ -30,7 +30,9 @@ import {
   type TrainingEnrollmentStatus,
   type TrainingProgramKind,
 } from '@kaizen/shared';
-import { prisma, num } from '../../platform/db.js';
+import { prisma } from '../../platform/db.js';
+import { minorString, rupeesToMinor, withDecimalMinor } from '../../platform/wire.js';
+import { minorToRupees } from '../money.js';
 import { governedWrite } from '../../platform/governedWrite.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { currentAuth } from '../../platform/context.js';
@@ -99,10 +101,11 @@ async function myEmploymentIds(): Promise<string[]> {
 export async function listPrograms(activeOnly = false) {
   const auth = currentAuth();
   await assertCan({ resource: 'training_programs', verb: 'view' });
-  return prisma.trainingProgram.findMany({
+  const rows = await prisma.trainingProgram.findMany({
     where: { tenantId: auth.tenantId, ...(activeOnly ? { isActive: true } : {}) },
     orderBy: { title: 'asc' },
   });
+  return rows.map((r) => withDecimalMinor(r, ['cost'] as const));
 }
 
 export async function getProgram(id: string) {
@@ -110,7 +113,7 @@ export async function getProgram(id: string) {
   await assertCan({ resource: 'training_programs', verb: 'view' });
   const program = await prisma.trainingProgram.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!program) throw ApiError.notFound('Training program');
-  return program;
+  return withDecimalMinor(program, ['cost'] as const);
 }
 
 export async function createProgram(input: {
@@ -139,7 +142,7 @@ export async function createProgram(input: {
         kind: input.kind,
         provider: input.provider ?? null,
         durationHours: input.durationHours ?? null,
-        cost: input.cost ?? 0,
+        costMinor: rupeesToMinor(input.cost ?? 0),
         skillIds: input.skillIds ?? [],
         validityMonths: input.validityMonths ?? null,
       },
@@ -160,7 +163,7 @@ export async function createProgram(input: {
       tx,
     });
 
-    return program;
+    return withDecimalMinor(program, ['cost'] as const);
   });
 }
 
@@ -187,7 +190,7 @@ export async function setProgramActive(id: string, isActive: boolean) {
       impact: { domains: ['hr'] },
       tx,
     });
-    return updated;
+    return withDecimalMinor(updated, ['cost'] as const);
   });
 }
 
@@ -198,11 +201,12 @@ export async function setProgramActive(id: string, isActive: boolean) {
 export async function listSessions(programId?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'training_sessions', verb: 'view' });
-  return prisma.trainingSession.findMany({
+  const rows = await prisma.trainingSession.findMany({
     where: { tenantId: auth.tenantId, ...(programId ? { programId } : {}) },
-    include: { program: { select: { title: true, kind: true, cost: true } } },
+    include: { program: { select: { title: true, kind: true, costMinor: true } } },
     orderBy: { startsAt: 'desc' },
   });
+  return rows.map((r) => ({ ...r, program: withDecimalMinor(r.program, ['cost'] as const) }));
 }
 
 export async function createSession(input: {
@@ -287,7 +291,7 @@ export async function listEnrollments(filter: { sessionId?: string; employmentRe
     if (scope !== 'all') employmentFilter = await myEmploymentIds();
   }
 
-  return prisma.trainingEnrollment.findMany({
+  const rows = await prisma.trainingEnrollment.findMany({
     where: {
       tenantId: auth.tenantId,
       ...(filter.sessionId ? { sessionId: filter.sessionId } : {}),
@@ -295,11 +299,17 @@ export async function listEnrollments(filter: { sessionId?: string; employmentRe
     },
     include: {
       session: {
-        include: { program: { select: { title: true, kind: true, skillIds: true, validityMonths: true, cost: true } } },
+        include: {
+          program: { select: { title: true, kind: true, skillIds: true, validityMonths: true, costMinor: true } },
+        },
       },
     },
     orderBy: { createdAt: 'desc' },
   });
+  return rows.map((r) => ({
+    ...r,
+    session: { ...r.session, program: withDecimalMinor(r.session.program, ['cost'] as const) },
+  }));
 }
 
 /** A nomination — the employee's own request, or a manager/HR nominating them. */
@@ -1097,49 +1107,57 @@ export async function listBudgets(fy?: string) {
     where: { tenantId: auth.tenantId, ...(fy ? { fy } : {}) },
     orderBy: [{ fy: 'desc' }],
   });
-
-  const spendByFy = new Map<string, number>();
+  const spendByFy = new Map<string, bigint>();
   const distinctFys: string[] = [...new Set(budgets.map((b) => b.fy))];
   for (const fyLabel of distinctFys) {
     spendByFy.set(fyLabel, await trainingSpendForFy(fyLabel));
   }
-
   return budgets.map((b) => {
-    const amount = num(b.amount) ?? 0;
-    const spent = spendByFy.get(b.fy) ?? 0;
-    return { ...b, spent, utilisationPercent: budgetUtilisationPercent(amount, spent) };
+    const amountMinor = b.amountMinor;
+    const spentMinor = spendByFy.get(b.fy) ?? 0n;
+    const spent = minorToRupees(spentMinor);
+    return {
+      ...withDecimalMinor(b, ['amount'] as const),
+      spent,
+      spentMinor: minorString(spentMinor),
+      utilisationPercent: budgetUtilisationPercent(minorToRupees(amountMinor), spent),
+    };
   });
 }
 
 /**
- * Spend for a financial year — the cost of every completed enrollment whose
- * session started in that FY. Not split by division: `TrainingBudget.division`
- * is recorded but there is no reliable employee→division join in this
- * workstream's own tables, so a division-scoped budget's `spent` is the whole
- * FY's spend rather than a fabricated division split. Recorded as a gap.
+ * Spend for a financial year: the cost of every completed enrollment whose
+ * session started in that FY, summed in paise. Not split by division:
+ * `TrainingBudget.division` is recorded but there is no reliable employee→division
+ * join in this workstream's own tables, so a division-scoped budget's `spent` is
+ * the whole FY's spend rather than a fabricated division split. Recorded as a gap.
  */
-async function trainingSpendForFy(fy: string): Promise<number> {
+async function trainingSpendForFy(fy: string): Promise<bigint> {
   const auth = currentAuth();
   const [startYear] = fy.replace(/^FY/i, '').split('-');
   const start = new Date(Date.UTC(Number(startYear), 3, 1));
   const end = new Date(Date.UTC(Number(startYear) + 1, 3, 1));
-
   const completed = await prisma.trainingEnrollment.findMany({
     where: {
       tenantId: auth.tenantId,
       status: 'completed',
       session: { startsAt: { gte: start, lt: end } },
     },
-    include: { session: { select: { program: { select: { cost: true } } } } },
+    include: { session: { select: { program: { select: { costMinor: true } } } } },
   });
-
-  return completed.reduce((sum, e) => sum + (num(e.session.program.cost) ?? 0), 0);
+  return completed.reduce((sum, e) => sum + e.session.program.costMinor, 0n);
 }
 
 export async function createBudget(input: { fy: string; division?: string | null; amount: number }) {
   const auth = currentAuth();
   await assertCan({ resource: 'training_budgets', verb: 'create' });
-  return prisma.trainingBudget.create({
-    data: { tenantId: auth.tenantId, fy: input.fy, division: input.division ?? null, amount: input.amount },
+  const row = await prisma.trainingBudget.create({
+    data: {
+      tenantId: auth.tenantId,
+      fy: input.fy,
+      division: input.division ?? null,
+      amountMinor: rupeesToMinor(input.amount),
+    },
   });
+  return withDecimalMinor(row, ['amount'] as const);
 }
