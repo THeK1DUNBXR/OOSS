@@ -8,6 +8,7 @@
  */
 
 import { round2 } from '../finance.js';
+import { toMinorHalfUp } from '../money.js';
 
 export const HCM_PAYROLLOPS_MODULE = 'payrollops' as const;
 
@@ -101,7 +102,8 @@ export interface JournalTotals {
 export function journalTotals(lines: JournalLine[]): JournalTotals {
   const totalDebit = round2(lines.reduce((sum, l) => sum + l.debit, 0));
   const totalCredit = round2(lines.reduce((sum, l) => sum + l.credit, 0));
-  return { totalDebit, totalCredit, balanced: Math.abs(totalDebit - totalCredit) < 0.01 };
+  // Both totals are rounded, so balanced is equal paise. A tolerance under a paisa could never change the answer.
+  return { totalDebit, totalCredit, balanced: toMinorHalfUp(totalDebit) === toMinorHalfUp(totalCredit) };
 }
 
 // ---------------------------------------------------------------------------

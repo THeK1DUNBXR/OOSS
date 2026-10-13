@@ -27,7 +27,7 @@
  * who wants a statement of where they stand before the instalments are done.
  */
 
-import { EVENTS, round2, type PaymentMode } from '@kaizen/shared';
+import { EVENTS, decimalToMinor, round2, toMinorHalfUp, type PaymentMode } from '@kaizen/shared';
 import { raiseException } from '../platform/exceptions.js';
 import { prisma, num } from '../platform/db.js';
 import { minorOf } from '../platform/wire.js';
@@ -116,7 +116,7 @@ export async function listReceipts(filter: { invoiceId?: string; limit?: number 
     paymentCode: r.payment.recordCode,
     note: r.note,
     /** True when this instalment cleared the invoice. */
-    settledIt: (num(r.balanceAfter) ?? 0) <= 0.001,
+    settledIt: toMinorHalfUp(num(r.balanceAfter) ?? 0) <= 0n,
   }));
 }
 
@@ -236,7 +236,7 @@ export async function receiptDocument(receiptId: string) {
       amountReceivedNow: amount,
       receivedToDate,
       balanceAfter,
-      isPartPayment: balanceAfter > 0.001,
+      isPartPayment: toMinorHalfUp(balanceAfter) > 0n,
       instalmentNumber: index + 1,
       instalmentsSoFar: siblings.length,
     },
@@ -367,11 +367,12 @@ async function issueFinalInvoice(invoiceId: string, input: { note?: string | nul
   // every time an instalment settles an invoice: the deliberate act still
   // belongs to whoever asked for a statement mid-way, and this just hands back
   // what already stands rather than starting a pointless supersession chain.
+  // The same statement only if the paise are the same: a paisa moved is a new statement.
   const current = previous.find(
     (p) =>
       p.receiptCount === rows.length &&
-      Math.abs((num(p.totalReceived) ?? 0) - totalReceived) < 0.001 &&
-      Math.abs((num(p.creditNoted) ?? 0) - totals.creditNoted) < 0.001,
+      decimalToMinor(p.totalReceived) === toMinorHalfUp(totalReceived) &&
+      decimalToMinor(p.creditNoted) === toMinorHalfUp(totals.creditNoted),
   );
   if (current) return current;
 
@@ -397,7 +398,7 @@ async function issueFinalInvoice(invoiceId: string, input: { note?: string | nul
         totalReceived,
         creditNoted: totals.creditNoted,
         balance,
-        settled: balance <= 0.001,
+        settled: toMinorHalfUp(balance) <= 0n,
         receiptCodes: rows.map((r) => r.recordCode),
         receiptCount: rows.length,
         snapshot: { receipts: rows, supersedes: previous.map((p) => p.recordCode) } as never,
@@ -453,7 +454,7 @@ async function issueFinalInvoice(invoiceId: string, input: { note?: string | nul
       totalPayable: totals.payable,
       totalReceived,
       balance,
-      settled: balance <= 0.001,
+      settled: toMinorHalfUp(balance) <= 0n,
       receipts: rows.map((r) => r.recordCode),
     },
     impact: { domains: ['fin'] },
@@ -562,7 +563,7 @@ export async function finalizeCourseFeeInvoice(invoiceId: string, trigger: 'sett
         totalReceived,
         creditNoted: totals.creditNoted,
         balance,
-        settled: balance <= 0.001,
+        settled: toMinorHalfUp(balance) <= 0n,
         receiptCodes: rows.map((r) => r.recordCode),
         receiptCount: rows.length,
         snapshot: { receipts: rows, supersedes: [] } as never,
@@ -606,7 +607,7 @@ export async function finalizeCourseFeeInvoice(invoiceId: string, trigger: 'sett
       totalPayable: totals.payable,
       totalReceived,
       balance,
-      settled: balance <= 0.001,
+      settled: toMinorHalfUp(balance) <= 0n,
       receipts: rows.map((r) => r.recordCode),
     },
     impact: { domains: ['fin'] },

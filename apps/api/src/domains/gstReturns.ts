@@ -44,6 +44,7 @@ import {
   setOffInputCredit,
   supplyTypeOf,
   type GstReturnType,
+  toMinorHalfUp,
 } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
@@ -497,7 +498,11 @@ export async function computeGstr1(period: string) {
     const inconsistent = live.filter((i) => {
       const lineTax = round2(i.lines.reduce((sum, l) => sum + ((num(l.amount) ?? 0) * (num(l.gstRate) ?? 0)) / 100, 0));
       const stored = round2((num(i.cgstAmount) ?? 0) + (num(i.sgstAmount) ?? 0) + (num(i.igstAmount) ?? 0));
-      return Math.abs(lineTax - stored) > 1;
+      // The owner kept the ₹1 tolerance (2026-10-12), held as exactly 100 paise.
+      // The old float test flagged a difference of exactly ₹1.00, because
+      // 2.14 - 1.14 is 1.0000000000000002 as doubles.
+      const difference = toMinorHalfUp(lineTax) - toMinorHalfUp(stored);
+      return difference > 100n || difference < -100n;
     });
     if (inconsistent.length) {
       out.push({

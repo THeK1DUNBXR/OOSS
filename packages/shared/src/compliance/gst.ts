@@ -7,6 +7,7 @@
  */
 
 import { round2 } from '../finance.js';
+import { toMinorHalfUp } from '../money.js';
 
 // ---------------------------------------------------------------------------
 // Supply classification (CMP-GST-001)
@@ -125,7 +126,8 @@ export function matchGstr2b(bills: BookedBill[], rows: Gstr2bB2bRow[]): Gstr2bMa
     const difference = round2(twoBTax - bill.taxAmount);
     results.push({
       vendorBillId: bill.vendorBillId,
-      status: Math.abs(difference) < 0.01 ? 'matched' : 'mismatch',
+      // difference is already rounded to the paisa, so "matched" is zero paise.
+      status: toMinorHalfUp(difference) === 0n ? 'matched' : 'mismatch',
       difference,
       ctin: row.ctin,
       inum: row.inum,
