@@ -385,20 +385,29 @@ export async function createSocialPost(input: SocialPostInput) {
   await assertAssetsApproved(assetIds, auth.tenantId);
 
   const recordCode = await nextRecordCode('PST');
-  const post = await prisma.marketingSocialPost.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      channelKey: input.channelKey,
-      campaignId: input.campaignId ?? null,
-      body: input.body,
-      assetIds,
-      scheduledAt: input.scheduledAt,
-      status: 'draft',
-      createdById: auth.partyId,
-    },
+  return governedWrite(async (tx) => {
+    const post = await tx.marketingSocialPost.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        channelKey: input.channelKey,
+        campaignId: input.campaignId ?? null,
+        body: input.body,
+        assetIds,
+        scheduledAt: input.scheduledAt,
+        status: 'draft',
+        createdById: auth.partyId,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'social_post',
+      subjectId: post.id,
+      after: { recordCode, channelKey: input.channelKey, status: 'draft' },
+      tx,
+    });
+    return post;
   });
-  return post;
 }
 
 export async function listSocialPosts(filters: { channelKey?: string; from?: Date; to?: Date; status?: string } = {}) {
@@ -577,7 +586,18 @@ export async function cancelSocialPost(id: string) {
   if (!post) throw ApiError.notFound('Social post');
   const allowed = SOCIAL_TRANSITIONS[post.status as SocialPostStatus] ?? [];
   if (!allowed.includes('cancelled')) throw ApiError.unprocessable(`Cannot cancel a ${post.status} social post.`);
-  return prisma.marketingSocialPost.update({ where: { id }, data: { status: 'cancelled' } });
+  return governedWrite(async (tx) => {
+    const updated = await tx.marketingSocialPost.update({ where: { id }, data: { status: 'cancelled' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'social_post',
+      subjectId: id,
+      before: { status: post.status },
+      after: { status: 'cancelled' },
+      tx,
+    });
+    return updated;
+  });
 }
 
 export interface SocialMetricsInput {
@@ -594,7 +614,18 @@ export async function recordSocialMetrics(id: string, metrics: SocialMetricsInpu
   const post = await prisma.marketingSocialPost.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
   if (!post) throw ApiError.notFound('Social post');
   const merged = { ...(post.metrics as Record<string, unknown>), ...metrics };
-  return prisma.marketingSocialPost.update({ where: { id }, data: { metrics: merged } });
+  return governedWrite(async (tx) => {
+    const updated = await tx.marketingSocialPost.update({ where: { id }, data: { metrics: merged } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'social_post',
+      subjectId: id,
+      before: { metrics: post.metrics as never },
+      after: { metrics: merged as never },
+      tx,
+    });
+    return updated;
+  });
 }
 
 export interface AssetView {

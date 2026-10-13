@@ -91,16 +91,32 @@ export async function issueFeeInstalments(
   for (const item of plan) {
     const recordCode = await nextRecordCode('FEE');
     const amountMinor = toMinorHalfUp(item.amount);
-    const instalment = await prisma.feeInstalment.create({
-      data: {
-        tenantId: auth.tenantId,
-        recordCode,
-        enrollmentId,
-        amountMinor,
-        currency,
-        dueDate: item.dueDate,
-        status: 'issued',
-      },
+    const instalment = await governedWrite(async (tx) => {
+      const row = await tx.feeInstalment.create({
+        data: {
+          tenantId: auth.tenantId,
+          recordCode,
+          enrollmentId,
+          amountMinor,
+          currency,
+          dueDate: item.dueDate,
+          status: 'issued',
+        },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'fee_instalment',
+        subjectId: row.id,
+        after: {
+          recordCode,
+          enrollmentId,
+          amountMinor: String(amountMinor),
+          currency,
+          dueDate: item.dueDate.toISOString(),
+        },
+        tx,
+      });
+      return row;
     });
     created.push(instalment);
     await emit({
@@ -514,6 +530,16 @@ async function settleIfFullyPaid(invoiceId: string | null, feeInstalmentId: stri
           : invoice.status;
     if (status !== invoice.status) {
       await prisma.invoice.update({ where: { id: invoiceId }, data: { status } });
+      // Runs after allocatePayment's transaction has committed (finance.ts:502), so
+      // this row is written on its own, not in the settlement's transaction. That is FX-24.
+      await auditWrite({
+        action: 'update',
+        subjectType: 'invoice',
+        subjectId: invoiceId,
+        before: { status: invoice.status },
+        after: { status },
+        meta: { source: 'settlement' },
+      });
       if (status === 'settled') {
         await emit({
           name: EVENTS.INVOICE_SETTLED,
@@ -537,7 +563,18 @@ async function settleIfFullyPaid(invoiceId: string | null, feeInstalmentId: stri
     const allocated = fee.receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n);
     const total = fee.amountMinor;
     const status = allocated >= total ? 'settled' : allocated > 0n ? 'part_paid' : fee.status;
-    if (status !== fee.status) await prisma.feeInstalment.update({ where: { id: feeInstalmentId }, data: { status } });
+    if (status !== fee.status) {
+      await prisma.feeInstalment.update({ where: { id: feeInstalmentId }, data: { status } });
+      // Post-commit, as the invoice settlement above: see the note there (FX-24).
+      await auditWrite({
+        action: 'update',
+        subjectType: 'fee_instalment',
+        subjectId: feeInstalmentId,
+        before: { status: fee.status },
+        after: { status },
+        meta: { source: 'settlement' },
+      });
+    }
   }
 }
 

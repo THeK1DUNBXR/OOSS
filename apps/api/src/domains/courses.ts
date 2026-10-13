@@ -27,6 +27,7 @@ import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { assertCan } from '../platform/permissions.js';
 import { enrolStudent } from './education.js';
 import { grownByPercent, minorToRupees, minorToRupeesOrNull } from './money.js';
@@ -443,20 +444,31 @@ async function rollingCohortFor(courseId: string) {
   });
   if (existing) return existing;
 
-  return prisma.cohort.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('COH'),
-      courseId,
-      name,
-      startDate: new Date(),
-      // No end date on purpose: it is the batch for people who join whenever
-      // they join, and giving it one would make it expire for no reason.
-      endDate: null,
-      // Capacity high enough not to be a gate. A rolling intake is not a room.
-      capacity: 9_999,
-      status: 'active',
-    },
+  const recordCode = await nextRecordCode('COH');
+  return governedWrite(async (tx) => {
+    const cohort = await tx.cohort.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        courseId,
+        name,
+        startDate: new Date(),
+        // No end date on purpose: it is the batch for people who join whenever
+        // they join, and giving it one would make it expire for no reason.
+        endDate: null,
+        // Capacity high enough not to be a gate. A rolling intake is not a room.
+        capacity: 9_999,
+        status: 'active',
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'cohort',
+      subjectId: cohort.id,
+      after: { recordCode, courseId, name, status: 'active' },
+      tx,
+    });
+    return cohort;
   });
 }
 

@@ -142,6 +142,9 @@ export async function surfaceCompositionFor(templateKey: string) {
     });
   }
 
+  // Not audited: a composition is derived from the template and the viewer's bindings, and
+  // is rebuilt when either changes. It is a read model of the home surface. Listed for an
+  // owner decision on a CLAUDE.md rule 5 exemption.
   if (auth.userId && auth.affiliationId) {
     await prisma.surfaceComposition.create({
       data: {

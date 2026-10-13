@@ -706,15 +706,25 @@ export async function createVendor(input: VendorInput): Promise<VendorView> {
   if (!org) throw ApiError.badRequest('organizationId does not resolve to an organization in this tenant.');
 
   const recordCode = await nextRecordCode('VND');
-  const row = await prisma.marketingVendor.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      organizationId: input.organizationId,
-      services: input.services ?? [],
-      contractRef: input.contractRef ?? null,
-      createdById: auth.partyId,
-    },
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.marketingVendor.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        organizationId: input.organizationId,
+        services: input.services ?? [],
+        contractRef: input.contractRef ?? null,
+        createdById: auth.partyId,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'marketing_vendor',
+      subjectId: created.id,
+      after: { recordCode, organizationId: input.organizationId },
+      tx,
+    });
+    return created;
   });
   return toVendorView(row);
 }

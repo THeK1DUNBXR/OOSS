@@ -21,6 +21,7 @@ import { currentAuth } from '../../../platform/context.js';
 import { ApiError } from '../../../platform/errors.js';
 import { assertCan } from '../../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../../platform/audit.js';
+import { governedWrite } from '../../../platform/governedWrite.js';
 import { raiseException } from '../../../platform/exceptions.js';
 import { istDateKey, istDayStart } from '@kaizen/shared';
 
@@ -33,8 +34,18 @@ export async function securityPolicy() {
   const auth = currentAuth();
   const existing = await prisma.securityPolicy.findFirst({ where: { tenantId: auth.tenantId } });
   if (existing) return existing;
-  return prisma.securityPolicy.create({
-    data: { tenantId: auth.tenantId, mfaRequiredForRoleSlugs: DEFAULT_MFA_ROLES },
+  return governedWrite(async (tx) => {
+    const created = await tx.securityPolicy.create({
+      data: { tenantId: auth.tenantId, mfaRequiredForRoleSlugs: DEFAULT_MFA_ROLES },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'security_policy',
+      subjectId: created.id,
+      after: { mfaRequiredForRoleSlugs: DEFAULT_MFA_ROLES },
+      tx,
+    });
+    return created;
   });
 }
 

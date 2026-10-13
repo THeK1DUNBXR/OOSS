@@ -545,6 +545,14 @@ export async function encryptHolderPansAtRest(): Promise<{
       continue;
     }
     await prisma.holder.update({ where: { id: row.id }, data: { panNumber: encryptField(row.panNumber) } });
+    // The PAN is not in the row. The row says the value was sealed; putting the value in the
+    // log would write the plaintext the sealing was for.
+    await auditWrite({
+      action: 'update',
+      subjectType: 'holder',
+      subjectId: row.id,
+      meta: { field: 'panNumber', change: 'encrypted_at_rest' },
+    });
     valuesEncrypted += 1;
   }
 
@@ -680,6 +688,8 @@ export async function recordExerciseAllotment(input: ExerciseAllotmentInput) {
 }
 
 export async function nextFolioNumber(): Promise<string> {
+  // Not audited: a sequence counter. The holder that takes the folio is the audited write.
+  // Listed for an owner decision on a CLAUDE.md rule 5 exemption.
   const auth = currentAuth();
   // Its own sequence space, keyed like the document series are (`platform/
   // documentNumber.ts`'s `DOC:${series}` trick) — a folio number never

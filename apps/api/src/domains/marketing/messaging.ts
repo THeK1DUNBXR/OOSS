@@ -1234,10 +1234,19 @@ export function advancesRecipientStatus(current: string, next: string): boolean 
  */
 export async function markRecipientDispatched(recipientId: string, providerMessageId: string | null): Promise<void> {
   const statusesBeforeSent = Object.keys(RECIPIENT_STATUS_RANK).filter((s) => advancesRecipientStatus(s, 'sent'));
-  await prisma.marketingSendRecipient.updateMany({
+  const moved = await prisma.marketingSendRecipient.updateMany({
     where: { id: recipientId, status: { in: statusesBeforeSent } },
     data: { status: 'sent', providerMessageId },
   });
+  // Only a row the guard let move is a change. A refused row is already past sent.
+  if (moved.count > 0) {
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_send_recipient',
+      subjectId: recipientId,
+      after: { status: 'sent', providerMessageId },
+    });
+  }
 }
 
 /**

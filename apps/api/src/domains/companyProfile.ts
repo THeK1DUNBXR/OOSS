@@ -94,8 +94,19 @@ export async function companyProfile() {
 
   const tenant = await prisma.tenant.findFirstOrThrow({ where: { id: auth.tenantId } });
   try {
-    return await prisma.companyProfile.create({
-      data: { tenantId: auth.tenantId, legalName: tenant.name },
+    // Inside the transaction, so the losing racer's rolled-back create leaves no audit row.
+    return await governedWrite(async (tx) => {
+      const created = await tx.companyProfile.create({
+        data: { tenantId: auth.tenantId, legalName: tenant.name },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'company_profile',
+        subjectId: created.id,
+        after: { legalName: tenant.name },
+        tx,
+      });
+      return created;
     });
   } catch (err) {
     // Two first readers race to create the profile (a publish and a read, or two

@@ -537,7 +537,21 @@ async function transitionRegistration(registrationId: string, to: RegistrationSt
 
 export async function confirmRegistration(registrationId: string) {
   const { registration } = await transitionRegistration(registrationId, 'confirmed');
-  return prisma.marketingEventRegistration.update({ where: { id: registration.id }, data: { status: 'confirmed' } });
+  return governedWrite(async (tx) => {
+    const updated = await tx.marketingEventRegistration.update({
+      where: { id: registration.id },
+      data: { status: 'confirmed' },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_event_registration',
+      subjectId: registration.id,
+      before: { status: registration.status },
+      after: { status: 'confirmed' },
+      tx,
+    });
+    return updated;
+  });
 }
 
 export async function checkInRegistration(registrationId: string) {

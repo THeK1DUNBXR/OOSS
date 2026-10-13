@@ -11,6 +11,8 @@
 import { AI_TOUCHPOINTS, type AiTierCode } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { ApiError } from '../../platform/errors.js';
 import { propose } from '../../agents/index.js';
 
@@ -36,21 +38,40 @@ export function listTouchpoints() {
  * Never granted a write tool — every touchpoint it declares classifies at
  * DRAFT or RECOMMEND, both of which require a human before anything happens.
  */
+// The principal's declared tools are what the agent may be offered, so a change to
+// them is audited. The early return keeps an unchanged row from being rewritten, and
+// from writing an audit row, on every draft that calls this.
+registerGovernedEntities('mkt', ['agent_principal']);
+
 async function ensureMarketingAssistant(): Promise<void> {
   const auth = currentAuth();
   const tools = Object.values(TOOL_BY_KIND).filter((v, i, arr) => arr.indexOf(v) === i);
-  await prisma.agentPrincipal.upsert({
-    where: { tenantId_agentKey: { tenantId: auth.tenantId, agentKey: AGENT_KEY } },
-    create: {
-      tenantId: auth.tenantId,
-      agentKey: AGENT_KEY,
-      name: 'Marketing Assistant',
-      purpose:
-        'Drafts campaign briefs, message copy, subject lines, audience suggestions and next-best-actions from structured data. Never sends a message, never creates or evaluates an audience, never approves a budget or a send.',
-      tier: 'DRAFT',
-      declaredTools: tools,
-    },
-    update: { declaredTools: tools },
+  const existing = await prisma.agentPrincipal.findFirst({
+    where: { tenantId: auth.tenantId, agentKey: AGENT_KEY },
+    select: { declaredTools: true },
+  });
+  if (existing && JSON.stringify(existing.declaredTools) === JSON.stringify(tools)) return;
+  await governedWrite(async (tx) => {
+    const row = await tx.agentPrincipal.upsert({
+      where: { tenantId_agentKey: { tenantId: auth.tenantId, agentKey: AGENT_KEY } },
+      create: {
+        tenantId: auth.tenantId,
+        agentKey: AGENT_KEY,
+        name: 'Marketing Assistant',
+        purpose:
+          'Drafts campaign briefs, message copy, subject lines, audience suggestions and next-best-actions from structured data. Never sends a message, never creates or evaluates an audience, never approves a budget or a send.',
+        tier: 'DRAFT',
+        declaredTools: tools,
+      },
+      update: { declaredTools: tools },
+    });
+    await auditWrite({
+      action: existing ? 'update' : 'create',
+      subjectType: 'agent_principal',
+      subjectId: row.id,
+      after: { agentKey: AGENT_KEY, tier: 'DRAFT', declaredTools: tools },
+      tx,
+    });
   });
 }
 

@@ -384,16 +384,30 @@ export async function setApplicabilityRule(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'edit' });
-  return prisma.tdsApplicabilityRule.upsert({
-    where: { tenantId_categoryId: { tenantId: auth.tenantId, categoryId: input.categoryId } },
-    create: {
-      tenantId: auth.tenantId,
-      categoryId: input.categoryId,
-      section: input.section,
-      active: input.active ?? true,
-      note: input.note ?? null,
-    },
-    update: { section: input.section, active: input.active ?? true, note: input.note ?? null },
+  return governedWrite(async (tx) => {
+    const existing = await tx.tdsApplicabilityRule.findFirst({
+      where: { tenantId: auth.tenantId, categoryId: input.categoryId },
+    });
+    const row = await tx.tdsApplicabilityRule.upsert({
+      where: { tenantId_categoryId: { tenantId: auth.tenantId, categoryId: input.categoryId } },
+      create: {
+        tenantId: auth.tenantId,
+        categoryId: input.categoryId,
+        section: input.section,
+        active: input.active ?? true,
+        note: input.note ?? null,
+      },
+      update: { section: input.section, active: input.active ?? true, note: input.note ?? null },
+    });
+    await auditWrite({
+      action: existing ? 'update' : 'create',
+      subjectType: 'tds_applicability_rule',
+      subjectId: row.id,
+      before: existing ? { section: existing.section, active: existing.active } : null,
+      after: { section: row.section, active: row.active },
+      tx,
+    });
+    return row;
   });
 }
 

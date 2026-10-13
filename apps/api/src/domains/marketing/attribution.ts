@@ -204,6 +204,9 @@ async function writeAttributionRows(
   const auth = currentAuth();
 
   await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${subjectId}))`;
+  // Not audited: attribution rows are derived from the touchpoints and rebuilt on every
+  // run, so they are a read model, not a record anyone decides on. Listed for an owner
+  // decision on a CLAUDE.md rule 5 exemption.
   let written = 0;
 
   for (const model of ATTRIBUTION_MODELS) {
@@ -412,17 +415,27 @@ export interface ScoreRuleInput {
 export async function createScoreRule(input: ScoreRuleInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_forms', verb: 'create' });
-  return prisma.marketingLeadScoreRule.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: internalCode('SCR'),
-      name: input.name,
-      condition: input.condition as never,
-      points: input.points,
-      active: input.active ?? true,
-      order: input.order ?? 0,
-      createdById: auth.partyId,
-    },
+  return governedWrite(async (tx) => {
+    const rule = await tx.marketingLeadScoreRule.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: internalCode('SCR'),
+        name: input.name,
+        condition: input.condition as never,
+        points: input.points,
+        active: input.active ?? true,
+        order: input.order ?? 0,
+        createdById: auth.partyId,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'marketing_score_rule',
+      subjectId: rule.id,
+      after: { name: input.name, points: input.points, active: input.active ?? true },
+      tx,
+    });
+    return rule;
   });
 }
 
@@ -601,16 +614,25 @@ export async function seedDefaultScoreRules(tenantId: string): Promise<number> {
   let created = 0;
   for (const seed of seeds) {
     if (existingNames.has(seed.name)) continue;
-    await prisma.marketingLeadScoreRule.create({
-      data: {
-        tenantId,
-        recordCode: internalCode('SCR'),
-        name: seed.name,
-        condition: seed.condition as never,
-        points: seed.points,
-        active: true,
-        order: seed.order,
-      },
+    await governedWrite(async (tx) => {
+      const rule = await tx.marketingLeadScoreRule.create({
+        data: {
+          tenantId,
+          recordCode: internalCode('SCR'),
+          name: seed.name,
+          condition: seed.condition as never,
+          points: seed.points,
+          active: true,
+          order: seed.order,
+        },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'marketing_score_rule',
+        subjectId: rule.id,
+        after: { name: seed.name, points: seed.points, active: true },
+        tx,
+      });
     });
     created += 1;
   }
@@ -682,6 +704,9 @@ export async function applyScores(): Promise<number> {
     select: { id: true },
   });
 
+  // Not audited: the score is recomputed from the rule set and the lead's behaviour on
+  // every run, so the stored value is a derived read model. Listed for an owner decision
+  // on a CLAUDE.md rule 5 exemption.
   for (const { id } of leads) {
     const { score, reasons } = await previewScore(id);
     await prisma.lead.update({ where: { id }, data: { score, scoreReasons: reasons } });

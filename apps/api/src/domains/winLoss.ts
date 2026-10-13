@@ -95,26 +95,34 @@ export async function ensureWinLossReview(subjectType: 'opportunity' | 'mou', su
   const outcome =
     subjectType === 'opportunity' ? ((subject as { outcome: string | null }).outcome ?? 'lost') : 'not_renewed';
 
-  const review = await prisma.winLossReview.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      subjectType,
-      subjectId,
-      subjectLabel: `${(subject as { recordCode: string }).recordCode} — ${(subject as { title: string }).title}`,
-      outcome,
-      mandatory,
-      mandatoryBasis: basis,
-      // Frozen at terminal-state entry.
-      strategicValueSnapshot: strategicValue,
-      commercialValueSnapshotMinor: commercial === null ? undefined : commercial,
-      thresholdUsedSnapshotMinor: threshold,
-      lostReason: subjectType === 'opportunity' ? (subject as { lostReason: string | null }).lostReason : null,
-      dueAt: mandatory ? new Date(Date.now() + GRACE_PERIOD_DAYS * 86_400_000) : null,
-    },
+  return governedWrite(async (tx) => {
+    const review = await tx.winLossReview.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        subjectType,
+        subjectId,
+        subjectLabel: `${(subject as { recordCode: string }).recordCode} — ${(subject as { title: string }).title}`,
+        outcome,
+        mandatory,
+        mandatoryBasis: basis,
+        // Frozen at terminal-state entry.
+        strategicValueSnapshot: strategicValue,
+        commercialValueSnapshotMinor: commercial === null ? undefined : commercial,
+        thresholdUsedSnapshotMinor: threshold,
+        lostReason: subjectType === 'opportunity' ? (subject as { lostReason: string | null }).lostReason : null,
+        dueAt: mandatory ? new Date(Date.now() + GRACE_PERIOD_DAYS * 86_400_000) : null,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'win_loss_review',
+      subjectId: review.id,
+      after: { recordCode, subjectType, subjectId, outcome, mandatory },
+      tx,
+    });
+    return review;
   });
-
-  return review;
 }
 
 export interface WinLossInput {

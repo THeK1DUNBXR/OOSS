@@ -503,6 +503,16 @@ export async function evaluateAudience(id: string) {
   const memberCount = await prisma.marketingAudienceMember.count({ where: { audienceId: id, deletedAt: null } });
   const evaluatedAt = new Date();
   await prisma.marketingAudience.update({ where: { id }, data: { memberCount, lastEvaluatedAt: evaluatedAt } });
+  // One row for the evaluation, not one per member. The members it adds or removes are
+  // the audience's own rows; the counts here are what a reviewer reads, and a row per
+  // member would bury them in a large audience.
+  await auditWrite({
+    action: 'update',
+    subjectType: 'audience',
+    subjectId: id,
+    before: { memberCount: audience.memberCount },
+    after: { memberCount, addedCount, removedCount, lastEvaluatedAt: evaluatedAt.toISOString() },
+  });
 
   await emit({
     name: EVENTS.MKT_AUDIENCE_EVALUATED,
