@@ -41,6 +41,7 @@ import { raiseException } from '../../platform/exceptions.js';
 import { registerHook } from '../../platform/hooks.js';
 import { nextDocumentNumber, DOCUMENT_SERIES } from '../../platform/documentNumber.js';
 import { companyProfile, documentNumbering } from '../companyProfile.js';
+import { isFounder, type FounderOverride } from '../statutory.js';
 import { encryptField, readRegulated } from './privacy.js';
 
 registerGovernedEntities('cmp_pay', [
@@ -371,10 +372,16 @@ export async function approveSalaryStructure(id: string) {
   const structure = await prisma.salaryStructure.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!structure) throw ApiError.notFound('Salary structure');
   if (structure.status === 'Approved') throw ApiError.conflict('This salary structure is already approved.');
+  // The founder is exempt (owner ruling 2026-10-12); the waiver is audited as
+  // author_is_approver on this approval's row.
+  const founderOverride: FounderOverride[] = [];
   if (structure.proposedById && structure.proposedById === auth.partyId) {
-    throw ApiError.forbidden('The proposer of a salary structure cannot also approve it (Self-Dealing Bar).', [
-      { axis: 'WHO', passed: false, reason: 'proposer_is_approver' },
-    ]);
+    if (!(await isFounder())) {
+      throw ApiError.forbidden('The proposer of a salary structure cannot also approve it (Self-Dealing Bar).', [
+        { axis: 'WHO', passed: false, reason: 'proposer_is_approver' },
+      ]);
+    }
+    founderOverride.push('author_is_approver');
   }
 
   const before = structure;
@@ -382,7 +389,14 @@ export async function approveSalaryStructure(id: string) {
     where: { id },
     data: { status: 'Approved', approvedById: auth.partyId, approvedAt: new Date() },
   });
-  await auditWrite({ action: 'update', subjectType: 'salary_structure', subjectId: row.id, before, after: row });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'salary_structure',
+    subjectId: row.id,
+    before,
+    after: row,
+    ...(founderOverride.length > 0 ? { meta: { founderOverride } } : {}),
+  });
   return row;
 }
 

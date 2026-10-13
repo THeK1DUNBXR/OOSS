@@ -10,7 +10,9 @@
  * an actor may execute the approved/signed transition if and only if
  *   (`<resource>:approve` grant held)
  *   AND (AUTHORITY_GRANT ceiling >= subject.commercial_value OR actor is the resolved-tier approver)
- *   AND (actor.principal_id != subject.owner_id)          -- the Self-Dealing Bar
+ *   AND (actor.principal_id != subject.owner_id)          -- the Self-Dealing Bar, at open
+ *                                                         time; decideApprovalStep waives it
+ *                                                         for the founder (owner ruling 2026-10-12)
  *   AND (actor.principal_type != 'agent').
  *
  * The old rule carried a fifth clause excluding `system_admin`. That role is
@@ -28,6 +30,7 @@ import { ApiError } from './errors.js';
 import { notify, raiseException } from './exceptions.js';
 import { auditWrite, registerGovernedEntities } from './audit.js';
 import { governedWrite } from './governedWrite.js';
+import { isFounder, type FounderOverride } from '../domains/statutory.js';
 
 // Registered here, not in audit.ts, because the step is the record the gate
 // opens: auditWrite silently skips unregistered types, so a decision would
@@ -40,7 +43,7 @@ export interface ApprovalPolicyContent {
   /** Tiered chain, escalating on strategic value or long term. */
   approverResolution: string[];
   escalateToTopTierWhen: { strategicValue?: string; termMonthsOver?: number };
-  /** Unconditional; no override path inside this policy. */
+  /** No override path inside this policy at open time; the founder exemption is applied at decide time. */
   selfDealingBar: true;
   /** Structurally excluded at every tier, regardless of any AUTHORITY_GRANT held. */
   excludedRoles: string[];
@@ -165,9 +168,11 @@ export async function evaluateApprovalGate(
     );
   }
 
-  // The Self-Dealing Bar: unconditional, with no override path inside this
-  // policy. When tripped, resolution reroutes to the next tier rather than
-  // blocking outright, and the attempt is audited as a watched pattern.
+  // The Self-Dealing Bar at open time has no override path inside this policy.
+  // When tripped, resolution reroutes to the next tier rather than blocking
+  // outright, and the attempt is audited as a watched pattern. A founder-requested
+  // step still reroutes like anyone's (owner ruling 2026-10-12): the founder is
+  // exempt at decide time, in decideApprovalStep, not by skipping the routing here.
   const selfDealing = Boolean(subject.ownerPartyId && auth.partyId && subject.ownerPartyId === auth.partyId);
 
   // authority_test — the HOW MUCH axis.
@@ -363,23 +368,37 @@ export async function decideApprovalStep(stepId: string, approve: boolean, note:
   if (auth.roleSlug && APPROVAL_EXCLUDED_ROLES.includes(auth.roleSlug as never)) {
     throw ApiError.forbidden(`${auth.roleSlug} is never a valid approval-resolution target at any tier.`);
   }
+  // The founder is exempt from both checks below (owner ruling 2026-10-12: "the
+  // founder is end all be all, he can do whatever he wants"). Each waiver is
+  // written to the decision's audit row as founderOverride, so the exemption is
+  // on the record rather than silent. The AI-principal refusal above is not
+  // waivable: the founder is a person, and an agent acting is not the founder.
+  const founderOverride: FounderOverride[] = [];
+
+  // The Self-Dealing Bar on decide: the requester never decides their own step.
   if (step.requestedById === auth.partyId) {
-    throw ApiError.forbidden('The Self-Dealing Bar is unconditional: a requester may never approve their own step.');
+    if (!(await isFounder())) {
+      throw ApiError.forbidden('The Self-Dealing Bar is unconditional: a requester may never approve their own step.');
+    }
+    founderOverride.push('author_is_approver');
   }
 
   // The grant says who may decide in principle; the resolution says who was
   // asked. Without this, any holder of approve on the resource can take a step
   // that was routed to someone else, which is how a Finance Head's sign-off
   // becomes a peer's. A step whose resolution found nobody (resolvedApproverId
-  // null, EX-GOV-001) is decided by no one here, deliberately.
+  // null, EX-GOV-001) is decided by no one here, deliberately, except the founder.
   if (
     !step.resolvedApproverId ||
     step.resolvedApproverId !== auth.partyId ||
     auth.roleSlug !== step.resolvedApproverRole
   ) {
-    throw ApiError.forbidden(
-      `This step was resolved to ${step.resolvedApproverRole ?? 'no role'}; only that approver of record may decide it.`,
-    );
+    if (!(await isFounder())) {
+      throw ApiError.forbidden(
+        `This step was resolved to ${step.resolvedApproverRole ?? 'no role'}; only that approver of record may decide it.`,
+      );
+    }
+    founderOverride.push('not_resolved_approver');
   }
 
   // The state check above reads the row; two approvers can both pass it. The
@@ -408,6 +427,7 @@ export async function decideApprovalStep(stepId: string, approve: boolean, note:
       subjectId: stepId,
       before: { state: step.state },
       after: { state: decided.state, decidedById: decided.decidedById, decisionNote: note },
+      ...(founderOverride.length > 0 ? { meta: { founderOverride } } : {}),
       tx,
     });
 

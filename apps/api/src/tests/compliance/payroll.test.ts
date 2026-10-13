@@ -19,7 +19,7 @@ import {
   statutoryLines,
   type PtSlab,
 } from '@kaizen/shared';
-import { asUser, expectReject, prisma, tenantId } from '../helpers.js';
+import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from '../helpers.js';
 import { hire, transitionEmployment } from '../../domains/employment.js';
 import { transitionPayrollRun } from '../../domains/payroll.js';
 import {
@@ -197,9 +197,9 @@ describe('payroll runs against the dated tables (real database)', () => {
     const { employment: emp, person } = await makeEmployee('run-a');
     const payPeriod = '2031-01';
 
-    // Proposed by the chairman — who holds every grant, including `approve` —
-    // to prove the Self-Dealing Bar catches the proposer regardless of rank,
-    // not merely because the two product roles never share a grant.
+    // Proposed by the chairman, who holds every grant, including `approve`. Finance then approves
+    // it, a different approver from the proposer. Owner ruling 2026-10-12: the founder is exempt
+    // from the Self-Dealing Bar; non-founders are covered in founderApprovals.test.ts.
     await asUser('chairman@kaizen.co.in', async () => {
       await proposeSalaryStructure({
         employmentRelationshipId: emp.id,
@@ -214,10 +214,30 @@ describe('payroll runs against the dated tables (real database)', () => {
       prisma.salaryStructure.findFirstOrThrow({ where: { tenantId: TENANT, employmentRelationshipId: emp.id } }),
     );
 
-    const selfApprove = await expectReject(() =>
-      asUser('chairman@kaizen.co.in', () => approveSalaryStructure(proposed.id)),
+    // Owner ruling 2026-10-12: the founder is exempt from the Self-Dealing Bar; the non-founder
+    // self-approval refusal is proved in founderApprovals.test.ts. Here the chairman proposes and
+    // approves a structure for a second employee, and the waiver is audited.
+    const { employment: founderEmp } = await makeEmployee('run-a-founder');
+    await asUser('chairman@kaizen.co.in', () =>
+      proposeSalaryStructure({
+        employmentRelationshipId: founderEmp.id,
+        effectiveFrom: new Date('2020-01-01'),
+        ctcAnnual: 300_000,
+        basic: 15_000,
+        hra: 6_000,
+        specialAllowance: 4_000,
+      }),
     );
-    expect(selfApprove.message).toMatch(/Self-Dealing/i);
+    const founderProposed = await asUser('chairman@kaizen.co.in', () =>
+      prisma.salaryStructure.findFirstOrThrow({ where: { tenantId: TENANT, employmentRelationshipId: founderEmp.id } }),
+    );
+    const founderApproved = await asUser('chairman@kaizen.co.in', () => approveSalaryStructure(founderProposed.id));
+    expect(founderApproved.status).toBe('Approved');
+    const founderAudit = await unscopedPrisma.auditRecord.findFirstOrThrow({
+      where: { subjectType: 'salary_structure', subjectId: founderProposed.id, action: 'update' },
+      orderBy: { seq: 'desc' },
+    });
+    expect((founderAudit.meta as Record<string, unknown>).founderOverride).toEqual(['author_is_approver']);
 
     await asUser('finance@kaizen.co.in', () => approveSalaryStructure(proposed.id));
 
