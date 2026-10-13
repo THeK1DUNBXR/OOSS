@@ -8,16 +8,19 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Server } from 'node:http';
 import { readFileSync } from 'node:fs';
+import type { DutyAssignment } from '@prisma/client';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../server.js';
 import { hashPassword } from '../lib/auth.js';
 import jwt from 'jsonwebtoken';
 import { generateTotpSecret, totp } from '../domains/compliance/corporate/totp.js';
+import { IT_ADMIN_DUTY } from '../domains/accountRecovery.js';
+import { FOUNDER_DUTY, assignDuty } from '../domains/statutory.js';
 import { config } from '../platform/config.js';
 import { addMissingGrants } from '../platform/grantSync.js';
 import authRoutes from '../routes/auth.routes.js';
-import { tenantId, unscopedPrisma } from './helpers.js';
+import { asUser, tenantId, unscopedPrisma } from './helpers.js';
 
 const PASSWORD = 'Recovery-Test-7q!pass';
 /** Twenty-odd non-whitespace characters: over the 20-character floor. */
@@ -172,12 +175,18 @@ async function credentialOf(principalId: string): Promise<string> {
   return (await unscopedPrisma.principal.findUniqueOrThrow({ where: { id: principalId } })).passwordHash;
 }
 
+/** The kaizen tenant's duty rows as they were before this file ran, put back after it. */
+let dutiesBefore: DutyAssignment[] = [];
+
 beforeAll(async () => {
   const app = createApp({ webDistDir: '', corsOrigins: [] });
   server = app.listen(0);
   base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 
   tid = await tenantId();
+  dutiesBefore = await unscopedPrisma.dutyAssignment.findMany({
+    where: { tenantId: tid, dutyKey: { in: [FOUNDER_DUTY, IT_ADMIN_DUTY] } },
+  });
   // A database seeded before this release has no row for the new resource. The
   // boot-time grantSync supplies it; the test asks for the same thing explicitly
   // so it does not depend on which release seeded the database.
@@ -193,11 +202,31 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  // The founder duty is the seeded owner's in the kaizen tenant. Put the rows back as they were.
+  await unscopedPrisma.dutyAssignment.deleteMany({
+    where: { tenantId: tid, dutyKey: { in: [FOUNDER_DUTY, IT_ADMIN_DUTY] } },
+  });
+  if (dutiesBefore.length > 0) await unscopedPrisma.dutyAssignment.createMany({ data: dutiesBefore });
 });
 
 // Every login and every recovery shares its address bucket across the suite.
 beforeEach(async () => {
   await unscopedPrisma.$executeRaw`DELETE FROM "RateLimitBucket" WHERE key LIKE 'login:%' OR key LIKE 'recovery:%'`;
+  // The recovery holder is the IT admin once one is named, otherwise the founder. Each test
+  // starts with this file's founder as the holder and no IT admin, so a test that names one
+  // cannot change the answer for the tests after it.
+  await unscopedPrisma.dutyAssignment.deleteMany({
+    where: { tenantId: tid, dutyKey: { in: [FOUNDER_DUTY, IT_ADMIN_DUTY] } },
+  });
+  await unscopedPrisma.dutyAssignment.create({
+    data: {
+      tenantId: tid,
+      dutyKey: FOUNDER_DUTY,
+      partyId: founder.personId,
+      effectiveFrom: new Date(Date.now() - 60_000),
+      assignedBy: founder.personId,
+    },
+  });
 });
 
 describe('account recovery: the founder recovers an employee', () => {
@@ -258,7 +287,8 @@ describe('account recovery: the founder recovers an employee', () => {
 });
 
 describe('account recovery: the IT admin recovers an employee', () => {
-  it('works for an hr_ops_manager holding the grant, and the recovered password signs in', async () => {
+  it('works for the IT admin once onboarding names them, and the recovered password signs in', async () => {
+    await asUser(founder.email, () => assignDuty({ dutyKey: IT_ADMIN_DUTY, partyId: itAdmin.personId }));
     const target = await makeAccount('ticket', 'employee');
     const res = await recover(itAdmin.token, { userId: target.userId, reason: GOOD_REASON });
     expect(res.status).toBe(200);
@@ -305,17 +335,17 @@ describe('account recovery: resetMfa', () => {
 
 describe('account recovery: refusals', () => {
   it('a recoverer cannot recover their own account: 403, nothing changes', async () => {
-    const before = await credentialOf(itAdmin.principalId);
-    const res = await recover(itAdmin.token, { userId: itAdmin.userId, reason: GOOD_REASON });
+    const before = await credentialOf(founder.principalId);
+    const res = await recover(founder.token, { userId: founder.userId, reason: GOOD_REASON });
     expect(res.status).toBe(403);
-    expect(await credentialOf(itAdmin.principalId)).toBe(before);
-    expect((await login(itAdmin.email, PASSWORD)).status).toBe(200);
+    expect(await credentialOf(founder.principalId)).toBe(before);
+    expect((await login(founder.email, PASSWORD)).status).toBe(200);
   });
 
   it('recovering a founder-role account is 403 and points to the operator procedure', async () => {
     const otherFounder = await makeAccount('founderb', 'chairman');
     const before = await credentialOf(otherFounder.principalId);
-    const res = await recover(itAdmin.token, { userId: otherFounder.userId, reason: GOOD_REASON });
+    const res = await recover(founder.token, { userId: otherFounder.userId, reason: GOOD_REASON });
     expect(res.status).toBe(403);
     const body = (await res.json()) as { error: { message: string } };
     expect(body.error.message).toMatch(/operator procedure/i);

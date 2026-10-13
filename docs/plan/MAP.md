@@ -20,7 +20,7 @@
 
 **`apps/api/src/domains/access/sod.ts`** (226 lines) — SodGrant:31 · SodFinding:36 · sodFindings:45 · grantedAfterConfirmTx:57 · overriddenPairCodesTx:105 · RecordSodOverrideInput:130 · recordSodOverride:142
 
-**`apps/api/src/domains/accountRecovery.ts`** (184 lines) — RECOVERY_REASON_MIN_CHARS:36 · RecoverAccountInput:52 · RecoverAccountResult:62 · recoverAccount:71
+**`apps/api/src/domains/accountRecovery.ts`** (232 lines) — RECOVERY_REASON_MIN_CHARS:38 · IT_ADMIN_DUTY:46 · RecoveryHolderKind:48 · recoveryHolder:56 · RecoverAccountInput:77 · RecoverAccountResult:87 · recoverAccount:96
 
 **`apps/api/src/domains/agreements.ts`** (717 lines) — AgreementKind:39 · createMou:45 · createContract:123 · createPartnerAgreement:197 · TransitionResult:344 · transitionAgreement:351 · runExpiryLadder:496 · renewAgreement:631 · auditWonWithoutContract:692
 
@@ -851,4 +851,4 @@
 Generated or lock files. Nothing in them answers a question worth the tokens.
 
 - `pnpm-lock.yaml` (6863 lines)
-- `scripts/gates/allowlist/g9-money.json` (1693 lines)
+- `scripts/gates/allowlist/g9-money.json` (1657 lines)
