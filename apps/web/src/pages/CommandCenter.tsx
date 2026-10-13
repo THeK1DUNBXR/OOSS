@@ -13,6 +13,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CommandCenterResponse, DecisionView, ExceptionView, HealthScoreView } from '@kaizen/shared';
 import { api, money, moneyMinor, relative, titleCase } from '../lib/api.js';
+import { endpoints } from '../lib/client.js';
 import { NOT_MEASURED, domainAsks, domainName, words } from '../lib/words.js';
 import {
   BandChip,
@@ -31,7 +32,7 @@ export function CommandCenter() {
   const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ['command-center'],
-    queryFn: () => api.get<CommandCenterResponse>('/command'),
+    queryFn: () => endpoints.command.centre(),
     refetchInterval: 120_000,
   });
 

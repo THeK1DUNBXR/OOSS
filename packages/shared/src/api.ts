@@ -1543,6 +1543,9 @@ export interface CompanyProfileView {
   stateCode: string | null;
   stateName: string | null;
   pan: string | null;
+  /** The Registrations tab reads these two. The row carries them (CompanyProfile in schema/main.prisma); the view had dropped them. */
+  tan: string | null;
+  udyamNumber: string | null;
   cin: string | null;
   addressLine1: string | null;
   addressLine2: string | null;

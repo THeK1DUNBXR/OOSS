@@ -33,6 +33,7 @@ import {
   type GstReturnType,
 } from '@kaizen/shared';
 import { api, date, dateTime, money } from '../lib/api.js';
+import { endpoints } from '../lib/client.js';
 import {
   Card,
   EmptyState,
@@ -87,7 +88,7 @@ export function GstReturns() {
   });
   const filings = useQuery({
     queryKey: ['gst-filings'],
-    queryFn: () => api.get<GstFilingView[]>('/books/gst/filings'),
+    queryFn: () => endpoints.books.gstFilings(),
   });
   const periodState = useQuery({
     queryKey: ['gst-period', period],
