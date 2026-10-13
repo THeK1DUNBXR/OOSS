@@ -607,7 +607,7 @@ export async function reverseTransactionIn(
  * the period hook first, as every dated write here does.
  */
 export async function reverseTransaction(id: string, reason: string): Promise<Transaction | PayoutRequest> {
-  await assertCan({ resource: 'transactions', verb: 'edit' });
+  await assertScopeAll('transactions', 'edit');
   // The reversal is stamped now, so it lands in today's period, not the
   // original's. A closed current month refuses it here, where the entry would
   // otherwise be written into a closed month.

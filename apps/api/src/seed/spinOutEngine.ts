@@ -30,7 +30,7 @@ import { EVENTS, type Division } from '@kaizen/shared';
 import { prisma, unscopedPrisma, dec } from '../platform/db.js';
 import { asSystem, currentAuth } from '../platform/context.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
-import { assertCan } from '../platform/permissions.js';
+import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { runHooks } from '../platform/hooks.js';
 import { ApiError } from '../platform/errors.js';
@@ -1099,7 +1099,7 @@ export async function revertSpinOut(input: {
     // revert here, before any row is touched.
     await asSystem(subsidiaryTenantId, async () => {
       await assertCan({ resource: 'share_ledger', verb: 'approve' });
-      await assertCan({ resource: 'transactions', verb: 'edit' });
+      await assertScopeAll('transactions', 'edit');
       await runHooks('transaction.before_record', { txnDate: now, source: 'reversal' });
     });
 

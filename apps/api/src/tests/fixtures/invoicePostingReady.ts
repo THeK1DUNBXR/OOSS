@@ -19,7 +19,9 @@ import { randomUUID } from 'node:crypto';
 import { DIVISIONS, PAYMENT_MODES } from '@kaizen/shared';
 import { unscopedPrisma } from '../../platform/db.js';
 
-const FROM = new Date('2000-01-01T00:00:00.000Z');
+// Earlier than any date a suite backdates an invoice to (the GST suites scan from 1990). A
+// mapping that starts later refuses an issue on an earlier day, so the start is well before them.
+const FROM = new Date('1900-01-01T00:00:00.000Z');
 
 /** The accounts the invoice and receipt postings resolve, by role and class. */
 const TAX_ROLES = [
@@ -45,7 +47,11 @@ export async function readyInvoicePosting(tenantId: string): Promise<void> {
     }));
 
   const mapRole = async (role: string, scopeKey: string, ledgerAccountId: string) => {
-    const mapped = await unscopedPrisma.ledgerPostingRole.findFirst({ where: { tenantId, role, scopeKey } });
+    // Looked up by its start date, not by any row: a tenant seeded with a later start still
+    // needs the earlier one, and posting roles are insert-only, so a new row is the fix.
+    const mapped = await unscopedPrisma.ledgerPostingRole.findFirst({
+      where: { tenantId, role, scopeKey, effectiveFrom: FROM },
+    });
     if (!mapped) {
       await unscopedPrisma.ledgerPostingRole.create({
         data: { tenantId, role, scopeKey, ledgerAccountId, effectiveFrom: FROM, setById: randomUUID() },
@@ -85,10 +91,10 @@ export async function readyInvoicePosting(tenantId: string): Promise<void> {
     const revenue = await account(`INV-POST TEST ONLY REVENUE ${division}`, 'income');
     await mapRole('REVENUE', line.id, revenue.id);
 
-    const open = await unscopedPrisma.invoiceDivisionLine.findFirst({
-      where: { tenantId, division, effectiveTo: null },
+    const starts = await unscopedPrisma.invoiceDivisionLine.findFirst({
+      where: { tenantId, division, effectiveFrom: FROM },
     });
-    if (!open) {
+    if (!starts) {
       await unscopedPrisma.invoiceDivisionLine.create({
         data: { tenantId, division, lineId: line.id, effectiveFrom: FROM, createdById: randomUUID() },
       });

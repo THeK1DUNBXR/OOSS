@@ -166,7 +166,7 @@
 
 **`apps/api/src/domains/interactions.ts`** (481 lines) — RelatedReference:34 · classificationFor:56 · computeSensitivity:73 · InteractionInput:94 · logInteraction:109 · VisibleInteraction:288 · timelineFor:318 · recentInteractions:441
 
-**`apps/api/src/domains/invoicePosting.ts`** (459 lines) — ledgerEntityForNewInvoice:46 · postInvoiceIssue:81 · postReceiptAllocation:179 · issueEntryExists:239 · issueEntryIn:252 · receiptPostsFor:269 · reverseEntryIn:278 · reverseInvoiceIssue:312 · paymentHasReceiptEntries:322 · reverseReceiptEntries:345 · listInvoiceDivisionLines:369 · InvoiceDivisionLineInput:378 · setInvoiceDivisionLine:390
+**`apps/api/src/domains/invoicePosting.ts`** (471 lines) — ledgerEntityForNewInvoice:46 · postInvoiceIssue:81 · postReceiptAllocation:185 · issueEntryExists:245 · issueEntryIn:258 · receiptPostsFor:275 · reverseEntryIn:290 · reverseInvoiceIssue:324 · paymentHasReceiptEntries:334 · reverseReceiptEntries:357 · listInvoiceDivisionLines:381 · InvoiceDivisionLineInput:390 · setInvoiceDivisionLine:402
 
 **`apps/api/src/domains/invoicing.ts`** (2112 lines) — InvoiceLineInput:115 · CollectedPaymentInput:154 · InvoiceInput:168 · invoiceLabel:214 · isCourseFeeInvoice:228 · lineTotalOf:240 · InvoiceTotals:244 · totalsOf:261 · totalsMinorOf:286 · paymentWire:313 · receiptWire:324 · InvoiceWire:338 · invoiceWire:342 · filingPeriodOf:362 · filedReturnFor:373 · assertPeriodOpen:393 · CUSTOMER_KINDS:415 · CustomerKind:416 · createInvoice:814 · updateInvoice:1039 · issueInvoiceDraft:1140 · voidInvoice:1247 · collectInvoicePayment:1317 · declarePaymentTerms:1625 · loadInvoiceForRead:1699 · invoiceSummary:1715 · invoiceDocument:1741 · rehydrateReceivablesFor:2057
 
@@ -328,7 +328,7 @@
 
 **`apps/api/src/platform/hooks.ts`** (60 lines) — HookName:29 · HookFn:39 · registerHook:44 · runHooks:53 · hookCount:57
 
-**`apps/api/src/platform/ledger.ts`** (523 lines) — SourceType:19 · JournalLineInput:21 · PostInput:36 · POSTABLE_PERIOD_STATUSES:53 · reversalLinkFor:160 · CostCentreRefusalReason:194 · CostCentreRefusedError:196 · post:408 · postInTx:451 · reverse:458 · balanceOf:503
+**`apps/api/src/platform/ledger.ts`** (527 lines) — SourceType:19 · JournalLineInput:21 · PostInput:36 · POSTABLE_PERIOD_STATUSES:53 · reversalLinkFor:160 · CostCentreRefusalReason:194 · CostCentreRefusedError:196 · post:408 · postInTx:455 · reverse:462 · balanceOf:507
 
 **`apps/api/src/platform/lifecycle.ts`** (226 lines) — TransitionInput:27 · TransitionResult:60 · transition:76 · transitionInTx:112 · applyDecided:131 · decide:149 · availableTransitions:212 · assertNotTerminal:217
 
@@ -394,7 +394,7 @@
 
 **`apps/api/src/agents/index.ts`** (531 lines) — ProposeInput:50 · ProposeResult:64 · propose:82 · decideAgentAction:329 · agentRoster:396 · revokeAuthority:443 · pauseAgent:496
 
-**`apps/api/src/events/handlers.ts`** (288 lines) — instalmentPlan:56 · instalmentAmounts:74 · registerSubscribers:79
+**`apps/api/src/events/handlers.ts`** (294 lines) — instalmentPlan:56 · instalmentAmounts:74 · registerSubscribers:79
 
 **`apps/api/src/jobs/cases.ts`** (52 lines) — runCaseOverdueJob:18 · JOBS:41
 

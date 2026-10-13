@@ -936,9 +936,24 @@ describe('the invoice says which of the three it is addressed to', () => {
       });
 
       const line = [{ description: 'A course', unitPrice: 10_000, gstRate: 18, hsnSac: '999293' }];
-      const forStudent = await createInvoice({ personId: student.personId, placeOfSupply: '33', lines: line });
-      const forCollege = await createInvoice({ organizationId: college.id, placeOfSupply: '33', lines: line });
-      const forFirm = await createInvoice({ organizationId: firm.id, placeOfSupply: '33', lines: line });
+      const forStudent = await createInvoice({
+        division: 'education',
+        personId: student.personId,
+        placeOfSupply: '33',
+        lines: line,
+      });
+      const forCollege = await createInvoice({
+        division: 'education',
+        organizationId: college.id,
+        placeOfSupply: '33',
+        lines: line,
+      });
+      const forFirm = await createInvoice({
+        division: 'education',
+        organizationId: firm.id,
+        placeOfSupply: '33',
+        lines: line,
+      });
 
       const [a, b, c] = await Promise.all([
         invoiceDocument(forStudent.id),

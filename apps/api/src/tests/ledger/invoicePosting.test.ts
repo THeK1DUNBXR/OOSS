@@ -235,7 +235,7 @@ describe('re-running a posting is idempotent', () => {
     const again = await asUser(LATHA, () =>
       prisma.$transaction((tx) => postInvoiceIssue(tx, created.id, new Date(created.issuedDate))),
     );
-    expect(again.id).toBe(first!.id);
+    expect(again?.id).toBe(first!.id);
     expect(await entriesFor('invoice', created.id)).toHaveLength(1);
     await trialBalanceHolds();
   });
@@ -411,3 +411,70 @@ async function receivableBalance(org: string): Promise<bigint> {
   const receivable = await receivableAccountId();
   return asUser(LATHA, () => balanceOf(receivable, new Date(), { partyId: org }));
 }
+
+// Owner decision, 2026-10-13: the temporary course-fee scheme is being replaced by receipts
+// leading to a final invoice. Until that lands a course-fee invoice in the temp series posts
+// nothing, on issue, collection, allocation or void.
+describe('a course-fee invoice in the temporary series posts nothing (owner decision, 2026-10-13)', () => {
+  it('issue and collect a course-fee temp invoice: no journal entry for it or its receipt, and the trial balance holds', async () => {
+    const created = await call(
+      'POST',
+      '/finance/invoices',
+      scenarioA(await anOrganization(), { enrollmentDate: '2026-10-01' }),
+    );
+    expect(created.status).toBe(201);
+    // The temp series is the course-fee one: the number carries it, and the hook forced the type.
+    expect(created.body.recordCode).toMatch(/temp/);
+    expect(created.body.invoiceType).toBe('temp');
+    expect(await entriesFor('invoice', created.body.id)).toHaveLength(0);
+    await trialBalanceHolds();
+
+    const collected = await call('POST', `/finance/invoices/${created.body.id}/collect`, { amount: 500, mode: 'cash' });
+    expect(collected.status).toBe(200);
+    expect(await entriesFor('receipt', collected.body.receipt.id)).toHaveLength(0);
+    expect(await entriesFor('invoice', created.body.id)).toHaveLength(0);
+    await trialBalanceHolds();
+  });
+
+  it('an allocation of a payment to a course-fee temp invoice posts no receipt entry', async () => {
+    const created = await call(
+      'POST',
+      '/finance/invoices',
+      scenarioA(await anOrganization(), { enrollmentDate: '2026-10-01' }),
+    );
+    expect(created.status).toBe(201);
+    const payment = await call('POST', '/finance/payments', {
+      amount: 200,
+      gatewayReference: `temp-alloc-${randomUUID()}`,
+      method: 'cash',
+    });
+    expect(payment.status).toBe(201);
+    const allocated = await call('POST', `/finance/payments/${payment.body.id}/allocate`, {
+      invoiceId: created.body.id,
+      amount: 200,
+    });
+    expect(allocated.status).toBe(200);
+    const receipts = await unscopedPrisma.receipt.findMany({ where: { tenantId: TENANT, invoiceId: created.body.id } });
+    expect(receipts).toHaveLength(1);
+    expect(await entriesFor('receipt', receipts[0]!.id)).toHaveLength(0);
+    await trialBalanceHolds();
+  });
+
+  it('a void of a course-fee temp invoice posts no reversal, because there is no entry to reverse', async () => {
+    const created = await call(
+      'POST',
+      '/finance/invoices',
+      scenarioA(await anOrganization(), { enrollmentDate: '2026-10-01' }),
+    );
+    expect(created.status).toBe(201);
+    const voided = await call('POST', `/finance/invoices/${created.body.id}/void`, { reason: 'raised in error' });
+    expect(voided.status).toBe(200);
+    expect(await entriesFor('invoice', created.body.id)).toHaveLength(0);
+    expect(
+      await unscopedPrisma.journalEntry.count({
+        where: { tenantId: TENANT, sourceType: 'reversal', sourceId: created.body.id },
+      }),
+    ).toBe(0);
+    await trialBalanceHolds();
+  });
+});

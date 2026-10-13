@@ -13,7 +13,7 @@ import { governedWrite } from '../../platform/governedWrite.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
-import { assertCan } from '../../platform/permissions.js';
+import { assertCan, assertScopeAll } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 
 registerGovernedEntities('hcm_payroll', ['payroll_division_line']);
@@ -51,7 +51,7 @@ export interface PayrollDivisionLineInput {
  */
 export async function setPayrollDivisionLine(input: PayrollDivisionLineInput) {
   const auth = currentAuth();
-  await assertCan({ resource: 'transactions', verb: 'create' });
+  await assertScopeAll('transactions', 'create');
   const division = input.division.trim();
   if (!division) throw ApiError.badRequest('A division is required. "shared" names the instructions with none.');
   const effectiveFrom = dayOf(input.effectiveFrom);
@@ -113,7 +113,7 @@ export async function setPayrollDivisionLine(input: PayrollDivisionLineInput) {
 /** Ends an open mapping: from `effectiveTo` (exclusive) the division has no line until a new mapping is set. */
 export async function endPayrollDivisionLine(id: string, effectiveTo: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'transactions', verb: 'edit' });
+  await assertScopeAll('transactions', 'edit');
   const end = dayOf(effectiveTo);
 
   return governedWrite(async (tx) => {

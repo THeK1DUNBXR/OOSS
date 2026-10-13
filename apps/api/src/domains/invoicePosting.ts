@@ -28,7 +28,7 @@ import {
 } from '@kaizen/shared';
 import { prisma, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
-import { assertCan } from '../platform/permissions.js';
+import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
@@ -82,13 +82,14 @@ export async function postInvoiceIssue(
   tx: DbTx,
   invoiceId: string,
   issuedDate: Date,
-): Promise<{ id: string; entryNumber: string }> {
+): Promise<{ id: string; entryNumber: string } | null> {
   const auth = currentAuth();
   const invoice = await tx.invoice.findFirst({
     where: { id: invoiceId, tenantId: auth.tenantId },
     select: {
       recordCode: true,
       draftReference: true,
+      enrollmentDate: true,
       ledgerEntityId: true,
       division: true,
       organizationId: true,
@@ -101,6 +102,11 @@ export async function postInvoiceIssue(
     },
   });
   if (!invoice) throw ApiError.notFound('Invoice');
+  // Owner decision, 2026-10-13: the temporary course-fee scheme is being replaced by receipts
+  // leading to a final invoice, and nothing posts until that lands. A course-fee invoice is the
+  // one with an enrolment date (isCourseFeeInvoice, invoicing.ts), the same predicate that picks
+  // the temp series and that gst.ts's beforeIssue hook forces to `temp`. It issues with no entry.
+  if (invoice.enrollmentDate) return null;
   const label = invoice.recordCode ?? invoice.draftReference ?? invoiceId;
 
   if (!invoice.ledgerEntityId) {
@@ -267,6 +273,12 @@ export async function issueEntryIn(tx: DbTx, invoiceId: string): Promise<boolean
  * (collectInvoicePayment), so in practice this is the issued-without-entry case.
  */
 export async function receiptPostsFor(tx: DbTx, invoiceId: string): Promise<boolean> {
+  // The temporary course-fee scheme posts nothing (owner decision, 2026-10-13; see postInvoiceIssue).
+  const invoice = await tx.invoice.findFirst({
+    where: { id: invoiceId, tenantId: currentAuth().tenantId },
+    select: { enrollmentDate: true },
+  });
+  if (invoice?.enrollmentDate) return false;
   return issueEntryIn(tx, invoiceId);
 }
 
@@ -389,7 +401,7 @@ export interface InvoiceDivisionLineInput {
  */
 export async function setInvoiceDivisionLine(input: InvoiceDivisionLineInput) {
   const auth = currentAuth();
-  await assertCan({ resource: 'transactions', verb: 'create' });
+  await assertScopeAll('transactions', 'create');
   const division = input.division.trim();
   if (!division) throw ApiError.badRequest('A division is required.');
   const effectiveFrom = dayOf(input.effectiveFrom);
