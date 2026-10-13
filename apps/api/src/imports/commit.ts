@@ -74,14 +74,14 @@ async function ensureAccount(name: string, accountType: string, tx: DbTx): Promi
       name,
       accountType,
       ledgerGroup: accountType === 'card' ? 'liability' : 'asset',
-      openingBalance: 0,
+      openingBalanceMinor: 0n,
     },
   });
   await auditWrite({
     action: 'create',
     subjectType: 'ledger_account',
     subjectId: created.id,
-    after: { name, accountType, ledgerGroup: created.ledgerGroup, openingBalance: 0 },
+    after: { name, accountType, ledgerGroup: created.ledgerGroup, openingBalance: 0, openingBalanceMinor: '0' },
     tx,
   });
   await emit({

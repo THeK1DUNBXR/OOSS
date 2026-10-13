@@ -646,7 +646,7 @@ export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutC
             accountType: spec.accountType,
             ledgerGroup: spec.ledgerGroup,
             currency: spec.currency,
-            openingBalance: dec(0)!,
+            openingBalanceMinor: 0n,
             openingNote: 'Opening balance to be set from the transfer of funds.',
             spinOutBatchId: batchId,
           },

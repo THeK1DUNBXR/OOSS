@@ -311,7 +311,7 @@ export async function seedDemoBooks() {
           name: spec.name,
           accountType: spec.accountType,
           displayReference: spec.displayReference,
-          openingBalance: spec.openingBalance,
+          openingBalanceMinor: toMinorHalfUp(spec.openingBalance),
           openingDate: baselineMonth(0),
           ledgerGroup: spec.ledgerGroup,
         },

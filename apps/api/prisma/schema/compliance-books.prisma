@@ -318,9 +318,9 @@ model BankStatementLine {
   id       String @id @default(cuid())
   tenantId String
 
-  accountId String
-  date      DateTime
-  amount    Decimal  @db.Decimal(18, 2)
+  accountId   String
+  date        DateTime
+  amountMinor BigInt
   /// in | out
   direction String
   reference String?

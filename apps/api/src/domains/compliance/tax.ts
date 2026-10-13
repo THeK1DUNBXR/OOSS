@@ -528,7 +528,7 @@ export async function pendingTdsLiability(
 export async function listChallans(filter: { month?: string; status?: string } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'view' });
-  return prisma.tdsChallan.findMany({
+  const rows = await prisma.tdsChallan.findMany({
     where: {
       tenantId: auth.tenantId,
       ...(filter.month ? { month: filter.month } : {}),
@@ -536,6 +536,7 @@ export async function listChallans(filter: { month?: string; status?: string } =
     },
     orderBy: [{ month: 'desc' }, { sectionGroup: 'asc' }],
   });
+  return rows.map((r) => withDecimalMinor(r, ['amount']));
 }
 
 async function nextChallanCode(month: string, sectionGroup: string): Promise<string> {
@@ -559,6 +560,7 @@ export async function createChallan(input: CreateChallanInput) {
 
   const liability = await pendingTdsLiability(input.month, input.sectionGroup);
   const amount = input.amount ?? liability.amount;
+  const amountMinor = rupeesToMinor(amount);
   const recordCode = await nextChallanCode(input.month, input.sectionGroup);
 
   const challan = await prisma.tdsChallan.create({
@@ -567,7 +569,7 @@ export async function createChallan(input: CreateChallanInput) {
       recordCode,
       month: input.month,
       sectionGroup: input.sectionGroup,
-      amount,
+      amountMinor,
       deducteeCount: liability.deducteeCount,
       bsrCode: input.bsrCode ?? null,
       challanNo: input.challanNo ?? null,
@@ -578,9 +580,9 @@ export async function createChallan(input: CreateChallanInput) {
     action: 'create',
     subjectType: 'tds_challan',
     subjectId: challan.id,
-    after: { month: input.month, sectionGroup: input.sectionGroup, amount },
+    after: { month: input.month, sectionGroup: input.sectionGroup, amount, amountMinor: minorString(amountMinor) },
   });
-  return challan;
+  return withDecimalMinor(challan, ['amount']);
 }
 
 export interface MarkChallanPaidInput {
@@ -656,7 +658,7 @@ export async function markChallanPaid(id: string, input: MarkChallanPaidInput) {
     await emit({
       name: 'kz.fin.tds.deposited',
       subject: { entityType: 'tds_challan', entityId: paid.id, recordCode: paid.recordCode },
-      newState: { status: 'paid', amount: num(paid.amount) },
+      newState: { status: 'paid', amount: minorToRupees(paid.amountMinor), amountMinor: minorString(paid.amountMinor) },
       impact: { domains: ['fin'] },
       tx,
     });
@@ -681,7 +683,7 @@ export async function markChallanPaid(id: string, input: MarkChallanPaidInput) {
     }
     return paid;
   });
-  return settled;
+  return withDecimalMinor(settled, ['amount']);
 }
 
 /**
@@ -969,7 +971,7 @@ export async function advanceTaxEstimateFor(
     orderBy: { instalmentDate: 'asc' },
   });
   const startYear = fyStartYear(fy);
-  const buckets = [0, 0, 0, 0];
+  const buckets: bigint[] = [0n, 0n, 0n, 0n];
   const windows = [
     // Instalments are due 'on or before' these dates, so the window closes at the end of the IST day.
     istEndOfDay(startYear, 6, 15),
@@ -979,7 +981,7 @@ export async function advanceTaxEstimateFor(
   ];
   for (const payment of payments) {
     const idx = windows.findIndex((w) => payment.paidOn <= w);
-    buckets[idx === -1 ? 3 : idx] += num(payment.amount) ?? 0;
+    buckets[idx === -1 ? 3 : idx] += payment.amountMinor;
   }
 
   return {
@@ -987,7 +989,11 @@ export async function advanceTaxEstimateFor(
     ytdProfit,
     ratePercent: rate.ratePercent,
     estimatedAnnualTax,
-    schedule: advanceTaxSchedule(estimatedAnnualTax, startYear, buckets),
+    schedule: advanceTaxSchedule(
+      estimatedAnnualTax,
+      startYear,
+      buckets.map((b) => minorToRupees(b)),
+    ),
   };
 }
 
@@ -1003,12 +1009,13 @@ export async function recordAdvanceTaxPayment(input: {
   // Interim policy, pending the accountant's confirmation (EX-FIN-008): see markChallanPaid.
   const paidInClosedPeriod = await periodRefusesEntries(input.paidOn);
   const bookedOn = paidInClosedPeriod ? await openAccountingDate(new Date()) : null;
+  const amountMinor = rupeesToMinor(input.amount);
   const row = await prisma.advanceTaxPayment.create({
     data: {
       tenantId: auth.tenantId,
       fy: input.fy,
       instalmentDate: input.instalmentDate,
-      amount: input.amount,
+      amountMinor,
       paidOn: input.paidOn,
       bookedOn,
       reference: input.reference ?? null,
@@ -1031,9 +1038,9 @@ export async function recordAdvanceTaxPayment(input: {
     action: 'create',
     subjectType: 'advance_tax_payment',
     subjectId: row.id,
-    after: { fy: input.fy, amount: input.amount },
+    after: { fy: input.fy, amount: input.amount, amountMinor: minorString(amountMinor) },
   });
-  return row;
+  return withDecimalMinor(row, ['amount']);
 }
 
 // ---------------------------------------------------------------------------
