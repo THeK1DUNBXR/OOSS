@@ -63,7 +63,7 @@ describe('quote.created emits a body that still verifies once stored', () => {
         { priceBookEntryId: entryA.id, quantity: 3, discountPct: 10 },
         { priceBookEntryId: entryB.id, quantity: 1, discountPct: 10 },
       ]);
-      expect(Number(quote.grandTotal)).toBe(2790.72);
+      expect(quote.grandTotal?.toFixed(2)).toBe('2790.72');
 
       const result = await verifyChain(TENANT, { cursor: head.seq.toString() });
       expect(result.valid).toBe(true);
@@ -74,7 +74,7 @@ describe('quote.created emits a body that still verifies once stored', () => {
         where: { tenantId: TENANT, eventName: 'kz.crm.quote.created', subjectEntityId: quote.id },
         select: { newState: true },
       });
-      expect(emitted.newState).toEqual(expect.objectContaining({ grandTotal: 2790.72, grandTotalMinor: '279072' }));
+      expect(emitted.newState).toEqual(expect.objectContaining({ grandTotal: '2790.72', grandTotalMinor: '279072' }));
     });
   });
 });

@@ -654,11 +654,13 @@ export async function createQuote(opportunityId: string, lines: QuoteLineInput[]
       related: [{ relation: 'quotes_for', entityType: 'opportunity', entityId: opportunityId }],
       // Read back from the row just written, not from the float sum above: 3100.8 - 310.08
       // is 2790.7200000000003 in floats, and the chain hash covers the body, so the float
-      // broke the link when the row kept 2790.72 (kaizen_s6b seq 587, 1364). The paise
-      // string is the shape the other money fields take in event bodies.
+      // broke the link when the row kept 2790.72 (kaizen_s6b seq 587, 1364). The decimal
+      // string is exact and is what the row stores; a JS number here would reintroduce the
+      // float read this change removed. The paise string is the shape the other money
+      // fields take in event bodies.
       newState: {
         version: quote.version,
-        grandTotal: num(updated.grandTotal),
+        grandTotal: updated.grandTotal!.toFixed(2),
         grandTotalMinor: decimalToMinor(updated.grandTotal!).toString(),
       },
       confidentiality: 'confidential',
