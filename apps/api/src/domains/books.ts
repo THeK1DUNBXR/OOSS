@@ -35,19 +35,22 @@ import {
   isTrading,
   type Division,
   type GstLineInput,
+  decimalToMinor,
+  toMinorHalfUp,
 } from '@kaizen/shared';
 import { prisma, unscopedPrisma, num, type DbTx } from '../platform/db.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
-import { lockLegacyPeriod } from '../platform/periodLock.js';
+import { lockLegacyPeriod, lockLegacyPeriods } from '../platform/periodLock.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney, assertScopeAll } from '../platform/permissions.js';
 import { paiseSum } from '../platform/wire.js';
 import { raiseException } from '../platform/exceptions.js';
 import { runHooks } from '../platform/hooks.js';
 import { registerGovernedEntities, auditWrite } from '../platform/audit.js';
+import { accrueRunLiabilities, payMonthEnd } from './hcm/payrollAccrual.js';
 
 // The audit-trail proviso to Companies (Accounts) Rules 2014, Rule 3(1): the
 // software must record every change to these in a trail that cannot be
@@ -705,7 +708,9 @@ export async function payVendorBill(
   await runHooks('vendor_bill.before_pay', { bill, amount: input.amount });
 
   const outstanding = round2((num(bill.total) ?? 0) - (num(bill.paidAmount) ?? 0));
-  if (input.amount > outstanding + 0.005) {
+  // Paise against paise. An amount typed with a third decimal rounds half away
+  // from zero here, so 0.005 over is refused where the old tolerance let it through.
+  if (toMinorHalfUp(input.amount) > toMinorHalfUp(outstanding)) {
     throw ApiError.unprocessable(
       `That is more than is outstanding on ${bill.recordCode} (₹${outstanding.toFixed(2)}). ` +
         'An overpayment needs a credit note rather than a larger payment.',
@@ -727,7 +732,7 @@ export async function payVendorBill(
   });
 
   const paid = round2((num(bill.paidAmount) ?? 0) + input.amount);
-  const status = paid >= (num(bill.total) ?? 0) - 0.005 ? 'paid' : 'part_paid';
+  const status = toMinorHalfUp(paid) >= decimalToMinor(bill.total) ? 'paid' : 'part_paid';
 
   const updated = await prisma.vendorBill.update({
     where: { id },
@@ -1655,13 +1660,20 @@ export async function postPayrollToBooks(payrollRunId: string, accountId: string
 
   const created = await governedWrite(async (tx) => {
     await lockPayrollRunForPosting(tx, auth.tenantId, run.id);
+    // Both months' period rows come before the accrual's first audit or event lock. Taking the
+    // cash month's row after it would invert the order periodLock.ts documents, and a close of
+    // that month could then deadlock with this post.
+    const cashDate = run.disbursedAt ?? new Date();
+    await lockLegacyPeriods(tx, auth.tenantId, [payMonthEnd(run.payPeriod), cashDate]);
+    // The liabilities post under the same lock as the cash legs (FX-73), so either route posts both.
+    await accrueRunLiabilities(tx, run);
     const legs: Awaited<ReturnType<typeof writeTransactionMinor>>[] = [];
     for (const [division, paise] of byDivision) {
       if (paise <= 0n) continue;
       legs.push(
         await writeTransactionMinor(
           {
-            txnDate: run.disbursedAt ?? new Date(),
+            txnDate: cashDate,
             direction: 'out',
             amount: paise,
             accountId,

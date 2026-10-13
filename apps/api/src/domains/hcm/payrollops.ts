@@ -44,6 +44,8 @@ import { paiseSum } from '../../platform/wire.js';
 import { payrollCostByDivision } from '../payroll.js';
 import { checkTransactionAllowed, lockPayrollRunForPosting, writeTransactionMinor } from '../books.js';
 import { encryptField, readRegulated } from '../compliance/privacy.js';
+import { accrueRunLiabilities, payMonthEnd } from './payrollAccrual.js';
+import { lockLegacyPeriods } from '../../platform/periodLock.js';
 
 /** Withholds a money field for a caller who cannot see it — null, never zero, with a reason. Same shape as `hcm/compensation.ts`'s `money()`. */
 function money(value: unknown, visible: boolean): number | null {
@@ -533,6 +535,12 @@ export async function postPayrollJournal(id: string, accountId: string) {
     const locked = await tx.payrollJournal.findFirst({ where: { id, tenantId: auth.tenantId } });
     if (!locked) throw ApiError.notFound('Payroll journal');
     if (locked.status === 'Posted') throw ApiError.conflict('This journal is already posted.');
+
+    // Both months' period rows before the accrual's first audit or event lock (periodLock.ts order).
+    await lockLegacyPeriods(tx, auth.tenantId, [payMonthEnd(run.payPeriod), txnDate]);
+    // The liabilities post with the cash leg, under the same lock (FX-73). A refusal
+    // here rolls back the whole post, so the journal stays Prepared with nothing written.
+    await accrueRunLiabilities(tx, run);
 
     const txn = await writeTransactionMinor(
       {

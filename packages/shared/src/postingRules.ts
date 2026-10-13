@@ -126,6 +126,8 @@ export const postingKeys = {
   receiptAllocated: (receiptId: string) => `receipt:${receiptId}`,
   creditNote: (creditNoteId: string) => `credit_note:${creditNoteId}`,
   expenseReimbursed: (claimId: string) => `expense_claim:${claimId}:reimburse`,
+  /** One accrual per run and ledger entity (FX-73): the run posts once per entity, however many routes reach it. */
+  payrollRunAccrual: (runId: string, entityId: string) => `payroll_run:${runId}:accrual:${entityId}`,
 } as const;
 
 /** Throws unless every amount is a bigint. A JavaScript number is a rounded float; money is bigint (CLAUDE.md rule 1). */
@@ -258,4 +260,113 @@ export function buildReceiptAllocationEntry(
   ];
   assertBalancedLines(lines, 'Receipt allocation');
   return lines;
+}
+
+/**
+ * One business line's share of a run, for one ledger entity: the gross it bears
+ * (Dr salary expense) and the employer contributions it bears (Dr employer
+ * contributions expense). Both are positive paise, summed from the instructions.
+ */
+export interface PayrollAccrualLine {
+  lineId: string;
+  grossMinor: bigint;
+  employerMinor: bigint;
+}
+
+/**
+ * What one entity's share of a run owes, in paise. The payables are summed from
+ * the stored instruction components: net pay, PF (employee, employer and EPS),
+ * ESI (both shares), PT, LWF (both shares) and salary TDS.
+ *
+ * EDLI and admin charges are not in this source: the statutory lines do not store
+ * them (compliance/payroll.ts computeInstruction), so they are not posted here.
+ * Adding them is a statutory-lines change, not an accrual change.
+ */
+export interface PayrollAccrualSource {
+  byLine: readonly PayrollAccrualLine[];
+  netPayMinor: bigint;
+  pfPayableMinor: bigint;
+  esiPayableMinor: bigint;
+  ptMinor: bigint;
+  lwfPayableMinor: bigint;
+  tdsMinor: bigint;
+}
+
+/**
+ * The entry a run's liabilities post as, for one ledger entity (FX-73). Debits:
+ * salary expense and employer contributions expense, each per business line, since
+ * a ledger expense line must name its business line. Credits: each payable, once.
+ * A zero amount is omitted, and so is its role: a run with no LWF in the month
+ * needs no LWF account.
+ *
+ * Refuses an entry that does not balance. The caller checks each instruction's
+ * residual first, so this is the backstop, not the first place a gap is named.
+ */
+export function buildPayrollAccrualEntry(
+  source: PayrollAccrualSource,
+  accounts: ResolvedPostingAccounts,
+): PostingLine[] {
+  requireBigints({
+    netPayMinor: source.netPayMinor,
+    pfPayableMinor: source.pfPayableMinor,
+    esiPayableMinor: source.esiPayableMinor,
+    ptMinor: source.ptMinor,
+    lwfPayableMinor: source.lwfPayableMinor,
+    tdsMinor: source.tdsMinor,
+  });
+  const lines: PostingLine[] = [];
+  source.byLine.forEach((row, index) => {
+    requireBigints({
+      [`byLine[${index}].grossMinor`]: row.grossMinor,
+      [`byLine[${index}].employerMinor`]: row.employerMinor,
+    });
+    if (row.grossMinor !== 0n) {
+      lines.push({
+        accountId: accountFor(accounts, 'PAYROLL_SALARY_EXPENSE'),
+        amountMinor: row.grossMinor,
+        lineId: row.lineId,
+      });
+    }
+    if (row.employerMinor !== 0n) {
+      lines.push({
+        accountId: accountFor(accounts, 'PAYROLL_EMPLOYER_CONTRIB_EXPENSE'),
+        amountMinor: row.employerMinor,
+        lineId: row.lineId,
+      });
+    }
+  });
+  const payables: Array<[PostingRole, bigint]> = [
+    ['PAYROLL_NET_PAY_PAYABLE', source.netPayMinor],
+    ['PAYROLL_PF_PAYABLE', source.pfPayableMinor],
+    ['PAYROLL_ESI_PAYABLE', source.esiPayableMinor],
+    ['PAYROLL_PT_PAYABLE', source.ptMinor],
+    ['PAYROLL_LWF_PAYABLE', source.lwfPayableMinor],
+    ['PAYROLL_TDS_PAYABLE', source.tdsMinor],
+  ];
+  for (const [role, amount] of payables) {
+    if (amount !== 0n) lines.push({ accountId: accountFor(accounts, role), amountMinor: -amount });
+  }
+  assertBalancedLines(lines, 'Payroll accrual');
+  return lines;
+}
+
+/**
+ * The posting roles an accrual needs, for the lines that are not zero. A run with
+ * no LWF this month does not need the LWF role mapped; it is resolved only when a
+ * line uses it.
+ */
+export function payrollAccrualRoles(source: PayrollAccrualSource): PostingRole[] {
+  const roles: PostingRole[] = [];
+  if (source.byLine.some((row) => row.grossMinor !== 0n)) roles.push('PAYROLL_SALARY_EXPENSE');
+  if (source.byLine.some((row) => row.employerMinor !== 0n)) roles.push('PAYROLL_EMPLOYER_CONTRIB_EXPENSE');
+  const payables: Array<[PostingRole, bigint]> = [
+    ['PAYROLL_NET_PAY_PAYABLE', source.netPayMinor],
+    ['PAYROLL_PF_PAYABLE', source.pfPayableMinor],
+    ['PAYROLL_ESI_PAYABLE', source.esiPayableMinor],
+    ['PAYROLL_PT_PAYABLE', source.ptMinor],
+    ['PAYROLL_LWF_PAYABLE', source.lwfPayableMinor],
+    ['PAYROLL_TDS_PAYABLE', source.tdsMinor],
+  ];
+  for (const [role, amount] of payables) if (amount !== 0n) roles.push(role);
+  return roles;
 }
