@@ -122,9 +122,11 @@ describe('a part credit against an issued invoice posts its share, in the invoic
     const org = await anOrganization();
     const receivable = await receivableAccountId();
     const lineId = await divisionLineId(DIVISION);
+    // Read before the invoice is raised: the issue posts 1457.00 to the same receivable, and the
+    // movement this test checks has to include that issue (the second test reads its baseline the same way).
+    const beforeIssue = await receivableOf(org, receivable);
     const invoice = (await call('POST', '/finance/invoices', scenarioA(org))).body;
     expect(invoice.grandTotalMinor).toBe('145700');
-    const beforeCredit = await receivableOf(org, receivable);
 
     const credited = await call('POST', `/finance/invoices/${invoice.id}/credit-note`, {
       amount: 500,
@@ -151,8 +153,9 @@ describe('a part credit against an issued invoice posts its share, in the invoic
     expect(entry!.lines.find((l) => l.amountMinor === 7n)?.lineId).toBe(lineId);
     await trialBalanceHolds();
 
-    // The receivable falls by exactly the note: 1457.00 issued, 500.00 credited, 957.00 left.
-    expect((await receivableOf(org, receivable)) - beforeCredit).toBe(145700n - 50000n);
+    // From the baseline taken before the issue: the issue adds 1457.00 and the note takes 500.00 back,
+    // so 957.00 is left on the receivable.
+    expect((await receivableOf(org, receivable)) - beforeIssue).toBe(145700n - 50000n);
   });
 });
 

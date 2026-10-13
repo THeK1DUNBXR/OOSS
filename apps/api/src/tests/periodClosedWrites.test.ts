@@ -321,17 +321,24 @@ function settle<T>(promise: Promise<T>): Promise<PromiseSettledResult<T>> {
 }
 
 /**
- * Whether some session is waiting on a lock, polled for up to 20 s. Resolves with `false` on
- * the timeout rather than rejecting, so a race that is already settled does not leave an error
- * behind it.
+ * Whether some session in this database is waiting on a lock, polled for up to 20 s. Resolves
+ * with `false` on the timeout rather than rejecting, so a race that is already settled does not
+ * leave an error behind it.
+ *
+ * A write that waits on a row (the period row's FOR SHARE behind the close's FOR UPDATE) waits
+ * on the holder's transaction ID, and a transactionid lock has no database of its own in pg_locks
+ * (database IS NULL). A pg_locks filter on the database never sees that wait, so the write read
+ * as not blocked and the race looked like it finished. The database is taken from pg_stat_activity
+ * instead, as handoverGate.test.ts does: the application role's sessions hide their wait event
+ * from this client, but their datname is visible.
  */
 async function waitForWaiter(): Promise<boolean> {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
     const rows = await unscopedPrisma.$queryRaw<Array<{ n: number }>>`
-      SELECT count(*)::int AS n FROM pg_locks
-      WHERE NOT granted
-        AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`;
+      SELECT count(*)::int AS n FROM pg_locks l
+      JOIN pg_stat_activity a ON a.pid = l.pid
+      WHERE NOT l.granted AND a.datname = current_database()`;
     if ((rows[0]?.n ?? 0) > 0) return true;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }

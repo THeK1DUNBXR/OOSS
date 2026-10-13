@@ -109,13 +109,20 @@ function holdPosting(f: Fixture, input: PostInput) {
   return { posted, release, done };
 }
 
-/** How many statements are queued on the month's period row (the close's UPDATE, or a posting's FOR SHARE). */
+/**
+ * Sessions in this database queued on a lock. In this test the only session that can queue is
+ * the close's request: the posting holds its row and does not wait. The close runs as the
+ * application role (requestClosePeriod uses the scoped client), whose query text and wait event
+ * this client cannot read, so the test cannot match the statement by its SQL. It reads the
+ * ungranted lock requests instead, with the database from pg_stat_activity, since a row-lock
+ * wait is a transactionid lock with no database of its own in pg_locks (as handoverGate.test.ts
+ * does).
+ */
 async function waitersOnPeriodRows(): Promise<number> {
   const rows = await unscopedPrisma.$queryRaw<Array<{ n: number }>>`
-    SELECT count(*)::int AS n FROM pg_stat_activity
-    WHERE datname = current_database()
-      AND wait_event_type = 'Lock'
-      AND query LIKE '%cmp_accounting_periods%'`;
+    SELECT count(DISTINCT l.pid)::int AS n FROM pg_locks l
+    JOIN pg_stat_activity a ON a.pid = l.pid
+    WHERE NOT l.granted AND a.datname = current_database()`;
   return rows[0]?.n ?? 0;
 }
 
