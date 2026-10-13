@@ -990,7 +990,7 @@ export async function aoc1(): Promise<Aoc1View> {
       (cap.rows ?? []).reduce((sum, r) => {
         const cls = classById.get(r.shareClassId);
         if (!cls || (cls.kind !== 'equity' && cls.kind !== 'preference')) return sum;
-        return sum + (num(cls.faceValue as never) ?? 0) * r.count;
+        return sum + (cls.faceValue ?? 0) * r.count;
       }, 0),
     );
 

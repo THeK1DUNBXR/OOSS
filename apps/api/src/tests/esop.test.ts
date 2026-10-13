@@ -492,7 +492,7 @@ describe('EQT-ESP-007 — exercise allots shares through the register at the exe
     expect(txn.type).toBe('allotment');
     expect(txn.shareClassId).toBe(p.targetShareClassId);
     expect(Number(txn.count)).toBe(4);
-    expect(Number(txn.pricePerShare)).toBe(15);
+    expect(txn.pricePerShareMinor).toBe(1500n);
     expect(holder.personId).toBe(emp.person.id);
     expect(cert).not.toBeNull();
 
