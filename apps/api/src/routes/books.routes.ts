@@ -19,9 +19,9 @@ import {
   type GstReturnType,
 } from '@kaizen/shared';
 import { handler, str, date, numeric } from '../lib/http.js';
-import { maskMoney } from '../domains/money.js';
+import { maskMoney, minorToRupees } from '../domains/money.js';
 import { num } from '../platform/db.js';
-import { rupeesOf, withRupeeWire, wireInt } from '../platform/wire.js';
+import { minorString, rupeesOf, withRupeeWire, wireInt } from '../platform/wire.js';
 
 /** The GST filing's paise columns, as the wire names them. */
 const FILING_MONEY = ['taxableValue', 'cgstAmount', 'sgstAmount', 'igstAmount', 'inputTaxCredit', 'netPayable'];
@@ -233,8 +233,8 @@ router.get(
     const today = new Date();
 
     return rows.map((b) => {
-      const total = num(b.total) ?? 0;
-      const paid = num(b.paidAmount) ?? 0;
+      const total = b.totalMinor;
+      const paid = b.paidAmountMinor;
       return {
         id: b.id,
         recordCode: b.recordCode,
@@ -244,9 +244,12 @@ router.get(
         dueDate: b.dueDate?.toISOString().slice(0, 10) ?? null,
         division: b.division,
         status: b.status,
-        total: amount(total, money),
-        paidAmount: amount(paid, money),
-        outstanding: amount(total - paid, money),
+        // The rupee fields the screen reads, and the paise strings beside them. Withheld together when the viewer cannot see money.
+        total: amount(minorToRupees(total), money),
+        totalMinor: money ? minorString(total) : null,
+        paidAmount: amount(minorToRupees(paid), money),
+        paidAmountMinor: money ? minorString(paid) : null,
+        outstanding: amount(minorToRupees(total - paid), money),
         daysOverdue:
           b.dueDate && b.dueDate < today && paid < total
             ? Math.floor((today.getTime() - b.dueDate.getTime()) / 86_400_000)

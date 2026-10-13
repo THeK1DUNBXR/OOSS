@@ -4689,10 +4689,13 @@ model CompensationRecord {
   linkedAssignment         Assignment?            @relation(fields: [linkedAssignmentId], references: [id])
 
   revisionReason String
-  amount         Decimal  @db.Decimal(14, 2)
+  /// Paise. Was Decimal(14,2) until ORDERED-PLAN 1.6 HCM slice; the API keeps the
+  /// rupee `amount` beside `amountMinor` on the wire for one wave.
+  amountMinor    BigInt
   currency       String   @default("INR")
   /// Monthly gross broken out, so payroll does not re-derive it every run.
-  basicPay       Decimal? @db.Decimal(14, 2)
+  /// Paise, as amountMinor.
+  basicPayMinor  BigInt?
   status         String   @default("Proposed") // R2
   correlationId  String?
   decisionId     String?
@@ -4902,7 +4905,8 @@ model LearningActivity {
 
   title        String
   isCompliance Boolean @default(false)
-  cost         Decimal @default(0) @db.Decimal(10, 2)
+  /// Paise. Was Decimal(10,2) until ORDERED-PLAN 1.6 HCM slice.
+  costMinor    BigInt @default(0)
   /// Optional link to the Education catalogue, so an internally-delivered
   /// course is one course rather than two records of the same thing.
   courseId     String?
@@ -5330,10 +5334,10 @@ model VendorBill {
   categoryId  String?
   division    String?
 
-  subtotal   Decimal @default(0) @db.Decimal(18, 2)
-  taxAmount  Decimal @default(0) @db.Decimal(18, 2)
-  total      Decimal @default(0) @db.Decimal(18, 2)
-  paidAmount Decimal @default(0) @db.Decimal(18, 2)
+  subtotalMinor   BigInt @default(0)
+  taxAmountMinor  BigInt @default(0)
+  totalMinor      BigInt @default(0)
+  paidAmountMinor BigInt @default(0)
   currency   String  @default("INR")
 
   /// draft | open | part_paid | paid | cancelled
@@ -5347,11 +5351,11 @@ model VendorBill {
   vendorPan         String?
   /// Reverse charge on this inward supply: tax the company pays on the vendor's behalf.
   rcmApplicable     Boolean   @default(false)
-  rcmTaxAmount      Decimal   @default(0) @db.Decimal(18, 2)
+  rcmTaxAmountMinor BigInt    @default(0)
   /// TDS deducted at approval, from the dated section-rate table.
   tdsSection        String?
   tdsRate           Decimal?  @db.Decimal(5, 2)
-  tdsAmount         Decimal   @default(0) @db.Decimal(18, 2)
+  tdsAmountMinor    BigInt    @default(0)
   /// A lower/nil-deduction certificate (Sec 197) reference, when one overrides the table.
   tdsCertificateRef String?
   tdsChallanId      String?

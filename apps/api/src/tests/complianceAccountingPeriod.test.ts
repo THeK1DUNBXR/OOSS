@@ -73,9 +73,9 @@ async function billInClosedPeriod(vendorGstin: string | null = null) {
       vendorName: unique('W2 compliance vendor'),
       vendorGstin,
       billDate: new Date('2017-10-15T06:00:00Z'),
-      subtotal: 1000,
-      taxAmount: 0,
-      total: 1000,
+      subtotalMinor: 100000n,
+      taxAmountMinor: 0n,
+      totalMinor: 100000n,
       status: 'open',
     },
   });

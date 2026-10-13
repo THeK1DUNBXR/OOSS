@@ -341,11 +341,14 @@ export async function leaveLiability(): Promise<LeaveLiabilityResult> {
         voidedAt: null,
       },
       orderBy: { effectiveFrom: 'desc' },
-      select: { employmentRelationshipId: true, basicPay: true, amount: true },
+      select: { employmentRelationshipId: true, basicPayMinor: true, amountMinor: true },
     });
     for (const c of comp) {
       if (dailyRateByEmployment.has(c.employmentRelationshipId)) continue;
-      dailyRateByEmployment.set(c.employmentRelationshipId, dailyRateFromBasic(num(c.basicPay) ?? num(c.amount) ?? 0));
+      dailyRateByEmployment.set(
+        c.employmentRelationshipId,
+        dailyRateFromBasic(minorToRupees(c.basicPayMinor ?? c.amountMinor)),
+      );
     }
   }
 
@@ -619,12 +622,12 @@ export async function compRatioDistribution(): Promise<Metric<Array<{ bucket: st
       voidedAt: null,
     },
     orderBy: { effectiveFrom: 'desc' },
-    select: { employmentRelationshipId: true, amount: true },
+    select: { employmentRelationshipId: true, amountMinor: true },
   });
   const ctcByEmployment = new Map<string, number>();
   for (const c of comp) {
     if (ctcByEmployment.has(c.employmentRelationshipId)) continue;
-    ctcByEmployment.set(c.employmentRelationshipId, num(c.amount) ?? 0);
+    ctcByEmployment.set(c.employmentRelationshipId, minorToRupees(c.amountMinor));
   }
 
   const ratios: number[] = [];
@@ -926,11 +929,14 @@ export async function exportLeaveLiabilityReport(): Promise<CsvExport> {
         voidedAt: null,
       },
       orderBy: { effectiveFrom: 'desc' },
-      select: { employmentRelationshipId: true, basicPay: true, amount: true },
+      select: { employmentRelationshipId: true, basicPayMinor: true, amountMinor: true },
     });
     for (const c of comp) {
       if (dailyRateByEmployment.has(c.employmentRelationshipId)) continue;
-      dailyRateByEmployment.set(c.employmentRelationshipId, dailyRateFromBasic(num(c.basicPay) ?? num(c.amount) ?? 0));
+      dailyRateByEmployment.set(
+        c.employmentRelationshipId,
+        dailyRateFromBasic(minorToRupees(c.basicPayMinor ?? c.amountMinor)),
+      );
     }
   }
 

@@ -651,7 +651,7 @@ export async function computeGstr3b(period: string) {
 
   const bills = await prisma.vendorBill.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, billDate: { gte: from, lt: to } },
-    select: { subtotal: true, taxAmount: true, vendorGstin: true, vendorName: true },
+    select: { subtotalMinor: true, taxAmountMinor: true, vendorGstin: true, vendorName: true },
   });
 
   // Which heads a bill's tax sits in follows from where the supplier is: a
@@ -662,13 +662,14 @@ export async function computeGstr3b(period: string) {
   let creditableBase = 0;
   let unregisteredInputs = 0;
   for (const bill of bills) {
-    const tax = num(bill.taxAmount) ?? 0;
+    // The tax comes off the paise column. The head split below is still rupee arithmetic, left as it was so no figure moves.
+    const tax = minorToRupees(bill.taxAmountMinor);
     if (tax <= 0) continue;
     if (!bill.vendorGstin) {
       unregisteredInputs = round2(unregisteredInputs + tax);
       continue;
     }
-    creditableBase = round2(creditableBase + (num(bill.subtotal) ?? 0));
+    creditableBase = round2(creditableBase + minorToRupees(bill.subtotalMinor));
     const supplierState = bill.vendorGstin.slice(0, 2);
     if (us.stateCode && supplierState !== us.stateCode) {
       credit.igst = round2(credit.igst + tax);

@@ -44,7 +44,7 @@ import {
   type OffboardingState,
   type OffboardingEvent,
 } from '@kaizen/shared';
-import { prisma, num } from '../platform/db.js';
+import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -58,8 +58,8 @@ import { assertEmploymentVisible } from '../platform/recordScope.js';
 import { normalisePhone, normaliseEmail } from './identity.js';
 import { runHooks } from '../platform/hooks.js';
 import { encryptField, readRegulated } from './compliance/privacy.js';
-import { OFFBOARDING_MONEY } from './money.js';
-import { withDecimalMinor } from '../platform/wire.js';
+import { minorToRupees, OFFBOARDING_MONEY } from './money.js';
+import { minorString, rupeesToMinor, rupeesToMinorOrNull, withDecimalMinor } from '../platform/wire.js';
 import {
   authoriseHandover,
   executeHandover,
@@ -256,6 +256,10 @@ export async function getEmployment(id: string) {
   return {
     ...employment,
     offboarding: employment.offboarding ? withDecimalMinor(employment.offboarding, OFFBOARDING_MONEY) : null,
+    learningRecords: employment.learningRecords.map((r) => ({
+      ...r,
+      learningActivity: withDecimalMinor(r.learningActivity, ['cost'] as const),
+    })),
   };
 }
 
@@ -1014,6 +1018,9 @@ export async function transitionAssignment(id: string, event: AssignmentRequestE
   });
 }
 
+/** The pay columns a compensation record carries as paise. The rupee keys stay on the wire beside them. */
+const COMPENSATION_MONEY = ['amount', 'basicPay'] as const;
+
 /**
  * A pay change. The promotion linkage constraint of §14.5 is enforced here:
  * a change whose reason is a promotion must name the assignment that promoted
@@ -1067,8 +1074,8 @@ export async function proposeCompensation(input: {
         tenantId: auth.tenantId,
         employmentRelationshipId: input.employmentRelationshipId,
         revisionReason: input.revisionReason,
-        amount: input.amount,
-        basicPay: input.basicPay ?? null,
+        amountMinor: rupeesToMinor(input.amount),
+        basicPayMinor: rupeesToMinorOrNull(input.basicPay ?? null),
         currency: input.currency ?? 'INR',
         effectiveFrom: input.effectiveFrom,
         linkedAssignmentId: input.linkedAssignmentId ?? null,
@@ -1106,7 +1113,7 @@ export async function proposeCompensation(input: {
       tx,
     });
 
-    return record;
+    return withDecimalMinor(record, COMPENSATION_MONEY);
   });
 }
 
@@ -1179,7 +1186,10 @@ export async function transitionCompensation(id: string, event: CompensationEven
         data: { status: 'Superseded', effectiveTo: record.effectiveFrom },
       });
     }
-    return tx.compensationRecord.update({ where: { id }, data: { status: result.to } });
+    return withDecimalMinor(
+      await tx.compensationRecord.update({ where: { id }, data: { status: result.to } }),
+      COMPENSATION_MONEY,
+    );
   });
 }
 
@@ -1192,7 +1202,7 @@ export async function currentCompensation(employmentRelationshipId: string, asOf
   // pay for anybody holding `compensation:V@own`.
   await assertEmploymentVisible('compensation', employmentRelationshipId);
 
-  return prisma.compensationRecord.findFirst({
+  const record = await prisma.compensationRecord.findFirst({
     where: {
       tenantId: auth.tenantId,
       employmentRelationshipId,
@@ -1203,6 +1213,7 @@ export async function currentCompensation(employmentRelationshipId: string, asOf
     },
     orderBy: { effectiveFrom: 'desc' },
   });
+  return record ? withDecimalMinor(record, COMPENSATION_MONEY) : null;
 }
 
 /** Who typed a compensation proposal, read back from its creation event
@@ -1271,7 +1282,7 @@ export async function listCompensationForEmployment(employmentRelationshipId: st
           ? 'self_proposed'
           : null;
     return {
-      ...r,
+      ...withDecimalMinor(r, COMPENSATION_MONEY),
       proposedByPartyId,
       proposedByName: proposedByPartyId ? (nameByPartyId.get(proposedByPartyId) ?? null) : null,
       canApprove,
@@ -1570,19 +1581,27 @@ export async function headcountByDivision(asOf = new Date()) {
           effectiveFrom: { lte: asOf },
           OR: [{ effectiveTo: null }, { effectiveTo: { gt: asOf } }],
         },
-        select: { employmentRelationshipId: true, amount: true },
+        select: { employmentRelationshipId: true, amountMinor: true },
       })
     : [];
-  const payByEmployment = new Map(pay.map((p) => [p.employmentRelationshipId, num(p.amount) ?? 0]));
+  // Summed in paise, so the division totals are exact; the rupee figure is read out once at the end.
+  const payByEmployment = new Map(pay.map((p) => [p.employmentRelationshipId, p.amountMinor]));
 
-  const rows = new Map<string, { division: string; headcount: number; monthlyCost: number | null }>();
+  const rows = new Map<string, { division: string; headcount: number; monthlyCostMinor: bigint | null }>();
   for (const employment of employments) {
     const division = employment.assignments[0]?.position.orgUnit.division ?? 'shared';
-    const row = rows.get(division) ?? { division, headcount: 0, monthlyCost: money ? 0 : null };
+    const row = rows.get(division) ?? { division, headcount: 0, monthlyCostMinor: money ? 0n : null };
     row.headcount += 1;
-    if (money) row.monthlyCost = (row.monthlyCost ?? 0) + (payByEmployment.get(employment.id) ?? 0);
+    if (money) row.monthlyCostMinor = (row.monthlyCostMinor ?? 0n) + (payByEmployment.get(employment.id) ?? 0n);
     rows.set(division, row);
   }
 
-  return [...rows.values()].sort((a, b) => b.headcount - a.headcount);
+  return [...rows.values()]
+    .map((row) => ({
+      division: row.division,
+      headcount: row.headcount,
+      monthlyCost: row.monthlyCostMinor === null ? null : minorToRupees(row.monthlyCostMinor),
+      monthlyCostMinor: minorString(row.monthlyCostMinor),
+    }))
+    .sort((a, b) => b.headcount - a.headcount);
 }

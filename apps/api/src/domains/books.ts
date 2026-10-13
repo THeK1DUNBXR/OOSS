@@ -47,7 +47,7 @@ import { lockLegacyPeriod, lockLegacyPeriods } from '../platform/periodLock.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney, assertScopeAll } from '../platform/permissions.js';
 import { minorString, rupeesToMinor, withDecimalMinor } from '../platform/wire.js';
-import { minorToRupees } from './money.js';
+import { minorToRupees, vendorBillWire } from './money.js';
 import { raiseException } from '../platform/exceptions.js';
 import { runHooks } from '../platform/hooks.js';
 import { registerGovernedEntities, auditWrite } from '../platform/audit.js';
@@ -691,8 +691,10 @@ export async function recordVendorBill(input: {
   await assertCan({ resource: 'vendor_bills', verb: 'create' });
   await runHooks('accounting_document.before_write', { date: input.billDate, what: 'This bill' });
 
-  const taxAmount = input.taxAmount ?? 0;
-  const total = round2(input.subtotal + taxAmount);
+  // Rupees in, paise stored. The total is the sum of the two paise figures, not a float sum rounded after.
+  const subtotalMinor = rupeesToMinor(input.subtotal);
+  const taxAmountMinor = rupeesToMinor(input.taxAmount ?? 0);
+  const totalMinor = subtotalMinor + taxAmountMinor;
   const recordCode = await nextRecordCode('BILL');
 
   const bill = await prisma.vendorBill.create({
@@ -706,30 +708,38 @@ export async function recordVendorBill(input: {
       dueDate: input.dueDate ?? null,
       categoryId: input.categoryId ?? null,
       division: input.division ?? null,
-      subtotal: input.subtotal,
-      taxAmount,
-      total,
+      subtotalMinor,
+      taxAmountMinor,
+      totalMinor,
       note: input.note ?? null,
       createdById: auth.partyId,
     },
   });
 
+  // The rupee `total` is what the audit diff and the event have always carried; the paise string beside it is the exact figure.
+  const total = minorToRupees(totalMinor);
   await auditWrite({
     action: 'create',
     subjectType: 'vendor_bill',
     subjectId: bill.id,
-    after: { recordCode, vendorName: input.vendorName, total, billDate: input.billDate },
+    after: {
+      recordCode,
+      vendorName: input.vendorName,
+      total,
+      totalMinor: minorString(totalMinor),
+      billDate: input.billDate,
+    },
   });
 
   await emit({
     name: EVENTS.VENDOR_BILL_RECORDED,
     subject: { entityType: 'vendor_bill', entityId: bill.id, recordCode },
-    newState: { vendorName: input.vendorName, total, dueDate: input.dueDate },
+    newState: { vendorName: input.vendorName, total, totalMinor: minorString(totalMinor), dueDate: input.dueDate },
     confidentiality: 'confidential',
     impact: { domains: ['fin'] },
   });
 
-  return bill;
+  return vendorBillWire(bill);
 }
 
 /**
@@ -752,12 +762,13 @@ export async function payVendorBill(
   // TDS not yet deducted, or an MSME term breached, vetoes the payment here (workstream C).
   await runHooks('vendor_bill.before_pay', { bill, amount: input.amount });
 
-  const outstanding = round2((num(bill.total) ?? 0) - (num(bill.paidAmount) ?? 0));
+  const outstandingMinor = bill.totalMinor - bill.paidAmountMinor;
+  const amountMinor = toMinorHalfUp(input.amount);
   // Paise against paise. An amount typed with a third decimal rounds half away
   // from zero here, so 0.005 over is refused where the old tolerance let it through.
-  if (toMinorHalfUp(input.amount) > toMinorHalfUp(outstanding)) {
+  if (amountMinor > outstandingMinor) {
     throw ApiError.unprocessable(
-      `That is more than is outstanding on ${bill.recordCode} (₹${outstanding.toFixed(2)}). ` +
+      `That is more than is outstanding on ${bill.recordCode} (₹${formatMinor(outstandingMinor)}). ` +
         'An overpayment needs a credit note rather than a larger payment.',
     );
   }
@@ -768,7 +779,7 @@ export async function payVendorBill(
     kind: 'payment',
     source: 'vendor_bill',
     txnDate: input.paidOn,
-    amountMinor: toMinorHalfUp(input.amount),
+    amountMinor,
     accountId: input.accountId,
     categoryId: bill.categoryId,
     division: bill.division,
@@ -788,26 +799,37 @@ export async function payablesAgeing(asOf = new Date()) {
     where: { tenantId: auth.tenantId, deletedAt: null, status: { in: ['open', 'part_paid'] } },
   });
 
-  const buckets = { current: 0, d30: 0, d60: 0, d90: 0, older: 0 };
-  let total = 0;
+  // Summed in paise and converted once at the end, so the buckets add to the total exactly.
+  const buckets = { current: 0n, d30: 0n, d60: 0n, d90: 0n, older: 0n };
+  let total = 0n;
 
   for (const bill of bills) {
-    const outstanding = round2((num(bill.total) ?? 0) - (num(bill.paidAmount) ?? 0));
-    if (outstanding <= 0) continue;
-    total = round2(total + outstanding);
+    const outstanding = bill.totalMinor - bill.paidAmountMinor;
+    if (outstanding <= 0n) continue;
+    total += outstanding;
 
     if (!bill.dueDate || bill.dueDate >= asOf) {
-      buckets.current = round2(buckets.current + outstanding);
+      buckets.current += outstanding;
       continue;
     }
     const days = Math.floor((asOf.getTime() - bill.dueDate.getTime()) / 86_400_000);
-    if (days <= 30) buckets.d30 = round2(buckets.d30 + outstanding);
-    else if (days <= 60) buckets.d60 = round2(buckets.d60 + outstanding);
-    else if (days <= 90) buckets.d90 = round2(buckets.d90 + outstanding);
-    else buckets.older = round2(buckets.older + outstanding);
+    if (days <= 30) buckets.d30 += outstanding;
+    else if (days <= 60) buckets.d60 += outstanding;
+    else if (days <= 90) buckets.d90 += outstanding;
+    else buckets.older += outstanding;
   }
 
-  return { total, buckets, count: bills.length };
+  return {
+    total: minorToRupees(total),
+    buckets: {
+      current: minorToRupees(buckets.current),
+      d30: minorToRupees(buckets.d30),
+      d60: minorToRupees(buckets.d60),
+      d90: minorToRupees(buckets.d90),
+      older: minorToRupees(buckets.older),
+    },
+    count: bills.length,
+  };
 }
 
 /** A bill past its due date is chased once, not on every hourly tick. */
@@ -825,7 +847,7 @@ export async function detectOverdueBills(): Promise<number> {
   });
 
   for (const bill of overdue) {
-    const outstanding = round2((num(bill.total) ?? 0) - (num(bill.paidAmount) ?? 0));
+    const outstanding = bill.totalMinor - bill.paidAmountMinor;
     await raiseException({
       code: 'EX-FIN-002',
       label: 'Supplier bill overdue',
@@ -833,7 +855,7 @@ export async function detectOverdueBills(): Promise<number> {
       subjectType: 'vendor_bill',
       subjectId: bill.id,
       subjectLabel: `${bill.recordCode} — ${bill.vendorName}`,
-      detail: `₹${outstanding.toFixed(2)} outstanding, due ${bill.dueDate?.toISOString().slice(0, 10)}.`,
+      detail: `₹${formatMinor(outstanding)} outstanding, due ${bill.dueDate?.toISOString().slice(0, 10)}.`,
       triggerFingerprint: `bill_overdue:${bill.id}`,
       ladderRung: 1,
     });
@@ -963,7 +985,7 @@ export async function gstSummary(period: string) {
   // figure that is actually remitted rather than the gross collected.
   const bills = await prisma.vendorBill.aggregate({
     where: { tenantId: auth.tenantId, deletedAt: null, billDate: { gte: from, lt: to } },
-    _sum: { taxAmount: true },
+    _sum: { taxAmountMinor: true },
   });
 
   const output = invoices.reduce(
@@ -977,7 +999,8 @@ export async function gstSummary(period: string) {
   );
 
   const outputTax = round2(output.cgst + output.sgst + output.igst);
-  const inputTax = num(bills._sum.taxAmount) ?? 0;
+  // Paise from the aggregate, converted once: the figure is the sum of the bills' tax exactly.
+  const inputTax = minorToRupees(bills._sum.taxAmountMinor ?? 0n);
 
   return {
     period,
@@ -1677,9 +1700,11 @@ export async function cashForecast(months = 6) {
 
   let balance = position.cash;
   const rows = periods.slice(1).map((period) => {
-    const dueThisMonth = bills
-      .filter((b) => b.dueDate && monthKey(b.dueDate) === period)
-      .reduce((s, b) => round2(s + ((num(b.total) ?? 0) - (num(b.paidAmount) ?? 0))), 0);
+    const dueThisMonth = minorToRupees(
+      bills
+        .filter((b) => b.dueDate && monthKey(b.dueDate) === period)
+        .reduce((s, b) => s + (b.totalMinor - b.paidAmountMinor), 0n),
+    );
 
     // The projection carries the observed net plus anything already committed
     // that the net has not seen yet.

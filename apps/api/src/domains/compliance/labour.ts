@@ -155,7 +155,11 @@ async function basicPayFor(employmentRelationshipId: string, asOf = new Date()):
     },
     orderBy: { effectiveFrom: 'desc' },
   });
-  return num(record?.basicPay) ?? num(record?.amount) ?? 0;
+  // A record with no basic falls back to its gross, as it always has. Both are
+  // paise, so the rupee number is read out here, once, and the arithmetic below
+  // stays what it was.
+  if (!record) return 0;
+  return minorToRupees(record.basicPayMinor ?? record.amountMinor);
 }
 
 /**

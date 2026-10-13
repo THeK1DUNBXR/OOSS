@@ -1,5 +1,5 @@
 import type { JobDefinition, JobResult } from '../scheduler.js';
-import { decimalToMinor, istYearMonth, mulRatio } from '@kaizen/shared';
+import { istYearMonth, mulRatio } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { ruleAt, ruleIntegerField } from '../../domains/statutory.js';
@@ -61,8 +61,8 @@ export async function runGratuityAccrual(): Promise<JobResult> {
         },
         orderBy: { effectiveFrom: 'desc' },
       });
-      // The compensation record is read only when no structure is in force. Its basicPay is a
-      // Decimal and converts from its own two-place string, never through a number.
+      // The compensation record is read only when no structure is in force. Its basicPay is
+      // paise, so it is taken as it is stored; there is no rupee figure to round.
       const compensation = structure
         ? null
         : await prisma.compensationRecord.findFirst({
@@ -74,11 +74,7 @@ export async function runGratuityAccrual(): Promise<JobResult> {
             },
             orderBy: { effectiveFrom: 'desc' },
           });
-      const basicMinor = structure
-        ? structure.basicMinor
-        : compensation?.basicPay != null
-          ? decimalToMinor(compensation.basicPay)
-          : 0n;
+      const basicMinor = structure ? structure.basicMinor : (compensation?.basicPayMinor ?? 0n);
       if (basicMinor <= 0n) continue;
 
       const existing = await prisma.gratuityAccrual.findFirst({

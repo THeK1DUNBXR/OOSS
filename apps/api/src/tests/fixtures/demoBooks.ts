@@ -507,7 +507,8 @@ export async function seedDemoBooks() {
   for (const spec of billSpecs) {
     const existing = await prisma.vendorBill.findFirst({ where: { tenantId, billNumber: spec.billNumber } });
     if (existing) continue;
-    const total = round2(spec.subtotal + spec.taxAmount);
+    const subtotalMinor = toMinorHalfUp(spec.subtotal);
+    const taxAmountMinor = toMinorHalfUp(spec.taxAmount);
     await prisma.vendorBill.create({
       data: {
         tenantId,
@@ -518,9 +519,9 @@ export async function seedDemoBooks() {
         dueDate: new Date(Date.now() + spec.dueInDays * 86_400_000),
         categoryId: categories.get(spec.category) ?? null,
         division: 'shared',
-        subtotal: spec.subtotal,
-        taxAmount: spec.taxAmount,
-        total,
+        subtotalMinor,
+        taxAmountMinor,
+        totalMinor: subtotalMinor + taxAmountMinor,
         status: 'open',
       },
     });

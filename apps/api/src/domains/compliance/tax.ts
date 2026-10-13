@@ -36,7 +36,7 @@ import {
 } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
 import { minorString, rupeesToMinor, withDecimalMinor } from '../../platform/wire.js';
-import { minorToRupees } from '../money.js';
+import { minorToRupees, vendorBillWire } from '../money.js';
 import { PAYROLL_INSTRUCTION_MONEY } from './payroll.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -164,9 +164,9 @@ async function cumulativeFyForVendor(
       id: { not: excludeBillId },
       OR: [{ vendorPan: vendorKey }, { vendorPan: null, vendorName: vendorKey }],
     },
-    select: { subtotal: true },
+    select: { subtotalMinor: true },
   });
-  return round2(bills.reduce((s, b) => s + (num(b.subtotal) ?? 0), 0));
+  return minorToRupees(bills.reduce((s, b) => s + b.subtotalMinor, 0n));
 }
 
 export interface ComputeVendorTdsInput {
@@ -200,7 +200,7 @@ export async function computeVendorTds(billId: string, input: ComputeVendorTdsIn
   const cumulativeFy = await cumulativeFyForVendor(vendorKey, input.section, bill.billDate, bill.id);
 
   const result = computeTds({
-    amount: num(bill.subtotal) ?? 0,
+    amount: minorToRupees(bill.subtotalMinor),
     cumulativeFy,
     section: input.section,
     ratePercent: num(rate.ratePercent) ?? 0,
@@ -213,13 +213,16 @@ export async function computeVendorTds(billId: string, input: ComputeVendorTdsIn
     certificateRate: input.certificateRate ?? null,
   });
 
+  // computeTds still rounds the figure in floats; this is the paise of that same figure, not a
+  // separate rounding. The float-to-paise step is exact because round2 has already made it two places.
+  const tdsAmountMinor = rupeesToMinor(result.tdsAmount);
   return governedWrite(async (tx) => {
     const updated = await tx.vendorBill.update({
       where: { id: bill.id },
       data: {
         tdsSection: input.section,
         tdsRate: result.ratePercentApplied,
-        tdsAmount: result.tdsAmount,
+        tdsAmountMinor,
         tdsCertificateRef: input.certificateRef ?? null,
       },
     });
@@ -239,19 +242,30 @@ export async function computeVendorTds(billId: string, input: ComputeVendorTdsIn
       action: 'update',
       subjectType: 'tds_decision',
       subjectId: decision.id,
-      after: { billId: bill.id, section: input.section, tdsAmount: result.tdsAmount, decision: decision.decision },
+      after: {
+        billId: bill.id,
+        section: input.section,
+        tdsAmount: result.tdsAmount,
+        tdsAmountMinor: minorString(tdsAmountMinor),
+        decision: decision.decision,
+      },
       tx,
     });
     await emit({
       name: 'kz.fin.tds.deducted',
       subject: { entityType: 'vendor_bill', entityId: bill.id, recordCode: bill.recordCode },
-      newState: { section: input.section, ratePercent: result.ratePercentApplied, tdsAmount: result.tdsAmount },
+      newState: {
+        section: input.section,
+        ratePercent: result.ratePercentApplied,
+        tdsAmount: result.tdsAmount,
+        tdsAmountMinor: minorString(tdsAmountMinor),
+      },
       impact: { domains: ['fin'] },
       confidentiality: 'confidential',
       tx,
     });
 
-    return { bill: updated, decision, result };
+    return { bill: vendorBillWire(updated), decision, result };
   });
 }
 
@@ -334,7 +348,7 @@ registerHook('vendor_bill.before_pay', 'cmp_tax.assert_settled', async (payload)
 export async function listVendorBillsForTds(filter: { status?: string } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'view' });
-  return prisma.vendorBill.findMany({
+  const bills = await prisma.vendorBill.findMany({
     where: {
       tenantId: auth.tenantId,
       deletedAt: null,
@@ -343,6 +357,7 @@ export async function listVendorBillsForTds(filter: { status?: string } = {}) {
     orderBy: { billDate: 'desc' },
     take: 200,
   });
+  return bills.map(vendorBillWire);
 }
 
 export async function tdsSectionRates() {
@@ -410,7 +425,7 @@ export async function setMsmeTerms(billId: string, input: { udyamNumber: string;
     subjectId: bill.id,
     after: { vendorUdyamNumber: input.udyamNumber, agreedTermDays: input.agreedTermDays ?? null, msmeDueAt: due },
   });
-  return updated;
+  return vendorBillWire(updated);
 }
 
 /** What Sec 43B(h) would disallow right now: unpaid MSME bills past their due date. */
@@ -427,10 +442,10 @@ export async function msmeExposure() {
     },
     orderBy: { msmeDueAt: 'asc' },
   });
-  const outstanding = bills.map((b) => round2((num(b.total) ?? 0) - (num(b.paidAmount) ?? 0)));
+  const outstanding = bills.map((b) => b.totalMinor - b.paidAmountMinor);
   return {
-    bills,
-    exposure: round2(outstanding.reduce((s, v) => s + v, 0)),
+    bills: bills.map(vendorBillWire),
+    exposure: minorToRupees(outstanding.reduce((s, v) => s + v, 0n)),
   };
 }
 
@@ -500,12 +515,12 @@ export async function pendingTdsLiability(
       deletedAt: null,
       tdsSection: sectionGroup,
       billDate: { gte: from, lt: to },
-      tdsAmount: { gt: 0 },
+      tdsAmountMinor: { gt: 0n },
     },
-    select: { tdsAmount: true, vendorPan: true, vendorName: true },
+    select: { tdsAmountMinor: true, vendorPan: true, vendorName: true },
   });
   return {
-    amount: round2(rows.reduce((s, r) => s + (num(r.tdsAmount) ?? 0), 0)),
+    amount: minorToRupees(rows.reduce((s, r) => s + r.tdsAmountMinor, 0n)),
     deducteeCount: new Set(rows.map((r) => r.vendorPan ?? r.vendorName)).size,
   };
 }
@@ -1062,7 +1077,7 @@ async function returnRows(fy: string, quarter: Quarter, form: '24Q' | '26Q'): Pr
 
   const { from, to } = { from: monthRange(periods[0]).from, to: monthRange(periods[periods.length - 1]).to };
   const bills = await prisma.vendorBill.findMany({
-    where: { tenantId: auth.tenantId, deletedAt: null, billDate: { gte: from, lt: to }, tdsAmount: { gt: 0 } },
+    where: { tenantId: auth.tenantId, deletedAt: null, billDate: { gte: from, lt: to }, tdsAmountMinor: { gt: 0n } },
   });
   const challanCodes = new Map<string, string>();
   const challanIds = [...new Set(bills.map((b) => b.tdsChallanId).filter(Boolean) as string[])];
@@ -1077,8 +1092,8 @@ async function returnRows(fy: string, quarter: Quarter, form: '24Q' | '26Q'): Pr
     pan: b.vendorPan,
     name: b.vendorName,
     section: b.tdsSection ?? '',
-    amountPaid: num(b.subtotal) ?? 0,
-    tds: num(b.tdsAmount) ?? 0,
+    amountPaid: minorToRupees(b.subtotalMinor),
+    tds: minorToRupees(b.tdsAmountMinor),
     challan: b.tdsChallanId ? (challanCodes.get(b.tdsChallanId) ?? null) : null,
   }));
 }
@@ -1259,7 +1274,7 @@ export async function issueCertificate(input: IssueCertificateInput) {
         tenantId: auth.tenantId,
         deletedAt: null,
         billDate: { gte: from, lt: to },
-        tdsAmount: { gt: 0 },
+        tdsAmountMinor: { gt: 0n },
         OR: [{ vendorPan: input.deducteeRef }, { vendorPan: null, vendorName: input.deducteeRef }],
       },
     });
@@ -1271,10 +1286,10 @@ export async function issueCertificate(input: IssueCertificateInput) {
         recordCode: b.recordCode,
         billDate: b.billDate.toISOString().slice(0, 10),
         section: b.tdsSection,
-        amountPaid: num(b.subtotal),
-        tds: num(b.tdsAmount),
+        amountPaid: minorToRupees(b.subtotalMinor),
+        tds: minorToRupees(b.tdsAmountMinor),
       })),
-      totalTds: round2(bills.reduce((s, b) => s + (num(b.tdsAmount) ?? 0), 0)),
+      totalTds: minorToRupees(bills.reduce((s, b) => s + b.tdsAmountMinor, 0n)),
     };
   } else {
     const employment = await prisma.employmentRelationship.findFirst({

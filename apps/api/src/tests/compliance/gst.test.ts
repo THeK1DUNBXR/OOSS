@@ -236,7 +236,7 @@ describe('CMP-GST-002: reverse charge populates isup_rev and the ITC is claimabl
 
       const updatedBill = await unscopedPrisma.vendorBill.findFirstOrThrow({ where: { id: bill.id } });
       expect(updatedBill.rcmApplicable).toBe(true);
-      expect(num(updatedBill.rcmTaxAmount)).toBe(3600);
+      expect(updatedBill.rcmTaxAmountMinor).toBe(360000n);
 
       const rows = await listRcmSelfInvoices(period);
       expect(rows.some((r) => r.id === selfInvoice.id)).toBe(true);
