@@ -39,6 +39,8 @@ import { governedWrite } from '../../platform/governedWrite.js';
 import { notify } from '../../platform/exceptions.js';
 import { assertEmploymentVisible } from '../../platform/recordScope.js';
 import { transitionEmployment, transitionOffboarding } from '../employment.js';
+import { OFFBOARDING_MONEY } from '../money.js';
+import { withDecimalMinor } from '../../platform/wire.js';
 import { assetsPendingForEmployment } from './assets.js';
 
 registerGovernedEntities('hcm_separations', [
@@ -767,7 +769,7 @@ export async function getOffboardingForEmployment(employmentRelationshipId: stri
   });
   const noDues = await prisma.noDuesCertificate.findUnique({ where: { offboardingId: offboarding.id } });
   return {
-    ...offboarding,
+    ...withDecimalMinor(offboarding, OFFBOARDING_MONEY),
     clearances,
     allCleared: allClearancesComplete(clearances),
     noDues,

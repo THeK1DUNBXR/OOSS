@@ -131,15 +131,15 @@ model SalaryStructure {
   effectiveFrom DateTime
   status        String   @default("Proposed") // Proposed | Approved
 
-  ctcAnnual          Decimal @db.Decimal(14, 2)
-  basic              Decimal @db.Decimal(14, 2)
-  hra                Decimal @db.Decimal(14, 2)
-  specialAllowance   Decimal @default(0) @db.Decimal(14, 2)
-  conveyance         Decimal @default(0) @db.Decimal(14, 2)
+  ctcAnnualMinor          BigInt
+  basicMinor              BigInt
+  hraMinor                BigInt
+  specialAllowanceMinor   BigInt @default(0)
+  conveyanceMinor         BigInt @default(0)
   /// { label: amount, ... } — anything beyond the named components above.
   otherAllowances    Json    @default("{}")
-  employerPfMonthly  Decimal @default(0) @db.Decimal(14, 2)
-  employerEsiMonthly Decimal @default(0) @db.Decimal(14, 2)
+  employerPfMonthlyMinor  BigInt @default(0)
+  employerEsiMonthlyMinor BigInt @default(0)
 
   proposedById String?
   approvedById String?
@@ -186,7 +186,7 @@ model GratuityAccrual {
 
   employmentRelationshipId String
   asOfDate                 DateTime
-  accrued                  Decimal  @db.Decimal(14, 2)
+  accruedMinor                  BigInt
 
   createdAt DateTime @default(now())
 

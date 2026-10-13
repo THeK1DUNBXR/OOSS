@@ -284,7 +284,7 @@ export async function overtimeHours(months = 3): Promise<OvertimeResult> {
   const end = monthEnd(keys[keys.length - 1]);
   const rows = await prisma.overtimeAccrual.findMany({
     where: { tenantId: auth.tenantId, computedAt: { gte: start, lt: end } },
-    select: { isoWeek: true, hours: true, amount: true, computedAt: true },
+    select: { isoWeek: true, hours: true, amountMinor: true, computedAt: true },
   });
   // isoWeek doesn't sort cleanly against a calendar month key, so the month
   // bucket is drawn from computedAt (when the accrual was posted) instead.
@@ -299,7 +299,7 @@ export async function overtimeHours(months = 3): Promise<OvertimeResult> {
     const h = num(r.hours) ?? 0;
     byMonthMap.set(k, (byMonthMap.get(k) ?? 0) + h);
     totalHours += h;
-    totalAmount += num(r.amount) ?? 0;
+    totalAmount += minorToRupees(r.amountMinor);
   }
 
   return {
@@ -977,7 +977,7 @@ export async function exportOvertimeRegister(months = 3): Promise<CsvExport> {
       nameByEmployment.get(r.employmentRelationshipId) ?? r.employmentRelationshipId,
       r.isoWeek,
       num(r.hours),
-      money ? num(r.amount) : 'withheld',
+      money ? minorToRupees(r.amountMinor) : 'withheld',
     ]),
   );
   await auditExport(
