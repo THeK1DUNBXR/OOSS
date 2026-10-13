@@ -16,6 +16,7 @@ import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
+import { rupeesToMinor, rupeesToMinorOrNull } from '../platform/wire.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { assertCan, scopeFor, scopeWhere } from '../platform/permissions.js';
 import { notify, raiseException } from '../platform/exceptions.js';
@@ -141,7 +142,7 @@ export async function createLead(input: LeadInput) {
         scoreReasons: scoring.reasons,
         source: input.source ?? 'manual',
         sourceDetail: input.sourceDetail ?? null,
-        estimatedValue: input.estimatedValue ?? undefined,
+        estimatedValueMinor: rupeesToMinorOrNull(input.estimatedValue ?? undefined),
         currency: input.currency ?? 'INR',
         createdById: auth.partyId,
       },
@@ -392,8 +393,8 @@ export async function convertLead(
         pipelineId: lead.pipelineId,
         stageKey: stage.stageKey,
         stageEnteredAt: new Date(),
-        expectedValue:
-          opts.expectedValue ?? (lead.estimatedValue ? Number(lead.estimatedValue.toString()) : null) ?? undefined,
+        expectedValueMinor:
+          opts.expectedValue != null ? rupeesToMinor(opts.expectedValue) : (lead.estimatedValueMinor ?? undefined),
         currency: lead.currency,
         expectedCloseDate: opts.expectedCloseDate ?? null,
         ownerPartyId: lead.ownerPartyId,

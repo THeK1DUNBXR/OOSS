@@ -375,7 +375,7 @@ export async function validateTransition(
 
   // Fields that must be non-null before a transition INTO this stage is accepted.
   const missing = targetStage.requiredFields.filter((f) => {
-    const value = resolvePath(record, f);
+    const value = requiredFieldValue(record, f);
     return value === null || value === undefined || value === '';
   });
 
@@ -390,6 +390,24 @@ export async function validateTransition(
   }
 
   return { ok: true, transition, targetStage, reason: null, missingRequiredFields: [] };
+}
+
+/**
+ * The paise column behind a money field a stage can require. A stage names the
+ * field users see (`expectedValue`); the row holds `expectedValueMinor`, so a
+ * bare lookup would find undefined on every converted row and block every
+ * transition into a stage that requires the value.
+ */
+const MINOR_COLUMN_FOR_FIELD: Record<string, string> = {
+  expectedValue: 'expectedValueMinor',
+  estimatedValue: 'estimatedValueMinor',
+};
+
+/** The value of a required field on a record, reading the paise column for a money field. */
+export function requiredFieldValue(record: Record<string, unknown>, path: string): unknown {
+  const column = MINOR_COLUMN_FOR_FIELD[path];
+  if (column) return record[column];
+  return resolvePath(record, path);
 }
 
 function resolvePath(obj: Record<string, unknown>, path: string): unknown {
