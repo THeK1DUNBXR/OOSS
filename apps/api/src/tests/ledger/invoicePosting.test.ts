@@ -87,6 +87,9 @@ function withoutDivisionOf(body: Record<string, unknown>): Record<string, unknow
   return copy;
 }
 
+/** Orders paise without a float: Number(a - b) would read a large difference through a double. */
+const byMinor = (a: bigint, b: bigint) => (a < b ? -1 : a > b ? 1 : 0);
+
 /** The journal entries a document posted under one source, with their lines. */
 async function entriesFor(sourceType: string, sourceId: string) {
   return unscopedPrisma.journalEntry.findMany({
@@ -138,8 +141,8 @@ describe('issuing an invoice posts one balanced entry that says what the invoice
     // Revenue under the line the division maps to, the taxable value as stored.
     expect(entry!.lines.find((l) => l.lineId === lineId && l.amountMinor === -123457n)).toBeDefined();
     // The tax and the round-off as the invoice stores them (credited, round-off up by 21).
-    expect(entry!.lines.map((l) => l.amountMinor).sort((a, b) => Number(a - b))).toEqual(
-      [-123457n, -21n, -11111n, -11111n, 145700n].sort((a, b) => Number(a - b)),
+    expect(entry!.lines.map((l) => l.amountMinor).sort(byMinor)).toEqual(
+      [-123457n, -21n, -11111n, -11111n, 145700n].sort(byMinor),
     );
     expect(entry!.lines.find((l) => l.amountMinor === -21n)?.lineId).toBe(lineId);
     await trialBalanceHolds();
@@ -158,7 +161,7 @@ describe('a payment at issue and a later instalment each post the receipt alloca
 
     const first = await entriesFor('receipt', created.body.receipt.id);
     expect(first).toHaveLength(1);
-    expect(first[0]!.lines.map((l) => l.amountMinor).sort((a, b) => Number(a - b))).toEqual([-50000n, 50000n]);
+    expect(first[0]!.lines.map((l) => l.amountMinor).sort(byMinor)).toEqual([-50000n, 50000n]);
     expect(first[0]!.idempotencyKey).toBe(`receipt:${created.body.receipt.id}`);
     await trialBalanceHolds();
     const receivable = await receivableAccountId();
@@ -169,7 +172,7 @@ describe('a payment at issue and a later instalment each post the receipt alloca
     expect(second.status).toBe(200);
     const instalment = await entriesFor('receipt', second.body.receipt.id);
     expect(instalment).toHaveLength(1);
-    expect(instalment[0]!.lines.map((l) => l.amountMinor).sort((a, b) => Number(a - b))).toEqual([-95700n, 95700n]);
+    expect(instalment[0]!.lines.map((l) => l.amountMinor).sort(byMinor)).toEqual([-95700n, 95700n]);
     await trialBalanceHolds();
 
     const afterSecond = await asUser(LATHA, () => balanceOf(receivable, new Date(), { partyId: org }));
