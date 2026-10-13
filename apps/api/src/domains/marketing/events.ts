@@ -315,7 +315,11 @@ async function transitionEvent(id: string, to: MarketingEventStatus, eventName: 
       });
     }
 
-    return updated;
+    // The open, close, start and complete routes send this row back as the
+    // response, so it takes the same wire shape loadEvent gives: the Decimal
+    // rupee fields and their paise siblings. Returning the raw row dropped
+    // costPlanned and costActual from these four responses.
+    return withDecimalMinor(updated, ['costPlanned', 'costActual']);
   });
 }
 
@@ -359,7 +363,7 @@ export async function cancelEvent(id: string, reason: string) {
       tx,
     });
 
-    return updated;
+    return withDecimalMinor(updated, ['costPlanned', 'costActual']);
   });
 }
 

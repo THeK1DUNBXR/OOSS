@@ -208,7 +208,12 @@ export async function createBudget(input: BudgetInput): Promise<BudgetView> {
     await emit({
       name: EVENTS.MKT_BUDGET_SET,
       subject: { entityType: 'marketing_budget', entityId: created.id, recordCode },
-      newState: { period: created.period, division: created.division, planned: input.planned },
+      newState: {
+        period: created.period,
+        division: created.division,
+        planned: minorToRupees(created.plannedMinor),
+        plannedMinor: minorString(created.plannedMinor),
+      },
       impact: { domains: ['mkt'] },
       tx,
     });
@@ -260,7 +265,12 @@ export async function updateBudget(id: string, patch: Partial<BudgetInput>): Pro
     await emit({
       name: EVENTS.MKT_BUDGET_SET,
       subject: { entityType: 'marketing_budget', entityId: updated.id, recordCode: updated.recordCode },
-      newState: { period: updated.period, division: updated.division, planned: minorToRupees(updated.plannedMinor) },
+      newState: {
+        period: updated.period,
+        division: updated.division,
+        planned: minorToRupees(updated.plannedMinor),
+        plannedMinor: minorString(updated.plannedMinor),
+      },
       impact: { domains: ['mkt'] },
       tx,
     });
@@ -313,7 +323,12 @@ export async function approveBudget(id: string): Promise<BudgetView> {
   await emit({
     name: EVENTS.MKT_BUDGET_APPROVED,
     subject: { entityType: 'marketing_budget', entityId: row.id, recordCode: row.recordCode },
-    newState: { period: row.period, division: row.division, planned: minorToRupees(row.plannedMinor) },
+    newState: {
+      period: row.period,
+      division: row.division,
+      planned: minorToRupees(row.plannedMinor),
+      plannedMinor: minorString(row.plannedMinor),
+    },
     impact: { domains: ['mkt'] },
   });
 
@@ -433,7 +448,8 @@ export async function recordSpend(input: SpendInput): Promise<SpendView> {
       name: EVENTS.MKT_SPEND_RECORDED,
       subject: { entityType: 'marketing_spend', entityId: created.id, recordCode },
       newState: {
-        amount: input.amount,
+        amount: minorToRupees(created.amountMinor),
+        amountMinor: minorString(created.amountMinor),
         division: input.division,
         channelKey: input.channelKey,
         campaignId: input.campaignId ?? null,
@@ -559,7 +575,9 @@ export async function budgetVariance(
       channelKey: b.channelKey as ChannelKey | null,
       campaignId: b.campaignId,
       planned: minorToRupees(b.plannedMinor),
+      plannedMinor: minorString(b.plannedMinor),
       committed: minorToRupees(b.committedMinor),
+      committedMinor: minorString(b.committedMinor),
       actual: minorToRupees(actualMinor),
       variance: minorToRupees(b.plannedMinor - actualMinor),
       measured: approved,

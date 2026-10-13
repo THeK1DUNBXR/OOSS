@@ -604,7 +604,7 @@ export async function submitCampaign(id: string): Promise<CampaignDetailView> {
         EVENTS.MKT_CAMPAIGN_SUBMITTED,
         updated,
         { status: 'draft' },
-        { status: 'pending_approval', budgetPlanned },
+        { status: 'pending_approval', budgetPlanned, budgetPlannedMinor: minorString(budgetPlannedMinor) },
       );
     });
   } else {
@@ -619,7 +619,7 @@ export async function submitCampaign(id: string): Promise<CampaignDetailView> {
         EVENTS.MKT_CAMPAIGN_SCHEDULED,
         updated,
         { status: 'draft' },
-        { status: 'scheduled', budgetPlanned },
+        { status: 'scheduled', budgetPlanned, budgetPlannedMinor: minorString(budgetPlannedMinor) },
       );
     });
   }

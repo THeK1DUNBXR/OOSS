@@ -980,7 +980,9 @@ export interface BudgetVarianceRow {
   channelKey: ChannelKey | null;
   campaignId: string | null;
   planned: number;
+  plannedMinor?: string | null;
   committed: number;
+  committedMinor?: string | null;
   actual: number;
   variance: number;
   /** false when this period/division/channel/campaign has no *approved* budget yet. */

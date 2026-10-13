@@ -16,6 +16,7 @@
 import { ATTRIBUTION_MODELS, type AttributionModel } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
 import { minorToRupees } from '../money.js';
+import { minorString } from '../../platform/wire.js';
 import { currentAuth } from '../../platform/context.js';
 import { assertCan } from '../../platform/permissions.js';
 
@@ -426,6 +427,7 @@ export interface CampaignPerformanceView {
   pipelineValue: number;
   spend: number;
   budgetPlanned: number;
+  budgetPlannedMinor: string | null;
   costPerLead: number | null;
   romi: number | null;
 }
@@ -481,6 +483,7 @@ export async function campaigns(params: { from?: Date; to?: Date } = {}): Promis
       pipelineValue,
       spend,
       budgetPlanned: minorToRupees(c.budgetPlannedMinor),
+      budgetPlannedMinor: minorString(c.budgetPlannedMinor),
       costPerLead: leadIds.length > 0 ? Number((spend / leadIds.length).toFixed(2)) : null,
       romi: spend > 0 ? Number((pipelineValue / spend).toFixed(4)) : null,
     });
