@@ -40,6 +40,7 @@ function sequenceOf(recordCode: string): number {
 
 async function anIssuedInvoice() {
   return createInvoice({
+    division: 'education',
     organizationId: await anAccount(),
     placeOfSupply: '33',
     lines: [{ description: 'Programme', unitPrice: 10_000, gstRate: 18 }],

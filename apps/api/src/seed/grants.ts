@@ -1027,10 +1027,15 @@ const employee: GrantSpec[] = [
   // `edit` is not here.
   { resource: 'students', cell: 'VC@all' },
 
-  // Deliberately absent. An employee has no reason to reach the ledger, the
-  // pipeline, or anybody else's file, and every one of these would be a
-  // privacy incident rather than a feature.
-  { resource: 'transactions', cell: '-' },
+  // Create only, and no more: an employee raises invoices at the counter, and an
+  // invoice's issue, collection and void post to the journal, which asserts
+  // transactions:create (ledger.ts post). The cell says `@own` as the invoice row
+  // does, but the evaluator checks scope only against a record, and the journal
+  // check has none, so the scope narrows nothing here. The record-less cashbook
+  // creates (books.ts checkTransactionAllowed, generateRecurring, postPayrollToBooks)
+  // therefore require all scope, so an employee cannot write the cashbook through
+  // this grant. The ledger, the pipeline and anybody else's file stay out.
+  { resource: 'transactions', cell: 'C@own' },
   { resource: 'payroll', cell: '-' },
   { resource: 'performance_evidence', cell: '-' },
   { resource: 'grants', cell: '-' },

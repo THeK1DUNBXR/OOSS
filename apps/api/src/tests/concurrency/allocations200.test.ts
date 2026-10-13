@@ -98,6 +98,7 @@ async function oneRun(seed: number) {
   return asUser(EMAIL, async () => {
     // One invoice, far larger than the requests: the invoice's balance must not be what binds.
     const invoice = await createInvoice({
+      division: 'education',
       organizationId: await anAccount(),
       placeOfSupply: '33',
       lines: [{ description: `L3 seed ${seed}`, unitPrice: 10_000_000, gstRate: 18 }],

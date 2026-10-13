@@ -87,6 +87,7 @@ describe('FX-34: a counter payment with no reference is identified by invoice, a
       adultAttested: true,
     });
     return createInvoice({
+      division: 'education',
       personId: enrollment.personId,
       placeOfSupply: '33',
       enrollmentDate: new Date(),
