@@ -1,6 +1,6 @@
 import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
 import { shouldRetryQuery } from './lib/api.js';
@@ -25,6 +25,9 @@ const HolderDetail = lazy(() => import('./pages/equity/Holders.js').then((m) => 
 const ShareClasses = lazy(() => import('./pages/equity/ShareClasses.js').then((m) => ({ default: m.ShareClasses })));
 const Valuations = lazy(() => import('./pages/equity/Valuations.js').then((m) => ({ default: m.Valuations })));
 const EquityDocuments = lazy(() => import('./pages/equity/Documents.js').then((m) => ({ default: m.Documents })));
+const CertificateVerify = lazy(() =>
+  import('./pages/verify/CertificateVerify.js').then((m) => ({ default: m.CertificateVerify })),
+);
 const CertificateDocument = lazy(() =>
   import('./pages/equity/CertificateDocument.js').then((m) => ({ default: m.CertificateDocument })),
 );
@@ -314,7 +317,18 @@ function PortalRouted() {
 function Routed() {
   const { user, loading, passwordChangeRequired } = useSession();
   const surface = useSurface(user);
+  const location = useLocation();
 
+  // The public certificate check is answered to anyone with the link, so it is
+  // decided before the session is resolved: a visitor with no session must not be
+  // sent to sign-in for it.
+  if (location.pathname.startsWith('/verify/certificate/')) {
+    return (
+      <Suspense fallback={<Loading label="Opening the certificate check" />}>
+        <CertificateVerify />
+      </Suspense>
+    );
+  }
   if (loading) return <Loading label="Resolving your session" />;
   // Before the shell and before sign-in: a recovered one-time password opens
   // nothing else, and the token it holds is kept for the change to use.

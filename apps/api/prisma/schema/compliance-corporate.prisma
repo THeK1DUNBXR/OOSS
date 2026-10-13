@@ -280,6 +280,9 @@ model Certificate {
 
   number           String // series 'T' document number
   enrollmentId     String
+  /// Restrict, not Cascade: an issued certificate is a record, so deleting the
+  /// enrolment behind it must be refused rather than take the certificate with it.
+  enrollment       Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
   kind             String // completion | participation
   snapshot         Json
   verificationCode String  @unique
