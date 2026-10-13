@@ -398,12 +398,31 @@ describe('IT governance — domain and wiring', () => {
     const stillDraft = await unscopedPrisma.itPolicyDocument.findFirstOrThrow({ where: { id: draft.id } });
     expect(stillDraft.status).toBe('draft');
 
-    // The drafter cannot decide their own step (Self-Dealing Bar), so the
-    // step stays open and the policy stays a draft.
-    const selfDecide = await expectReject(() =>
-      asUser('chairman@kaizen.co.in', () => decideApprovalStep(step.id, true, 'Self-approval attempt.')),
+    // Owner ruling 2026-10-12: the founder is exempt from the Self-Dealing Bar; non-founders are covered in founderApprovals.test.ts.
+    // A second draft, so the founder's decision is on a step routed to sysadmin@: both the author check and the routing check are waived.
+    const secondDraft = await asUser('chairman@kaizen.co.in', () =>
+      createPolicyDraft({
+        code: `IT-POL-CHAIN-FOUNDER-${stamp()}`,
+        title: 'Founder chain test policy',
+        body: 'Body for the founder gate-chain test.',
+      }),
     );
-    expect(selfDecide.status).toBe(403);
+    const secondGated = await asUser('chairman@kaizen.co.in', () => publishPolicy(secondDraft.id));
+    expect(secondGated.applied).toBe(false);
+    const founderStepId = secondGated.approvalStepId!;
+    const decidedByFounder = await asUser('chairman@kaizen.co.in', () =>
+      decideApprovalStep(founderStepId, true, 'Approved by the founder for publication.'),
+    );
+    expect(decidedByFounder.state).toBe('approved');
+    const decisionAudit = await unscopedPrisma.auditRecord.findFirstOrThrow({
+      where: { subjectType: 'approval_step', subjectId: founderStepId, action: 'update' },
+      orderBy: { seq: 'desc' },
+    });
+    expect((decisionAudit.meta as Record<string, unknown>).founderOverride).toEqual([
+      'author_is_approver',
+      'not_resolved_approver',
+    ]);
+    // The original step is still open: the founder's decision above was on the second draft's step.
     const afterAttempt = await unscopedPrisma.approvalStep.findFirstOrThrow({ where: { id: step.id } });
     expect(afterAttempt.state).toBe('open');
 

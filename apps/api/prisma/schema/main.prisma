@@ -3540,14 +3540,16 @@ model GstFiling {
   /// re-exported without recomputing it from books that have moved on.
   snapshot Json
 
-  taxableValue   Decimal @default(0) @db.Decimal(18, 2)
-  cgstAmount     Decimal @default(0) @db.Decimal(18, 2)
-  sgstAmount     Decimal @default(0) @db.Decimal(18, 2)
-  igstAmount     Decimal @default(0) @db.Decimal(18, 2)
+  /// Paise. The figures were Decimal(18,2) until ORDERED-PLAN 1.6 slice S4;
+  /// the API keeps the rupee fields beside these on the wire for one wave.
+  taxableValueMinor   BigInt @default(0)
+  cgstAmountMinor     BigInt @default(0)
+  sgstAmountMinor     BigInt @default(0)
+  igstAmountMinor     BigInt @default(0)
   /// GSTR-3B only: the credit claimed on inward supplies, and what is left to
   /// pay in cash after it.
-  inputTaxCredit Decimal @default(0) @db.Decimal(18, 2)
-  netPayable     Decimal @default(0) @db.Decimal(18, 2)
+  inputTaxCreditMinor BigInt @default(0)
+  netPayableMinor     BigInt @default(0)
 
   invoiceCount Int @default(0)
 
