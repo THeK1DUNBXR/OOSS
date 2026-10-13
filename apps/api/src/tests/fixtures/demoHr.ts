@@ -12,6 +12,7 @@
  * real to show on first run, instead of an empty state that proves nothing.
  */
 
+import { minorToRupees } from '../../domains/money.js';
 import { CONFIDENCE_RANK, ORIGINATION_FOR_TIER } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
@@ -234,8 +235,8 @@ export async function seedDemoHr(people: SeededPerson[]) {
           tenantId,
           employmentRelationshipId: employment.id,
           revisionReason: 'hire',
-          amount: spec.monthlyPay,
-          basicPay: Math.round(spec.monthlyPay * 0.5),
+          amountMinor: rupeesToMinor(spec.monthlyPay),
+          basicPayMinor: rupeesToMinor(Math.round(spec.monthlyPay * 0.5)),
           status: 'Effective',
           effectiveFrom: hireDate,
         },
@@ -454,7 +455,7 @@ export async function seedDemoHr(people: SeededPerson[]) {
         where: { tenantId, employmentRelationshipId: employment.id, status: 'Effective' },
         orderBy: { effectiveFrom: 'desc' },
       });
-      const gross = Number(pay?.amount ?? 0);
+      const gross = pay ? minorToRupees(pay.amountMinor) : 0;
       // Professional tax and PF, roughly. The engine is elsewhere; what is
       // modelled here is the instruction, not the computation.
       const deductions = gross > 0 ? Math.round(gross * 0.12) + 200 : 0;
@@ -617,7 +618,16 @@ export async function seedDemoHr(people: SeededPerson[]) {
   const activities = new Map<string, string>();
   for (const spec of activitySpecs) {
     const existing = await prisma.learningActivity.findFirst({ where: { tenantId, title: spec.title } });
-    const activity = existing ?? (await prisma.learningActivity.create({ data: { tenantId, ...spec } }));
+    const activity =
+      existing ??
+      (await prisma.learningActivity.create({
+        data: {
+          tenantId,
+          title: spec.title,
+          isCompliance: spec.isCompliance,
+          costMinor: rupeesToMinor(spec.cost),
+        },
+      }));
     activities.set(spec.title, activity.id);
   }
 

@@ -23,6 +23,7 @@ import {
   type PerformanceEvidenceKind,
 } from '@kaizen/shared';
 import { prisma } from '../platform/db.js';
+import { rupeesToMinor, withDecimalMinor } from '../platform/wire.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
@@ -267,7 +268,11 @@ export async function recordEvidence(input: {
 export async function listLearningActivities() {
   const auth = currentAuth();
   await assertCan({ resource: 'learning', verb: 'view' });
-  return prisma.learningActivity.findMany({ where: { tenantId: auth.tenantId }, orderBy: { title: 'asc' } });
+  const rows = await prisma.learningActivity.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { title: 'asc' },
+  });
+  return rows.map((row) => withDecimalMinor(row, ['cost'] as const));
 }
 
 export async function createLearningActivity(input: {
@@ -278,15 +283,16 @@ export async function createLearningActivity(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'learning', verb: 'create' });
-  return prisma.learningActivity.create({
+  const activity = await prisma.learningActivity.create({
     data: {
       tenantId: auth.tenantId,
       title: input.title,
       isCompliance: input.isCompliance ?? false,
-      cost: input.cost ?? 0,
+      costMinor: rupeesToMinor(input.cost ?? 0),
       courseId: input.courseId ?? null,
     },
   });
+  return withDecimalMinor(activity, ['cost'] as const);
 }
 
 export async function enrolInLearning(input: { employmentRelationshipId: string; learningActivityId: string }) {
@@ -335,7 +341,9 @@ export async function completeLearning(id: string, input: { skillId?: string | n
     include: { employmentRelationship: true, learningActivity: true },
   });
   if (!record) throw ApiError.notFound('Learning record');
-  if (record.status === 'Completed') return record;
+  if (record.status === 'Completed') {
+    return { ...record, learningActivity: withDecimalMinor(record.learningActivity, ['cost'] as const) };
+  }
 
   const updated = await governedWrite(async (tx) => {
     const row = await tx.learningRecord.update({

@@ -9,6 +9,7 @@
  * export lands an audit record.
  */
 
+import { rupeesToMinor } from '../../platform/wire.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { asUser, expectReject, prisma, tenantId, withFixtureRole } from '../helpers.js';
 import { hire, transitionEmployment } from '../../domains/employment.js';
@@ -82,8 +83,8 @@ async function makeEmployee(label: string, daysAgo: number, monthlyBasic = 40_00
         tenantId: TENANT,
         employmentRelationshipId: employment.id,
         revisionReason: 'initial',
-        amount: monthlyBasic,
-        basicPay: monthlyBasic,
+        amountMinor: rupeesToMinor(monthlyBasic),
+        basicPayMinor: rupeesToMinor(monthlyBasic),
         status: 'Effective',
         effectiveFrom: hireEffectiveDate,
       },

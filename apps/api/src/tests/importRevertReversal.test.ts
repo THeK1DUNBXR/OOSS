@@ -456,7 +456,7 @@ describe('compensation and attendance rows are tombstoned, and the readers hide 
     const committed = await asUser(CHAIRMAN, () => commitImport(staged.batchId));
     expect(committed.errors).toEqual([]);
     expect(committed.created.compensationRecord).toBe(1);
-    expect((await asUser(CHAIRMAN, () => currentCompensation(employmentId)))?.amount.toString()).toBe('50000');
+    expect((await asUser(CHAIRMAN, () => currentCompensation(employmentId)))?.amount?.toString()).toBe('50000');
 
     await asUser(CHAIRMAN, () => revertImport(staged.batchId));
 
@@ -906,7 +906,7 @@ describe('a revert of a pay record a batch superseded restores that record, unle
     expect((await compensationOf(recordA.id)).status).toBe('Superseded');
     const rowB = (await rowsFor(b.batchId)).find((r) => r.entityType === 'compensationRecord');
     expect(rowB?.message).toMatch(/Not restored/);
-    expect((await asUser(CHAIRMAN, () => currentCompensation(employmentId)))?.amount.toString()).toBe('70000');
+    expect((await asUser(CHAIRMAN, () => currentCompensation(employmentId)))?.amount?.toString()).toBe('70000');
   });
 });
 
