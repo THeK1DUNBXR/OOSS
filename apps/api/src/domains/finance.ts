@@ -24,7 +24,7 @@
  * pointing one way is what stops the two files becoming one.
  */
 
-import { EVENTS, toMinorHalfUp } from '@kaizen/shared';
+import { EVENTS, formatMinor, toMinorHalfUp } from '@kaizen/shared';
 import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -40,7 +40,9 @@ import { rupeesToMinor, wireInt, withDecimalMinor } from '../platform/wire.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { lockLegacyPeriod } from '../platform/periodLock.js';
 import {
+  issueEntryExists,
   paymentHasReceiptEntries,
+  postCreditNote,
   postReceiptAllocation,
   receiptPostsFor,
   reverseReceiptEntries,
@@ -50,6 +52,7 @@ import {
   clampZero,
   lockAndLoadFeeInstalment,
   lockAndLoadInvoice,
+  lockInvoice,
   lockPayment,
   outstandingOfInstalment,
   paiseOfInput,
@@ -557,6 +560,25 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
   await assertCan({ resource: 'invoices', verb: 'edit' });
   await runHooks('accounting_document.before_write', { date: new Date(), what: 'This credit note' });
 
+  // Read before the transaction opens, so the permission check can run (the scoped client refuses
+  // inside one). A note that posts moves the receivable, so the invoice's own record must admit the
+  // writer, as loadForWrite gives an invoice edit: an employee reaches the invoices they raised.
+  // The posting gates are a receipt's (receiptPostsFor): a course-fee or legacy invoice posts nothing,
+  // so it needs no transactions check.
+  const target = await prisma.invoice.findFirst({
+    where: { id: invoiceId, tenantId: auth.tenantId },
+    select: { createdById: true, enrollmentDate: true },
+  });
+  if (!target) throw ApiError.notFound('Invoice');
+  if (!target.enrollmentDate && (await issueEntryExists(invoiceId))) {
+    await assertCan({
+      resource: 'transactions',
+      verb: 'create',
+      record: { ownerPartyId: target.createdById },
+      classification: 'confidential',
+    });
+  }
+
   // The company's own document series ('C'), not the generic record-code
   // sequence: a credit note is a final document a customer holds, and its
   // numbering has to be gapless the way a tax invoice's is.
@@ -567,15 +589,66 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
   // stayed taken when this write was refused, and the series had a hole in it.
   // The paise conversion is inside the transaction, after the number is taken, so a
   // refused amount gives the number back the same way a refused row does.
+  const issuedAt = new Date();
   const { recordCode, note, amountMinor } = await prisma.$transaction(async (tx) => {
+    // The invoice row is locked whether or not the note posts. The cap below reads what
+    // the invoice has left, so two notes against one invoice must not both read the same
+    // balance; and a legacy or course-fee invoice is capped the same way.
+    await lockInvoice(tx, auth.tenantId, invoiceId);
+    // A note that posts takes the period before its number is taken (periodLock.ts order,
+    // as the invoice issue does). A closed month refuses here, before a number.
+    if (await receiptPostsFor(tx, invoiceId)) await lockLegacyPeriod(tx, auth.tenantId, issuedAt);
+
+    const invoice = await tx.invoice.findFirst({
+      where: { id: invoiceId, tenantId: auth.tenantId },
+      select: {
+        recordCode: true,
+        draftReference: true,
+        organizationId: true,
+        personId: true,
+        division: true,
+        grandTotalMinor: true,
+        cgstAmountMinor: true,
+        sgstAmountMinor: true,
+        igstAmountMinor: true,
+        roundOffMinor: true,
+      },
+    });
+    if (!invoice) throw ApiError.notFound('Invoice');
+
+    // A note may not exceed what the invoice has left: its total, less the receipts and the notes
+    // already against it, all read under the lock. Paise throughout.
+    const amountMinor = toMinorHalfUp(amount);
+    const position = positionOfInvoice({
+      grandTotalMinor: invoice.grandTotalMinor,
+      lines: await tx.invoiceLine.findMany({
+        where: { tenantId: auth.tenantId, invoiceId },
+        select: { amountMinor: true },
+      }),
+      receipts: await tx.receipt.findMany({
+        where: { tenantId: auth.tenantId, invoiceId },
+        select: { allocatedAmountMinor: true },
+      }),
+      creditNotes: await tx.creditNote.findMany({
+        where: { tenantId: auth.tenantId, invoiceId },
+        select: { amountMinor: true },
+      }),
+    });
+    const label = invoice.recordCode ?? invoice.draftReference ?? invoiceId;
+    assertFits(amountMinor, position.outstanding, (left) =>
+      ApiError.unprocessable(
+        `This credit note is for ₹${formatMinor(amountMinor)}, and ${label} has only ₹${left} left to credit. Nothing was issued.`,
+        { outstanding: left, offered: formatMinor(amountMinor) },
+      ),
+    );
+
     const recordCode = await nextDocumentNumber(
       tx,
       DOCUMENT_SERIES.creditNote,
       numbering.prefix,
-      new Date(),
+      issuedAt,
       numbering.yearFormat,
     );
-    const amountMinor = toMinorHalfUp(amount);
     const note = await tx.creditNote.create({
       data: {
         tenantId: auth.tenantId,
@@ -584,8 +657,11 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
         amountMinor,
         reason,
         issuedById: auth.partyId,
+        issuedAt,
       },
     });
+    // The journal entry, in this transaction. A refusal takes the number and the note back with it.
+    await postCreditNote(tx, note, invoice);
     return { recordCode, note, amountMinor };
   });
 
