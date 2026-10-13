@@ -112,16 +112,30 @@ async function recomputeInvoiceTotals(invoiceId: string) {
     gstRate: num(l.gstRate) ?? 0,
   }));
   const gst = computeGst(gstInput, invoice.interState);
-  return prisma.invoice.update({
-    where: { id: invoiceId },
-    data: {
-      taxableValueMinor: rupeesToMinor(gst.taxableValue),
-      cgstAmountMinor: rupeesToMinor(gst.cgst),
-      sgstAmountMinor: rupeesToMinor(gst.sgst),
-      igstAmountMinor: rupeesToMinor(gst.igst),
-      roundOffMinor: rupeesToMinor(gst.roundOff),
-      grandTotalMinor: rupeesToMinor(gst.grandTotal),
-    },
+  return governedWrite(async (tx) => {
+    const updated = await tx.invoice.update({
+      where: { id: invoiceId },
+      data: {
+        taxableValueMinor: rupeesToMinor(gst.taxableValue),
+        cgstAmountMinor: rupeesToMinor(gst.cgst),
+        sgstAmountMinor: rupeesToMinor(gst.sgst),
+        igstAmountMinor: rupeesToMinor(gst.igst),
+        roundOffMinor: rupeesToMinor(gst.roundOff),
+        grandTotalMinor: rupeesToMinor(gst.grandTotal),
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'invoice',
+      subjectId: invoiceId,
+      before: {
+        taxableValueMinor: String(invoice.taxableValueMinor),
+        grandTotalMinor: String(invoice.grandTotalMinor),
+      },
+      after: { taxableValueMinor: String(updated.taxableValueMinor), grandTotalMinor: String(updated.grandTotalMinor) },
+      tx,
+    });
+    return updated;
   });
 }
 
@@ -236,10 +250,20 @@ async function beforeIssueClassification(payload: Record<string, unknown>) {
   // A course-fee invoice is never a tax document (see the `Invoice` doc
   // comment) — it is not a bill of supply either, it is neither, so it is
   // never classified and never queued for e-invoicing.
+  // This hook runs before the issue transaction opens (invoicing.ts, runHooks calls), so
+  // the classification write and its audit row are not in one transaction. FX-24.
   if (invoice.enrollmentDate) {
     await prisma.invoice.update({
       where: { id: invoice.id },
       data: { invoiceType: 'temp', eInvoiceStatus: 'not_applicable' },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'invoice',
+      subjectId: invoice.id,
+      before: { invoiceType: invoice.invoiceType },
+      after: { invoiceType: 'temp', eInvoiceStatus: 'not_applicable' },
+      meta: { source: 'before_issue' },
     });
     return;
   }
@@ -279,6 +303,14 @@ async function beforeIssueClassification(payload: Record<string, unknown>) {
     where: { id: invoice.id },
     data: { invoiceType, eInvoiceStatus },
   });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'invoice',
+    subjectId: invoice.id,
+    before: { invoiceType: invoice.invoiceType },
+    after: { invoiceType, eInvoiceStatus },
+    meta: { source: 'before_issue' },
+  });
 }
 
 let hooksRegistered = false;
@@ -293,6 +325,8 @@ export function registerGstComplianceHooks() {
 // ---------------------------------------------------------------------------
 
 async function nextRcmNumber(at: Date): Promise<string> {
+  // Not audited: a gapless sequence counter. The document that takes the number is the
+  // audited write. Listed for an owner decision on a CLAUDE.md rule 5 exemption.
   const tenantId = currentAuth().tenantId;
   const year = recordCodeYear(at);
   const row = await prisma.recordSequence.upsert({

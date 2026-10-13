@@ -676,6 +676,8 @@ export async function markKnowledgeHelpful(id: string) {
   if (!article) throw ApiError.notFound('Knowledge article');
   if (article.status !== 'published') throw ApiError.unprocessable('Only a published article can be marked helpful.');
 
+  // Not audited: helpfulCount is the counter the screen shows, incremented by viewers, not
+  // governed state. Listed for an owner decision on a CLAUDE.md rule 5 exemption.
   return prisma.itKnowledgeArticle.update({ where: { id }, data: { helpfulCount: { increment: 1 } } });
 }
 

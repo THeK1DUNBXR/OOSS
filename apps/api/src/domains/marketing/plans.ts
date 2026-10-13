@@ -20,6 +20,7 @@ import {
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
@@ -119,16 +120,39 @@ export async function updatePlan(id: string, patch: Partial<PlanInput>): Promise
   if (!existing) throw ApiError.notFound('Plan');
   if (existing.status === 'closed') throw ApiError.conflict('A closed plan cannot be edited.');
 
-  const row = await prisma.marketingPlan.update({
-    where: { id },
-    data: {
-      ...(patch.period !== undefined ? { period: patch.period } : {}),
-      ...(patch.division !== undefined ? { division: patch.division } : {}),
-      ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
-      ...(patch.goals !== undefined ? { goals: patch.goals as never } : {}),
-      ...(patch.campaignIds !== undefined ? { campaignIds: patch.campaignIds } : {}),
-      updatedById: auth.partyId,
-    },
+  const row = await governedWrite(async (tx) => {
+    const updated = await tx.marketingPlan.update({
+      where: { id },
+      data: {
+        ...(patch.period !== undefined ? { period: patch.period } : {}),
+        ...(patch.division !== undefined ? { division: patch.division } : {}),
+        ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
+        ...(patch.goals !== undefined ? { goals: patch.goals as never } : {}),
+        ...(patch.campaignIds !== undefined ? { campaignIds: patch.campaignIds } : {}),
+        updatedById: auth.partyId,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_plan',
+      subjectId: id,
+      before: {
+        period: existing.period,
+        division: existing.division,
+        theme: existing.theme,
+        goals: existing.goals as never,
+        campaignIds: existing.campaignIds,
+      },
+      after: {
+        period: updated.period,
+        division: updated.division,
+        theme: updated.theme,
+        goals: updated.goals as never,
+        campaignIds: updated.campaignIds,
+      },
+      tx,
+    });
+    return updated;
   });
   return toPlanView(row);
 }

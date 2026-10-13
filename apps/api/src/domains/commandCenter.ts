@@ -150,6 +150,9 @@ async function watermarkFor() {
 
   if (existing) return { ...existing, currentSignature: signature };
 
+  // Not audited: the watermark is the viewer's own read cursor for the attention feed. It
+  // moves with what they have seen, not with any business state. Listed for an owner
+  // decision on a CLAUDE.md rule 5 exemption.
   const created = await prisma.attentionWatermark.create({
     data: {
       tenantId: auth.tenantId,
@@ -538,6 +541,8 @@ export async function touchWatermark() {
   const auth = currentAuth();
   if (!auth.userId || !auth.affiliationId) return null;
   const signature = await computeReachSignature();
+  // Not audited: the same read cursor as watermarkFor above, advanced on each visit. Listed
+  // for an owner decision on a CLAUDE.md rule 5 exemption.
   return prisma.attentionWatermark.upsert({
     where: {
       tenantId_userId_affiliationId: {

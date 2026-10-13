@@ -354,6 +354,9 @@ async function appendHistory(
     select: { seq: true, contentHash: true },
   });
   if (latest?.contentHash === contentHash) return;
+  // Not audited: a history row is a copy of a child's published summary, rebuilt on each
+  // publish. It is a read model on the holding's side. Listed for an owner decision on a
+  // CLAUDE.md rule 5 exemption.
   await tx.entitySnapshotHistory.create({
     // The Json columns in `shared` are cast on write, as in publishEntitySnapshotOnce.
     data: {
@@ -489,6 +492,9 @@ async function publishEntitySnapshotOnce(
     const t = await prisma.tenant.findFirstOrThrow({ where: { id: sourceTenantId } });
     const config = (t.config as Record<string, unknown>) ?? {};
     if (config.snapshotDirty) {
+      // Not audited: this clears the flag that schedules a snapshot publish. It is job
+      // bookkeeping on the tenant config, and nobody decides on it. Listed for an owner
+      // decision on a CLAUDE.md rule 5 exemption.
       await prisma.tenant.update({
         where: { id: sourceTenantId },
         data: { config: { ...config, snapshotDirty: false } as never },
@@ -1491,6 +1497,9 @@ export async function markSnapshotDirty(tenantId: string): Promise<void> {
   if (!tenant) return;
   const config = (tenant.config as Record<string, unknown>) ?? {};
   if (config.snapshotDirty === true) return;
+  // Not audited: sets the dirty flag that schedules a snapshot publish. It is cache
+  // invalidation on the tenant config, not a change anyone decides on. Listed for an owner
+  // decision on a CLAUDE.md rule 5 exemption.
   await prisma.tenant.update({
     where: { id: tenantId },
     data: { config: { ...config, snapshotDirty: true } as never },

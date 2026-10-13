@@ -17,6 +17,8 @@ export async function nextCorporateCode(prefix: CorporatePrefix, at: Date = new 
   const year = recordCodeYear(at);
   const entityType = `CMPCOR:${prefix}`;
 
+  // Not audited: a gapless sequence counter. The record that takes the code is the audited
+  // write. Listed for an owner decision on a CLAUDE.md rule 5 exemption.
   const row = await prisma.recordSequence.upsert({
     where: { tenantId_entityType_year: { tenantId, entityType, year } },
     create: { tenantId, entityType, year, nextSequence: 2 },

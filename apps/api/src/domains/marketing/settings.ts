@@ -22,6 +22,7 @@ import { assertCan } from '../../platform/permissions.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { adapterStatus } from './adapters/registry.js';
 
 registerGovernedEntities('mkt', ['channel', 'claim']);
@@ -58,15 +59,24 @@ export async function ensureDefaultChannels(tenantId: string): Promise<number> {
     const existing = await prisma.marketingChannel.findFirst({ where: { tenantId, key } });
     if (existing) continue;
     const recordCode = await nextRecordCode('CHN');
-    await prisma.marketingChannel.create({
-      data: {
-        tenantId,
-        recordCode,
-        key,
-        label: CHANNEL_KEY_LABELS[key],
-        kind: DEFAULT_CHANNEL_KIND[key],
-        active: true,
-      },
+    await governedWrite(async (tx) => {
+      const channel = await tx.marketingChannel.create({
+        data: {
+          tenantId,
+          recordCode,
+          key,
+          label: CHANNEL_KEY_LABELS[key],
+          kind: DEFAULT_CHANNEL_KIND[key],
+          active: true,
+        },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'channel',
+        subjectId: channel.id,
+        after: { recordCode, key, active: true },
+        tx,
+      });
     });
     created += 1;
   }

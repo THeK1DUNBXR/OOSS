@@ -1005,7 +1005,7 @@ export async function createInvoice(input: InvoiceInput) {
 async function writeLines(tx: DbTx, invoiceId: string, priced: PricedLine[]) {
   const auth = currentAuth();
   for (const line of priced) {
-    await tx.invoiceLine.create({
+    const row = await tx.invoiceLine.create({
       data: {
         tenantId: auth.tenantId,
         invoiceId,
@@ -1029,6 +1029,18 @@ async function writeLines(tx: DbTx, invoiceId: string, priced: PricedLine[]) {
         supplyType: line.supplyType,
         exemptionNotification: line.exemptionNotification,
       },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'invoice_line',
+      subjectId: row.id,
+      after: {
+        invoiceId,
+        position: row.position,
+        amountMinor: String(row.amountMinor),
+        taxAmountMinor: String(row.taxAmountMinor),
+      },
+      tx,
     });
   }
 }
@@ -2126,6 +2138,9 @@ export async function rehydrateReceivablesFor(
       ? ((await prisma.organization.findFirst({ where: { id: subjectId }, select: { name: true } }))?.name ?? subjectId)
       : subjectId;
 
+  // Not audited: a receivables projection is rebuilt from the invoices and receipts on
+  // every hydrate, so it is a read model of them, not a record. Listed for an owner
+  // decision on a CLAUDE.md rule 5 exemption.
   const projection = await prisma.receivablesProjection.upsert({
     where: { tenantId_subjectType_subjectId: { tenantId: auth.tenantId, subjectType, subjectId } },
     create: {

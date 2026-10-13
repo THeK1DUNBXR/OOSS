@@ -36,7 +36,14 @@ import { assertCanAssignRole } from '../platform/roleAssignment.js';
 
 // board_meeting is also registered by compliance/corporate.ts; this module writes
 // it too, and board.test.ts loads this module without the compliance tree.
-registerGovernedEntities('board', ['board_member', 'board_meeting', 'resolution', 'compliance_item', 'vote']);
+registerGovernedEntities('board', [
+  'board_member',
+  'board_meeting',
+  'resolution',
+  'compliance_item',
+  'vote',
+  'board_pack_item',
+]);
 
 const DAY_MS = 86_400_000;
 
@@ -335,8 +342,19 @@ export interface AgendaItemInput {
 
 export async function updateAgenda(meetingId: string, agenda: AgendaItemInput[]) {
   await assertCan({ resource: 'board_meetings', verb: 'edit' });
-  await getMeetingOrThrow(meetingId);
-  return prisma.boardMeeting.update({ where: { id: meetingId }, data: { agenda: agenda as never } });
+  const meeting = await getMeetingOrThrow(meetingId);
+  return governedWrite(async (tx) => {
+    const updated = await tx.boardMeeting.update({ where: { id: meetingId }, data: { agenda: agenda as never } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'board_meeting',
+      subjectId: meetingId,
+      before: { agendaItems: Array.isArray(meeting.agenda) ? meeting.agenda.length : 0 },
+      after: { agendaItems: agenda.length },
+      tx,
+    });
+    return updated;
+  });
 }
 
 export interface AttendanceInput {
@@ -352,9 +370,20 @@ export async function recordAttendance(meetingId: string, attendees: AttendanceI
   const presentCount = attendees.filter((a) => a.present).length;
   const quorumMet = presentCount >= meeting.quorumRequired;
 
-  return prisma.boardMeeting.update({
-    where: { id: meetingId },
-    data: { attendees: attendees as never, quorumMet },
+  return governedWrite(async (tx) => {
+    const updated = await tx.boardMeeting.update({
+      where: { id: meetingId },
+      data: { attendees: attendees as never, quorumMet },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'board_meeting',
+      subjectId: meetingId,
+      before: { quorumMet: meeting.quorumMet },
+      after: { quorumMet, presentCount },
+      tx,
+    });
+    return updated;
   });
 }
 
@@ -398,14 +427,25 @@ export async function draftMinutes(meetingId: string, input: { text: string; doc
   const meeting = await getMeetingOrThrow(meetingId);
   if (!meeting.heldOn) throw ApiError.unprocessable('Minutes cannot be drafted before the meeting is marked held.');
 
-  return prisma.boardMeeting.update({
-    where: { id: meetingId },
-    data: {
-      status: 'minutes_draft',
-      minutesDraftedOn: new Date(),
-      minutesText: input.text,
-      minutesDocumentRef: input.documentRef ?? meeting.minutesDocumentRef,
-    },
+  return governedWrite(async (tx) => {
+    const updated = await tx.boardMeeting.update({
+      where: { id: meetingId },
+      data: {
+        status: 'minutes_draft',
+        minutesDraftedOn: new Date(),
+        minutesText: input.text,
+        minutesDocumentRef: input.documentRef ?? meeting.minutesDocumentRef,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'board_meeting',
+      subjectId: meetingId,
+      before: { status: meeting.status },
+      after: { status: 'minutes_draft' },
+      tx,
+    });
+    return updated;
   });
 }
 
@@ -512,13 +552,24 @@ export async function signMinutes(meetingId: string, documentRef?: string) {
     throw ApiError.unprocessable('Minutes must be entered before they can be signed.');
   }
 
-  return prisma.boardMeeting.update({
-    where: { id: meetingId },
-    data: {
-      status: 'minutes_signed',
-      minutesSignedOn: new Date(),
-      minutesDocumentRef: documentRef ?? meeting.minutesDocumentRef,
-    },
+  return governedWrite(async (tx) => {
+    const updated = await tx.boardMeeting.update({
+      where: { id: meetingId },
+      data: {
+        status: 'minutes_signed',
+        minutesSignedOn: new Date(),
+        minutesDocumentRef: documentRef ?? meeting.minutesDocumentRef,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'board_meeting',
+      subjectId: meetingId,
+      before: { status: meeting.status },
+      after: { status: 'minutes_signed' },
+      tx,
+    });
+    return updated;
   });
 }
 
@@ -581,16 +632,26 @@ export async function addBoardPackItem(meetingId: string, input: BoardPackItemIn
   const auth = currentAuth();
   await getMeetingOrThrow(meetingId);
 
-  return prisma.boardPackItem.create({
-    data: {
-      tenantId: auth.tenantId,
-      meetingId,
-      title: input.title,
-      kind: input.kind,
-      fileRef: input.fileRef,
-      addedByPartyId: auth.partyId ?? 'system',
-      order: input.order ?? 0,
-    },
+  return governedWrite(async (tx) => {
+    const item = await tx.boardPackItem.create({
+      data: {
+        tenantId: auth.tenantId,
+        meetingId,
+        title: input.title,
+        kind: input.kind,
+        fileRef: input.fileRef,
+        addedByPartyId: auth.partyId ?? 'system',
+        order: input.order ?? 0,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'board_pack_item',
+      subjectId: item.id,
+      after: { meetingId, title: input.title, kind: input.kind, order: input.order ?? 0 },
+      tx,
+    });
+    return item;
   });
 }
 
