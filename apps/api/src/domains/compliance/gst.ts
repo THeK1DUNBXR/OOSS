@@ -41,6 +41,7 @@ import { governedWrite } from '../../platform/governedWrite.js';
 import { registerHook, runHooks } from '../../platform/hooks.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../../platform/documentNumber.js';
+import { lockLegacyPeriod } from '../../platform/periodLock.js';
 import { companyProfile, documentNumbering } from '../companyProfile.js';
 
 registerGovernedEntities('cmp_gst', [
@@ -430,7 +431,9 @@ export async function issueDebitNote(invoiceId: string, input: DebitNoteInput) {
     );
   }
   if (!(input.amount > 0)) throw ApiError.badRequest('A debit note has to raise the invoice by a positive amount.');
-  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This debit note' });
+  // One clock read for the hook, the period lock and the number: a debit note is dated now.
+  const now = new Date();
+  await runHooks('accounting_document.before_write', { date: now, what: 'This debit note' });
 
   const invoice = await prisma.invoice.findFirst({ where: { id: invoiceId, tenantId: auth.tenantId } });
   if (!invoice) throw ApiError.notFound('Invoice');
@@ -442,11 +445,13 @@ export async function issueDebitNote(invoiceId: string, input: DebitNoteInput) {
   // The number and the row it names commit together. Taken on the global client it
   // stayed taken when this write was refused, and the series had a hole in it.
   const { recordCode, note } = await prisma.$transaction(async (tx) => {
+    // The period lock comes before the number (periodLock.ts order), as for a credit note.
+    await lockLegacyPeriod(tx, auth.tenantId, now);
     const recordCode = await nextDocumentNumber(
       tx,
       DOCUMENT_SERIES.debitNote,
       numbering.prefix,
-      new Date(),
+      now,
       numbering.yearFormat,
     );
     const note = await tx.debitNote.create({

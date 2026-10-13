@@ -693,25 +693,32 @@ export async function recordVendorBill(input: {
   const subtotalMinor = rupeesToMinor(input.subtotal);
   const taxAmountMinor = rupeesToMinor(input.taxAmount ?? 0);
   const totalMinor = subtotalMinor + taxAmountMinor;
-  const recordCode = await nextRecordCode('BILL');
-
-  const bill = await prisma.vendorBill.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      vendorName: input.vendorName,
-      vendorGstin: input.vendorGstin ?? null,
-      billNumber: input.billNumber ?? null,
-      billDate: input.billDate,
-      dueDate: input.dueDate ?? null,
-      categoryId: input.categoryId ?? null,
-      division: input.division ?? null,
-      subtotalMinor,
-      taxAmountMinor,
-      totalMinor,
-      note: input.note ?? null,
-      createdById: auth.partyId,
-    },
+  // The hook above reads the period status outside any transaction. The lock is taken in the
+  // transaction that writes the bill, before its number is drawn, so a close that lands between
+  // the read and the insert refuses the bill rather than booking it into a closed month
+  // (periodLock.ts, the FX-70 window).
+  const { bill, recordCode } = await prisma.$transaction(async (tx) => {
+    await lockLegacyPeriod(tx, auth.tenantId, input.billDate);
+    const recordCode = await nextRecordCode('BILL', new Date(), tx);
+    const bill = await tx.vendorBill.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        vendorName: input.vendorName,
+        vendorGstin: input.vendorGstin ?? null,
+        billNumber: input.billNumber ?? null,
+        billDate: input.billDate,
+        dueDate: input.dueDate ?? null,
+        categoryId: input.categoryId ?? null,
+        division: input.division ?? null,
+        subtotalMinor,
+        taxAmountMinor,
+        totalMinor,
+        note: input.note ?? null,
+        createdById: auth.partyId,
+      },
+    });
+    return { bill, recordCode };
   });
 
   // The rupee `total` is what the audit diff and the event have always carried; the paise string beside it is the exact figure.
@@ -1207,21 +1214,28 @@ export async function createAsset(input: {
   // purchase must not leave an asset behind.
   await runHooks('accounting_document.before_write', { date: input.purchaseDate, what: 'This asset purchase' });
 
-  const recordCode = await nextRecordCode('FA');
-  const asset = await prisma.fixedAsset.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      name: input.name,
-      purchaseDate: input.purchaseDate,
-      costMinor: rupeesToMinor(input.cost),
-      salvageValueMinor: rupeesToMinor(input.salvageValue ?? 0),
-      usefulLifeMonths: input.usefulLifeMonths,
-      method: input.method ?? 'straight_line',
-      wdvRate: input.wdvRate ?? 0,
-      division: input.division ?? null,
-      categoryId: input.categoryId ?? null,
-    },
+  // The asset row takes the period lock in its own transaction, as the bill does. The ledger
+  // leg below takes its own lock (recordTransaction), so a close between the two is refused
+  // by the leg and leaves the row: reported in period-paths.md.
+  const { asset, recordCode } = await prisma.$transaction(async (tx) => {
+    await lockLegacyPeriod(tx, auth.tenantId, input.purchaseDate);
+    const recordCode = await nextRecordCode('FA', new Date(), tx);
+    const asset = await tx.fixedAsset.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        name: input.name,
+        purchaseDate: input.purchaseDate,
+        costMinor: rupeesToMinor(input.cost),
+        salvageValueMinor: rupeesToMinor(input.salvageValue ?? 0),
+        usefulLifeMonths: input.usefulLifeMonths,
+        method: input.method ?? 'straight_line',
+        wdvRate: input.wdvRate ?? 0,
+        division: input.division ?? null,
+        categoryId: input.categoryId ?? null,
+      },
+    });
+    return { asset, recordCode };
   });
 
   // A capital purchase is money leaving an account like any other, so it lands
@@ -1353,19 +1367,24 @@ export async function createLoan(input: {
   await assertCan({ resource: 'assets', verb: 'create' });
   await runHooks('accounting_document.before_write', { date: input.startDate, what: 'This loan' });
 
-  const recordCode = await nextRecordCode('LN');
-  const loan = await prisma.loan.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      lender: input.lender,
-      principalMinor: rupeesToMinor(input.principal),
-      annualRate: input.annualRate,
-      tenureMonths: input.tenureMonths,
-      startDate: input.startDate,
-      accountId: input.accountId ?? null,
-      division: input.division ?? null,
-    },
+  // The loan row takes the period lock in its own transaction, as the bill does (see recordVendorBill).
+  const { loan, recordCode } = await prisma.$transaction(async (tx) => {
+    await lockLegacyPeriod(tx, auth.tenantId, input.startDate);
+    const recordCode = await nextRecordCode('LN', new Date(), tx);
+    const loan = await tx.loan.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        lender: input.lender,
+        principalMinor: rupeesToMinor(input.principal),
+        annualRate: input.annualRate,
+        tenureMonths: input.tenureMonths,
+        startDate: input.startDate,
+        accountId: input.accountId ?? null,
+        division: input.division ?? null,
+      },
+    });
+    return { loan, recordCode };
   });
   await auditWrite({
     action: 'create',

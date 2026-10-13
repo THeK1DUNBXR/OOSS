@@ -156,26 +156,34 @@ export async function recordPayment(input: {
   // Half away from zero, as the number the route sent always read into a two-place column.
   const amountMinor = rupeesToMinor(input.amount);
 
-  const recordCode = await nextRecordCode('PAY');
-  const payment = await prisma.payment.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      amountMinor,
-      currency: input.currency ?? 'INR',
-      gatewayReference: input.gatewayReference,
-      receivedAt: accountingDate,
-      valueDate: movedFromClosed ? arrivedAt : null,
-      status: 'received',
-      method: input.method ?? 'bank_transfer',
-      payerOrganizationId: input.payerOrganizationId ?? null,
-      payerPersonId: input.payerPersonId ?? null,
-      // Null for a gateway webhook, which has no human behind it; the party for
-      // money somebody took. It is also the narrowing that lets an employee hold
-      // `payments@own` and see their own collections rather than the company's.
-      recordedById: auth.partyId,
-      note: input.note ?? null,
-    },
+  // The lock is on the accounting date, not the arrival date: a payment moved past a closed
+  // month is written into the open one, and that is the month the lock must hold. The hook
+  // above reads the status outside a transaction, so the lock is what holds it through the
+  // insert (periodLock.ts, FX-70).
+  const { recordCode, payment } = await prisma.$transaction(async (tx) => {
+    await lockLegacyPeriod(tx, auth.tenantId, accountingDate);
+    const recordCode = await nextRecordCode('PAY', new Date(), tx);
+    const payment = await tx.payment.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        amountMinor,
+        currency: input.currency ?? 'INR',
+        gatewayReference: input.gatewayReference,
+        receivedAt: accountingDate,
+        valueDate: movedFromClosed ? arrivedAt : null,
+        status: 'received',
+        method: input.method ?? 'bank_transfer',
+        payerOrganizationId: input.payerOrganizationId ?? null,
+        payerPersonId: input.payerPersonId ?? null,
+        // Null for a gateway webhook, which has no human behind it; the party for
+        // money somebody took. It is also the narrowing that lets an employee hold
+        // `payments@own` and see their own collections rather than the company's.
+        recordedById: auth.partyId,
+        note: input.note ?? null,
+      },
+    });
+    return { recordCode, payment };
   });
 
   await auditWrite({
@@ -241,7 +249,11 @@ export async function reversePayment(paymentId: string, reason: string) {
 
   // The payment's reversal row and the reversal of its receipts' entries commit together.
   const { recordCode, reversal } = await governedWrite(async (tx) => {
-    const recordCode = await nextRecordCode('PAY', undefined, tx);
+    // One clock read: the period the lock holds is the month the reversal row is dated in.
+    // The hook above checked the same month, outside the transaction (periodLock.ts).
+    const at = new Date();
+    await lockLegacyPeriod(tx, auth.tenantId, at);
+    const recordCode = await nextRecordCode('PAY', at, tx);
     const reversal = await tx.payment.create({
       data: {
         tenantId: auth.tenantId,
@@ -249,7 +261,7 @@ export async function reversePayment(paymentId: string, reason: string) {
         amountMinor: -original.amountMinor,
         currency: original.currency,
         gatewayReference: `${original.gatewayReference}:REVERSAL`,
-        receivedAt: new Date(),
+        receivedAt: at,
         status: 'refunded',
         method: original.method,
         reversalOfPaymentId: paymentId,
@@ -385,14 +397,17 @@ export async function allocatePayment(input: {
       balanceAfterMinor = clampZero(position.outstanding - amountPaise);
     }
 
-    // The period row before the number is taken (periodLock.ts order), for an allocation
-    // that posts. A month with no row gets one; a closed or closing month is refused.
-    if (input.invoiceId) await lockLegacyPeriod(tx, auth.tenantId, new Date());
+    // The period row before the number is taken (periodLock.ts order). Taken for a fee
+    // instalment too: the receipt is dated today whichever it allocates to, and the hook above
+    // checked today's month outside this transaction. A month with no row gets one; a closed or
+    // closing month is refused.
+    const at = new Date();
+    await lockLegacyPeriod(tx, auth.tenantId, at);
     const recordCode = await nextDocumentNumber(
       tx,
       DOCUMENT_SERIES.receipt,
       numbering.prefix,
-      new Date(),
+      at,
       numbering.yearFormat,
     );
     const receipt = await tx.receipt.create({
@@ -555,7 +570,9 @@ async function settleIfFullyPaid(invoiceId: string | null, feeInstalmentId: stri
 export async function issueCreditNote(invoiceId: string, amount: number, reason: string, reasonCode?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'invoices', verb: 'edit' });
-  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This credit note' });
+  // One clock read for the hook, the period lock and the number: a credit note is dated now.
+  const now = new Date();
+  await runHooks('accounting_document.before_write', { date: now, what: 'This credit note' });
 
   // The company's own document series ('C'), not the generic record-code
   // sequence: a credit note is a final document a customer holds, and its
@@ -568,11 +585,14 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
   // The paise conversion is inside the transaction, after the number is taken, so a
   // refused amount gives the number back the same way a refused row does.
   const { recordCode, note, amountMinor } = await prisma.$transaction(async (tx) => {
+    // The period lock comes before the number (periodLock.ts order), so a close that lands after
+    // the hook refuses the note here and gives the number back with the rest of the transaction.
+    await lockLegacyPeriod(tx, auth.tenantId, now);
     const recordCode = await nextDocumentNumber(
       tx,
       DOCUMENT_SERIES.creditNote,
       numbering.prefix,
-      new Date(),
+      now,
       numbering.yearFormat,
     );
     const amountMinor = toMinorHalfUp(amount);
