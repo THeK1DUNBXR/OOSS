@@ -1,0 +1,426 @@
+{
+  "gate": "G13",
+  "description": "Ratchet for CLAUDE.md rule 5 (every write audited). Per-file counts of Prisma writes whose function has no auditWrite and no audited helper. A count may only fall. Regenerate with node scripts/gates/run.mjs --write-baseline.",
+  "entries": [
+    {
+      "file": "apps/api/src/domains/agreements.ts",
+      "rule": "unaudited-write",
+      "count": 3,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/board.ts",
+      "rule": "unaudited-write",
+      "count": 5,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/businessLines.ts",
+      "rule": "unaudited-write",
+      "count": 4,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/commandCenter.ts",
+      "rule": "unaudited-write",
+      "count": 2,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/companyProfile.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/corporate/codes.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/corporate/contracts.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/corporate/security.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/gst.ts",
+      "rule": "unaudited-write",
+      "count": 4,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/labour.ts",
+      "rule": "unaudited-write",
+      "count": 3,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/payroll.ts",
+      "rule": "unaudited-write",
+      "count": 2,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/privacy.ts",
+      "rule": "unaudited-write",
+      "count": 3,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/tax.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/courses.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/employment.ts",
+      "rule": "unaudited-write",
+      "count": 10,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/equity.ts",
+      "rule": "unaudited-write",
+      "count": 2,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/finance.ts",
+      "rule": "unaudited-write",
+      "count": 3,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/group.ts",
+      "rule": "unaudited-write",
+      "count": 3,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/hcm/assets.ts",
+      "rule": "unaudited-write",
+      "count": 2,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/hcm/compensation.ts",
+      "rule": "unaudited-write",
+      "count": 7,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/hcm/engagement.ts",
+      "rule": "unaudited-write",
+      "count": 6,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/hcm/learning.ts",
+      "rule": "unaudited-write",
+      "count": 4,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/hcm/leavepolicy.ts",
+      "rule": "unaudited-write",
+      "count": 2,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/hcm/payrollops.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/hcm/performance.ts",
+      "rule": "unaudited-write",
+      "count": 2,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/hcm/recruiting.ts",
+      "rule": "unaudited-write",
+      "count": 4,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/hcm/separations.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/hcm/time.ts",
+      "rule": "unaudited-write",
+      "count": 4,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/hiring.ts",
+      "rule": "unaudited-write",
+      "count": 2,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/identity.ts",
+      "rule": "unaudited-write",
+      "count": 3,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/invoicing.ts",
+      "rule": "unaudited-write",
+      "count": 2,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/it/continuity.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/it/servicedesk.ts",
+      "rule": "unaudited-write",
+      "count": 3,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/leave.ts",
+      "rule": "unaudited-write",
+      "count": 5,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/ai.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/assets.ts",
+      "rule": "unaudited-write",
+      "count": 3,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/attribution.ts",
+      "rule": "unaudited-write",
+      "count": 6,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/audiences.ts",
+      "rule": "unaudited-write",
+      "count": 3,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/budget.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/campaigns.ts",
+      "rule": "unaudited-write",
+      "count": 3,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/capture.ts",
+      "rule": "unaudited-write",
+      "count": 5,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/events.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/messaging.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/plans.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/preferences.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/referrals.ts",
+      "rule": "unaudited-write",
+      "count": 2,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/settings.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/payroll.ts",
+      "rule": "unaudited-write",
+      "count": 4,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/performance.ts",
+      "rule": "unaudited-write",
+      "count": 2,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/pipelines.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/routing.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/surfaces.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/winLoss.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/events/handlers.ts",
+      "rule": "unaudited-write",
+      "count": 2,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/imports/commit.ts",
+      "rule": "unaudited-write",
+      "count": 14,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/imports/sealing.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/imports/service.ts",
+      "rule": "unaudited-write",
+      "count": 5,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/jobs/compliance/payroll.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/jobs/scheduler.ts",
+      "rule": "unaudited-write",
+      "count": 3,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/platform/documentNumber.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/platform/exceptions.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/platform/grantSync.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/platform/ledger.ts",
+      "rule": "unaudited-write",
+      "count": 2,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/platform/navSync.ts",
+      "rule": "unaudited-write",
+      "count": 2,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/platform/outbox.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/platform/periodLock.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/platform/recordCode.ts",
+      "rule": "unaudited-write",
+      "count": 2,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/platform/tenantPolicy.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/routes/admin.routes.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/routes/auth.routes.ts",
+      "rule": "unaudited-write",
+      "count": 1,
+      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
+    }
+  ]
+}
