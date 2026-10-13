@@ -7,6 +7,7 @@ import { runG4 } from './g4-mock.mjs';
 import { runG8, collectG8 } from './g8-governed.mjs';
 import { runG9, collectMoney, collectIst, MONEY_RULES, IST_RULES } from './g9-ratchet.mjs';
 import { runG10, collectRoles, G10_RULES } from './g10-roles.mjs';
+import { runG13, writeG13Baseline } from './g13-audit.mjs';
 import { writeAllowlist } from './lib.mjs';
 
 const ORDER_RULES = ['emit-before-auditWrite', 'auditWrite-before-assertCan'];
@@ -39,6 +40,7 @@ if (process.argv.includes('--write-baseline')) {
       managedRules: G10_RULES,
       defaultReason: 'Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count.',
     }),
+    writeG13Baseline(),
     writeAllowlist('g8-governed', {
       gate: 'G8',
       description:
@@ -53,7 +55,7 @@ if (process.argv.includes('--write-baseline')) {
   process.exit(0);
 }
 
-const results = [runG4(), runG8(), ...runG9(), runG10()];
+const results = [runG4(), runG8(), ...runG9(), runG10(), runG13()];
 let failures = 0;
 for (const r of results) {
   const status = r.problems.length === 0 ? 'ok' : 'FAIL';
