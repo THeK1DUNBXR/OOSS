@@ -43,6 +43,7 @@ import { invoiceLabel, isCourseFeeInvoice, loadInvoiceForRead, totalsOf } from '
 import { companyProfile, documentNumbering } from './companyProfile.js';
 import { openAccountingDate, periodRefusesEntries } from './compliance/books.js';
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../platform/documentNumber.js';
+import { lockLegacyPeriod } from '../platform/periodLock.js';
 import { minorToRupees } from './money.js';
 
 /**
@@ -397,6 +398,10 @@ async function issueFinalInvoice(invoiceId: string, input: { note?: string | nul
   // The number and the row it names commit together. Taken on the global client it
   // stayed taken when this write was refused, and the series had a hole in it.
   const { recordCode, final } = await prisma.$transaction(async (tx) => {
+    // The period lock is taken on the date the document is dated, before its number, as the hook
+    // above checked it outside this transaction (periodLock.ts). A settlement moved into an open
+    // month locks that month.
+    await lockLegacyPeriod(tx, auth.tenantId, dating.issuedAt);
     const recordCode = await nextDocumentNumber(
       tx,
       DOCUMENT_SERIES.finalInvoice,
@@ -564,6 +569,10 @@ export async function finalizeCourseFeeInvoice(invoiceId: string, trigger: 'sett
   // The number and the row it names commit together. Taken on the global client it
   // stayed taken when this write was refused, and the series had a hole in it.
   const { recordCode, final } = await prisma.$transaction(async (tx) => {
+    // The period lock is taken on the date the document is dated, before its number, as the hook
+    // above checked it outside this transaction (periodLock.ts). A settlement moved into an open
+    // month locks that month.
+    await lockLegacyPeriod(tx, auth.tenantId, dating.issuedAt);
     const recordCode = await nextDocumentNumber(
       tx,
       DOCUMENT_SERIES.finalInvoice,

@@ -36,6 +36,7 @@ import { runHooks } from '../platform/hooks.js';
 import { ApiError } from '../platform/errors.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
+import { lockLegacyPeriod } from '../platform/periodLock.js';
 import { findOrCreatePerson } from '../domains/identity.js';
 import { companyProfile } from '../domains/companyProfile.js';
 import {
@@ -1117,6 +1118,11 @@ export async function revertSpinOut(input: {
           where: { tenantId: subsidiaryTenantId, batchId },
         });
         if (prior) return true;
+
+        // The reversals are dated now, in the subsidiary's current month. The hook above checked
+        // that month outside this transaction, so the lock is taken here, before the first number
+        // is drawn (periodLock.ts order).
+        await lockLegacyPeriod(tx, subsidiaryTenantId, now);
 
         // A revert is only safe while the subsidiary has done nothing else. Keep the
         // guard: a row outside the batch means the subsidiary has a life of its own.
