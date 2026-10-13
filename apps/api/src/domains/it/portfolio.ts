@@ -50,6 +50,7 @@ import {
 } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
 import { minorString, rupeesToMinor, withDecimalMinor } from '../../platform/wire.js';
+import { maskMoney } from '../money.js';
 import { minorToRupees } from './money.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -104,6 +105,19 @@ function walkMaskBudget(value: unknown): unknown {
  * viewer holds `it_budgets:F`. */
 function maskBudgetMoney<T>(value: T, seesMoney: boolean): T {
   return seesMoney ? value : (walkMaskBudget(value) as T);
+}
+
+/** A budget line's planned figure is withheld from a viewer without `it_budgets:F`, as its actual is. */
+function budgetLineWire<T extends object>(row: T, seesMoney: boolean): T {
+  return maskMoney(withDecimalMinor(row, ['planned'] as const), seesMoney, ['planned']) as T;
+}
+
+/**
+ * An initiative's budget is budget money: withheld, as its spend is, from a
+ * viewer without `it_budgets:F` (MONEY-VISIBILITY). Present but null, never 0.
+ */
+function initiativeWire<T extends object>(row: T, seesMoney: boolean): T {
+  return maskMoney(withDecimalMinor(row, ['budget'] as const), seesMoney, ['budget']) as T;
 }
 
 // ---------------------------------------------------------------------------
@@ -196,7 +210,7 @@ export async function createInitiative(input: CreateInitiativeInput) {
     return initiative;
   });
 
-  return withDecimalMinor(initiative, ['budget']);
+  return initiativeWire(initiative, await canSeeMoney('it_budgets'));
 }
 
 export interface InitiativeFilter {
@@ -217,7 +231,8 @@ export async function listInitiatives(filter: InitiativeFilter = {}) {
     },
     orderBy: { createdAt: 'desc' },
   });
-  return rows.map((row) => withDecimalMinor(row, ['budget']));
+  const seesMoney = await canSeeMoney('it_budgets');
+  return rows.map((row) => initiativeWire(row, seesMoney));
 }
 
 /** Spend to date: a sum over the `VendorBill` rows the initiative names —
@@ -255,7 +270,7 @@ export async function initiativeDetail(id: string) {
   // the same "financial visibility" as seeing what a budget line has spent.
   const seesMoney = await canSeeMoney('it_budgets');
   return {
-    ...withDecimalMinor(initiative, ['budget']),
+    ...initiativeWire(initiative, seesMoney),
     spendToDate: seesMoney ? spendToDate : null,
     availableTransitions: availableTransitions(itInitiativeMachine, initiative.stage as ItInitiativeStage),
   };
@@ -312,7 +327,7 @@ export async function transitionInitiative(
     if (!gate.permitted) {
       return {
         applied: false,
-        initiative: withDecimalMinor(initiative, ['budget']),
+        initiative: initiativeWire(initiative, await canSeeMoney('it_budgets')),
         approvalStepId: gate.approvalStepId,
         reason: gate.reason,
       };
@@ -346,7 +361,12 @@ export async function transitionInitiative(
     return updated;
   });
 
-  return { applied: true, initiative: withDecimalMinor(updated, ['budget']), approvalStepId: null, reason: null };
+  return {
+    applied: true,
+    initiative: initiativeWire(updated, await canSeeMoney('it_budgets')),
+    approvalStepId: null,
+    reason: null,
+  };
 }
 
 export interface PostUpdateInput {
@@ -592,7 +612,7 @@ export async function createBudgetLine(input: CreateBudgetLineInput) {
     return line;
   });
 
-  return withDecimalMinor(line, ['planned']);
+  return budgetLineWire(line, await canSeeMoney('it_budgets'));
 }
 
 export interface UpdateBudgetLineInput {
@@ -626,7 +646,7 @@ export async function updateBudgetLine(id: string, input: UpdateBudgetLineInput)
     before: { planned: minorToRupees(line.plannedMinor) },
     after: { planned: input.planned ?? minorToRupees(line.plannedMinor) },
   });
-  return withDecimalMinor(updated, ['planned']);
+  return budgetLineWire(updated, await canSeeMoney('it_budgets'));
 }
 
 /**
@@ -673,7 +693,7 @@ export async function approveBudgetLine(id: string) {
     return updated;
   });
 
-  return withDecimalMinor(updated, ['planned']);
+  return budgetLineWire(updated, await canSeeMoney('it_budgets'));
 }
 
 export async function budgetLineDetail(id: string) {

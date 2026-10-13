@@ -69,9 +69,9 @@ describe('IT money columns — wire characterisation (pre-conversion)', () => {
         billingCycle: 'monthly',
       }),
     );
-    // Pins today's shape, not a wanted one: createLicence returns the cost to
-    // Operations, who cannot see it on the detail path. Flip this when that leak is fixed.
-    expect(wire(created).costPerPeriod).toBe('1000.25');
+    // Operations creates the licence but cannot see its cost on the detail path,
+    // so the create return withholds it too (MONEY-VISIBILITY).
+    expect(wire(created).costPerPeriod).toBeNull();
     expect(wire(created).pendingRenewalCostPerPeriod).toBeNull();
 
     const detail = wire(await asUser(FINANCE, () => licenceDetail(created.id)));
@@ -116,8 +116,8 @@ describe('IT money columns — wire characterisation (pre-conversion)', () => {
     );
     const newTermEnd = new Date(Date.UTC(2027, 2, 31));
     const proposed = await asUser(OPS, () => proposeRenewal(created.id, { newTermEnd, newCostPerPeriod: 1500.5 }));
-    expect(wire(proposed.licence).pendingRenewalCostPerPeriod).toBe('1500.5');
-    expect(wire(proposed.licence).costPerPeriod).toBe('100.25');
+    expect(wire(proposed.licence).pendingRenewalCostPerPeriod).toBeNull();
+    expect(wire(proposed.licence).costPerPeriod).toBeNull();
 
     const approved = await asUser(FINANCE, () => approveRenewal(created.id, true, 'char'));
     expect(approved.applied).toBe(true);
@@ -165,7 +165,7 @@ describe('IT money columns — wire characterisation (pre-conversion)', () => {
   it('asset: purchaseCost is a two-place string on rows, bookValue a number on detail, and a zero cost stays zero', async () => {
     const tag = `AST-CHAR-${stamp()}`;
     const asset = await asUser(OPS, () => createAsset({ tag, kind: 'laptop', purchaseCost: 1500.25 }));
-    expect(wire(asset).purchaseCost).toBe('1500.25');
+    expect(wire(asset).purchaseCost).toBeNull();
 
     const detail = wire(await asUser(OPS, () => assetDetail(asset.id)));
     expect(detail.purchaseCost).toBe('1500.25');
@@ -179,7 +179,7 @@ describe('IT money columns — wire characterisation (pre-conversion)', () => {
 
     const rows = wire(await asUser(OPS, () => listAssets({})));
     const row = rows.find((r: { id: string }) => r.id === asset.id);
-    expect(row.purchaseCost).toBe('1500.25');
+    expect(row.purchaseCost).toBeNull();
   });
 
   it('asset summary: bookValue is a number and sums the non-disposed fleet', async () => {
@@ -201,9 +201,9 @@ describe('IT money columns — wire characterisation (pre-conversion)', () => {
         budget: 2000.5,
       }),
     );
-    expect(wire(created).budget).toBe('2000.5');
+    expect(wire(created).budget).toBeNull();
     const detail = wire(await asUser(OPS, () => initiativeDetail(created.id)));
-    expect(detail.budget).toBe('2000.5');
+    expect(detail.budget).toBeNull();
   });
 
   it('budget line: planned is a two-place string on the raw row, a number in the FY roll-up', async () => {

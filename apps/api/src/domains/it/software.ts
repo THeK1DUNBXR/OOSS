@@ -427,7 +427,9 @@ export async function createLicence(input: CreateLicenceInput) {
     return licence;
   });
 
-  return licenceWire(licence);
+  // The creator is Operations, who can create a licence but not see its cost (see
+  // maskLicenceMoney). Returning the raw cost here handed it to them on create.
+  return maskLicenceMoney(licenceWire(licence), await canSeeMoney('it_licences'));
 }
 
 export interface LicenceFilter {
@@ -714,7 +716,7 @@ export async function proposeRenewal(id: string, input: ProposeRenewalInput): Pr
 
   return {
     applied: false,
-    licence: licenceWire(updated),
+    licence: maskLicenceMoney(licenceWire(updated), await canSeeMoney('it_licences')),
     approvalStepId: step.id,
     resolvedApproverRole: approver?.roleSlug ?? 'finance_head',
     reason: 'Awaiting approval — a licence renewal is never applied by the person who proposed it.',

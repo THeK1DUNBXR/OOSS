@@ -42,7 +42,8 @@ import { emit } from '../../platform/eventBus.js';
 import { availableTransitions } from '../../platform/lifecycle.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
-import { assertCan, assertScopeAll, matchNothing, visibilityWhere } from '../../platform/permissions.js';
+import { assertCan, assertScopeAll, canSeeMoney, matchNothing, visibilityWhere } from '../../platform/permissions.js';
+import { maskMoney } from '../money.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
 
@@ -164,7 +165,7 @@ export async function createAsset(input: CreateAssetInput) {
     return asset;
   });
 
-  return withTransitions(asset);
+  return maskMoney(withTransitions(asset), await canSeeMoney(RESOURCE), ['purchaseCost']);
 }
 
 export interface UpdateAssetInput {
@@ -272,7 +273,7 @@ export async function listAssets(filter: AssetFilter = {}) {
     orderBy: { createdAt: 'desc' },
   });
 
-  return withHolderNames(rows.map(withTransitions));
+  return assetRowsWire(rows);
 }
 
 /** What `GET /api/it/assets/mine` — and the My IT page in another workstream
@@ -286,7 +287,7 @@ export async function myAssets() {
     where: { tenantId: auth.tenantId, holderPartyId: auth.partyId },
     orderBy: { createdAt: 'desc' },
   });
-  return withHolderNames(rows.map(withTransitions));
+  return assetRowsWire(rows);
 }
 
 export async function assetDetail(id: string) {
@@ -362,6 +363,14 @@ async function withHolderNames<T extends { holderPartyId: string | null }>(
     ...r,
     holderName: r.holderPartyId ? (names.find((n) => n.id === r.holderPartyId)?.fullName ?? null) : null,
   }));
+}
+
+/** Asset rows as the wire carries them: purchaseCost is withheld from a viewer without `it_assets:F`. */
+async function assetRowsWire<
+  T extends { status: string; purchaseCostMinor: bigint | null; holderPartyId: string | null },
+>(rows: T[]) {
+  const seesMoney = await canSeeMoney(RESOURCE);
+  return withHolderNames(rows.map((row) => maskMoney(withTransitions(row), seesMoney, ['purchaseCost'])));
 }
 
 function withTransitions<T extends { status: string; purchaseCostMinor: bigint | null }>(

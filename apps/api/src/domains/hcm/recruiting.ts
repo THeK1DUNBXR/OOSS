@@ -211,6 +211,7 @@ export async function createCandidate(
 ) {
   const auth = currentAuth();
   await assertCan({ resource: 'candidates', verb: 'create' });
+  const canSee = await canSeeMoney('candidates');
 
   const { person } = await findOrCreatePerson({
     fullName: input.fullName,
@@ -220,7 +221,7 @@ export async function createCandidate(
   });
 
   const existing = await prisma.candidateProfile.findFirst({ where: { tenantId: auth.tenantId, personId: person.id } });
-  if (existing) return { ...withDecimalMinor(existing, ['currentCtc', 'expectedCtc'] as const), person };
+  if (existing) return { ...moneyView(existing, canSee, ['currentCtc', 'expectedCtc'] as const), person };
 
   // findOrCreatePerson (identity.ts:178) writes the person and its own events
   // before this point, outside this transaction. Only the candidate profile,
@@ -257,7 +258,7 @@ export async function createCandidate(
     return created;
   });
 
-  return { ...withDecimalMinor(profile, ['currentCtc', 'expectedCtc'] as const), person };
+  return { ...moneyView(profile, canSee, ['currentCtc', 'expectedCtc'] as const), person };
 }
 
 // ---------------------------------------------------------------------------
@@ -487,6 +488,7 @@ export async function listOffers(filter: { applicationId?: string; status?: stri
 export async function createOffer(input: { applicationId: string; ctc: number; joiningDate: Date; validUntil: Date }) {
   const auth = currentAuth();
   await assertCan({ resource: 'offers', verb: 'create' });
+  const canSee = await canSeeMoney('offers');
 
   const application = await prisma.application.findFirst({
     where: { id: input.applicationId, tenantId: auth.tenantId },
@@ -512,7 +514,7 @@ export async function createOffer(input: { applicationId: string; ctc: number; j
   });
 
   await auditWrite({ action: 'create', subjectType: 'offer_letter', subjectId: offer.id, after: offer as never });
-  return withDecimalMinor(offer, ['ctc'] as const);
+  return moneyView(offer, canSee, ['ctc'] as const);
 }
 
 export async function transitionOffer(
@@ -658,7 +660,7 @@ export async function transitionOffer(
         if (applicationMove) await applyApplicationTransition(tx, applicationMove);
       },
     });
-    return withDecimalMinor(updated, ['ctc'] as const);
+    return moneyView(updated, await canSeeMoney('offers'), ['ctc'] as const);
   });
 }
 
@@ -771,7 +773,7 @@ export async function createReferral(input: {
       tx,
     });
 
-    return withDecimalMinor(referral, ['bonusAmount'] as const);
+    return moneyView(referral, await canSeeMoney('referrals'), ['bonusAmount'] as const);
   });
 }
 
@@ -797,7 +799,7 @@ export async function updateReferralStatus(id: string, status: string) {
 
   const updated = await prisma.referral.update({ where: { id }, data: { status } });
   await auditWrite({ action: 'update', subjectType: 'referral', subjectId: id, before: referral, after: updated });
-  return withDecimalMinor(updated, ['bonusAmount'] as const);
+  return moneyView(updated, await canSeeMoney('referrals'), ['bonusAmount'] as const);
 }
 
 // ---------------------------------------------------------------------------
