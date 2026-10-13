@@ -1221,11 +1221,11 @@ export async function createAsset(input: {
   });
   // Withheld the same way listAssets withholds it: the creator holds assets:create,
   // which is not the money verb.
-  return maskMoney(
-    withDecimalMinor(asset, ['cost', 'salvageValue', 'disposalValue']),
-    await canSeeMoney('assets'),
-    ['cost', 'salvageValue', 'disposalValue'],
-  );
+  return maskMoney(withDecimalMinor(asset, ['cost', 'salvageValue', 'disposalValue']), await canSeeMoney('assets'), [
+    'cost',
+    'salvageValue',
+    'disposalValue',
+  ]);
 }
 
 /**
