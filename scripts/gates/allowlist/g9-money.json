@@ -77,14 +77,14 @@
     {
       "file": "apps/api/src/domains/compliance/payroll.ts",
       "rule": "num(",
-      "count": 25,
+      "count": 14,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
       "file": "apps/api/src/domains/compliance/payroll.ts",
       "rule": "Number(",
-      "count": 2,
-      "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
+      "count": 3,
+      "reason": "Baselined at Wave 7 (W7-A); 2 to 3 in FX-73, when the payroll rates moved to StatutoryRule and num( here fell from 25 to 14. The third hit is rateOf, a ppm rate (not money) read as the float fraction the shared statutory arithmetic still takes; it goes when that arithmetic moves to bigint ppm (FX-31). Do not raise the count."
     },
     {
       "file": "apps/api/src/domains/compliance/tax.ts",

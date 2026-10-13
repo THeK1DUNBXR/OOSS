@@ -63,12 +63,6 @@
       "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
     },
     {
-      "file": "apps/api/src/domains/compliance/payroll.ts",
-      "rule": "unaudited-write",
-      "count": 2,
-      "reason": "Baselined at P0 audit coverage (FX-22). This write has no auditWrite in its function or transaction. Add one (rule 5), or exempt it with the reason if it is a read model or cache; do not raise the count."
-    },
-    {
       "file": "apps/api/src/domains/compliance/privacy.ts",
       "rule": "unaudited-write",
       "count": 3,
