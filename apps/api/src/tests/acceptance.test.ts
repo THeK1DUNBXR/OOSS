@@ -1742,7 +1742,7 @@ describe('CRM-COML-002/005 — price versioning and the discount-authority gate'
       expect(superseded.status).toBe('superseded');
       // The superseded row's price is unchanged, so a quote built against it
       // stays reproducible.
-      expect(Number(superseded.unitPrice.toString())).toBe(Number(before.unitPrice.toString()));
+      expect(superseded.unitPriceMinor).toBe(before.unitPriceMinor);
       expect(after.version).toBe(before.version + 1);
       expect(after.status).toBe('active');
     });
@@ -1798,7 +1798,7 @@ describe('CRM-COML-002/005 — price versioning and the discount-authority gate'
       });
       expect(typeof line.priceBookEntryVersion).toBe('number');
       // The resolved list price is frozen onto the line itself.
-      expect(Number(line.listUnitPrice.toString())).toBeGreaterThan(0);
+      expect(line.listUnitPriceMinor).toBeGreaterThan(0n);
     });
   });
 

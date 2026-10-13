@@ -1800,7 +1800,7 @@ model PriceBookEntry {
   priceBookName String @default("Standard List")
 
   currency         String
-  unitPrice        Decimal @db.Decimal(18, 2)
+  unitPriceMinor   BigInt
   billingFrequency String
   minQuantity      Int     @default(1)
   /// Required, non-nullable, deliberately set — the ceiling the discount
@@ -1868,10 +1868,10 @@ model Quote {
   version       Int    @default(1)
   status        String @default("draft")
 
-  subtotal      Decimal? @db.Decimal(18, 2)
-  discountTotal Decimal? @db.Decimal(18, 2)
-  grandTotal    Decimal? @db.Decimal(18, 2)
-  currency      String   @default("INR")
+  subtotalMinor      BigInt?
+  discountTotalMinor BigInt?
+  grandTotalMinor    BigInt?
+  currency           String @default("INR")
 
   issuedAt   DateTime?
   validUntil DateTime?
@@ -1909,10 +1909,10 @@ model QuoteLine {
   priceBookEntryVersion Int
 
   quantity       Int      @default(1)
-  listUnitPrice  Decimal  @db.Decimal(18, 2)
-  discountPct    Int      @default(0)
-  discountAmount Decimal? @db.Decimal(18, 2)
-  lineTotal      Decimal? @db.Decimal(18, 2)
+  listUnitPriceMinor  BigInt
+  discountPct         Int     @default(0)
+  discountAmountMinor BigInt?
+  lineTotalMinor      BigInt?
 
   createdAt DateTime @default(now())
 

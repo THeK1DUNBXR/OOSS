@@ -12,6 +12,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { formatMinor } from '@kaizen/shared';
 import { createOffering, createQuote, publishPrice } from '../../domains/commercial.js';
 import { verifyChain } from '../../platform/eventBus.js';
 import { unscopedPrisma } from '../../platform/db.js';
@@ -63,7 +64,7 @@ describe('quote.created emits a body that still verifies once stored', () => {
         { priceBookEntryId: entryA.id, quantity: 3, discountPct: 10 },
         { priceBookEntryId: entryB.id, quantity: 1, discountPct: 10 },
       ]);
-      expect(quote.grandTotal?.toFixed(2)).toBe('2790.72');
+      expect(formatMinor(quote.grandTotalMinor!)).toBe('2790.72');
 
       const result = await verifyChain(TENANT, { cursor: head.seq.toString() });
       expect(result.valid).toBe(true);
