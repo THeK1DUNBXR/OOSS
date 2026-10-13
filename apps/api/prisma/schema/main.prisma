@@ -3107,12 +3107,12 @@ model Invoice {
   placeOfSupply String?
   interState    Boolean @default(false)
   customerGstin String?
-  taxableValue  Decimal @default(0) @db.Decimal(18, 2)
-  cgstAmount    Decimal @default(0) @db.Decimal(18, 2)
-  sgstAmount    Decimal @default(0) @db.Decimal(18, 2)
-  igstAmount    Decimal @default(0) @db.Decimal(18, 2)
-  roundOff      Decimal @default(0) @db.Decimal(8, 2)
-  grandTotal    Decimal @default(0) @db.Decimal(18, 2)
+  taxableValueMinor  BigInt @default(0)
+  cgstAmountMinor    BigInt @default(0)
+  sgstAmountMinor    BigInt @default(0)
+  igstAmountMinor    BigInt @default(0)
+  roundOffMinor      BigInt @default(0)
+  grandTotalMinor    BigInt @default(0)
   /// Which division earns the revenue on this invoice.
   division      String?
 
@@ -3140,7 +3140,7 @@ model Invoice {
   /// printed twice, because a customer reading an invoice should not have to
   /// work out which of the two they are looking at. Fixed at issue, like the
   /// declaration above.
-  amountPayableNow Decimal @default(0) @db.Decimal(18, 2)
+  amountPayableNowMinor BigInt @default(0)
 
   /// How the money changed hands at issue, and the reference it left behind.
   /// Printed, because "paid by UPI, ref 402…" is what makes the invoice also
@@ -3225,18 +3225,18 @@ model InvoiceLine {
   description     String
   quantity        Int     @default(1)
   /// The price of one of whatever this line is, before any discount.
-  unitPrice       Decimal @default(0) @db.Decimal(18, 2)
+  unitPriceMinor       BigInt @default(0)
   /// The extended value after the line's own discount — unitPrice x quantity,
   /// less `discountAmount`. This is the taxable value: what GST is computed
   /// on, and what the invoice actually bills for this line. The pre-discount
   /// figure (`unitPrice x quantity`) is never stored separately because it is
   /// always recoverable from those two columns; a course fee before a
   /// discount is a derived fact, not a second source of truth to keep in step.
-  amount          Decimal @db.Decimal(18, 2)
+  amountMinor          BigInt
   /// The discount on this line, entered directly in rupees or derived from
   /// `discountPercent` against `unitPrice x quantity` — whichever the counter
   /// typed, the other is back-computed so the two never disagree.
-  discountAmount  Decimal @default(0) @db.Decimal(18, 2)
+  discountAmountMinor  BigInt @default(0)
   discountPercent Decimal @default(0) @db.Decimal(5, 2)
   /// The order the lines were entered in, so an edited invoice does not
   /// reshuffle itself on reload.
@@ -3248,7 +3248,7 @@ model InvoiceLine {
   /// different rates and a single invoice-level rate would misstate both.
   hsnSac    String?
   gstRate   Decimal @default(0) @db.Decimal(5, 2)
-  taxAmount Decimal @default(0) @db.Decimal(18, 2)
+  taxAmountMinor BigInt @default(0)
 
   // ---- Compliance (workstream B) ----
   /// taxable | nil | exempt | non_gst — which GSTR-1/3B section the line reports under.
