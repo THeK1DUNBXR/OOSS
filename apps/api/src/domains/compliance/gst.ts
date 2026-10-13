@@ -30,7 +30,7 @@ import {
   toMinorHalfUp,
 } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../../platform/db.js';
-import { decimalWire, rupeesOf, rupeesToMinor, withRupeeWire } from '../../platform/wire.js';
+import { decimalWire, rupeesOf, rupeesToMinor, withDecimalMinor, withRupeeWire } from '../../platform/wire.js';
 import { minorToRupees } from '../money.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
@@ -480,7 +480,7 @@ export async function listCreditNotesWithReason() {
     where: { tenantId: auth.tenantId, creditNoteId: { in: notes.map((n) => n.id) } },
   });
   const reasonOf = new Map(reasons.map((r) => [r.creditNoteId, r.reasonCode]));
-  return notes.map((n) => ({ ...n, reasonCode: reasonOf.get(n.id) ?? null }));
+  return notes.map((n) => ({ ...withDecimalMinor(n, ['amount'] as const), reasonCode: reasonOf.get(n.id) ?? null }));
 }
 
 /** Sets or replaces the structured reason code on a credit note already issued. */

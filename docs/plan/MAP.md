@@ -102,7 +102,7 @@
 
 **`apps/api/src/domains/compliance/tax.ts`** (1363 lines) — fyOf:77 · fyStartYear:81 · fyRange:85 · fyMonths:91 · Quarter:102 · quarterOf:104 · periodsOfQuarter:112 · depositDueDate:117 · ComputeVendorTdsInput:172 · computeVendorTds:183 · waiveVendorTds:259 · listVendorBillsForTds:334 · tdsSectionRates:348 · listApplicabilityRules:357 · setApplicabilityRule:363 · setMsmeTerms:388 · msmeExposure:417 · runMsmeLadder:438 · pendingTdsLiability:479 · listChallans:513 · CreateChallanInput:532 · createChallan:541 · MarkChallanPaidInput:571 · markChallanPaid:582 · runTdsDepositDueJob:678 · upsertDeclaration:748 · SalaryProjection:791 · salaryProjection:813 · applySalaryTds:862 · advanceTaxRate:912 · AdvanceTaxEstimate:922 · advanceTaxEstimateFor:931 · recordAdvanceTaxPayment:979 · TdsReturnRow:1028 · prepareTdsReturn:1084 · fileTdsReturn:1140 · listTdsReturns:1179 · tdsReturnDetail:1192 · exportTdsReturnCsv:1201 · IssueCertificateInput:1222 · issueCertificate:1236 · listCertificates:1332 · certificateDocument:1346
 
-**`apps/api/src/domains/courses.ts`** (495 lines) — CourseFeePlanInput:33 · CourseAddonInput:38 · CourseInput:46 · listCourses:67 · createCourse:186 · updateCourse:263 · retireCourse:367 · AssignCourseInput:436 · assignCourse:464
+**`apps/api/src/domains/courses.ts`** (522 lines) — CourseFeePlanInput:35 · CourseAddonInput:40 · CourseInput:48 · listCourses:69 · createCourse:191 · updateCourse:279 · retireCourse:394 · AssignCourseInput:463 · assignCourse:491
 
 **`apps/api/src/domains/decisions.ts`** (652 lines) — RaiseDecisionInput:47 · raiseDecision:62 · OPEN_DECISION_STATES:198 · decisionQueue:206 · DispositionInput:254 · disposeDecision:266 · linkDecision:484 · listDecisionLinks:543 · reviewDecision:582 · decisionCalibration:627
 
@@ -118,7 +118,7 @@
 
 **`apps/api/src/domains/filings.ts`** (1026 lines) — assertDematCompliant:62 · assertFemaPricingFloor:101 · handleAllotmentEffectiveForFema:158 · handleTransferEffectiveForFema:184 · runFlaReturn:227 · checkDematRequirements:323 · latestHalfYearEnd:384 · runPas6HalfYearly:393 · pas6:428 · mgt1Register:536 · mgt2Register:558 · mgt1Export:627 · mgt2Export:646 · pas3AllotteeList:668 · pas3Export:748 · sh4Data:812 · RecordFilingInput:897 · recordFiling:909 · listFilings:985
 
-**`apps/api/src/domains/finance.ts`** (672 lines) — issueFeeInstalments:84 · recordPayment:121 · reversePayment:228 · allocatePayment:306 · issueCreditNote:554 · rehydrateReceivables:617 · detectOverduePayments:625
+**`apps/api/src/domains/finance.ts`** (676 lines) — issueFeeInstalments:84 · recordPayment:122 · reversePayment:229 · allocatePayment:307 · issueCreditNote:555 · rehydrateReceivables:621 · detectOverduePayments:629
 
 **`apps/api/src/domains/founderView.ts`** (307 lines) — FounderSource:41 · FOUNDER_SOURCES:247 · founderView:293
 
@@ -168,7 +168,7 @@
 
 **`apps/api/src/domains/invoicePosting.ts`** (470 lines) — ledgerEntityForNewInvoice:45 · postInvoiceIssue:80 · postReceiptAllocation:184 · issueEntryExists:244 · issueEntryIn:257 · receiptPostsFor:274 · reverseEntryIn:289 · reverseInvoiceIssue:323 · paymentHasReceiptEntries:333 · reverseReceiptEntries:356 · listInvoiceDivisionLines:380 · InvoiceDivisionLineInput:389 · setInvoiceDivisionLine:401
 
-**`apps/api/src/domains/invoicing.ts`** (2148 lines) — InvoiceLineInput:122 · CollectedPaymentInput:161 · InvoiceInput:175 · invoiceLabel:221 · isCourseFeeInvoice:235 · lineTotalOf:247 · InvoiceTotals:251 · totalsOf:268 · totalsMinorOf:293 · paymentWire:322 · receiptWire:333 · InvoiceWire:347 · invoiceWire:351 · filingPeriodOf:371 · filedReturnFor:382 · assertPeriodOpen:402 · CUSTOMER_KINDS:424 · CustomerKind:425 · createInvoice:823 · updateInvoice:1048 · issueInvoiceDraft:1149 · voidInvoice:1256 · collectInvoicePayment:1326 · declarePaymentTerms:1658 · loadInvoiceForRead:1732 · invoiceSummary:1748 · invoiceDocument:1774 · rehydrateReceivablesFor:2090
+**`apps/api/src/domains/invoicing.ts`** (2151 lines) — InvoiceLineInput:121 · CollectedPaymentInput:160 · InvoiceInput:174 · invoiceLabel:220 · isCourseFeeInvoice:234 · lineTotalOf:246 · InvoiceTotals:250 · totalsOf:267 · totalsMinorOf:293 · paymentWire:322 · receiptWire:333 · InvoiceWire:347 · invoiceWire:351 · filingPeriodOf:371 · filedReturnFor:382 · assertPeriodOpen:402 · CUSTOMER_KINDS:424 · CustomerKind:425 · createInvoice:823 · updateInvoice:1048 · issueInvoiceDraft:1149 · voidInvoice:1256 · collectInvoicePayment:1326 · declarePaymentTerms:1658 · loadInvoiceForRead:1732 · invoiceSummary:1748 · invoiceDocument:1774 · rehydrateReceivablesFor:2093
 
 **`apps/api/src/domains/it/assets.ts`** (929 lines) — AssetThresholds:73 · currentThresholds:81 · CreateAssetInput:95 · createAsset:113 · UpdateAssetInput:171 · updateAsset:189 · AssetFilter:226 · listAssets:245 · myAssets:282 · assetDetail:293 · AssignAssetInput:397 · assignAsset:410 · ReturnAssetInput:472 · returnAsset:484 · transitionAsset:566 · AddAssetEventInput:632 · addAssetEvent:637 · listAssetEvents:658 · resolveDeskOwnerPartyId:676 · WarrantyLadderResult:685 · runWarrantyLadder:691 · RepairDetectorResult:751 · runInRepairTooLongDetector:756 · OrphanedAssetResult:787 · runOrphanedAssetDetector:795 · summary:839
 
@@ -268,7 +268,7 @@
 
 **`apps/api/src/domains/pipelines.ts`** (514 lines) — StageInput:27 · PipelineInput:40 · createPipeline:52 · addStage:111 · addTransition:160 · updateStage:192 · deleteTransition:222 · assertPipelineUsable:254 · assertGraphReachable:273 · TransitionCheck:317 · validateTransition:330 · requiredFieldValue:407 · retireStage:424 · pipelineForVertical:469 · entryStage:488 · loadPipelineWithStages:497 · stageFor:509
 
-**`apps/api/src/domains/receipts.ts`** (794 lines) — listReceipts:59 · receiptDocument:133 · raiseFinalInvoice:294 · raiseFinalInvoiceOnSettlement:304 · finalizeCourseFeeInvoice:503 · listFinalInvoices:623 · finalInvoiceDocument:667
+**`apps/api/src/domains/receipts.ts`** (818 lines) — listReceipts:69 · receiptDocument:143 · raiseFinalInvoice:304 · raiseFinalInvoiceOnSettlement:314 · finalizeCourseFeeInvoice:517 · listFinalInvoices:639 · finalInvoiceDocument:687
 
 **`apps/api/src/domains/relationships.ts`** (271 lines) — RelationshipInput:26 · createRelationship:44 · supersedeRelationship:90 · refineRelationship:132 · traverse:184 · resolveEdge:208 · relationshipStrengthScore:239
 
@@ -851,4 +851,4 @@
 Generated or lock files. Nothing in them answers a question worth the tokens.
 
 - `pnpm-lock.yaml` (6863 lines)
-- `scripts/gates/allowlist/g9-money.json` (1705 lines)
+- `scripts/gates/allowlist/g9-money.json` (1693 lines)

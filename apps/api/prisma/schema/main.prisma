@@ -3306,7 +3306,7 @@ model FeeInstalment {
 
   enrollmentId String
   feePlanId    String?
-  amount       Decimal  @db.Decimal(18, 2)
+  amountMinor  BigInt
   currency     String   @default("INR")
   dueDate      DateTime
   status       String   @default("scheduled")
@@ -3482,10 +3482,10 @@ model FinalInvoice {
   issuedById String?
 
   /// The figures as they stood when it was raised.
-  totalPayable  Decimal @default(0) @db.Decimal(18, 2)
-  totalReceived Decimal @default(0) @db.Decimal(18, 2)
-  creditNoted   Decimal @default(0) @db.Decimal(18, 2)
-  balance       Decimal @default(0) @db.Decimal(18, 2)
+  totalPayableMinor  BigInt @default(0)
+  totalReceivedMinor BigInt @default(0)
+  creditNotedMinor   BigInt @default(0)
+  balanceMinor       BigInt @default(0)
   /// True when nothing was left owing at the moment it was raised.
   settled       Boolean @default(false)
 
@@ -3529,10 +3529,10 @@ model CreditNote {
   tenantId   String
   recordCode String
 
-  invoiceId  String
-  amount     Decimal  @db.Decimal(18, 2)
-  currency   String   @default("INR")
-  reason     String
+  invoiceId   String
+  amountMinor BigInt
+  currency    String   @default("INR")
+  reason      String
   issuedAt   DateTime @default(now())
   issuedById String?
 
@@ -3659,7 +3659,7 @@ model Course {
   /// This is the flat/default fee. A course sold on instalment plans instead
   /// (a 1/3/6/8-month tenure, each its own monthly rate) prices from
   /// `feePlans` rather than this single figure — see `CourseFeePlan`.
-  feeAmount Decimal? @db.Decimal(18, 2)
+  feeAmountMinor BigInt?
   /// A share/dueInDays instalment schedule for `feeAmount` (see
   /// `events/handlers.ts`'s `instalmentPlan`) — a flat course billed in parts,
   /// distinct from `feePlans`/`CourseFeePlan`, which prices a course sold on
@@ -3708,7 +3708,7 @@ model CourseFeePlan {
   /// invoice line bills this many months at `monthlyFee` each: quantity times
   /// unit price, the same arithmetic every other line already uses.
   tenureMonths Int
-  monthlyFee   Decimal @db.Decimal(18, 2)
+  monthlyFeeMinor BigInt
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3729,9 +3729,9 @@ model CourseAddon {
   courseId String
   course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
-  name    String
-  price   Decimal @db.Decimal(18, 2)
-  gstRate Decimal @default(18) @db.Decimal(5, 2)
+  name       String
+  priceMinor BigInt
+  gstRate    Decimal @default(18) @db.Decimal(5, 2)
   hsnSac  String?
   notes   String?
   active  Boolean @default(true)

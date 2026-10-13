@@ -280,7 +280,7 @@ describe('invoice settlement to the paisa (invoicing and receipts)', () => {
       });
       const first = await raiseFinalInvoice(invoice.id);
       expect(first.settled).toBe(false);
-      expect(first.balance.toString()).toBe('0.01');
+      expect(first.balanceMinor).toBe('1');
 
       // Nothing has changed, so raising again hands back the same statement.
       const again = await raiseFinalInvoice(invoice.id);
@@ -290,7 +290,7 @@ describe('invoice settlement to the paisa (invoicing and receipts)', () => {
       const settled = await raiseFinalInvoice(invoice.id);
       expect(settled.id).not.toBe(first.id);
       expect(settled.settled).toBe(true);
-      expect(settled.balance.toString()).toBe('0');
+      expect(settled.balanceMinor).toBe('0');
     });
   });
 });

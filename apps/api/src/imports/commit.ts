@@ -2239,7 +2239,7 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
         code: courseCodeFor(courseName),
         // Deliberately unpriced. A discounted figure from one student's row is
         // not what this course sells for.
-        feeAmount: null,
+        feeAmountMinor: null,
         division: 'education',
       },
     });
