@@ -30,7 +30,8 @@ import {
   toMinorHalfUp,
 } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../../platform/db.js';
-import { decimalWire, rupeesOf } from '../../platform/wire.js';
+import { decimalWire, rupeesOf, rupeesToMinor, withRupeeWire } from '../../platform/wire.js';
+import { minorToRupees } from '../money.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
@@ -107,19 +108,19 @@ async function recomputeInvoiceTotals(invoiceId: string) {
     include: { lines: true },
   });
   const gstInput: GstLineInput[] = invoice.lines.map((l) => ({
-    taxableValue: num(l.amount) ?? 0,
+    taxableValue: minorToRupees(l.amountMinor),
     gstRate: num(l.gstRate) ?? 0,
   }));
   const gst = computeGst(gstInput, invoice.interState);
   return prisma.invoice.update({
     where: { id: invoiceId },
     data: {
-      taxableValue: gst.taxableValue,
-      cgstAmount: gst.cgst,
-      sgstAmount: gst.sgst,
-      igstAmount: gst.igst,
-      roundOff: gst.roundOff,
-      grandTotal: gst.grandTotal,
+      taxableValueMinor: rupeesToMinor(gst.taxableValue),
+      cgstAmountMinor: rupeesToMinor(gst.cgst),
+      sgstAmountMinor: rupeesToMinor(gst.sgst),
+      igstAmountMinor: rupeesToMinor(gst.igst),
+      roundOffMinor: rupeesToMinor(gst.roundOff),
+      grandTotalMinor: rupeesToMinor(gst.grandTotal),
     },
   });
 }
@@ -157,7 +158,7 @@ export async function classifyInvoiceLine(invoiceId: string, lineId: string, inp
 
   const nonTaxable = isNonTaxableSupply(input.supplyType);
   const gstRate = nonTaxable ? 0 : round2(input.gstRate ?? num(line.gstRate) ?? 0);
-  const taxAmount = nonTaxable ? 0 : round2(((num(line.amount) ?? 0) * gstRate) / 100);
+  const taxAmount = nonTaxable ? 0 : round2((minorToRupees(line.amountMinor) * gstRate) / 100);
 
   const updated = await prisma.invoiceLine.update({
     where: { id: lineId },
@@ -165,7 +166,7 @@ export async function classifyInvoiceLine(invoiceId: string, lineId: string, inp
       supplyType: input.supplyType,
       exemptionNotification: nonTaxable ? input.exemptionNotification?.trim() || null : null,
       gstRate,
-      taxAmount,
+      taxAmountMinor: rupeesToMinor(taxAmount),
     },
   });
 
@@ -646,12 +647,12 @@ export async function requestEInvoice(invoiceId: string) {
 
 export async function eInvoiceStatusList() {
   const auth = currentAuth();
-  return prisma.invoice.findMany({
+  const rows = await prisma.invoice.findMany({
     where: { tenantId: auth.tenantId, status: { notIn: ['draft'] }, deletedAt: null },
     select: {
       id: true,
       recordCode: true,
-      grandTotal: true,
+      grandTotalMinor: true,
       eInvoiceStatus: true,
       irn: true,
       irnAckAt: true,
@@ -660,6 +661,8 @@ export async function eInvoiceStatusList() {
     orderBy: { issuedDate: 'desc' },
     take: 200,
   });
+  // The grand total leaves as the Decimal string it always was, beside its paise.
+  return rows.map((row) => withRupeeWire(row, ['grandTotal']));
 }
 
 // ---------------------------------------------------------------------------

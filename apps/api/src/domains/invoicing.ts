@@ -76,7 +76,8 @@ import {
 } from '@kaizen/shared';
 import { istDateKey, toMinorHalfUp } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../platform/db.js';
-import { withMinor, wireInt, type DecimalLike } from '../platform/wire.js';
+import { withMinor, withRupeeWire, wireInt, rupeesToMinor, type DecimalLike } from '../platform/wire.js';
+import { minorToRupees } from './money.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -219,11 +220,11 @@ export function isCourseFeeInvoice(invoice: { enrollmentDate?: Date | string | n
 // ---------------------------------------------------------------------------
 
 interface WithAmount {
-  amount: unknown;
+  amountMinor: bigint;
 }
 
 export function lineTotalOf(lines: WithAmount[]): number {
-  return round2(lines.reduce((s, l) => s + (num(l.amount as never) ?? 0), 0));
+  return round2(lines.reduce((s, l) => s + minorToRupees(l.amountMinor), 0));
 }
 
 export interface InvoiceTotals {
@@ -244,12 +245,12 @@ export interface InvoiceTotals {
  * ledger, and this used to be four.
  */
 export function totalsOf(invoice: {
-  grandTotal?: unknown;
+  grandTotalMinor: bigint;
   lines: WithAmount[];
   receipts: Array<{ allocatedAmount: unknown }>;
   creditNotes?: Array<{ amount: unknown }>;
 }): InvoiceTotals {
-  const payable = invoicePayable(num(invoice.grandTotal as never), lineTotalOf(invoice.lines));
+  const payable = invoicePayable(minorToRupees(invoice.grandTotalMinor), lineTotalOf(invoice.lines));
   const allocated = round2(invoice.receipts.reduce((s, r) => s + (num(r.allocatedAmount as never) ?? 0), 0));
   const creditNoted = round2((invoice.creditNotes ?? []).reduce((s, c) => s + (num(c.amount as never) ?? 0), 0));
   return {
@@ -316,17 +317,22 @@ export function receiptWire<T extends ReceiptWireRow>(receipt: T) {
  * each receipt's money, with a Minor sibling for each. Lines and receipts are
  * only mapped when the row loaded them, because some callers return the bare row.
  */
-export function invoiceWire<
-  T extends Record<(typeof INVOICE_MONEY)[number], DecimalLike> & {
-    lines?: Array<Record<(typeof LINE_MONEY)[number], DecimalLike>>;
-    receipts?: ReceiptWireRow[];
-  },
->(invoice: T) {
+/** A row whose named money fields are their rupee string and paise string on the wire. */
+type RupeeWire<R, K extends string> = Omit<R, `${K}Minor`> & { [P in K]: string } & { [P in K as `${P}Minor`]: string };
+type InvoiceHeaderMoney = (typeof INVOICE_MONEY)[number];
+type InvoiceLineMoney = (typeof LINE_MONEY)[number];
+export type InvoiceWire<T> = RupeeWire<Omit<T, 'lines' | 'receipts'>, InvoiceHeaderMoney> &
+  (T extends { lines: Array<infer L> } ? { lines: Array<RupeeWire<L, InvoiceLineMoney>> } : unknown) &
+  (T extends { receipts: infer Rc } ? { receipts: Rc } : unknown);
+
+export function invoiceWire<T extends object & { lines?: unknown[]; receipts?: ReceiptWireRow[] }>(
+  invoice: T,
+): InvoiceWire<T> {
   return {
-    ...withMinor(invoice, INVOICE_MONEY),
-    ...(invoice.lines ? { lines: invoice.lines.map((l) => withMinor(l, LINE_MONEY)) } : {}),
+    ...withRupeeWire(invoice, INVOICE_MONEY),
+    ...(invoice.lines ? { lines: invoice.lines.map((l) => withRupeeWire(l as object, LINE_MONEY)) } : {}),
     ...(invoice.receipts ? { receipts: invoice.receipts.map((r) => receiptWire(r)) } : {}),
-  };
+  } as unknown as InvoiceWire<T>;
 }
 
 // ---------------------------------------------------------------------------
@@ -884,17 +890,17 @@ export async function createInvoice(input: InvoiceInput) {
         placeOfSupply: tax.placeOfSupply,
         interState: tax.interState,
         customerGstin: tax.customerGstin,
-        taxableValue: gst.taxableValue,
-        cgstAmount: gst.cgst,
-        sgstAmount: gst.sgst,
-        igstAmount: gst.igst,
-        roundOff: gst.roundOff,
-        grandTotal: gst.grandTotal,
+        taxableValueMinor: rupeesToMinor(gst.taxableValue),
+        cgstAmountMinor: rupeesToMinor(gst.cgst),
+        sgstAmountMinor: rupeesToMinor(gst.sgst),
+        igstAmountMinor: rupeesToMinor(gst.igst),
+        roundOffMinor: rupeesToMinor(gst.roundOff),
+        grandTotalMinor: rupeesToMinor(gst.grandTotal),
         division: input.division ?? null,
         // The declaration, before any money is taken. `collectInvoicePayment`
         // moves it if a payment follows.
         paymentType: 'credit',
-        amountPayableNow: 0,
+        amountPayableNowMinor: 0n,
         notes: input.notes ?? null,
         createdById: auth.partyId,
       },
@@ -974,14 +980,14 @@ async function writeLines(tx: DbTx, invoiceId: string, priced: PricedLine[]) {
         enrollmentId: line.enrollmentId,
         description: line.description,
         quantity: line.quantity,
-        unitPrice: line.unitPrice,
-        amount: line.amount,
-        discountAmount: line.discountAmount,
+        unitPriceMinor: rupeesToMinor(line.unitPrice),
+        amountMinor: rupeesToMinor(line.amount),
+        discountAmountMinor: rupeesToMinor(line.discountAmount),
         discountPercent: line.discountPercent,
         gstRate: line.gstRate,
         // Per line, because an invoice carrying an 18% service and a 5% good
         // cannot be described by one rate.
-        taxAmount: round2((line.amount * line.gstRate) / 100),
+        taxAmountMinor: rupeesToMinor(round2((line.amount * line.gstRate) / 100)),
         hsnSac: line.hsnSac,
         position: line.position,
         revenueMethod: line.revenueMethod,
@@ -1037,8 +1043,8 @@ export async function updateInvoice(
         enrollmentId: l.enrollmentId,
         description: l.description,
         quantity: l.quantity,
-        unitPrice: num(l.unitPrice) || num(l.amount) || 0,
-        discountAmount: num(l.discountAmount) || null,
+        unitPrice: minorToRupees(l.unitPriceMinor) || minorToRupees(l.amountMinor) || 0,
+        discountAmount: minorToRupees(l.discountAmountMinor) || null,
         gstRate: num(l.gstRate),
         hsnSac: l.hsnSac,
         supplyType: l.supplyType,
@@ -1050,7 +1056,7 @@ export async function updateInvoice(
   const gst = computeGst(gstInputOf(priced), tax.interState);
 
   const before = {
-    payable: num(existing.grandTotal),
+    payable: minorToRupees(existing.grandTotalMinor),
     lines: existing.lines.length,
     customer: existing.organizationId ?? existing.personId,
   };
@@ -1072,12 +1078,12 @@ export async function updateInvoice(
         placeOfSupply: tax.placeOfSupply,
         interState: tax.interState,
         customerGstin: tax.customerGstin,
-        taxableValue: gst.taxableValue,
-        cgstAmount: gst.cgst,
-        sgstAmount: gst.sgst,
-        igstAmount: gst.igst,
-        roundOff: gst.roundOff,
-        grandTotal: gst.grandTotal,
+        taxableValueMinor: rupeesToMinor(gst.taxableValue),
+        cgstAmountMinor: rupeesToMinor(gst.cgst),
+        sgstAmountMinor: rupeesToMinor(gst.sgst),
+        igstAmountMinor: rupeesToMinor(gst.igst),
+        roundOffMinor: rupeesToMinor(gst.roundOff),
+        grandTotalMinor: rupeesToMinor(gst.grandTotal),
       },
     });
   });
@@ -1169,7 +1175,11 @@ export async function issueInvoiceDraft(
       tx,
       name: EVENTS.INVOICE_ISSUED,
       subject: { entityType: 'invoice', entityId: invoiceId, recordCode },
-      newState: { total: num(updated.grandTotal), dueDate: updated.dueDate, from: existing.draftReference },
+      newState: {
+        total: minorToRupees(updated.grandTotalMinor),
+        dueDate: updated.dueDate,
+        from: existing.draftReference,
+      },
       impact: { domains: ['fin'] },
       confidentiality: 'confidential',
     });
@@ -1574,7 +1584,7 @@ export async function declarePaymentTerms(
   const updated = await prisma.invoice.update({
     where: { id: invoiceId },
     data: {
-      amountPayableNow: now,
+      amountPayableNowMinor: rupeesToMinor(now),
       paymentType: paymentTypeFor(totals.payable, now),
       ...(input.paymentMode !== undefined ? { paymentMode: input.paymentMode } : {}),
       ...(input.paymentReference !== undefined ? { paymentReference: input.paymentReference } : {}),
@@ -1585,7 +1595,7 @@ export async function declarePaymentTerms(
     action: 'update',
     subjectType: 'invoice',
     subjectId: invoiceId,
-    before: { amountPayableNow: num(invoice.amountPayableNow), paymentType: invoice.paymentType },
+    before: { amountPayableNow: minorToRupees(invoice.amountPayableNowMinor), paymentType: invoice.paymentType },
     after: { amountPayableNow: now, paymentType: updated.paymentType },
   });
   return updated;
@@ -1703,7 +1713,7 @@ export async function invoiceDocument(invoiceId: string) {
   // What the invoice says, fixed at issue. On a credit invoice nothing was
   // collected and the whole amount was payable then, which is what is printed —
   // never today's balance, because the document is final.
-  const declaredNow = round2(num(invoice.amountPayableNow) ?? 0);
+  const declaredNow = round2(minorToRupees(invoice.amountPayableNowMinor));
   const payableNow = invoice.paymentType === 'credit' ? totals.payable : declaredNow;
 
   const receipts = await prisma.receipt.findMany({
@@ -1817,30 +1827,30 @@ export async function invoiceDocument(invoiceId: string) {
       addonName: l.courseAddonId ? l.description : null,
       hsnSac: l.hsnSac,
       quantity: l.quantity,
-      unitPrice: num(l.unitPrice) || round2((num(l.amount) ?? 0) / Math.max(l.quantity, 1)),
+      unitPrice: minorToRupees(l.unitPriceMinor) || round2(minorToRupees(l.amountMinor) / Math.max(l.quantity, 1)),
       // The taxable value, after the line's own discount — what tax is charged
       // on and what this line is actually billed at.
-      amount: num(l.amount) ?? 0,
+      amount: minorToRupees(l.amountMinor),
       // What it cost before the discount. Recovered as amount + discount
       // rather than unitPrice x quantity, so the three figures printed on the
       // invoice — fee, discount, payable — always add up on rows raised
       // before this column existed too (discountAmount defaults to 0 there).
-      grossAmount: round2((num(l.amount) ?? 0) + (num(l.discountAmount) ?? 0)),
-      discountAmount: num(l.discountAmount) ?? 0,
+      grossAmount: round2(minorToRupees(l.amountMinor) + minorToRupees(l.discountAmountMinor)),
+      discountAmount: minorToRupees(l.discountAmountMinor),
       discountPercent: num(l.discountPercent) ?? 0,
       gstRate: num(l.gstRate) ?? 0,
-      taxAmount: num(l.taxAmount) ?? 0,
+      taxAmount: minorToRupees(l.taxAmountMinor),
       supplyType: l.supplyType,
       exemptionNotification: l.exemptionNotification,
       revenueMethod: l.revenueMethod,
     })),
 
     tax: {
-      taxableValue: num(invoice.taxableValue) ?? 0,
-      cgst: num(invoice.cgstAmount) ?? 0,
-      sgst: num(invoice.sgstAmount) ?? 0,
-      igst: num(invoice.igstAmount) ?? 0,
-      roundOff: num(invoice.roundOff) ?? 0,
+      taxableValue: minorToRupees(invoice.taxableValueMinor),
+      cgst: minorToRupees(invoice.cgstAmountMinor),
+      sgst: minorToRupees(invoice.sgstAmountMinor),
+      igst: minorToRupees(invoice.igstAmountMinor),
+      roundOff: minorToRupees(invoice.roundOffMinor),
     },
 
     // The Kaizen course-ledger view: present only where an enrollment date was
@@ -1855,10 +1865,11 @@ export async function invoiceDocument(invoiceId: string) {
           schedule: computePaymentSchedule(invoice.enrollmentDate.toISOString().slice(0, 10)),
           rows: invoice.lines.map((l) => {
             const isCourseRow = !l.courseAddonId;
-            const unitPrice = num(l.unitPrice) || round2((num(l.amount) ?? 0) / Math.max(l.quantity, 1));
+            const unitPrice =
+              minorToRupees(l.unitPriceMinor) || round2(minorToRupees(l.amountMinor) / Math.max(l.quantity, 1));
             const discountPercent = num(l.discountPercent) ?? 0;
-            const taxAmount = num(l.taxAmount) ?? 0;
-            const amount = num(l.amount) ?? 0;
+            const taxAmount = minorToRupees(l.taxAmountMinor);
+            const amount = minorToRupees(l.amountMinor);
             return {
               lineId: l.id,
               hsnSac: l.hsnSac,
@@ -1872,7 +1883,7 @@ export async function invoiceDocument(invoiceId: string) {
               tenureMonths: l.quantity,
               subtotal: round2(unitPrice * l.quantity),
               discountPercent,
-              discountAmount: num(l.discountAmount) ?? 0,
+              discountAmount: minorToRupees(l.discountAmountMinor),
               effectiveMonthly: round2(unitPrice * (1 - discountPercent / 100)),
               taxable: amount,
               cgst: invoice.interState ? 0 : round2(taxAmount / 2),

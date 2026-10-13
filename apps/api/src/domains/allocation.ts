@@ -121,13 +121,13 @@ export async function lockAndLoadFeeInstalment(tx: DbTx, input: { tenantId: stri
  * as open rather than fixed in this change.
  */
 export function positionOfInvoice(invoice: {
-  grandTotal: { toFixed(digits: number): string } | null;
-  lines: Array<{ amount: { toFixed(digits: number): string } }>;
+  grandTotalMinor: bigint;
+  lines: Array<{ amountMinor: bigint }>;
   receipts: Array<{ allocatedAmount: { toFixed(digits: number): string } }>;
   creditNotes?: Array<{ amount: { toFixed(digits: number): string } }>;
 }) {
-  const grandTotal = invoice.grandTotal ? paiseOf(invoice.grandTotal) : 0n;
-  const linesTotal = invoice.lines.reduce((s, l) => s + paiseOf(l.amount), 0n);
+  const grandTotal = invoice.grandTotalMinor;
+  const linesTotal = invoice.lines.reduce((s, l) => s + l.amountMinor, 0n);
   const payable = grandTotal > 0n ? grandTotal : linesTotal;
   const allocated = invoice.receipts.reduce((s, r) => s + paiseOf(r.allocatedAmount), 0n);
   const creditNoted = (invoice.creditNotes ?? []).reduce((s, c) => s + paiseOf(c.amount), 0n);

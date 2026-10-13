@@ -43,6 +43,7 @@ import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { raiseException } from '../platform/exceptions.js';
 import { findThreshold } from './thresholds.js';
+import { minorToRupees } from './money.js';
 
 /**
  * What each area is called on screen. The codes stay as the identifiers — the
@@ -255,7 +256,7 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
     let collected = 0;
     let overdue = 0;
     for (const inv of invoices) {
-      const total = inv.lines.reduce((s, l) => s + (num(l.amount) ?? 0), 0);
+      const total = inv.lines.reduce((s, l) => s + minorToRupees(l.amountMinor), 0);
       const allocated = inv.receipts.reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0);
       billed += total;
       collected += allocated;
