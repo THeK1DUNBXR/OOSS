@@ -20,6 +20,10 @@ import {
 } from '@kaizen/shared';
 import { handler, str, date, numeric } from '../lib/http.js';
 import { num } from '../platform/db.js';
+import { rupeesOf, withRupeeWire, wireInt } from '../platform/wire.js';
+
+/** The GST filing's paise columns, as the wire names them. */
+const FILING_MONEY = ['taxableValue', 'cgstAmount', 'sgstAmount', 'igstAmount', 'inputTaxCredit', 'netPayable'];
 import { assertCan, canSeeMoney } from '../platform/permissions.js';
 import {
   listAccounts,
@@ -369,6 +373,10 @@ router.get(
       status: str(req.query.status),
     });
     const money = await canSeeMoney('invoices');
+    // Withheld means null on both the rupee field and its paise sibling: the
+    // sibling is the same figure in another unit, so it is withheld with it.
+    const shown = (minor: bigint) => (money ? rupeesOf(minor) : null);
+    const shownMinor = (minor: bigint) => (money ? wireInt(minor) : null);
     return rows.map((f) => ({
       id: f.id,
       recordCode: f.recordCode,
@@ -376,12 +384,18 @@ router.get(
       period: f.period,
       gstin: f.gstin,
       status: f.status,
-      taxableValue: amount(num(f.taxableValue), money),
-      cgstAmount: amount(num(f.cgstAmount), money),
-      sgstAmount: amount(num(f.sgstAmount), money),
-      igstAmount: amount(num(f.igstAmount), money),
-      inputTaxCredit: amount(num(f.inputTaxCredit), money),
-      netPayable: amount(num(f.netPayable), money),
+      taxableValue: shown(f.taxableValueMinor),
+      taxableValueMinor: shownMinor(f.taxableValueMinor),
+      cgstAmount: shown(f.cgstAmountMinor),
+      cgstAmountMinor: shownMinor(f.cgstAmountMinor),
+      sgstAmount: shown(f.sgstAmountMinor),
+      sgstAmountMinor: shownMinor(f.sgstAmountMinor),
+      igstAmount: shown(f.igstAmountMinor),
+      igstAmountMinor: shownMinor(f.igstAmountMinor),
+      inputTaxCredit: shown(f.inputTaxCreditMinor),
+      inputTaxCreditMinor: shownMinor(f.inputTaxCreditMinor),
+      netPayable: shown(f.netPayableMinor),
+      netPayableMinor: shownMinor(f.netPayableMinor),
       invoiceCount: f.invoiceCount,
       preparedAt: f.preparedAt.toISOString(),
       arn: f.arn,
@@ -393,7 +407,7 @@ router.get(
 
 router.get(
   '/gst/filings/:id',
-  handler(async (req) => filingDetail(req.params.id)),
+  handler(async (req) => withRupeeWire(await filingDetail(req.params.id), FILING_MONEY)),
 );
 
 /**
@@ -425,7 +439,7 @@ router.post(
   handler(async (req, res) => {
     const body = z.object({ returnType: returnTypeEnum, period: period, note: z.string().nullish() }).parse(req.body);
     const result = await prepareReturn(body.returnType, body.period, body.note);
-    res.status(201).json(result);
+    res.status(201).json({ ...result, filing: withRupeeWire(result.filing, FILING_MONEY) });
     return undefined;
   }),
 );
@@ -436,11 +450,14 @@ router.post(
     const body = z
       .object({ arn: z.string().min(6), filedAt: z.string().nullish(), note: z.string().nullish() })
       .parse(req.body);
-    return markReturnFiled(req.params.id, {
-      arn: body.arn,
-      filedAt: body.filedAt ? new Date(body.filedAt) : undefined,
-      note: body.note ?? null,
-    });
+    return withRupeeWire(
+      await markReturnFiled(req.params.id, {
+        arn: body.arn,
+        filedAt: body.filedAt ? new Date(body.filedAt) : undefined,
+        note: body.note ?? null,
+      }),
+      FILING_MONEY,
+    );
   }),
 );
 

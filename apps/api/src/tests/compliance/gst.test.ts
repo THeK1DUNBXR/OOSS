@@ -63,13 +63,16 @@ async function openPeriod(): Promise<string> {
   for (let year = 2501; year < 2700; year += 1) {
     for (const month of ['02', '05', '08', '11']) {
       const period = `${year}-${month}`;
-      const [filing, invoice] = await Promise.all([
+      // A self-invoice from an earlier run is a figure in this period too: the
+      // 3B reverse-charge total is a sum over every row a period holds.
+      const [filing, invoice, selfInvoice] = await Promise.all([
         unscopedPrisma.gstFiling.findFirst({ where: { tenantId: TENANT, period } }),
         unscopedPrisma.invoice.findFirst({
           where: { tenantId: TENANT, issuedDate: { gte: firstDayOf(period), lt: firstDayOf(nextMonth(period)) } },
         }),
+        unscopedPrisma.rcmSelfInvoice.findFirst({ where: { tenantId: TENANT, period } }),
       ]);
-      if (!filing && !invoice) return period;
+      if (!filing && !invoice && !selfInvoice) return period;
     }
   }
   throw new Error('No untouched period left.');
@@ -221,9 +224,9 @@ describe('CMP-GST-002: reverse charge populates isup_rev and the ITC is claimabl
       });
 
       const selfInvoice = await applyReverseCharge(bill.id, { ratePct: 18 });
-      expect(num(selfInvoice.taxableValue)).toBe(20_000);
-      expect(num(selfInvoice.cgstAmount)).toBe(1800);
-      expect(num(selfInvoice.sgstAmount)).toBe(1800);
+      expect(selfInvoice.taxableValueMinor).toBe(2_000_000n);
+      expect(selfInvoice.cgstAmountMinor).toBe(180_000n);
+      expect(selfInvoice.sgstAmountMinor).toBe(180_000n);
       expect(selfInvoice.number).toMatch(/^RCM-\d{4}-\d{5}$/);
 
       const updatedBill = await unscopedPrisma.vendorBill.findFirstOrThrow({ where: { id: bill.id } });
