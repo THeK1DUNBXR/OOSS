@@ -116,7 +116,7 @@
 
 **`apps/api/src/domains/esop.ts`** (1293 lines) — EsopPlanInput:50 · createPlan:59 · ActivatePlanInput:109 · activatePlan:116 · listPlans:203 · plan:213 · ProposeGrantInput:278 · proposeGrant:289 · approveGrant:430 · cancelGrant:480 · lapseGrant:516 · listGrants:608 · grant:620 · runVesting:651 · runExpiredExerciseWindows:755 · handleEmploymentExit:843 · RequestExerciseInput:954 · requestExercise:960 · rejectExercise:1032 · approveExercise:1065 · listExercises:1180 · myGrants:1194 · sh6Register:1223 · sh6Export:1259
 
-**`apps/api/src/domains/filings.ts`** (1001 lines) — assertDematCompliant:61 · assertFemaPricingFloor:100 · handleAllotmentEffectiveForFema:157 · handleTransferEffectiveForFema:183 · runFlaReturn:226 · checkDematRequirements:322 · latestHalfYearEnd:383 · runPas6HalfYearly:392 · pas6:427 · mgt1Register:535 · mgt2Register:557 · mgt1Export:626 · mgt2Export:645 · pas3AllotteeList:667 · pas3Export:747 · sh4Data:800 · RecordFilingInput:872 · recordFiling:884 · listFilings:960
+**`apps/api/src/domains/filings.ts`** (1026 lines) — assertDematCompliant:62 · assertFemaPricingFloor:101 · handleAllotmentEffectiveForFema:158 · handleTransferEffectiveForFema:184 · runFlaReturn:227 · checkDematRequirements:323 · latestHalfYearEnd:384 · runPas6HalfYearly:393 · pas6:428 · mgt1Register:536 · mgt2Register:558 · mgt1Export:627 · mgt2Export:646 · pas3AllotteeList:668 · pas3Export:748 · sh4Data:812 · RecordFilingInput:897 · recordFiling:909 · listFilings:985
 
 **`apps/api/src/domains/finance.ts`** (597 lines) — issueFeeInstalments:78 · recordPayment:115 · reversePayment:219 · allocatePayment:275 · issueCreditNote:479 · rehydrateReceivables:542 · detectOverduePayments:550
 
@@ -276,7 +276,7 @@
 
 **`apps/api/src/domains/spinOutPreview.ts`** (71 lines) — spinOutPreview:22 · SpinOutDivisionSummary:33 · SpinOutDivisionsView:40 · spinOutDivisionsSummary:46
 
-**`apps/api/src/domains/statutory.ts`** (553 lines) — StatutoryRuleInput:18 · listStatutoryRules:28 · createStatutoryRule:43 · STATUTORY_APPROVER_DUTY:72 · FOUNDER_DUTY:88 · FounderOverride:91 · isFounder:94 · resolveDutyHolder:115 · DutyAssignmentInput:128 · assignDuty:142 · getDutyHolder:222 · endDuty:232 · StatutoryRuleNotFoundError:280 · ruleAt:305 · approveStatutoryRule:378 · holdStatutoryRule:518
+**`apps/api/src/domains/statutory.ts`** (574 lines) — StatutoryRuleInput:18 · listStatutoryRules:28 · createStatutoryRule:43 · STATUTORY_APPROVER_DUTY:72 · FOUNDER_DUTY:88 · FounderOverride:91 · isFounder:94 · resolveDutyHolder:115 · DutyAssignmentInput:128 · assignDuty:142 · getDutyHolder:222 · endDuty:232 · StatutoryRuleNotFoundError:280 · ruleAt:305 · ruleIntegerField:333 · approveStatutoryRule:399 · holdStatutoryRule:539
 
 **`apps/api/src/domains/students.ts`** (562 lines) — STUDENT_STATUSES:48 · StudentStatus:49 · StudentInput:51 · StudentView:82 · createStudent:201 · attachStudentProfile:234 · updateStudent:336 · StudentQuery:410 · listStudents:422 · loadStudent:468 · studentOf:479 · isBillable:517
 
@@ -408,7 +408,7 @@
 
 **`apps/api/src/jobs/compliance/labour.ts`** (34 lines) — JOBS:5
 
-**`apps/api/src/jobs/compliance/payroll.ts`** (96 lines) — runGratuityAccrual:15 · JOBS:85
+**`apps/api/src/jobs/compliance/payroll.ts`** (122 lines) — runGratuityAccrual:35 · JOBS:111
 
 **`apps/api/src/jobs/compliance/privacy.ts`** (63 lines) — JOBS:13
 
@@ -847,4 +847,4 @@
 Generated or lock files. Nothing in them answers a question worth the tokens.
 
 - `pnpm-lock.yaml` (6863 lines)
-- `scripts/gates/allowlist/g9-money.json` (1729 lines)
+- `scripts/gates/allowlist/g9-money.json` (1717 lines)
