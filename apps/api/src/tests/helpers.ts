@@ -8,6 +8,7 @@
  */
 
 import { unscopedPrisma, prisma } from '../platform/db.js';
+import { readyInvoicePosting } from './fixtures/invoicePostingReady.js';
 import type { PayoutRequest, Transaction, VendorBill } from '@prisma/client';
 import type { TransactionInput } from '../domains/books.js';
 import { payVendorBill, recordTransaction, reverseTransaction } from '../domains/books.js';
@@ -466,7 +467,7 @@ async function ensureRoleWithGrants(tid: string, roleSlug: string) {
   return role;
 }
 
-export async function booksTenant(slug: string): Promise<BooksTenant> {
+export async function booksTenant(slug: string, opts: { invoicePosting?: boolean } = {}): Promise<BooksTenant> {
   const tenant = await unscopedPrisma.tenant.upsert({
     where: { slug },
     create: { name: `Books fixture ${slug}`, slug, status: 'active' },
@@ -478,6 +479,10 @@ export async function booksTenant(slug: string): Promise<BooksTenant> {
     (await unscopedPrisma.ledgerEntity.create({
       data: { tenantId: tid, code: 'BOOKS', legalName: `Books fixture ${slug}`, stateCode: '27' },
     }));
+  // Invoice posting (Phase 0): the books tenant issues invoices, so it gets the posting setup
+  // unless the suite maps its own posting roles at the same dates (then it opts out). Its one
+  // entity is the one made above, so the fixture adds no second one.
+  if (opts.invoicePosting !== false) await readyInvoicePosting(tid);
   const bank =
     (await unscopedPrisma.ledgerAccount.findFirst({
       where: { tenantId: tid, accountType: 'bank', deletedAt: null },

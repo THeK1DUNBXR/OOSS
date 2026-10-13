@@ -163,6 +163,7 @@ describe('a course-sale invoice prices tenure and add-ons through the ordinary l
     await asUser('chairman@kaizen.co.in', async () => {
       const course = await aTenureCourse();
       const invoice = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         interState: false,
@@ -184,6 +185,7 @@ describe('a course-sale invoice prices tenure and add-ons through the ordinary l
       const addonId = (await listCourses({ includeRetired: true })).find((c) => c.id === course.id)!.addons[0].id;
 
       const invoice = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         interState: false,
@@ -211,6 +213,7 @@ describe('a course-sale invoice prices tenure and add-ons through the ordinary l
 
       const err = await expectReject(() =>
         createInvoice({
+          division: 'education',
           personId,
           lines: [{ courseId: course.id, courseAddonId: otherAddonId, quantity: 1, unitPrice: 1 }],
         }),
@@ -228,6 +231,7 @@ describe('a course-sale invoice prices tenure and add-ons through the ordinary l
 
       const err = await expectReject(() =>
         createInvoice({
+          division: 'education',
           personId,
           lines: [{ courseId: course.id, courseAddonId: addonId, quantity: 1, unitPrice: 1 }],
         }),
@@ -257,6 +261,7 @@ describe('a course-sale invoice paid in full at enrolment gets the same receipt 
     await asUser('chairman@kaizen.co.in', async () => {
       const course = await aTenureCourse();
       const invoice = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         interState: false,
@@ -299,6 +304,7 @@ describe('the ledger a course-sale invoice document prints', () => {
   it('is absent on a generic invoice with no enrollment date', async () => {
     await asUser('chairman@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         lines: [{ description: 'Consulting', unitPrice: 1000, gstRate: 18 }],
@@ -315,6 +321,7 @@ describe('the ledger a course-sale invoice document prints', () => {
       const addonId = (await listCourses({ includeRetired: true })).find((c) => c.id === course.id)!.addons[0].id;
 
       const invoice = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         interState: false,
@@ -358,6 +365,7 @@ describe('the ledger a course-sale invoice document prints', () => {
     await asUser('chairman@kaizen.co.in', async () => {
       const course = await aTenureCourse();
       const invoice = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '07',
         interState: true,

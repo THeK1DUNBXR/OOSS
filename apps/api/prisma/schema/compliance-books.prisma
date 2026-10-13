@@ -96,6 +96,7 @@ model LedgerEntity {
   periods      AccountingPeriod[]
   entries      JournalEntry[]
   employments  EmploymentRelationship[]
+  invoices     Invoice[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])

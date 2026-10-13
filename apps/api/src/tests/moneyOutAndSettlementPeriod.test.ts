@@ -187,6 +187,7 @@ describe('Settlement — a receipt dated in a closed month is refused, and the c
       // Raised while the current month is still open: a platform invoice cannot be
       // issued into a closed month, and that is not what this probe is about.
       return createInvoice({
+        division: 'education',
         personId: enrollment.personId,
         placeOfSupply: '33',
         enrollmentDate: new Date(),
@@ -232,6 +233,7 @@ describe('Settlement — a receipt dated in a closed month is refused, and the g
     const org = await unscopedPrisma.organization.findFirstOrThrow({ where: { tenantId: TENANT } });
     const invoice = await asUser(FINANCE, () =>
       createInvoice({
+        division: 'education',
         organizationId: org.id,
         lines: [{ description: unique('Generic settle'), unitPrice: 2000, gstRate: 18 }],
       }),

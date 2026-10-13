@@ -167,6 +167,7 @@ describe('invoice settlement to the paisa (invoicing and receipts)', () => {
   it('receipts that add to the invoice to the paisa settle it, and a paisa short does not', async () => {
     await asUser(ACTOR, async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccountId(),
         placeOfSupply: '33',
         lines: [{ description: `Paise ${stamp()}`, unitPrice: 1000, gstRate: 18 }],
@@ -192,6 +193,7 @@ describe('invoice settlement to the paisa (invoicing and receipts)', () => {
   it('thirds of 393.33 plus a paisa settle 1180 exactly; the float sum is not what decides it', async () => {
     await asUser(ACTOR, async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccountId(),
         placeOfSupply: '33',
         lines: [{ description: `Paise ${stamp()}`, unitPrice: 1000, gstRate: 18 }],
@@ -210,6 +212,7 @@ describe('invoice settlement to the paisa (invoicing and receipts)', () => {
       const organizationId = await anAccountId();
       const over = await expectReject(() =>
         createInvoice({
+          division: 'education',
           organizationId,
           placeOfSupply: '33',
           lines: [{ description: `Paise ${stamp()}`, unitPrice: 1000, gstRate: 18 }],
@@ -219,6 +222,7 @@ describe('invoice settlement to the paisa (invoicing and receipts)', () => {
       expect(over.status).toBe(422);
 
       const exact = await createInvoice({
+        division: 'education',
         organizationId,
         placeOfSupply: '33',
         lines: [{ description: `Paise ${stamp()}`, unitPrice: 1000, gstRate: 18 }],
@@ -232,6 +236,7 @@ describe('invoice settlement to the paisa (invoicing and receipts)', () => {
   it('a declared payment one paisa over the payable is refused, and the payable itself is accepted', async () => {
     await asUser(ACTOR, async () => {
       const draft = await createInvoice({
+        division: 'education',
         organizationId: await anAccountId(),
         placeOfSupply: '33',
         issue: false,
@@ -250,6 +255,7 @@ describe('invoice settlement to the paisa (invoicing and receipts)', () => {
       // 0.1 x 3 is 0.30000000000000004 as a double; the line gross is 0.30.
       const withDiscount = (discountAmount: number) =>
         createInvoice({
+          division: 'education',
           organizationId,
           placeOfSupply: '33',
           lines: [
@@ -267,6 +273,7 @@ describe('invoice settlement to the paisa (invoicing and receipts)', () => {
   it('final invoice: the statement is superseded only when the received total moves by a paisa', async () => {
     await asUser(ACTOR, async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccountId(),
         placeOfSupply: '33',
         lines: [{ description: `Paise ${stamp()}`, unitPrice: 1000, gstRate: 18 }],
@@ -293,6 +300,7 @@ describe('payment allocation to the paisa (finance.ts allocatePayment)', () => {
   it('allocations of 1179.99 and then 0.01 settle a 1180 invoice, and 1179.99 alone leaves it part paid', async () => {
     await asUser(ACTOR, async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccountId(),
         placeOfSupply: '33',
         lines: [{ description: `Paise ${stamp()}`, unitPrice: 1000, gstRate: 18 }],
@@ -340,6 +348,7 @@ describe('GSTR-1 tax reconciliation (gstReturns.ts)', () => {
     await asUser(ACTOR, async () => {
       const period = filingPeriodOf(new Date());
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccountId(),
         placeOfSupply: '33',
         lines: [{ description: `Tax ${stamp()}`, unitPrice: 11.89, gstRate: 18 }],

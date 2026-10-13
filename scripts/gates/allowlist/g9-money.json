@@ -11,13 +11,13 @@
     {
       "file": "apps/api/src/domains/books.ts",
       "rule": "num(",
-      "count": 22,
+      "count": 19,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
       "file": "apps/api/src/domains/books.ts",
       "rule": "round2(",
-      "count": 41,
+      "count": 40,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -41,7 +41,7 @@
     {
       "file": "apps/api/src/domains/compliance/books.ts",
       "rule": "num(",
-      "count": 16,
+      "count": 9,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -53,7 +53,7 @@
     {
       "file": "apps/api/src/domains/compliance/books.ts",
       "rule": "round2(",
-      "count": 22,
+      "count": 19,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -95,7 +95,7 @@
     {
       "file": "apps/api/src/domains/compliance/tax.ts",
       "rule": "num(",
-      "count": 21,
+      "count": 19,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -623,7 +623,7 @@
     {
       "file": "apps/api/src/tests/acceptance.test.ts",
       "rule": "Number(",
-      "count": 13,
+      "count": 12,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -977,7 +977,7 @@
     {
       "file": "apps/api/src/tests/spinOut.test.ts",
       "rule": "Number(",
-      "count": 5,
+      "count": 4,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {

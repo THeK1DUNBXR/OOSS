@@ -1069,7 +1069,7 @@ export async function importBankStatement(
   lines: BankLineInput[],
 ): Promise<{ imported: number; skipped: number }> {
   const auth = currentAuth();
-  await assertCan({ resource: 'transactions', verb: 'edit' });
+  await assertScopeAll('transactions', 'edit');
   const account = await prisma.ledgerAccount.findFirst({
     where: { id: accountId, tenantId: auth.tenantId, deletedAt: null },
   });
@@ -1155,7 +1155,7 @@ export async function importBankStatement(
  */
 export async function matchBankLines(accountId: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'transactions', verb: 'edit' });
+  await assertScopeAll('transactions', 'edit');
 
   const [bankLines, transactions] = await Promise.all([
     prisma.bankStatementLine.findMany({ where: { tenantId: auth.tenantId, accountId, matchedAt: null } }),

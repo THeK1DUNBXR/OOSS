@@ -158,6 +158,13 @@ export interface InvoiceIssueSource {
   igstMinor: bigint;
   /** Signed: positive when the invoice total was rounded up to the rupee. */
   roundOffMinor: bigint;
+  /**
+   * The business line the round-off is booked under. Round-off is an adjustment to
+   * income, so its ROUND_OFF account is a P&L account in a real chart, and the ledger
+   * refuses an income or expense line without a business line (ledger.ts writeEntry).
+   * Required when roundOffMinor is not zero; unused otherwise.
+   */
+  roundOffLineId?: string | null;
 }
 
 /**
@@ -227,11 +234,50 @@ export function buildInvoiceIssueEntry(source: InvoiceIssueSource, accounts: Res
     lines.push({ accountId: accountFor(accounts, 'OUTPUT_SGST'), amountMinor: -source.sgstMinor });
   if (source.igstMinor !== 0n)
     lines.push({ accountId: accountFor(accounts, 'OUTPUT_IGST'), amountMinor: -source.igstMinor });
-  if (source.roundOffMinor !== 0n)
-    lines.push({ accountId: accountFor(accounts, 'ROUND_OFF'), amountMinor: -source.roundOffMinor });
+  if (source.roundOffMinor !== 0n) {
+    if (!source.roundOffLineId) {
+      throw new PostingRuleError(
+        'The round-off on this invoice has no business line. A round-off is income, and is refused without one (O2).',
+        'INCOME_LINE_WITHOUT_BUSINESS_LINE',
+      );
+    }
+    lines.push({
+      accountId: accountFor(accounts, 'ROUND_OFF'),
+      amountMinor: -source.roundOffMinor,
+      lineId: source.roundOffLineId,
+    });
+  }
 
   assertBalancedLines(lines, 'Invoice issue');
   return lines;
+}
+
+/**
+ * The posting roles an invoice issue needs, for the lines that are not zero, as
+ * the builder names them. A tax or round-off role with a zero amount is not
+ * resolved, so a tenant with no IGST mapping can still issue an intra-state
+ * invoice. A revenue role is scoped by its business line. Like
+ * payrollAccrualRoles, this is read by the caller before the build.
+ */
+export function invoiceIssueRoles(
+  source: Pick<InvoiceIssueSource, 'revenue' | 'cgstMinor' | 'sgstMinor' | 'igstMinor' | 'roundOffMinor'>,
+): Array<{ role: PostingRole; scopeKey?: string }> {
+  const roles: Array<{ role: PostingRole; scopeKey?: string }> = [{ role: 'TRADE_RECEIVABLE' }];
+  const lineIds = new Set<string>();
+  for (const line of source.revenue) {
+    if (line.taxableMinor !== 0n && line.lineId) lineIds.add(line.lineId);
+  }
+  for (const lineId of lineIds) roles.push({ role: 'REVENUE', scopeKey: lineId });
+  if (source.cgstMinor !== 0n) roles.push({ role: 'OUTPUT_CGST' });
+  if (source.sgstMinor !== 0n) roles.push({ role: 'OUTPUT_SGST' });
+  if (source.igstMinor !== 0n) roles.push({ role: 'OUTPUT_IGST' });
+  if (source.roundOffMinor !== 0n) roles.push({ role: 'ROUND_OFF' });
+  return roles;
+}
+
+/** The posting roles a receipt allocation needs: the bank for its payment mode, and the receivable. */
+export function receiptAllocationRoles(paymentMode: string): Array<{ role: PostingRole; scopeKey?: string }> {
+  return [{ role: 'BANK', scopeKey: paymentMode }, { role: 'TRADE_RECEIVABLE' }];
 }
 
 export interface ReceiptAllocationSource {
