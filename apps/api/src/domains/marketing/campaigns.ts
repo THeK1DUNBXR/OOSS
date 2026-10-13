@@ -62,6 +62,11 @@ const DEFAULT_MARKETING_POLICY: MarketingPolicy = {
   formConvertSlaHours: 24,
 };
 
+// setMarketingPolicy writes the tenant subject. settings.ts also registers it, but a job or
+// script that imports only this module must not depend on settings.ts having loaded first
+// (auditWrite refuses an unregistered subject), so this module registers its own write.
+registerGovernedEntities('mkt', ['tenant']);
+
 export async function getMarketingPolicy(tenantId?: string): Promise<MarketingPolicy> {
   const tid = tenantId ?? currentAuth().tenantId;
   const tenant = await prisma.tenant.findFirst({ where: { id: tid }, select: { config: true } });

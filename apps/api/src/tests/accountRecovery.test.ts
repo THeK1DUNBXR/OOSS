@@ -209,12 +209,12 @@ afterAll(async () => {
   if (dutiesBefore.length > 0) await unscopedPrisma.dutyAssignment.createMany({ data: dutiesBefore });
 });
 
-// Every login and every recovery shares its address bucket across the suite.
-beforeEach(async () => {
-  await unscopedPrisma.$executeRaw`DELETE FROM "RateLimitBucket" WHERE key LIKE 'login:%' OR key LIKE 'recovery:%'`;
-  // The recovery holder is the IT admin once one is named, otherwise the founder. Each test
-  // starts with this file's founder as the holder and no IT admin, so a test that names one
-  // cannot change the answer for the tests after it.
+/**
+ * Makes `personId` the recovery holder: the founder duty's only holder, no IT admin named.
+ * Written directly because `assignDuty` refuses while a founder row is open, and the founder
+ * row is open for every test in this file.
+ */
+async function setRecoveryHolder(personId: string): Promise<void> {
   await unscopedPrisma.dutyAssignment.deleteMany({
     where: { tenantId: tid, dutyKey: { in: [FOUNDER_DUTY, IT_ADMIN_DUTY] } },
   });
@@ -222,11 +222,20 @@ beforeEach(async () => {
     data: {
       tenantId: tid,
       dutyKey: FOUNDER_DUTY,
-      partyId: founder.personId,
+      partyId: personId,
       effectiveFrom: new Date(Date.now() - 60_000),
-      assignedBy: founder.personId,
+      assignedBy: personId,
     },
   });
+}
+
+// Every login and every recovery shares its address bucket across the suite.
+beforeEach(async () => {
+  await unscopedPrisma.$executeRaw`DELETE FROM "RateLimitBucket" WHERE key LIKE 'login:%' OR key LIKE 'recovery:%'`;
+  // The recovery holder is the IT admin once one is named, otherwise the founder. Each test
+  // starts with this file's founder as the holder and no IT admin, so a test that names one
+  // cannot change the answer for the tests after it.
+  await setRecoveryHolder(founder.personId);
 });
 
 describe('account recovery: the founder recovers an employee', () => {
@@ -596,6 +605,8 @@ describe('account recovery: an MFA-enabled recoverer must confirm with a current
       where: { id: chair.userId },
       data: { mfaSecret: secret, mfaEnabledAt: new Date() },
     });
+    // Recovery is the holder's to do, so the MFA-enabled chairman is the holder for this test.
+    await setRecoveryHolder(chair.personId);
     const token = await signedInWithMfa(chair, secret);
     const target = await makeAccount('stepup', 'employee');
     const before = await credentialOf(target.principalId);
@@ -616,6 +627,7 @@ describe('account recovery: an MFA-enabled recoverer must confirm with a current
       where: { id: chair.userId },
       data: { mfaSecret: secret, mfaEnabledAt: new Date() },
     });
+    await setRecoveryHolder(chair.personId);
     const token = await signedInWithMfa(chair, secret);
     const target = await makeAccount('stepupok', 'employee');
     const res = await recover(token, { userId: target.userId, reason: GOOD_REASON, totpCode: totp(secret) });
