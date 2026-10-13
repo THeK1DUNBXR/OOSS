@@ -31,6 +31,7 @@ import { ApiError } from './errors.js';
 import { currentAuth, requireContext } from './context.js';
 import { drainOutbox } from './outbox.js';
 import { canonicalJson } from './canonicalJson.js';
+import { claimAuditRecordFor } from './audit.js';
 
 export interface EmitInput {
   name: string;
@@ -48,6 +49,14 @@ export interface EmitInput {
   dualPublish?: boolean;
   severity?: SeverityCode | null;
   channel?: string;
+  /**
+   * The AuditRecord written for this same write (FX-24 cross-anchor). Left out,
+   * emit pairs with the first unclaimed audit row that the same `tx` wrote for
+   * this subject (audit.ts `claimAuditRecordFor`). Passed explicitly, it is stored
+   * as given and not checked here: `verifyEventAuditAnchors` is where a bad
+   * anchor is found.
+   */
+  auditRecordId?: string | null;
   /**
    * The caller's transaction. When given, the EventRecord and the outbox row
    * are written inside it, so the event commits or vanishes with the business
@@ -449,6 +458,15 @@ export async function emit(input: EmitInput): Promise<EventEnvelope> {
 
   const legacyName = CANONICAL_TO_LEGACY[input.name];
 
+  // Resolved before the append: a claim is only valid inside the caller's
+  // transaction, and an emit without one has no audit row to pair with.
+  const auditRecordId =
+    input.auditRecordId !== undefined
+      ? input.auditRecordId
+      : input.tx
+        ? claimAuditRecordFor(input.tx, input.subject.entityType, input.subject.entityId)
+        : null;
+
   const appended = await appendToChain<{ outboxId: string; envelope: EventEnvelope }>(
     auth.tenantId,
     body as Record<string, unknown>,
@@ -458,6 +476,7 @@ export async function emit(input: EmitInput): Promise<EventEnvelope> {
         eventId,
         eventName: input.name,
         eventVersion: 1,
+        auditRecordId,
         occurredAt,
         recordedAt: now,
         actorType: auth.principalType,
@@ -663,4 +682,132 @@ export async function verifyChain(
     }
     cursor = rows[rows.length - 1].seq;
   }
+}
+
+/**
+ * The audit actions that change business state. Each of these is a governed
+ * write, and a governed write is meant to emit the event that says what it did.
+ */
+const GOVERNED_WRITE_ACTIONS = ['create', 'update', 'delete', 'merge'];
+
+const ANCHOR_PAGE_SIZE = 1000;
+
+export interface EventAuditAnchorReport {
+  /**
+   * Events whose anchor names an audit row that does not exist in this tenant
+   * (`missing_audit_row`), or one about a different subject (`subject_mismatch`).
+   */
+  eventsWithoutAudit: Array<{
+    eventRecordId: string;
+    eventId: string;
+    auditRecordId: string;
+    reason: 'missing_audit_row' | 'subject_mismatch';
+  }>;
+  /**
+   * Governed-write audit rows no event is anchored to. This includes writes that
+   * never emit: most auditWrite calls are not inside a transaction that also
+   * emits, so this list is long until the owner says which writes must emit.
+   */
+  auditWithoutEvent: Array<{
+    auditRecordId: string;
+    action: string;
+    subjectType: string;
+    subjectId: string;
+  }>;
+  checkedEvents: number;
+  checkedAudits: number;
+}
+
+/**
+ * Reports the cross-anchor between the event chain and the audit chain in both
+ * directions, for one tenant: an event that points at no audit row for its
+ * subject, and a governed-write audit row that no event points at. It is a
+ * full walk, paged by sequence like `verifyChain`, and it reads the unscoped
+ * client for the same reason: an auditor runs it out of band.
+ *
+ * It checks the links, not the hashes. The anchor column sits outside the
+ * event hash (see the schema note on EventRecord.auditRecordId), so a changed
+ * anchor is caught here by its subject, not by `verifyChain`.
+ */
+export async function verifyEventAuditAnchors(tenantId: string): Promise<EventAuditAnchorReport> {
+  const report: EventAuditAnchorReport = {
+    eventsWithoutAudit: [],
+    auditWithoutEvent: [],
+    checkedEvents: 0,
+    checkedAudits: 0,
+  };
+
+  let cursor: bigint | null = null;
+  for (;;) {
+    const rows = await unscopedPrisma.eventRecord.findMany({
+      where: { tenantId, auditRecordId: { not: null }, ...(cursor === null ? {} : { seq: { gt: cursor } }) },
+      orderBy: { seq: 'asc' },
+      take: ANCHOR_PAGE_SIZE,
+      select: {
+        seq: true,
+        id: true,
+        eventId: true,
+        auditRecordId: true,
+        subjectEntityType: true,
+        subjectEntityId: true,
+      },
+    });
+    if (rows.length === 0) break;
+
+    const auditIds = rows.flatMap((r) => (r.auditRecordId === null ? [] : [r.auditRecordId]));
+    const audits = await unscopedPrisma.auditRecord.findMany({
+      where: { tenantId, id: { in: auditIds } },
+      select: { id: true, subjectType: true, subjectId: true },
+    });
+    const auditById = new Map(audits.map((a) => [a.id, a]));
+
+    for (const row of rows) {
+      report.checkedEvents += 1;
+      if (row.auditRecordId === null) continue;
+      const audit = auditById.get(row.auditRecordId);
+      const base = { eventRecordId: row.id, eventId: row.eventId, auditRecordId: row.auditRecordId };
+      if (!audit) {
+        report.eventsWithoutAudit.push({ ...base, reason: 'missing_audit_row' });
+      } else if (audit.subjectType !== row.subjectEntityType || audit.subjectId !== row.subjectEntityId) {
+        report.eventsWithoutAudit.push({ ...base, reason: 'subject_mismatch' });
+      }
+    }
+    cursor = rows[rows.length - 1]!.seq;
+  }
+
+  cursor = null;
+  for (;;) {
+    const rows = await unscopedPrisma.auditRecord.findMany({
+      where: {
+        tenantId,
+        action: { in: GOVERNED_WRITE_ACTIONS },
+        NOT: { subjectId: { startsWith: 'bulk:' } },
+        ...(cursor === null ? {} : { seq: { gt: cursor } }),
+      },
+      orderBy: { seq: 'asc' },
+      take: ANCHOR_PAGE_SIZE,
+      select: { seq: true, id: true, action: true, subjectType: true, subjectId: true },
+    });
+    if (rows.length === 0) break;
+
+    const anchored = await unscopedPrisma.eventRecord.findMany({
+      where: { tenantId, auditRecordId: { in: rows.map((r) => r.id) } },
+      select: { auditRecordId: true },
+    });
+    const anchoredIds = new Set(anchored.map((a) => a.auditRecordId));
+
+    for (const row of rows) {
+      report.checkedAudits += 1;
+      if (anchoredIds.has(row.id)) continue;
+      report.auditWithoutEvent.push({
+        auditRecordId: row.id,
+        action: row.action,
+        subjectType: row.subjectType,
+        subjectId: row.subjectId,
+      });
+    }
+    cursor = rows[rows.length - 1]!.seq;
+  }
+
+  return report;
 }

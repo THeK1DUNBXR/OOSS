@@ -12,7 +12,11 @@
  * outside any transaction, and the outcome is recorded afterwards. If the
  * process dies mid-delivery the lease expires and the row is retried, so
  * delivery is at-least-once across crashes. `deliveredTo` stops that retry from
- * re-firing a subscriber that already succeeded on this row.
+ * re-firing a subscriber that already succeeded on this row, but only once the
+ * row settles. A crash after one subscriber's effect and before the settle leaves
+ * that subscriber unsettled, so the retry would run it again. The consumer
+ * receipt (event_consumer_receipts) is written per subscriber as soon as it
+ * returns, and checked before each call, so that retry does not act twice.
  */
 
 import { Prisma } from '@prisma/client';
@@ -147,7 +151,7 @@ async function deliverRow(row: OutboxRow, now: Date): Promise<'delivered' | 'ret
     for (const sub of subscribersFor(row.eventName)) {
       if (done.has(sub.key)) continue;
       try {
-        await invoke(sub, envelope);
+        await invoke(sub, envelope, row.tenantId);
         done.add(sub.key);
       } catch (err) {
         failures.push({ key: sub.key, error: err instanceof Error ? err.message : String(err) });
@@ -203,10 +207,26 @@ async function deliverRow(row: OutboxRow, now: Date): Promise<'delivered' | 'ret
 }
 
 /**
+ * Runs one subscriber for one event, at most once per (tenant, subscriber, event).
+ *
+ * The receipt is checked first and written after the handler returns. The
+ * handler's effect runs on the global client, not in a transaction the receipt
+ * could join, so there is a window between the effect and the receipt: a crash
+ * there runs the handler again on the retry. The receipt narrows the repeat to
+ * that window and cannot close it. A subscriber whose effect must not repeat
+ * still needs a guard on its own domain row (the contract-signing handler looks
+ * for a draft on the contract). Writing the receipt before the handler would
+ * trade the repeat for the opposite failure: a crash mid-handler would then
+ * lose the effect outright.
+ *
+ * A failure to write the receipt throws, so the subscriber counts as failed and
+ * is retried, rather than being treated as done without a record.
+ *
  * Handlers run with the causation chain extended, so anything they emit points
  * back at the event that caused it.
  */
-async function invoke(sub: Registration, envelope: EventEnvelope): Promise<void> {
+async function invoke(sub: Registration, envelope: EventEnvelope, tenantId: string): Promise<void> {
+  if (await hasReceipt(tenantId, sub.key, envelope.eventId)) return;
   const ctx = getContext();
   const prevCausation = ctx?.causationId ?? null;
   if (ctx) ctx.causationId = envelope.eventId;
@@ -214,6 +234,28 @@ async function invoke(sub: Registration, envelope: EventEnvelope): Promise<void>
     await sub.handler(envelope);
   } finally {
     if (ctx) ctx.causationId = prevCausation;
+  }
+  await recordReceipt(tenantId, sub.key, envelope);
+}
+
+async function hasReceipt(tenantId: string, consumerKey: string, eventId: string): Promise<boolean> {
+  const row = await prisma.eventConsumerReceipt.findFirst({
+    where: { tenantId, consumerKey, eventId },
+    select: { id: true },
+  });
+  return row !== null;
+}
+
+async function recordReceipt(tenantId: string, consumerKey: string, envelope: EventEnvelope): Promise<void> {
+  try {
+    await prisma.eventConsumerReceipt.create({
+      data: { tenantId, consumerKey, eventId: envelope.eventId, eventName: envelope.eventName },
+    });
+  } catch (err) {
+    // A second dispatcher recorded it first: its lease expired under a slow
+    // handler, so both ran the handler and the receipt is still one row.
+    if ((err as { code?: string }).code === 'P2002') return;
+    throw err;
   }
 }
 
@@ -276,6 +318,10 @@ export async function replayDeadLetter(deadLetterId: string): Promise<{ outboxEv
   if (!outbox) throw ApiError.conflict('No dead outbox row is held for this event, so there is nothing to requeue.');
 
   const now = new Date();
+  // The audit row and the event share the transaction with the reset, in the
+  // rule 5 order (audit, then event), so the replay's trail commits or vanishes
+  // as one and the two rows are paired (EventRecord.auditRecordId). The event is
+  // delivered on the next drain, as the reset row is.
   await prisma.$transaction(async (tx) => {
     // The state guard makes two replays of one letter race safely: the loser
     // finds the row no longer dead and is refused, rather than resetting it twice.
@@ -288,20 +334,21 @@ export async function replayDeadLetter(deadLetterId: string): Promise<{ outboxEv
       where: { tenantId: auth.tenantId, eventRecordId: letter.eventRecordId, state: 'dead' },
       data: { state: 'replayed', replayedAt: now },
     });
-  });
-
-  await auditWrite({
-    action: 'update',
-    subjectType: 'event_dead_letter',
-    subjectId: letter.id,
-    before: { state: 'dead' },
-    after: { state: 'replayed', outboxEventId: outbox.id },
-  });
-  await emit({
-    name: EVENTS.OUTBOX_DEAD_LETTER_REPLAYED,
-    subject: { entityType: 'event_dead_letter', entityId: letter.id },
-    previousState: { state: 'dead' },
-    newState: { state: 'replayed' },
+    await auditWrite({
+      tx,
+      action: 'update',
+      subjectType: 'event_dead_letter',
+      subjectId: letter.id,
+      before: { state: 'dead' },
+      after: { state: 'replayed', outboxEventId: outbox.id },
+    });
+    await emit({
+      tx,
+      name: EVENTS.OUTBOX_DEAD_LETTER_REPLAYED,
+      subject: { entityType: 'event_dead_letter', entityId: letter.id },
+      previousState: { state: 'dead' },
+      newState: { state: 'replayed' },
+    });
   });
   return { outboxEventId: outbox.id };
 }
