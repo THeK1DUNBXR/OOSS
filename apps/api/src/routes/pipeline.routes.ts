@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { COMMERCIAL_MOTIONS, PIPELINE_POSITIONS, VERTICALS } from '@kaizen/shared';
 import { handler } from '../lib/http.js';
 import { prisma } from '../platform/db.js';
+import { minorString, rupeesOf } from '../platform/wire.js';
 import { currentAuth } from '../platform/context.js';
 import { assertCan } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
@@ -237,7 +238,8 @@ router.get(
             title: o.title,
             organizationName: o.organization?.name ?? null,
             offeringName: o.offering?.name ?? null,
-            expectedValue: o.expectedValue ? Number(o.expectedValue.toString()) : null,
+            expectedValue: o.expectedValueMinor === null ? null : rupeesOf(o.expectedValueMinor),
+            expectedValueMinor: minorString(o.expectedValueMinor),
             currency: o.currency,
             // Two different axes, shown simultaneously and never conflated.
             forecastCategory: o.forecastCategory,

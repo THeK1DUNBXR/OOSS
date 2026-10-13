@@ -811,7 +811,7 @@ model AuthorityGrant {
   principalLabel String?
 
   authorityClass   String // mou_approval | contract_approval | discount_approval | agent_draft
-  ceilingValue     Decimal? @db.Decimal(18, 2)
+  ceilingValueMinor BigInt?
   currency         String?
   countCeiling     Int?
   countWindow      String?
@@ -851,7 +851,7 @@ model ApprovalStep {
 
   requestedById  String
   requestedAt    DateTime @default(now())
-  requestedValue Decimal? @db.Decimal(18, 2)
+  requestedValueMinor BigInt?
   currency       String?
 
   /// Resolved deterministically, before any notification fires.
@@ -1641,7 +1641,7 @@ model Lead {
 
   source         String   @default("manual")
   sourceDetail   String?
-  estimatedValue Decimal? @db.Decimal(18, 2)
+  estimatedValueMinor BigInt?
   currency       String   @default("INR")
 
   lastInteractionAt      DateTime?
@@ -1706,7 +1706,7 @@ model Opportunity {
   forecastCategoryChangedAt    DateTime?
   forecastCategoryChangeReason String?
 
-  expectedValue     Decimal?  @db.Decimal(18, 2)
+  expectedValueMinor BigInt?
   currency          String    @default("INR")
   expectedCloseDate DateTime?
 
@@ -1837,7 +1837,7 @@ model Proposal {
   quoteId       String?
   title         String
 
-  totalValue Decimal? @db.Decimal(18, 2)
+  totalValueMinor BigInt?
   currency   String   @default("INR")
   documentId String?
 
@@ -1944,7 +1944,7 @@ model Mou {
   status String @default("proposed")
 
   /// May legitimately be zero — an MoU is a coverage instrument.
-  commercialValue Decimal? @db.Decimal(18, 2)
+  commercialValueMinor BigInt?
   currency        String   @default("INR")
   strategicValue  String?
   termMonths      Int?
@@ -1990,7 +1990,7 @@ model Contract {
   status String @default("proposed")
 
   /// Required, must be > 0 — unlike MoU, an unpriced contract is a modelling error.
-  commercialValue Decimal @db.Decimal(18, 2)
+  commercialValueMinor BigInt
   currency        String  @default("INR")
   strategicValue  String?
   termMonths      Int?
@@ -2040,7 +2040,7 @@ model PartnerAgreement {
 
   status String @default("proposed")
 
-  commercialValue Decimal? @db.Decimal(18, 2)
+  commercialValueMinor BigInt?
   currency        String   @default("INR")
   strategicValue  String?
   termMonths      Int?
@@ -2093,8 +2093,8 @@ model WinLossReview {
   mandatory               Boolean  @default(false)
   mandatoryBasis          String   @default("not_mandatory")
   strategicValueSnapshot  String?
-  commercialValueSnapshot Decimal? @db.Decimal(18, 2)
-  thresholdUsedSnapshot   Decimal? @db.Decimal(18, 2)
+  commercialValueSnapshotMinor BigInt?
+  thresholdUsedSnapshotMinor   BigInt?
 
   completedById     String?
   completedAt       DateTime?

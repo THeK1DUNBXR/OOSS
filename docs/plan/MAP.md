@@ -22,7 +22,7 @@
 
 **`apps/api/src/domains/accountRecovery.ts`** (184 lines) — RECOVERY_REASON_MIN_CHARS:36 · RecoverAccountInput:52 · RecoverAccountResult:62 · recoverAccount:71
 
-**`apps/api/src/domains/agreements.ts`** (711 lines) — AgreementKind:38 · createMou:44 · createContract:122 · createPartnerAgreement:196 · TransitionResult:339 · transitionAgreement:346 · runExpiryLadder:490 · renewAgreement:625 · auditWonWithoutContract:686
+**`apps/api/src/domains/agreements.ts`** (717 lines) — AgreementKind:39 · createMou:45 · createContract:123 · createPartnerAgreement:197 · TransitionResult:344 · transitionAgreement:351 · runExpiryLadder:496 · renewAgreement:631 · auditWonWithoutContract:692
 
 **`apps/api/src/domains/allocation.ts`** (178 lines) — paiseOf:38 · paiseOfInput:47 · lockPayment:56 · lockInvoice:65 · lockFeeInstalment:74 · lockAndLoadInvoice:87 · lockAndLoadFeeInstalment:106 · positionOfInvoice:123 · outstandingOfInstalment:138 · poundsOf:148 · clampZero:153 · assertFits:162 · overdrawnRefusal:170
 
@@ -58,7 +58,7 @@
 
 **`apps/api/src/domains/commandCenter.ts`** (701 lines) — materialityFloorMinor:77 · narrativeWindowHours:83 · measuredMinor:99 · clearsMaterialityFloor:109 · computeReachSignature:126 · whatChanged:165 · attentionQueue:293 · liveAndHandled:373 · peopleAndCapability:488 · touchWatermark:537 · banner:559 · commandCenter:599 · drillPathFor:685
 
-**`apps/api/src/domains/commercial.ts`** (856 lines) — OfferingInput:39 · suggestRevenueTreatment:54 · createOffering:72 · publishOffering:124 · retireOffering:146 · detectOfferingCoverageGaps:174 · PriceInput:203 · publishPrice:220 · createProposal:321 · sendProposal:378 · respondToProposal:430 · detectStalledProposals:487 · QuoteLineInput:552 · createQuote:558 · QuoteIssueResult:678 · issueQuote:694
+**`apps/api/src/domains/commercial.ts`** (871 lines) — OfferingInput:46 · suggestRevenueTreatment:61 · createOffering:79 · publishOffering:131 · retireOffering:153 · detectOfferingCoverageGaps:181 · PriceInput:210 · publishPrice:227 · createProposal:328 · sendProposal:385 · respondToProposal:437 · detectStalledProposals:494 · QuoteLineInput:559 · createQuote:565 · QuoteIssueResult:693 · issueQuote:709
 
 **`apps/api/src/domains/commitments.ts`** (410 lines) — COMMITMENT_STATES:35 · CommitmentState:36 · COMMITMENT_TRANSITIONS:43 · OPEN_COMMITMENT_STATES:55 · COMMITMENT_SOURCE_TYPES:58 · CommitmentSourceType:59 · ProposeCommitmentInput:69 · CommitmentFilter:81 · proposeCommitment:103 · confirmCommitment:157 · markCommitmentMet:179 · markCommitmentMissed:183 · cancelCommitment:188 · reassignCommitment:193 · authoriseCommitmentHandover:225 · handOverCommitmentInTx:235 · listCommitments:256 · getCommitment:271 · markCommitmentMissedIfDue:286
 
@@ -158,7 +158,7 @@
 
 **`apps/api/src/domains/hcm/workforce.ts`** (879 lines) — ProfileExtensionInput:59 · getProfileExtension:90 · upsertProfileExtension:110 · UploadDocumentInput:172 · listEmployeeDocuments:180 · uploadEmployeeDocument:194 · verifyEmployeeDocument:235 · getEmployeeDocumentContent:273 · SetReportingLineInput:287 · listReportingLines:294 · setReportingLine:309 · orgChart:362 · DirectoryFilter:404 · directorySearch:410 · employee360:475 · listCostCentres:582 · createCostCentre:588 · listLocations:596 · createLocation:602 · listGrades:625 · createGrade:631 · ProposeStatusChangeInput:645 · proposeStatusChange:671 · listStatusChanges:708 · decideStatusChange:744 · applyStatusChange:797
 
-**`apps/api/src/domains/health.ts`** (1120 lines) — FactorResult:67 · ComputeResult:80 · computeCommercialHealth:94 · computeDomainHealth:240 · applyFalsifiabilityCheck:847 · computeAndPersistAll:919 · PulseEntry:1013 · latestPulse:1029 · healthAsOfDay:1105 · quarterTargetMinor:1116
+**`apps/api/src/domains/health.ts`** (1121 lines) — FactorResult:68 · ComputeResult:81 · computeCommercialHealth:95 · computeDomainHealth:241 · applyFalsifiabilityCheck:848 · computeAndPersistAll:920 · PulseEntry:1014 · latestPulse:1030 · healthAsOfDay:1106 · quarterTargetMinor:1117
 
 **`apps/api/src/domains/hiring.ts`** (421 lines) — listRequisitions:45 · createRequisition:63 · transitionRequisition:111 · listApplications:138 · createApplication:161 · ApplicationTransitionInput:231 · PreparedApplicationTransition:241 · prepareApplicationTransition:252 · applyApplicationTransition:304 · transitionApplication:344 · joinFromApplication:362 · hiringFunnel:404
 
@@ -194,7 +194,7 @@
 
 **`apps/api/src/domains/it/vendors.ts`** (732 lines) — cadenceMonthsForTier:61 · CreateVendorInput:72 · createVendor:90 · VendorFilter:144 · listVendors:150 · vendorDetail:164 · TransitionVendorInput:189 · transitionVendor:199 · RecordAssessmentInput:255 · recordAssessment:267 · CreateContractInput:327 · createVendorContract:342 · ContractFilter:401 · listVendorContracts:448 · vendorContractDetail:464 · ContractTransitionResult:476 · transitionVendorContract:492 · terminateVendorContract:598 · RenewContractInput:602 · renewVendorContract:615 · summaryVendors:650 · summaryContracts:686
 
-**`apps/api/src/domains/leads.ts`** (565 lines) — LeadInput:27 · scoreLead:47 · createLead:94 · applyRouting:185 · reassignLead:256 · authoriseLeadHandover:266 · handOverLeadInTx:271 · advanceLeadStage:318 · convertLead:364 · LeadListFilters:448 · listLeads:460 · leadIsUnrouted:502 · detectUntouchedLeads:510
+**`apps/api/src/domains/leads.ts`** (566 lines) — LeadInput:28 · scoreLead:48 · createLead:95 · applyRouting:186 · reassignLead:257 · authoriseLeadHandover:267 · handOverLeadInTx:272 · advanceLeadStage:319 · convertLead:365 · LeadListFilters:449 · listLeads:461 · leadIsUnrouted:503 · detectUntouchedLeads:511
 
 **`apps/api/src/domains/learnerTimeline.ts`** (607 lines) — LearnerLogInput:77 · recordLearnerLog:86 · resolveLearnerLog:182 · recordDailyProgress:236 · TimelineEntry:331 · learnerTimeline:357 · openLearnerItems:564
 
@@ -220,7 +220,7 @@
 
 **`apps/api/src/domains/marketing/ai.ts`** (249 lines) — DraftKind:19 · listTouchpoints:30 · DraftResult:209 · draft:222
 
-**`apps/api/src/domains/marketing/analytics.ts`** (761 lines) — KpiTile:58 · MarketingOverviewView:66 · overview:81 · FunnelStage:219 · MarketingFunnelView:226 · FunnelParams:231 · funnel:238 · ChannelPerformanceView:332 · channels:345 · CampaignPerformanceView:417 · campaigns:435 · AttributionRow:499 · AttributionSummaryView:508 · attributionSummary:519 · CohortRow:648 · cohorts:656 · ExportKind:716 · exportCsv:718
+**`apps/api/src/domains/marketing/analytics.ts`** (763 lines) — KpiTile:58 · MarketingOverviewView:66 · overview:81 · FunnelStage:219 · MarketingFunnelView:226 · FunnelParams:231 · funnel:238 · ChannelPerformanceView:332 · channels:345 · CampaignPerformanceView:417 · campaigns:435 · AttributionRow:501 · AttributionSummaryView:510 · attributionSummary:521 · CohortRow:650 · cohorts:658 · ExportKind:718 · exportCsv:720
 
 **`apps/api/src/domains/marketing/assets.ts`** (609 lines) — AssetInput:39 · createAsset:50 · AssetListFilters:99 · listAssets:108 · loadAsset:139 · updateAsset:153 · submitForApproval:248 · approveAsset:255 · rejectAsset:269 · retireAsset:302 · detectExpiredAssetsInUse:312 · SocialPostInput:359 · createSocialPost:380 · listSocialPosts:404 · loadSocialPost:423 · updateSocialPost:431 · scheduleSocialPost:480 · PublishSocialPostInput:507 · publishSocialPost:519 · cancelSocialPost:573 · SocialMetricsInput:583 · recordSocialMetrics:591 · AssetView:600
 
@@ -252,7 +252,7 @@
 
 **`apps/api/src/domains/onboarding.ts`** (379 lines) — OnboardingStep:35 · OnboardingState:61 · onboardingState:69 · hasImported:184 · TenantOnboardingRunView:189 · tenantOnboardingRun:289 · advanceOnboarding:307
 
-**`apps/api/src/domains/opportunities.ts`** (816 lines) — OpportunityInput:32 · createOpportunity:47 · openRenewalOpportunity:119 · StageChangeResult:142 · advanceStage:147 · ForecastChangeInput:335 · changeForecastCategory:343 · updateOpportunity:501 · PipelineRollup:551 · forecastRollup:563 · coverageByPosition:646 · detectStageAgeBreaches:670 · demoteStaleCommits:711 · detectChronicRecommits:736 · listOpportunities:767
+**`apps/api/src/domains/opportunities.ts`** (833 lines) — OpportunityInput:33 · createOpportunity:48 · openRenewalOpportunity:120 · StageChangeResult:143 · advanceStage:148 · ForecastChangeInput:346 · changeForecastCategory:354 · updateOpportunity:512 · PipelineRollup:564 · forecastRollup:576 · coverageByPosition:663 · detectStageAgeBreaches:687 · demoteStaleCommits:728 · detectChronicRecommits:753 · listOpportunities:784
 
 **`apps/api/src/domains/organizations.ts`** (711 lines) — ORGANIZATION_KINDS:38 · OrganizationKind:39 · OrganizationInput:41 · resourceFor:78 · createOrganization:82 · updateOrganization:158 · setOrganizationRoles:196 · reclassifyOrganization:225 · AccountInput:264 · attachAccount:284 · updateAccount:335 · InstitutionProfileInput:373 · attachInstitutionProfile:398 · updateInstitutionProfile:469 · detachAccount:521 · assembleOrganization360:569 · computeRelationshipStatus:657 · isInstitution:704
 
@@ -262,7 +262,7 @@
 
 **`apps/api/src/domains/performance.ts`** (400 lines) — listGoals:42 · createGoal:51 · transitionGoal:102 · listEvidence:146 · recordEvidence:182 · listLearningActivities:267 · createLearningActivity:273 · enrolInLearning:292 · completeLearning:329 · outstandingCompliance:380
 
-**`apps/api/src/domains/pipelines.ts`** (496 lines) — StageInput:27 · PipelineInput:40 · createPipeline:52 · addStage:111 · addTransition:160 · updateStage:192 · deleteTransition:222 · assertPipelineUsable:254 · assertGraphReachable:273 · TransitionCheck:317 · validateTransition:330 · retireStage:406 · pipelineForVertical:451 · entryStage:470 · loadPipelineWithStages:479 · stageFor:491
+**`apps/api/src/domains/pipelines.ts`** (514 lines) — StageInput:27 · PipelineInput:40 · createPipeline:52 · addStage:111 · addTransition:160 · updateStage:192 · deleteTransition:222 · assertPipelineUsable:254 · assertGraphReachable:273 · TransitionCheck:317 · validateTransition:330 · requiredFieldValue:407 · retireStage:424 · pipelineForVertical:469 · entryStage:488 · loadPipelineWithStages:497 · stageFor:509
 
 **`apps/api/src/domains/receipts.ts`** (791 lines) — listReceipts:57 · receiptDocument:131 · raiseFinalInvoice:291 · raiseFinalInvoiceOnSettlement:301 · finalizeCourseFeeInvoice:500 · listFinalInvoices:620 · finalInvoiceDocument:664
 
@@ -288,13 +288,13 @@
 
 **`apps/api/src/domains/units.ts`** (318 lines) — OpenUnitInput:39 · CloseUnitInput:50 · MoveUnitInput:57 · openUnit:126 · closeUnit:185 · moveUnit:230 · listUnits:307
 
-**`apps/api/src/domains/winLoss.ts`** (266 lines) — valueThresholdMinor:40 · commercialClearsThreshold:49 · ensureWinLossReview:57 · WinLossInput:123 · completeWinLossReview:132 · detectOverdueReviews:212
+**`apps/api/src/domains/winLoss.ts`** (263 lines) — valueThresholdMinor:39 · commercialClearsThreshold:48 · ensureWinLossReview:56 · WinLossInput:120 · completeWinLossReview:129 · detectOverdueReviews:209
 
 ## API platform
 
 **`apps/api/src/platform/approvalPolicySync.ts`** (175 lines) — LADDER_CONVERGENCES:47 · ApprovalPolicySyncResult:57 · reconcileApprovalGatePolicies:65 · reconcileApprovalGatePoliciesForAllTenants:154
 
-**`apps/api/src/platform/approvals.ts`** (481 lines) — ApprovalPolicyContent:40 · DEFAULT_APPROVAL_POLICY:56 · GateSubject:69 · GateResult:102 · evaluateApprovalGate:131 · decideApprovalStep:335
+**`apps/api/src/platform/approvals.ts`** (482 lines) — ApprovalPolicyContent:41 · DEFAULT_APPROVAL_POLICY:57 · GateSubject:70 · GateResult:103 · evaluateApprovalGate:132 · decideApprovalStep:336
 
 **`apps/api/src/platform/audit.ts`** (522 lines) — AUDIT_ACTIONS:20 · AuditAction:34 · registerGovernedEntities:43 · governedEntities:49 · isGoverned:55 · diffForAudit:134 · computeAuditHash:177 · hashPayloadOf:185 · createChainedAuditRecord:216 · AuditChainVerification:283 · verifyAuditChain:303 · chainUnhashedAuditRecords:372 · AuditWriteInput:400 · auditWrite:415 · auditRegulatedRead:455 · auditExport:482 · auditBulkOperation:500
 
@@ -360,7 +360,7 @@
 
 **`apps/api/src/platform/tenantPolicy.ts`** (177 lines) — DEFAULT_TENANT_TIER:21 · resolveTenantTier:70 · getTenantFeatureGate:75 · assertAllowedInferenceRegion:84 · TenantRuntimePolicy:106 · resolveTenantRuntimePolicy:120 · syncTenantPolicy:141
 
-**`apps/api/src/platform/wire.ts`** (163 lines) — wireInt:14 · bigintReplacer:23 · minorOf:33 · minorOf:34 · minorOf:35 · MinorFields:41 · withMinor:48 · paiseSum:63 · minorToDecimal:72 · minorToDecimal:73 · minorToDecimal:74 · minorString:80 · WithMinorPair:85 · withDecimalMinor:95 · rupeesToMinor:113 · rupeesToMinorOrNull:118 · decimalWire:129 · rupeesOf:144 · withRupeeWire:153
+**`apps/api/src/platform/wire.ts`** (175 lines) — wireInt:14 · bigintReplacer:23 · minorOf:33 · minorOf:34 · minorOf:35 · MinorFields:41 · withMinor:48 · paiseSum:63 · minorToDecimal:72 · minorToDecimal:73 · minorToDecimal:74 · minorString:80 · WithMinorPair:85 · withDecimalMinor:95 · rupeesToMinor:115 · rupeesToMinorOrNull:120 · decimalWire:131 · rupeesOf:146 · rupeesOrNull:151 · rupeesOrZero:156 · withRupeeWire:165
 
 ## API imports
 
@@ -388,9 +388,9 @@
 
 ## API jobs / events / agents
 
-**`apps/api/src/agents/index.ts`** (530 lines) — ProposeInput:49 · ProposeResult:63 · propose:81 · decideAgentAction:328 · agentRoster:395 · revokeAuthority:442 · pauseAgent:495
+**`apps/api/src/agents/index.ts`** (531 lines) — ProposeInput:50 · ProposeResult:64 · propose:82 · decideAgentAction:329 · agentRoster:396 · revokeAuthority:443 · pauseAgent:496
 
-**`apps/api/src/events/handlers.ts`** (287 lines) — instalmentPlan:55 · instalmentAmounts:73 · registerSubscribers:78
+**`apps/api/src/events/handlers.ts`** (288 lines) — instalmentPlan:56 · instalmentAmounts:74 · registerSubscribers:79
 
 **`apps/api/src/jobs/cases.ts`** (52 lines) — runCaseOverdueJob:18 · JOBS:41
 
@@ -444,9 +444,9 @@
 
 **`apps/api/src/jobs/schedule.ts`** (136 lines) — SCHEDULE_TZ:20 · TICK_MS:23 · MAX_ATTEMPTS:26 · isValidCron:46 · nextFireAfter:56 · dueOccurrence:74 · occurrencesBetween:95 · backoffMs:113 · CATCH_UP_MS:126 · LEASE_MS:134 · HEARTBEAT_MS:135
 
-**`apps/api/src/jobs/scheduler.ts`** (1209 lines) — JobResult:59 · SideEffects:70 · JobDefinition:72 · PendingJobDefinition:101 · ALL_JOBS:113 · escalateApprovalStep:480 · computeDailyMetrics:531 · RunOptions:576 · claimFiring:612 · runJobsForTenant:736 · runAllTenants:762 · runManualJobs:795 · retryLimit:821 · ClaimStatus:825 · ClaimResult:827 · AttemptFence:838 · claimAttempt:860 · heartbeatAttempt:891 · finishAttempt:902 · failAttempt:920 · runClaimedOccurrence:1013 · TickOutcome:1080 · TickOptions:1091 · tickOnce:1107 · assertSchedulable:1167 · startScheduler:1181 · stopScheduler:1205
+**`apps/api/src/jobs/scheduler.ts`** (1210 lines) — JobResult:60 · SideEffects:71 · JobDefinition:73 · PendingJobDefinition:102 · ALL_JOBS:114 · escalateApprovalStep:481 · computeDailyMetrics:532 · RunOptions:577 · claimFiring:613 · runJobsForTenant:737 · runAllTenants:763 · runManualJobs:796 · retryLimit:822 · ClaimStatus:826 · ClaimResult:828 · AttemptFence:839 · claimAttempt:861 · heartbeatAttempt:892 · finishAttempt:903 · failAttempt:921 · runClaimedOccurrence:1014 · TickOutcome:1081 · TickOptions:1092 · tickOnce:1108 · assertSchedulable:1168 · startScheduler:1182 · stopScheduler:1206
 
-**`apps/api/src/lib/auth.ts`** (1243 lines) — assertProductionSecrets:89 · TokenPayload:121 · SelectionTokenPayload:136 · signToken:141 · hashRefreshSecret:146 · liveSessionFor:155 · verifyToken:189 · MfaChallengePayload:197 · hashPassword:228 · ensureSignInPrincipal:248 · EntitySelectionResult:320 · assertPasswordAllowed:331 · LoginResult:388 · MfaRequiredResult:396 · login:419 · verifyMfaAndLogin:559 · enrolMfa:591 · confirmMfa:597 · changePassword:613 · principalHoldsOtherEntities:642 · recoverSignIn:666 · entitiesForToken:712 · identifySwitchCaller:727 · switchEntity:769 · SessionRefresh:831 · refreshSession:858 · logoutWithRefreshCookie:1021 · logoutSession:1074 · buildSessionUser:1084 · toAuthContext:1166 · switchContext:1198
+**`apps/api/src/lib/auth.ts`** (1244 lines) — assertProductionSecrets:90 · TokenPayload:122 · SelectionTokenPayload:137 · signToken:142 · hashRefreshSecret:147 · liveSessionFor:156 · verifyToken:190 · MfaChallengePayload:198 · hashPassword:229 · ensureSignInPrincipal:249 · EntitySelectionResult:321 · assertPasswordAllowed:332 · LoginResult:389 · MfaRequiredResult:397 · login:420 · verifyMfaAndLogin:560 · enrolMfa:592 · confirmMfa:598 · changePassword:614 · principalHoldsOtherEntities:643 · recoverSignIn:667 · entitiesForToken:713 · identifySwitchCaller:728 · switchEntity:770 · SessionRefresh:832 · refreshSession:859 · logoutWithRefreshCookie:1022 · logoutSession:1075 · buildSessionUser:1085 · toAuthContext:1167 · switchContext:1199
 
 **`apps/api/src/lib/http.ts`** (352 lines) — ceilingForRole:39 · contextMiddleware:52 · requireAuth:120 · handler:129 · clientDetails:226 · ApiErrorBody:235 · apiErrorBody:252 · errorMiddleware:274 · parsePaging:325 · str:331 · bool:335 · date:341 · numeric:347
 
@@ -564,7 +564,7 @@
 
 **`apps/api/src/routes/compliance/corporate.routes.ts`** (370 lines) — GET /registers/:kind/export.csv:109
 
-**`apps/api/src/routes/crm.routes.ts`** (1164 lines) — GET ${l.pipelineId}:${l.stageKey}:751 · GET ${o.pipelineId}:${o.stageKey}:912
+**`apps/api/src/routes/crm.routes.ts`** (1185 lines) — GET ${l.pipelineId}:${l.stageKey}:751 · GET ${o.pipelineId}:${o.stageKey}:920
 
 **`apps/api/src/routes/marketing/preferences.routes.ts`** (149 lines) — GET /unsubscribe/:token:104 · POST /unsubscribe/:token:136
 
@@ -847,4 +847,4 @@
 Generated or lock files. Nothing in them answers a question worth the tokens.
 
 - `pnpm-lock.yaml` (6863 lines)
-- `scripts/gates/allowlist/g9-money.json` (1813 lines)
+- `scripts/gates/allowlist/g9-money.json` (1735 lines)

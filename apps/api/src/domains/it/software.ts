@@ -45,7 +45,7 @@ import {
   type ItSummaryBase,
 } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
-import { rupeesToMinor, withDecimalMinor } from '../../platform/wire.js';
+import { rupeesToMinor, rupeesToMinorOrNull, withDecimalMinor } from '../../platform/wire.js';
 import { minorToRupees } from './money.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -622,7 +622,7 @@ export async function proposeRenewal(id: string, input: ProposeRenewalInput): Pr
         // approveRenewal checks `it_licences:approve`; the step must carry the same grant.
         resource: 'it_licences',
         requestedById: auth.partyId ?? 'system',
-        requestedValue: annualised,
+        requestedValueMinor: rupeesToMinorOrNull(annualised),
         currency: licence.currency,
         resolvedApproverId: approver?.partyId ?? null,
         resolvedApproverRole: approver?.roleSlug ?? 'finance_head',

@@ -23,9 +23,9 @@ import {
   type Verb,
   type WithholdReason,
   formatMinor,
-  parseMinor,
 } from '@kaizen/shared';
 import { prisma } from './db.js';
+import { rupeesOf } from './wire.js';
 import { currentAuth, type AuthContext } from './context.js';
 import { ApiError } from './errors.js';
 
@@ -406,7 +406,7 @@ async function activeCeilingGrant(auth: AuthContext, authorityClass: string) {
       status: 'active',
       effectiveFrom: { lte: now },
     },
-    orderBy: { ceilingValue: 'desc' },
+    orderBy: { ceilingValueMinor: 'desc' },
   });
   if (!grant || (grant.effectiveTo && grant.effectiveTo <= now)) return null;
   return grant;
@@ -415,7 +415,7 @@ async function activeCeilingGrant(auth: AuthContext, authorityClass: string) {
 export async function resolveAuthorityCeiling(auth: AuthContext, authorityClass: string): Promise<number | null> {
   const grant = await activeCeilingGrant(auth, authorityClass);
   if (!grant) return null;
-  return grant.ceilingValue ? Number(grant.ceilingValue.toString()) : 0;
+  return grant.ceilingValueMinor === null ? 0 : rupeesOf(grant.ceilingValueMinor);
 }
 
 /**
@@ -426,7 +426,7 @@ export async function resolveAuthorityCeiling(auth: AuthContext, authorityClass:
 export async function resolveAuthorityCeilingPaise(auth: AuthContext, authorityClass: string): Promise<bigint | null> {
   const grant = await activeCeilingGrant(auth, authorityClass);
   if (!grant) return null;
-  return grant.ceilingValue ? parseMinor(grant.ceilingValue.toFixed(2)) : 0n;
+  return grant.ceilingValueMinor ?? 0n;
 }
 
 // ---------------------------------------------------------------------------

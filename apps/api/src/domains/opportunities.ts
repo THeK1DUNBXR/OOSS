@@ -16,8 +16,8 @@
  */
 
 import { z } from 'zod';
-import { EVENTS, FORECAST_TRANSITIONS, parseMinor, type ForecastCategory, type SeverityCode } from '@kaizen/shared';
-import { prisma, num, type DbTx } from '../platform/db.js';
+import { EVENTS, FORECAST_TRANSITIONS, type ForecastCategory, type SeverityCode } from '@kaizen/shared';
+import { prisma, type DbTx } from '../platform/db.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -26,8 +26,9 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { assertCan, scopeFor } from '../platform/permissions.js';
 import { notify, raiseException } from '../platform/exceptions.js';
-import { entryStage, loadPipelineWithStages, stageFor, validateTransition } from './pipelines.js';
+import { entryStage, loadPipelineWithStages, requiredFieldValue, stageFor, validateTransition } from './pipelines.js';
 import { round2 } from '@kaizen/shared';
+import { rupeesOf, rupeesOrZero, rupeesToMinorOrNull, withDecimalMinor } from '../platform/wire.js';
 
 export interface OpportunityInput {
   title: string;
@@ -68,7 +69,7 @@ export async function createOpportunity(input: OpportunityInput) {
         pipelineId: pipeline.id,
         stageKey: stage.stageKey,
         stageEnteredAt: new Date(),
-        expectedValue: input.expectedValue ?? undefined,
+        expectedValueMinor: rupeesToMinorOrNull(input.expectedValue ?? undefined),
         currency: input.currency ?? 'INR',
         expectedCloseDate: input.expectedCloseDate ?? null,
         ownerPartyId: input.ownerPartyId ?? auth.partyId,
@@ -130,7 +131,7 @@ export async function openRenewalOpportunity(contractId: string) {
     title: `Renewal — ${contract.title}`,
     organizationId: contract.organizationId,
     vertical: 'other',
-    expectedValue: num(contract.commercialValue),
+    expectedValue: rupeesOf(contract.commercialValueMinor),
     currency: contract.currency,
     ownerPartyId: contract.ownerPartyId,
     strategicValue: contract.strategicValue,
@@ -227,9 +228,14 @@ export async function advanceStage(
       owner: { partyId: opportunity.ownerPartyId },
       impact: {
         domains: ['crm'],
-        materiality: opportunity.expectedValue
-          ? { measure: 'expected_value', value: num(opportunity.expectedValue)!, currency: opportunity.currency }
-          : null,
+        materiality:
+          opportunity.expectedValueMinor !== null
+            ? {
+                measure: 'expected_value',
+                value: rupeesOf(opportunity.expectedValueMinor),
+                currency: opportunity.currency,
+              }
+            : null,
       },
       tx,
     });
@@ -241,9 +247,14 @@ export async function advanceStage(
         newState: { contractId: opportunity.contractId, mouId: opportunity.mouId },
         impact: {
           domains: ['crm', 'fin', 'prj'],
-          materiality: opportunity.expectedValue
-            ? { measure: 'expected_value', value: num(opportunity.expectedValue)!, currency: opportunity.currency }
-            : null,
+          materiality:
+            opportunity.expectedValueMinor !== null
+              ? {
+                  measure: 'expected_value',
+                  value: rupeesOf(opportunity.expectedValueMinor),
+                  currency: opportunity.currency,
+                }
+              : null,
         },
         confidentiality: 'confidential',
         tx,
@@ -394,7 +405,7 @@ export async function changeForecastCategory(input: ForecastChangeInput) {
       // mode this requirement exists to prevent.
       if (['PL-ENTERPRISE', 'PL-INSTITUTION'].includes(opportunity.pipeline.pipelineCode)) {
         const missing = stage.requiredFields.filter((f) => {
-          const v = (opportunity as unknown as Record<string, unknown>)[f];
+          const v = requiredFieldValue(opportunity as unknown as Record<string, unknown>, f);
           return v === null || v === undefined || v === '';
         });
         if (missing.length) {
@@ -410,13 +421,13 @@ export async function changeForecastCategory(input: ForecastChangeInput) {
       const thresholdMinor = opportunity.pipeline.commitApprovalThresholdMinor;
       if (
         thresholdMinor !== null &&
-        opportunity.expectedValue &&
-        parseMinor(opportunity.expectedValue.toFixed(2)) > thresholdMinor
+        opportunity.expectedValueMinor !== null &&
+        opportunity.expectedValueMinor > thresholdMinor
       ) {
         await assertCan({
           resource: 'opportunities',
           verb: 'approve',
-          magnitude: { authorityClass: 'commit_approval', value: parseMinor(opportunity.expectedValue.toFixed(2)) },
+          magnitude: { authorityClass: 'commit_approval', value: opportunity.expectedValueMinor },
         });
       }
     }
@@ -506,7 +517,9 @@ export async function updateOpportunity(id: string, body: unknown) {
   const input = OPPORTUNITY_EDIT.parse(body);
   const data = {
     ...(input.title ? { title: input.title } : {}),
-    ...(input.expectedValue !== undefined ? { expectedValue: input.expectedValue ?? undefined } : {}),
+    ...(input.expectedValue !== undefined
+      ? { expectedValueMinor: rupeesToMinorOrNull(input.expectedValue ?? undefined) }
+      : {}),
     ...(input.expectedCloseDate !== undefined
       ? { expectedCloseDate: input.expectedCloseDate ? new Date(input.expectedCloseDate) : null }
       : {}),
@@ -576,20 +589,20 @@ export async function forecastRollup(opts: { blended?: boolean } = {}): Promise<
   for (const pipeline of pipelines) {
     const opps = await prisma.opportunity.findMany({
       where: { tenantId: auth.tenantId, pipelineId: pipeline.id, deletedAt: null },
-      select: { forecastCategory: true, expectedValue: true, stageKey: true, outcome: true, currency: true },
+      select: { forecastCategory: true, expectedValueMinor: true, stageKey: true, outcome: true, currency: true },
     });
 
     const probabilityByStage = new Map(pipeline.stages.map((s) => [s.stageKey, s.defaultProbability]));
     const buckets = ['pipeline', 'best_case', 'commit'].map((category) => {
       const rows = opps.filter((o) => o.forecastCategory === category);
-      const rawValue = rows.reduce((sum, o) => sum + (num(o.expectedValue) ?? 0), 0);
+      const rawValue = rows.reduce((sum, o) => sum + rupeesOrZero(o.expectedValueMinor), 0);
 
       // Roll-up branches on default_forecast_method per opportunity — the
       // method field is not advisory metadata.
       let weightedValue = 0;
       if (pipeline.defaultForecastMethod === 'weighted_stage') {
         weightedValue = rows.reduce(
-          (sum, o) => sum + (num(o.expectedValue) ?? 0) * ((probabilityByStage.get(o.stageKey) ?? 0) / 100),
+          (sum, o) => sum + rupeesOrZero(o.expectedValueMinor) * ((probabilityByStage.get(o.stageKey) ?? 0) / 100),
           0,
         );
       } else if (pipeline.defaultForecastMethod === 'manual_commit') {
@@ -616,8 +629,12 @@ export async function forecastRollup(opts: { blended?: boolean } = {}): Promise<
       forecastMethod: pipeline.defaultForecastMethod,
       currency: opps[0]?.currency ?? 'INR',
       buckets,
-      closedWon: round2(opps.filter((o) => o.outcome === 'won').reduce((s, o) => s + (num(o.expectedValue) ?? 0), 0)),
-      closedLost: round2(opps.filter((o) => o.outcome === 'lost').reduce((s, o) => s + (num(o.expectedValue) ?? 0), 0)),
+      closedWon: round2(
+        opps.filter((o) => o.outcome === 'won').reduce((s, o) => s + rupeesOrZero(o.expectedValueMinor), 0),
+      ),
+      closedLost: round2(
+        opps.filter((o) => o.outcome === 'lost').reduce((s, o) => s + rupeesOrZero(o.expectedValueMinor), 0),
+      ),
       openCount: opps.filter((o) => !o.outcome).length,
     });
   }
@@ -652,7 +669,7 @@ export async function coverageByPosition(minPosition = 30) {
 
   const opps = await prisma.opportunity.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, outcome: null },
-    select: { id: true, pipelineId: true, stageKey: true, expectedValue: true, title: true, recordCode: true },
+    select: { id: true, pipelineId: true, stageKey: true, expectedValueMinor: true, title: true, recordCode: true },
   });
 
   const keySet = new Set(stages.map((s) => `${s.pipelineId}:${s.stageKey}`));
@@ -661,8 +678,8 @@ export async function coverageByPosition(minPosition = 30) {
   return {
     minPosition,
     count: matched.length,
-    value: round2(matched.reduce((s, o) => s + (num(o.expectedValue) ?? 0), 0)),
-    opportunities: matched,
+    value: round2(matched.reduce((s, o) => s + rupeesOrZero(o.expectedValueMinor), 0)),
+    opportunities: matched.map((o) => withDecimalMinor(o, ['expectedValue'])),
   };
 }
 

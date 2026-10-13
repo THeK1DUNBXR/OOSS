@@ -18,7 +18,7 @@
 import { randomUUID } from 'node:crypto';
 import { EVENTS, ATTRIBUTION_MODELS, type AttributionModel, type ChannelKey } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../../platform/db.js';
-import { rupeesToMinorOrNull, withDecimalMinor } from '../../platform/wire.js';
+import { rupeesOf, rupeesOrZero, rupeesToMinorOrNull, withDecimalMinor } from '../../platform/wire.js';
 import { currentAuth } from '../../platform/context.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { governedWrite } from '../../platform/governedWrite.js';
@@ -378,11 +378,11 @@ export async function summarise(model: AttributionModel, from: Date, to: Date): 
     if (row.opportunityId) {
       const opp = await prisma.opportunity.findFirst({
         where: { id: row.opportunityId },
-        select: { outcome: true, expectedValue: true },
+        select: { outcome: true, expectedValueMinor: true },
       });
       if (opp?.outcome === 'won') {
         g.weightedWon += weight;
-        g.weightedValue += weight * (num(opp.expectedValue) ?? 0);
+        g.weightedValue += weight * rupeesOrZero(opp.expectedValueMinor);
       }
     }
   }
@@ -643,7 +643,7 @@ export async function previewScore(leadId: string): Promise<ScorePreview> {
     hasPhone: Boolean(person?.primaryPhone),
     hasOrganization: Boolean(lead.organizationId),
     hasOffering: Boolean(lead.offeringId),
-    estimatedValue: num(lead.estimatedValue),
+    estimatedValue: lead.estimatedValueMinor === null ? null : rupeesOf(lead.estimatedValueMinor),
     source: lead.source,
   });
 

@@ -26,7 +26,8 @@ import {
   type TenantConfig,
   type TenantKind,
 } from '@kaizen/shared';
-import { prisma, unscopedPrisma, num, type DbTx } from '../platform/db.js';
+import { unscopedPrisma, type DbTx } from '../platform/db.js';
+import { rupeesOrNull } from '../platform/wire.js';
 import { asSystem, runWithContext, newRequestContext, type AuthContext } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { emit } from '../platform/eventBus.js';
@@ -1152,7 +1153,7 @@ export async function buildSessionUser(
     grants: grants.map((g) => formatGrant({ resource: g.resource, verbs: g.verbs, scope: g.scope })),
     authorityGrants: authorityGrants.map((g) => ({
       authorityClass: g.authorityClass,
-      ceilingValue: num(g.ceilingValue),
+      ceilingValue: rupeesOrNull(g.ceilingValueMinor),
       currency: g.currency,
       countCeiling: g.countCeiling,
       countWindow: g.countWindow,

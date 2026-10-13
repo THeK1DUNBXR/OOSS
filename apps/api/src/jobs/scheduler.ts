@@ -19,6 +19,7 @@ import { EVENTS, istDayStart } from '@kaizen/shared';
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { prisma, unscopedPrisma } from '../platform/db.js';
+import { rupeesOrZero } from '../platform/wire.js';
 import { config } from '../platform/config.js';
 import { logger } from '../platform/logger.js';
 import {
@@ -538,7 +539,7 @@ export async function computeDailyMetrics(now: Date = new Date()): Promise<numbe
   const [revenueWon, dealsWon, activitiesLogged, leadsCreated, enrollmentsCreated, activeMous] = await Promise.all([
     prisma.opportunity.findMany({
       where: { tenantId: auth.tenantId, outcome: 'won', closedAt: { gte: dayStart } },
-      select: { expectedValue: true },
+      select: { expectedValueMinor: true },
     }),
     prisma.opportunity.count({ where: { tenantId: auth.tenantId, outcome: 'won', closedAt: { gte: dayStart } } }),
     prisma.interaction.count({ where: { tenantId: auth.tenantId, createdAt: { gte: dayStart } } }),
@@ -548,7 +549,7 @@ export async function computeDailyMetrics(now: Date = new Date()): Promise<numbe
   ]);
 
   const metrics: Array<{ metric: string; value: number }> = [
-    { metric: 'revenue_won', value: revenueWon.reduce((s, o) => s + Number(o.expectedValue?.toString() ?? 0), 0) },
+    { metric: 'revenue_won', value: revenueWon.reduce((s, o) => s + rupeesOrZero(o.expectedValueMinor), 0) },
     { metric: 'deals_won', value: dealsWon },
     { metric: 'activities_logged', value: activitiesLogged },
     { metric: 'leads_created', value: leadsCreated },

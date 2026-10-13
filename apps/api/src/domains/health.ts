@@ -37,6 +37,7 @@ import {
   type HealthBand,
 } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
+import { rupeesOrZero } from '../platform/wire.js';
 import { minorToRupees } from './money.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -122,7 +123,7 @@ export async function computeCommercialHealth(): Promise<ComputeResult> {
   for (const opp of openOpps) {
     const stage = opp.pipeline.stages.find((s) => s.stageKey === opp.stageKey);
     const probability = (stage?.defaultProbability ?? 0) / 100;
-    weightedPipeline += (num(opp.expectedValue) ?? 0) * probability;
+    weightedPipeline += rupeesOrZero(opp.expectedValueMinor) * probability;
   }
   // Not measured, not zero and not a guessed target: with no target set there is
   // no coverage to score, and a score against an invented figure would read as a
@@ -149,7 +150,7 @@ export async function computeCommercialHealth(): Promise<ComputeResult> {
   const byAccount = new Map<string, number>();
   for (const opp of openOpps) {
     const key = opp.organizationId ?? 'unassigned';
-    byAccount.set(key, (byAccount.get(key) ?? 0) + (num(opp.expectedValue) ?? 0));
+    byAccount.set(key, (byAccount.get(key) ?? 0) + rupeesOrZero(opp.expectedValueMinor));
   }
   const totalValue = [...byAccount.values()].reduce((s, v) => s + v, 0);
   const topAccount = Math.max(0, ...byAccount.values());
