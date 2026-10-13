@@ -14,6 +14,7 @@
  */
 
 import { istDateKey, istFinancialYearStart, toMinorHalfUp } from '@kaizen/shared';
+import { minorToRupees } from '../money.js';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import {
@@ -771,7 +772,7 @@ export async function depreciationReport(fyStartYear: number) {
     const life = await latestUsefulLife(assetClass, fyEnd);
     const block = await latestItBlock(assetClass, fyEnd);
 
-    const cost = num(asset.cost) ?? 0;
+    const cost = minorToRupees(asset.costMinor);
     let companiesAct: ReturnType<typeof companiesActAnnualCharge> | null = null;
     let mismatch = false;
     if (life) {

@@ -308,7 +308,7 @@ export async function assetDetail(id: string) {
     asset.fixedAssetId
       ? prisma.fixedAsset.findFirst({
           where: { id: asset.fixedAssetId, tenantId: auth.tenantId },
-          select: { id: true, recordCode: true, name: true, cost: true, disposedAt: true },
+          select: { id: true, recordCode: true, name: true, costMinor: true, disposedAt: true },
         })
       : Promise.resolve(null),
   ]);
@@ -322,7 +322,7 @@ export async function assetDetail(id: string) {
         id: fixedAssetRow.id,
         recordCode: fixedAssetRow.recordCode,
         name: fixedAssetRow.name,
-        cost: Number(fixedAssetRow.cost),
+        cost: minorToRupees(fixedAssetRow.costMinor),
         disposedAt: fixedAssetRow.disposedAt,
       }
     : null;
