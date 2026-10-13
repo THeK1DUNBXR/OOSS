@@ -150,9 +150,9 @@ function fixtureAccounts(): ResolvedPostingAccounts {
 }
 
 beforeAll(async () => {
-  // Its own tenant (slug 'posting-plumbing-test'): this file writes closed and closing periods (2044-03, 2044-04),
+  // Its own tenant (slug 'posting-plumbing-test-p0'): this file writes closed and closing periods (2044-03, 2044-04),
   // and in `kaizen` those freeze every row-less month below them for every other file.
-  const books = await booksTenant('posting-plumbing-test');
+  const books = await booksTenant('posting-plumbing-test-p0', { invoicePosting: false });
   tid = books.tenantId;
   CHAIRMAN = books.chairman;
   const other = await unscopedPrisma.tenant.create({
@@ -496,6 +496,7 @@ describe('pure builders: balanced bigint lines, fixture accounts only', () => {
       cgstMinor: 900n,
       sgstMinor: 900n,
       igstMinor: 0n,
+      roundOffLineId: lineId,
     };
     const up = buildInvoiceIssueEntry({ ...base, grandTotalMinor: 11840n, roundOffMinor: 40n }, fixtureAccounts());
     const down = buildInvoiceIssueEntry({ ...base, grandTotalMinor: 11770n, roundOffMinor: -30n }, fixtureAccounts());
@@ -503,6 +504,25 @@ describe('pure builders: balanced bigint lines, fixture accounts only', () => {
     expect(down.reduce((sum, l) => sum + l.amountMinor, 0n)).toBe(0n);
     expect(up.find((l) => l.accountId === acct.roundOff)?.amountMinor).toBe(-40n);
     expect(down.find((l) => l.accountId === acct.roundOff)?.amountMinor).toBe(30n);
+    // The round-off is income, so its line names the business line it is booked under (ledger.ts refuses a P&L line without one).
+    expect(up.find((l) => l.accountId === acct.roundOff)?.lineId).toBe(lineId);
+  });
+
+  it('refuses a round-off with no business line, since the round-off is income', () => {
+    expect(() =>
+      buildInvoiceIssueEntry(
+        {
+          partyId: party,
+          grandTotalMinor: 11840n,
+          revenue: [{ lineId, taxableMinor: 10000n }],
+          cgstMinor: 900n,
+          sgstMinor: 900n,
+          igstMinor: 0n,
+          roundOffMinor: 40n,
+        },
+        fixtureAccounts(),
+      ),
+    ).toThrow(/round-off/);
   });
 
   it('refuses components that do not add to the grand total, and says by how much', () => {

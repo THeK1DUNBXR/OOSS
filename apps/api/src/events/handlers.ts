@@ -92,7 +92,8 @@ export function registerSubscribers(): void {
     const contract = await prisma.contract.findFirst({ where: { id: event.subject.entityId } });
     if (!contract) return;
 
-    // Idempotency: a replayed signature must not double-bill.
+    // Idempotency: a replayed signature must not double-bill. This is the guard that keeps the
+    // draft below to one per contract, so a replayed CONTRACT_SIGNED does not create a second.
     const existing = await prisma.invoice.findFirst({ where: { contractId: contract.id } });
     if (existing) return;
 
@@ -117,7 +118,12 @@ export function registerSubscribers(): void {
           unitPrice: rupeesOrZero(contract.commercialValueMinor),
         },
       ],
-      issue: true,
+      // A draft, not an issue. An issued invoice posts to the journal and needs its place of
+      // supply, its line's division and its ledger entity settled, and none of that is known at
+      // signing. Finance sets the division and issues the draft (invoicing.ts issueInvoiceDraft),
+      // so nothing posts here and nothing reaches the dead-letter queue (invoice posting, owner
+      // decision 2026-10-13). The idempotency guard above keeps one draft per contract.
+      issue: false,
     });
   });
 
