@@ -20,7 +20,7 @@ import {
 } from '@kaizen/shared';
 import { seedBootstrap } from '../seed/bootstrap.js';
 import { createHolder } from '../domains/equity.js';
-import { recordTransaction, createAccount } from '../domains/books.js';
+import { createAccount } from '../domains/books.js';
 import {
   publishEntitySnapshot,
   groupStructure,
@@ -30,7 +30,16 @@ import {
   entitySnapshotView,
 } from '../domains/group.js';
 import { switchEntity } from '../lib/auth.js';
-import { asPrincipal, asUser, authFor, expectReject, tenantId, unscopedPrisma, type TestPrincipal } from './helpers.js';
+import {
+  asPrincipal,
+  asUser,
+  authFor,
+  expectReject,
+  tenantId,
+  unscopedPrisma,
+  type TestPrincipal,
+  payOutSettled,
+} from './helpers.js';
 
 let HOLDING: string;
 const cleanupTenantSlugs: string[] = [];
@@ -273,7 +282,7 @@ describe('EQT-GRP-006 — a group total is labelled before inter-company elimina
 
     const rejectedOutOfGroup = await expectReject(() =>
       asTenantUser(subId, 'chairman@kaizen.co.in', () =>
-        recordTransaction({
+        payOutSettled({
           txnDate: new Date(),
           direction: 'out',
           amount: 1_000,
@@ -285,7 +294,7 @@ describe('EQT-GRP-006 — a group total is labelled before inter-company elimina
     expect(rejectedOutOfGroup.status).toBe(422);
 
     await asTenantUser(subId, 'chairman@kaizen.co.in', () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date(),
         direction: 'out',
         amount: 12_345,

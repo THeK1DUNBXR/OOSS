@@ -14,12 +14,20 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import { asUser, booksTenant, closeThrough, reopenLatestFirst, unscopedPrisma, type BooksTenant } from './helpers.js';
+import {
+  asUser,
+  booksTenant,
+  closeThrough,
+  reopenLatestFirst,
+  unscopedPrisma,
+  type BooksTenant,
+  payBillSettled,
+  approveRecurringRuleSettled,
+} from './helpers.js';
 import {
   createAccount,
   createCategory,
   recordVendorBill,
-  payVendorBill,
   createAsset,
   createLoan,
   setBudgetLine,
@@ -92,7 +100,7 @@ describe('Books writes emit their event', () => {
       }),
     );
     await asUser(FINANCE, () =>
-      payVendorBill(bill.id, { amount: 50, accountId: ACCOUNT_ID, paidOn: new Date('2016-06-02T06:00:00Z') }),
+      payBillSettled(bill.id, { amount: 50, accountId: ACCOUNT_ID, paidOn: new Date('2016-06-02T06:00:00Z') }),
     );
     expect(await eventsFor('kz.fin.vendor_bill.paid', bill.id)).toHaveLength(1);
   });
@@ -174,6 +182,7 @@ describe('Books writes emit their event', () => {
         startDate: new Date(Date.UTC(2016, 0, 1)),
       },
     });
+    await asUser(FINANCE, () => approveRecurringRuleSettled(rule.id));
     await asUser(FINANCE, () => generateRecurring('2016-05'));
     expect(await eventsFor('kz.fin.recurring.generated', rule.id)).toHaveLength(1);
   });

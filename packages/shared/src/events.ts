@@ -618,6 +618,13 @@ export const EVENTS = {
   TRANSACTION_REVERSED: 'kz.fin.transaction.reversed',
   VENDOR_BILL_RECORDED: 'kz.fin.vendor_bill.recorded',
   VENDOR_BILL_PAID: 'kz.fin.vendor_bill.paid',
+  // A money-out request (payments:approve). Nothing reaches the cashbook until the
+  // approval: the request is the fact that somebody asked, and the approval is
+  // the fact that a second person let it count (C-005, round 23b).
+  PAYOUT_REQUESTED: 'kz.fin.payout_request.requested',
+  PAYOUT_APPROVED: 'kz.fin.payout_request.approved',
+  PAYOUT_DECLINED: 'kz.fin.payout_request.declined',
+  PAYOUT_WITHDRAWN: 'kz.fin.payout_request.withdrawn',
   BUDGET_LINE_SET: 'kz.fin.budget_line.set',
   RECURRING_GENERATED: 'kz.fin.recurring.generated',
   FIXED_ASSET_RECORDED: 'kz.fin.fixed_asset.recorded',
