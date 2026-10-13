@@ -1411,7 +1411,7 @@ export async function collectInvoicePayment(
         ...(options.atIssue
           ? {
               paymentType: paymentTypeFor(payable, amount),
-              amountPayableNow: amount,
+              amountPayableNowMinor: rupeesToMinor(amount),
               paymentMode: input.mode,
               paymentReference: input.reference?.trim() || null,
             }

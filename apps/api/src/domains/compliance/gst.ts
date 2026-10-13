@@ -227,7 +227,11 @@ async function beforeIssueClassification(payload: Record<string, unknown>) {
     reverseCharge: boolean;
     enrollmentDate: Date | string | null;
   };
-  const lines = payload.lines as Array<{ id: string; supplyType: string; gstRate: unknown; taxAmount: unknown }>;
+  // The tax amount is read as `taxAmountMinor` (paise, bigint). It used to be read
+  // as `taxAmount` behind an `as never` cast, which hid the rename from tsc: the
+  // read came back undefined, both checks below read it as 0, and a composition
+  // dealer could issue a tax invoice that charged GST.
+  const lines = payload.lines as Array<{ id: string; supplyType: string; gstRate: unknown; taxAmountMinor: bigint }>;
 
   // A course-fee invoice is never a tax document (see the `Invoice` doc
   // comment) — it is not a bill of supply either, it is neither, so it is
@@ -245,7 +249,7 @@ async function beforeIssueClassification(payload: Record<string, unknown>) {
   for (const line of lines) {
     if (
       isNonTaxableSupply(line.supplyType) &&
-      ((num(line.gstRate as never) ?? 0) !== 0 || (num(line.taxAmount as never) ?? 0) !== 0)
+      ((num(line.gstRate as never) ?? 0) !== 0 || line.taxAmountMinor !== 0n)
     ) {
       throw ApiError.unprocessable(
         `A ${line.supplyType} line cannot carry a tax rate or tax amount. Reclassify it before issuing.`,
@@ -254,7 +258,7 @@ async function beforeIssueClassification(payload: Record<string, unknown>) {
   }
 
   const allNonTaxable = lines.length > 0 && lines.every((l) => isNonTaxableSupply(l.supplyType));
-  const anyTax = lines.some((l) => (num(l.taxAmount as never) ?? 0) > 0);
+  const anyTax = lines.some((l) => l.taxAmountMinor > 0n);
 
   if (profile.compositionScheme && anyTax) {
     throw ApiError.unprocessable(
