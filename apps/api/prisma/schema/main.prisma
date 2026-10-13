@@ -4493,6 +4493,10 @@ model EmploymentRelationship {
   person   Person @relation(fields: [personId], references: [id])
 
   legalEntity            String    @default("Kaizen Infinities Pvt Ltd")
+  /// The ledger entity this employee's pay is booked to (FX-73). Null until mapped.
+  /// A run with an unmapped employee refuses to post, rather than picking one.
+  ledgerEntityId         String?
+  ledgerEntity           LedgerEntity? @relation(fields: [tenantId, ledgerEntityId], references: [tenantId, id])
   hireEffectiveDate      DateTime
   status                 String    @default("PendingHire") // Diagram 14.1
   confirmationState      String    @default("not_applicable")

@@ -30,6 +30,7 @@ model BusinessLine {
   successorsFrom    BusinessLineSuccessor[] @relation("SuccessorFrom")
   successorsTo      BusinessLineSuccessor[] @relation("SuccessorTo")
   distributionLines LineDistributionLine[]
+  payrollDivisionLines PayrollDivisionLine[]
   orgUnits          OrgUnit[]
   units             Unit[]
   journalLines      JournalLine[]

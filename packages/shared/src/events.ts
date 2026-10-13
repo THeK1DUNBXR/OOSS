@@ -567,6 +567,8 @@ export const EVENTS = {
   ADHOC_PAY_APPROVED: 'kz.hr.adhoc_pay.approved',
   ARREAR_APPROVED: 'kz.hr.arrear.approved',
   PAYROLL_JOURNAL_POSTED: 'kz.hr.payroll_journal.posted',
+  PAYROLL_DIVISION_LINE_MAPPED: 'kz.hr.payroll_division_line.mapped',
+  PAYROLL_DIVISION_LINE_ENDED: 'kz.hr.payroll_division_line.ended',
   BANK_ADVICE_GENERATED: 'kz.hr.bank_advice.generated',
   PAYROLL_RECONCILIATION_FLAGGED: 'kz.hr.payroll_reconciliation.unexplained_delta_detected',
   PAYROLL_QUERY_RAISED: 'kz.hr.payroll_query.raised',
