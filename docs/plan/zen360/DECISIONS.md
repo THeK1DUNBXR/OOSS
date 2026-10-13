@@ -1262,6 +1262,27 @@ Built, not tied to a decision in this note: FX-51 and FX-64 are in PR #67, which
   - **Credit notes.** They do not post yet; a follow-up PR adds them. Until it lands, the journal receivable is overstated by every credit note.
   - **Course-fee invoices.** The temporary course-fee invoice scheme is to be scrapped, replaced by receipts that lead to a final invoice. Until that lands, an enrolment-dated invoice posts nothing. The GST point on advance receipts for services (CGST Act s.13, Rule 50) is open for the CA.
   - **Contract signing.** The invoice raised at signing is an unissued draft. Finance sets its division and issues it.
+- **Phase 0 integration (owner, 2026-10-13).** The owner records these decisions on the Phase 0 build:
+  - **0.6 hash chain: deviation accepted.** The owner accepts the deviation from the 0.6 spec as built: `@@unique([tenantId, prevHash])` plus a per-tenant advisory lock under ReadCommitted, not SERIALIZABLE (`ORDERED-PLAN.md`, 0.6; `apps/api/src/platform/eventBus.ts:287`, `:319-328`). The 0.6 item text is not rewritten.
+  - **FX-73: payroll statutory rates. Build now, refuse till approved.** PF, ESI, Tamil Nadu PT and LWF move from the typed rate tables to `StatutoryRule` rows, read with `ruleAt`. Compute is refused until an approver approves each rule with a citation. Seeded rules are DRAFT, with the source prefixed `UNVERIFIED`. Posting refuses a run whose rule is on HOLD, is DRAFT, or is not in force on the entry date. EDLI and the PF admin charge are stored as statutory lines and posted. CLAUDE.md rule 4 applies.
+  - **FX-24: event consumers and the audit anchor.** Built now. `EventConsumerReceipt` records each subscriber's receipt, so a redelivered event runs its handler once. `EventRecord.auditRecordId` anchors an event to its audit row. The anchor sits outside the event hash, so no existing hash changes. `verifyEventAuditAnchors` reports orphans.
+  - **FX-80: public certificate verification.** `/verify/certificate/:code` returns minimal fields only (status, holder, course, issue date), looked up by verification code only. Certificates carry an FK to their enrolment.
+  - **Credit notes post to the journal.** A credit note posts under the invoice lock, capped at the invoice's balance (grand total less receipts less earlier notes). This replaces the "Credit notes" bullet above. The GSTR-1 CDNR tax split is open (see below).
+  - **C-015: account recovery holder.** The recovery holder is the founder-duty holder until an `it_admin` duty is assigned, then the IT admin. The founder may create stopgap grants with provenance `to_migrate`. They are listed at `GET /admin/grants/stopgap` and ended by retire at onboarding.
+    - Open conflict: the plan calls the IT owner a level assignment (`DECISIONS.md:341`, `ROADMAP.md:146`). The build uses a `DutyAssignment` of `it_admin`, because the holder must be one person at a time.
+  - **Closed periods on the remaining legacy write paths.** These lock the period row and refuse a closed month: vendor bill, asset, loan, payment record, payment reverse and allocate, credit note, debit note, receipts, and spin-out revert.
+  - **Open, for the owner.** None of these is decided here.
+    - Q1: the 1.5 mapping review and the figure confirmation.
+    - Course GST on advances: for the CA (CGST Act s.13, Rule 50).
+    - FX-62 erasure: for a lawyer.
+    - GSTR-1 CDNR proportional tax split for credit notes.
+    - The G13 exemption candidates (counters, projections, watermarks), and whether G13 should recognise transition-backed and `auditBulkOperation` audits.
+    - The anonymous survey path is unaudited by design.
+    - FX-80: the `invalid` status for a reversed enrolment is open, and no certificate expiry exists.
+    - TDS on salary has no `StatutoryRule`, because payroll does not compute it.
+    - The duplicate pack row `pf.wage_ceiling`.
+    - Organization fields under FX-65.
+    - Onboarding: reserved matters, alternates and threshold "tuned" markers. No model exists yet.
 
 ### Still open
 
