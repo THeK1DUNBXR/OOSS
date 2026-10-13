@@ -10,7 +10,13 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { unscopedPrisma, prisma } from '../platform/db.js';
 import { asSystem } from '../platform/context.js';
 import { emit, subscribe, clearSubscribers } from '../platform/eventBus.js';
-import { drainOutbox, OUTBOX_MAX_ATTEMPTS, startOutboxDispatcher, stopOutboxDispatcher } from '../platform/outbox.js';
+import {
+  dispatchDueOutbox,
+  drainOutbox,
+  OUTBOX_MAX_ATTEMPTS,
+  startOutboxDispatcher,
+  stopOutboxDispatcher,
+} from '../platform/outbox.js';
 import { isCanonicalEventName } from '@kaizen/shared';
 import { tenantId } from './helpers.js';
 
@@ -130,6 +136,19 @@ describe('FX-24 dispatcher and past-tense grammar', () => {
     const pending = await unscopedPrisma.outboxEvent.findFirstOrThrow({ where: { tenantId: TENANT, eventName: NAME } });
     expect(pending.state).toBe('pending');
     expect(pending.nextAttemptAt.getTime()).toBeGreaterThan(Date.now());
+
+    // Rows that earlier files left pending are due now, and claimBatch takes due
+    // rows ORDER BY "createdAt", so they queue ahead of this probe. Drain them
+    // here, while the probe is still behind its backoff and cannot be claimed, so
+    // the running dispatcher below only has to reach the probe. Left to the
+    // dispatcher alone, the backlog outlasted the 10 s deadline in a full run and
+    // the loop gave up with the probe still pending.
+    await dispatchDueOutbox();
+    const afterDrain = await unscopedPrisma.outboxEvent.findFirstOrThrow({
+      where: { tenantId: TENANT, eventName: NAME },
+    });
+    expect(afterDrain.state).toBe('pending');
+    expect(seenIds).toEqual([]);
 
     // The backoff has elapsed: make the row due rather than sleeping for it.
     await unscopedPrisma.outboxEvent.updateMany({
