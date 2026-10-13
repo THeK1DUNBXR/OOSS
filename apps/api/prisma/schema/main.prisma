@@ -5350,7 +5350,7 @@ model BudgetLine {
   categoryId String
   category   LedgerCategory @relation(fields: [categoryId], references: [id])
   division   String?
-  amount     Decimal        @db.Decimal(18, 2)
+  amountMinor BigInt
   note       String?
 
   createdAt DateTime @default(now())
@@ -5374,7 +5374,7 @@ model RecurringRule {
   accountId           String
   division            String?
   direction           String         @default("out")
-  amount              Decimal        @db.Decimal(18, 2)
+  amountMinor         BigInt
   /// monthly | quarterly | annual
   cadence             String         @default("monthly")
   dayOfMonth          Int            @default(1)
@@ -5402,8 +5402,8 @@ model FixedAsset {
 
   name             String
   purchaseDate     DateTime
-  cost             Decimal   @db.Decimal(18, 2)
-  salvageValue     Decimal   @default(0) @db.Decimal(18, 2)
+  costMinor        BigInt
+  salvageValueMinor BigInt    @default(0)
   usefulLifeMonths Int
   /// straight_line | wdv (written-down value, which is what Indian tax uses)
   method           String    @default("straight_line")
@@ -5411,7 +5411,7 @@ model FixedAsset {
   division         String?
   categoryId       String?
   disposedAt       DateTime?
-  disposalValue    Decimal?  @db.Decimal(18, 2)
+  disposalValueMinor BigInt?
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -5430,7 +5430,7 @@ model Loan {
   recordCode String
 
   lender       String
-  principal    Decimal   @db.Decimal(18, 2)
+  principalMinor BigInt
   /// Annual nominal rate, as a percentage.
   annualRate   Decimal   @db.Decimal(6, 3)
   tenureMonths Int

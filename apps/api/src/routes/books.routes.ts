@@ -19,6 +19,7 @@ import {
   type GstReturnType,
 } from '@kaizen/shared';
 import { handler, str, date, numeric } from '../lib/http.js';
+import { maskMoney } from '../domains/money.js';
 import { num } from '../platform/db.js';
 import { rupeesOf, withRupeeWire, wireInt } from '../platform/wire.js';
 
@@ -619,7 +620,7 @@ router.get(
     const money = await canSeeMoney('assets');
     const rows = await listAssets();
     return rows.map((a) => ({
-      ...a,
+      ...maskMoney(a, money, ['cost']),
       purchaseDate: a.purchaseDate.toISOString().slice(0, 10),
       disposedAt: a.disposedAt?.toISOString().slice(0, 10) ?? null,
       cost: amount(a.cost, money),
@@ -661,7 +662,7 @@ router.get(
     const money = await canSeeMoney('assets');
     const rows = await listLoans();
     return rows.map((l) => ({
-      ...l,
+      ...maskMoney(l, money, ['principal']),
       startDate: l.startDate.toISOString().slice(0, 10),
       closedAt: l.closedAt?.toISOString().slice(0, 10) ?? null,
       principal: amount(l.principal, money),
