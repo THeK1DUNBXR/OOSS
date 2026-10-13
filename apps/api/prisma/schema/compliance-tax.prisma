@@ -24,10 +24,10 @@ model TdsSectionRate {
 
   ratePercent             Decimal @db.Decimal(5, 2)
   /// Below this on a single transaction, nothing is deducted.
-  thresholdPerTransaction Decimal @default(0) @db.Decimal(14, 2)
+  thresholdPerTransactionMinor BigInt @default(0)
   /// Once cumulative payments to the payee in the FY cross this, the
   /// exemption stops applying even to transactions under the per-transaction line.
-  thresholdPerFy          Decimal @default(0) @db.Decimal(14, 2)
+  thresholdPerFyMinor          BigInt @default(0)
   /// Sec 206AA: the flat rate that applies when the payee has furnished no PAN,
   /// overriding the section rate whenever it is higher.
   panMissingRatePercent   Decimal @default(20) @db.Decimal(5, 2)
@@ -160,9 +160,9 @@ model IncomeTaxSlabTable {
   /// entry's `upTo` is null, meaning "and above".
   slabs Json
 
-  standardDeduction  Decimal @default(0) @db.Decimal(12, 2)
-  rebate87ALimit     Decimal @default(0) @db.Decimal(12, 2)
-  rebate87AMaxAmount Decimal @default(0) @db.Decimal(12, 2)
+  standardDeductionMinor  BigInt @default(0)
+  rebate87ALimitMinor     BigInt @default(0)
+  rebate87AMaxAmountMinor BigInt @default(0)
   cessPercent        Decimal @default(4) @db.Decimal(5, 2)
 
   effectiveFrom DateTime

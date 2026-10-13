@@ -69,7 +69,11 @@ async function assertRateTableEdit() {
 export async function listPfRateTables() {
   const auth = currentAuth();
   await assertCan({ resource: 'rate_tables', verb: 'view' });
-  return prisma.pfRateTable.findMany({ where: { tenantId: auth.tenantId }, orderBy: { effectiveFrom: 'desc' } });
+  const rows = await prisma.pfRateTable.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { effectiveFrom: 'desc' },
+  });
+  return rows.map((row) => withDecimalMinor(row, ['wageCeiling'] as const));
 }
 
 export interface PfRateTableInput {
@@ -86,9 +90,12 @@ export interface PfRateTableInput {
 export async function createPfRateTable(input: PfRateTableInput) {
   const auth = currentAuth();
   await assertRateTableEdit();
-  const row = await prisma.pfRateTable.create({ data: { tenantId: auth.tenantId, ...input } });
+  const { wageCeiling, ...rest } = input;
+  const row = await prisma.pfRateTable.create({
+    data: { tenantId: auth.tenantId, ...rest, wageCeilingMinor: rupeesToMinor(wageCeiling) },
+  });
   await auditWrite({ action: 'create', subjectType: 'pf_rate_table', subjectId: row.id, after: row });
-  return row;
+  return withDecimalMinor(row, ['wageCeiling'] as const);
 }
 
 /** The row in force on `at`, latest-effective-first. */
@@ -108,7 +115,7 @@ export async function currentPfRateTable(at: Date): Promise<PfRates> {
     epsRate: num(row.epsRate)!,
     edliRate: num(row.edliRate)!,
     adminRate: num(row.adminRate)!,
-    wageCeiling: num(row.wageCeiling)!,
+    wageCeiling: minorToRupees(row.wageCeilingMinor),
     voluntary: row.voluntary,
   };
 }
@@ -123,7 +130,11 @@ async function currentPfRateTableRow(at: Date) {
 export async function listEsiRateTables() {
   const auth = currentAuth();
   await assertCan({ resource: 'rate_tables', verb: 'view' });
-  return prisma.esiRateTable.findMany({ where: { tenantId: auth.tenantId }, orderBy: { effectiveFrom: 'desc' } });
+  const rows = await prisma.esiRateTable.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { effectiveFrom: 'desc' },
+  });
+  return rows.map((row) => withDecimalMinor(row, ['wageCeiling'] as const));
 }
 
 export interface EsiRateTableInput {
@@ -136,9 +147,12 @@ export interface EsiRateTableInput {
 export async function createEsiRateTable(input: EsiRateTableInput) {
   const auth = currentAuth();
   await assertRateTableEdit();
-  const row = await prisma.esiRateTable.create({ data: { tenantId: auth.tenantId, ...input } });
+  const { wageCeiling, ...rest } = input;
+  const row = await prisma.esiRateTable.create({
+    data: { tenantId: auth.tenantId, ...rest, wageCeilingMinor: rupeesToMinor(wageCeiling) },
+  });
   await auditWrite({ action: 'create', subjectType: 'esi_rate_table', subjectId: row.id, after: row });
-  return row;
+  return withDecimalMinor(row, ['wageCeiling'] as const);
 }
 
 async function currentEsiRateTableRow(at: Date) {
@@ -158,7 +172,7 @@ export async function currentEsiRateTable(at: Date): Promise<EsiRates> {
   return {
     employeeRate: num(row.employeeRate)!,
     employerRate: num(row.employerRate)!,
-    wageCeiling: num(row.wageCeiling)!,
+    wageCeiling: minorToRupees(row.wageCeilingMinor),
   };
 }
 
@@ -214,7 +228,11 @@ export async function currentPtSlabs(at: Date, state = 'TN'): Promise<PtSlab[]> 
 export async function listLwfRateTables() {
   const auth = currentAuth();
   await assertCan({ resource: 'rate_tables', verb: 'view' });
-  return prisma.lwfRateTable.findMany({ where: { tenantId: auth.tenantId }, orderBy: { effectiveFrom: 'desc' } });
+  const rows = await prisma.lwfRateTable.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { effectiveFrom: 'desc' },
+  });
+  return rows.map((row) => withDecimalMinor(row, ['employeeAmount', 'employerAmount'] as const));
 }
 
 export interface LwfRateTableInput {
@@ -234,14 +252,14 @@ export async function createLwfRateTable(input: LwfRateTableInput) {
       tenantId: auth.tenantId,
       state: input.state ?? 'TN',
       effectiveFrom: input.effectiveFrom,
-      employeeAmount: input.employeeAmount,
-      employerAmount: input.employerAmount,
+      employeeAmountMinor: rupeesToMinor(input.employeeAmount),
+      employerAmountMinor: rupeesToMinor(input.employerAmount),
       dueMonth: input.dueMonth ?? 12,
       confirmNote: input.confirmNote,
     },
   });
   await auditWrite({ action: 'create', subjectType: 'lwf_rate_table', subjectId: row.id, after: row });
-  return row;
+  return withDecimalMinor(row, ['employeeAmount', 'employerAmount'] as const);
 }
 
 async function currentLwfRateTableRow(at: Date, state = 'TN') {
@@ -256,16 +274,21 @@ export async function currentLwfRateTable(at: Date, state = 'TN'): Promise<LwfRa
   const row = await currentLwfRateTableRow(at, state);
   if (!row)
     throw ApiError.unprocessable(`No LWF rate table is effective for ${state} yet. Seed one under Rate tables.`);
-  return { employeeAmount: num(row.employeeAmount)!, employerAmount: num(row.employerAmount)!, dueMonth: row.dueMonth };
+  return {
+    employeeAmount: minorToRupees(row.employeeAmountMinor),
+    employerAmount: minorToRupees(row.employerAmountMinor),
+    dueMonth: row.dueMonth,
+  };
 }
 
 export async function listMinimumWageTables() {
   const auth = currentAuth();
   await assertCan({ resource: 'rate_tables', verb: 'view' });
-  return prisma.minimumWageTable.findMany({
+  const rows = await prisma.minimumWageTable.findMany({
     where: { tenantId: auth.tenantId },
     orderBy: [{ state: 'asc' }, { category: 'asc' }],
   });
+  return rows.map((row) => withDecimalMinor(row, ['monthlyAmount'] as const));
 }
 
 export interface MinimumWageTableInput {
@@ -278,9 +301,12 @@ export interface MinimumWageTableInput {
 export async function createMinimumWageTable(input: MinimumWageTableInput) {
   const auth = currentAuth();
   await assertRateTableEdit();
-  const row = await prisma.minimumWageTable.create({ data: { tenantId: auth.tenantId, ...input } });
+  const { monthlyAmount, ...rest } = input;
+  const row = await prisma.minimumWageTable.create({
+    data: { tenantId: auth.tenantId, ...rest, monthlyAmountMinor: rupeesToMinor(monthlyAmount) },
+  });
   await auditWrite({ action: 'create', subjectType: 'minimum_wage_table', subjectId: row.id, after: row });
-  return row;
+  return withDecimalMinor(row, ['monthlyAmount'] as const);
 }
 
 /** The floor for a category, or null when none is on file for it yet. */
@@ -290,7 +316,7 @@ async function currentMinimumWage(state: string, category: string, at: Date): Pr
     where: { tenantId: auth.tenantId, state, category, effectiveFrom: { lte: at } },
     orderBy: { effectiveFrom: 'desc' },
   });
-  return row ? num(row.monthlyAmount) : null;
+  return row ? minorToRupees(row.monthlyAmountMinor) : null;
 }
 
 /**
@@ -524,18 +550,18 @@ export async function computeInstruction(payrollRunId: string) {
         epsRate: num(pfRow.epsRate)!,
         edliRate: num(pfRow.edliRate)!,
         adminRate: num(pfRow.adminRate)!,
-        wageCeiling: num(pfRow.wageCeiling)!,
+        wageCeiling: minorToRupees(pfRow.wageCeilingMinor),
         voluntary: pfRow.voluntary,
       },
       esi: {
         employeeRate: num(esiRow.employeeRate)!,
         employerRate: num(esiRow.employerRate)!,
-        wageCeiling: num(esiRow.wageCeiling)!,
+        wageCeiling: minorToRupees(esiRow.wageCeilingMinor),
       },
       pt: ptRow.slabs as unknown as PtSlab[],
       lwf: {
-        employeeAmount: num(lwfRow.employeeAmount)!,
-        employerAmount: num(lwfRow.employerAmount)!,
+        employeeAmount: minorToRupees(lwfRow.employeeAmountMinor),
+        employerAmount: minorToRupees(lwfRow.employerAmountMinor),
         dueMonth: lwfRow.dueMonth,
       },
     };

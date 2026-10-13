@@ -5,6 +5,7 @@
  */
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { toMinorHalfUp } from '@kaizen/shared';
 
 const STAMP_DUTY_EFFECTIVE_FROM = new Date('2017-07-01T00:00:00.000Z'); // TN Stamp Act, as amended — GST-era baseline.
 
@@ -56,7 +57,7 @@ export async function seedCorporate(): Promise<void> {
           agreementKind: rule.agreementKind,
           effectiveFrom: STAMP_DUTY_EFFECTIVE_FROM,
           percentOfValue: rule.percentOfValue ?? null,
-          flatAmount: rule.flatAmount ?? null,
+          flatAmountMinor: rule.flatAmount == null ? null : toMinorHalfUp(rule.flatAmount),
           note: rule.note,
         },
       });

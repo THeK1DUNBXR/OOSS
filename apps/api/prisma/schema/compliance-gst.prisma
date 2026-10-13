@@ -183,12 +183,12 @@ model GstRateTable {
 
   effectiveFrom DateTime
 
-  lateFeePerDayCgst Decimal @db.Decimal(8, 2)
-  lateFeePerDaySgst Decimal @db.Decimal(8, 2)
+  lateFeePerDayCgstMinor BigInt
+  lateFeePerDaySgstMinor BigInt
   /// The ceiling on the late fee for a single return, per the notification in
   /// force (varies by return type and by nil/non-nil; kept as one cap here,
   /// the platform's simplification, stated in docs/compliance/gst.md).
-  cap               Decimal @db.Decimal(10, 2)
+  capMinor          BigInt
   /// Annualised, simple interest on the net cash tax liability (Sec 50(1)).
   interestPct       Decimal @db.Decimal(5, 2)
   /// The day of the following month each return type is due by — also a
