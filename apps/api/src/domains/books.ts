@@ -1022,7 +1022,12 @@ export async function setBudgetLine(input: {
   await emit({
     name: EVENTS.BUDGET_LINE_SET,
     subject: { entityType: 'budget_line', entityId: line.id },
-    newState: { period: input.period, categoryId: input.categoryId, amount: input.amount },
+    newState: {
+      period: input.period,
+      categoryId: input.categoryId,
+      amount: input.amount,
+      amountMinor: minorString(line.amountMinor),
+    },
     impact: { domains: ['fin'] },
   });
   return withDecimalMinor(line, ['amount']);
@@ -1067,6 +1072,7 @@ export async function budgetVariance(period: string) {
       categoryName: line.category.name,
       division: line.division || null,
       budget,
+      budgetMinor: minorString(line.amountMinor),
       actual,
       variance: round2(budget - actual),
       overspent: actual > budget,
@@ -1083,6 +1089,7 @@ export async function budgetVariance(period: string) {
       categoryName: categoryName.get(categoryId) ?? 'Uncategorised',
       division: division || null,
       budget: 0,
+      budgetMinor: '0',
       actual,
       variance: round2(-actual),
       overspent: true,
@@ -1202,7 +1209,12 @@ export async function createAsset(input: {
   await emit({
     name: EVENTS.FIXED_ASSET_RECORDED,
     subject: { entityType: 'fixed_asset', entityId: asset.id, recordCode },
-    newState: { cost: input.cost, purchaseDate: input.purchaseDate, usefulLifeMonths: input.usefulLifeMonths },
+    newState: {
+      cost: input.cost,
+      costMinor: minorString(asset.costMinor),
+      purchaseDate: input.purchaseDate,
+      usefulLifeMonths: input.usefulLifeMonths,
+    },
     impact: { domains: ['fin'] },
     confidentiality: 'confidential',
   });
@@ -1297,7 +1309,12 @@ export async function createLoan(input: {
   await emit({
     name: EVENTS.LOAN_RECORDED,
     subject: { entityType: 'loan', entityId: loan.id, recordCode },
-    newState: { principal: input.principal, annualRate: input.annualRate, tenureMonths: input.tenureMonths },
+    newState: {
+      principal: input.principal,
+      principalMinor: minorString(loan.principalMinor),
+      annualRate: input.annualRate,
+      tenureMonths: input.tenureMonths,
+    },
     impact: { domains: ['fin'] },
     confidentiality: 'confidential',
   });
@@ -1394,7 +1411,12 @@ export async function generateRecurring(period: string): Promise<{ created: numb
     await emit({
       name: EVENTS.RECURRING_GENERATED,
       subject: { entityType: 'recurring_rule', entityId: rule.id },
-      newState: { period, amount: minorToRupees(rule.amountMinor), direction: rule.direction },
+      newState: {
+        period,
+        amount: minorToRupees(rule.amountMinor),
+        amountMinor: minorString(rule.amountMinor),
+        direction: rule.direction,
+      },
       impact: { domains: ['fin'] },
       confidentiality: 'confidential',
     });

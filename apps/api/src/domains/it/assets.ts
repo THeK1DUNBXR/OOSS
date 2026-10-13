@@ -35,7 +35,7 @@ import {
 } from '@kaizen/shared';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../platform/db.js';
-import { rupeesToMinorOrNull, withDecimalMinor, type WithMinorPair } from '../../platform/wire.js';
+import { minorString, rupeesToMinorOrNull, withDecimalMinor, type WithMinorPair } from '../../platform/wire.js';
 import { minorToRupees } from './money.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -323,6 +323,7 @@ export async function assetDetail(id: string) {
         recordCode: fixedAssetRow.recordCode,
         name: fixedAssetRow.name,
         cost: minorToRupees(fixedAssetRow.costMinor),
+        costMinor: minorString(fixedAssetRow.costMinor),
         disposedAt: fixedAssetRow.disposedAt,
       }
     : null;

@@ -15,6 +15,7 @@
 
 import { istDateKey, istFinancialYearStart, toMinorHalfUp } from '@kaizen/shared';
 import { minorToRupees } from '../money.js';
+import { minorString } from '../../platform/wire.js';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import {
@@ -820,6 +821,7 @@ export async function depreciationReport(fyStartYear: number) {
       assetClass,
       purchaseDate: asset.purchaseDate.toISOString().slice(0, 10),
       cost,
+      costMinor: minorString(asset.costMinor),
       companiesAct: companiesAct
         ? {
             usefulLifeYears: life!.usefulLifeYears,
