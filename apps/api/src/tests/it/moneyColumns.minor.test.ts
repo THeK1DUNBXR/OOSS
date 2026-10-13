@@ -66,9 +66,14 @@ describe('IT money columns — paise siblings and withholding', () => {
         billingCycle: 'monthly',
       }),
     );
-    expect(wire(created).costPerPeriod).toBe('1000.25');
-    expect(wire(created).costPerPeriodMinor).toBe('100025');
+    // Operations holds no it_licences:financial, so the create response withholds
+    // the cost in rupees and in paise alike. It used to return both to the creator.
+    expect(wire(created).costPerPeriod).toBeNull();
+    expect(wire(created).costPerPeriodMinor).toBeNull();
     expect(wire(created).pendingRenewalCostPerPeriodMinor).toBeNull();
+    const createdAsFinance = wire(await asUser(FINANCE, () => licenceDetail(created.id)));
+    expect(createdAsFinance.costPerPeriod).toBe('1000.25');
+    expect(createdAsFinance.costPerPeriodMinor).toBe('100025');
 
     // 1.005 is a tie at the third decimal: half away from zero, as Postgres rounds numeric.
     const tie = await asUser(OPS, () =>
@@ -81,8 +86,13 @@ describe('IT money columns — paise siblings and withholding', () => {
         billingCycle: 'annual',
       }),
     );
-    expect(wire(tie).costPerPeriod).toBe('1.01');
-    expect(wire(tie).costPerPeriodMinor).toBe('101');
+    // Withheld from Operations on create. Finance reads the rounded figure back,
+    // so the tie is still checked against what was stored.
+    expect(wire(tie).costPerPeriod).toBeNull();
+    expect(wire(tie).costPerPeriodMinor).toBeNull();
+    const tieAsFinance = wire(await asUser(FINANCE, () => licenceDetail(tie.id)));
+    expect(tieAsFinance.costPerPeriod).toBe('1.01');
+    expect(tieAsFinance.costPerPeriodMinor).toBe('101');
   });
 
   it('licence: the paise siblings are withheld from operations on every licence path', async () => {
@@ -118,13 +128,19 @@ describe('IT money columns — paise siblings and withholding', () => {
     const asset = await asUser(OPS, () =>
       createAsset({ tag: `AST-MIN-${stamp()}`, kind: 'laptop', purchaseCost: 1500.25 }),
     );
-    expect(wire(asset).purchaseCostMinor).toBe('150025');
+    // Operations holds no it_assets:financial: the create response and the detail
+    // withhold the cost in paise as well as the rupee field and the book value.
+    expect(wire(asset).purchaseCostMinor).toBeNull();
     const detail = wire(await asUser(OPS, () => assetDetail(asset.id)));
-    expect(detail.purchaseCostMinor).toBe('150025');
+    expect(detail.purchaseCostMinor).toBeNull();
+    expect(detail.bookValue).toBeNull();
+    const detailAsFinance = wire(await asUser(FINANCE, () => assetDetail(asset.id)));
+    expect(detailAsFinance.purchaseCostMinor).toBe('150025');
 
     const zero = await asUser(OPS, () => createAsset({ tag: `AST-MIN0-${stamp()}`, kind: 'phone', purchaseCost: 0 }));
-    expect(wire(zero).purchaseCostMinor).toBe('0');
-    const rows = wire(await asUser(OPS, () => listAssets({})));
+    expect(wire(zero).purchaseCostMinor).toBeNull();
+    // Finance sees the zero as the string "0" on the list, not absent.
+    const rows = wire(await asUser(FINANCE, () => listAssets({})));
     expect(rows.find((r: { id: string }) => r.id === zero.id).purchaseCostMinor).toBe('0');
   });
 
@@ -138,9 +154,12 @@ describe('IT money columns — paise siblings and withholding', () => {
         budget: 2000.5,
       }),
     );
-    expect(wire(created).budgetMinor).toBe('200050');
+    // Operations holds no it_budgets:financial: the create response and the list withhold the paise.
+    expect(wire(created).budgetMinor).toBeNull();
     const listed = wire(await asUser(OPS, () => listInitiatives({})));
-    expect(listed.find((r: { id: string }) => r.id === created.id).budgetMinor).toBe('200050');
+    expect(listed.find((r: { id: string }) => r.id === created.id).budgetMinor).toBeNull();
+    const listedAsFinance = wire(await asUser(FINANCE, () => listInitiatives({})));
+    expect(listedAsFinance.find((r: { id: string }) => r.id === created.id).budgetMinor).toBe('200050');
   });
 
   it('budget line: plannedMinor is paise for finance, and withheld for operations in the line, the detail and the FY roll-up', async () => {

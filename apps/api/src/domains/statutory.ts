@@ -88,7 +88,8 @@ export const STATUTORY_APPROVER_DUTY = 'statutory.approver';
 export const FOUNDER_DUTY = 'founder';
 
 /** The checks the founder exemption waived on one write, recorded as founderOverride in the audit meta. */
-export type FounderOverride = 'author_is_approver' | 'not_duty_holder' | 'self_assignment' | 'not_resolved_approver';
+export type FounderOverride =
+  'author_is_approver' | 'not_duty_holder' | 'self_assignment' | 'not_resolved_approver' | 'payment_second_approver';
 
 /** True when the caller holds the founder duty at the instant. Read from the duty, never from a name. */
 export async function isFounder(at: Date = new Date()): Promise<boolean> {
@@ -322,6 +323,27 @@ export async function ruleAt(domain: string, key: string, jurisdiction: string, 
   });
   if (!row) throw new StatutoryRuleNotFoundError(key, jurisdiction, onDate);
   return row;
+}
+
+/**
+ * An integer field of an APPROVED rule's value, read as written. The seed and the
+ * approval form store integers as strings, as amountMinor does, because a JSON number is
+ * a float waiting to happen. Any other shape is refused rather than coerced: a value that
+ * cannot be read is a stop, the same as a missing rule.
+ */
+export function ruleIntegerField(value: Prisma.JsonValue, field: string, key: string): bigint {
+  const raw =
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, Prisma.JsonValue>)[field]
+      : undefined;
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) {
+    throw ApiError.unprocessable(`Statutory rule ${key} has no integer ${field}.`, {
+      reasonCode: 'statutory_rule_malformed',
+      key,
+      field,
+    });
+  }
+  return BigInt(raw);
 }
 
 const UNVERIFIED = 'UNVERIFIED:';

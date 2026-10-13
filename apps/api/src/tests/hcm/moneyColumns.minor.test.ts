@@ -152,8 +152,11 @@ describe('HCM money paise siblings', () => {
         expectedCtc: 1500000,
       }),
     );
-    expect(wire(candidate).currentCtcMinor).toBe('120000050');
-    expect(wire(candidate).expectedCtcMinor).toBe('150000000');
+    // Operations creates the candidate but holds no candidates:financial, so the
+    // create response withholds the paise as it does the rupees. It used to
+    // return them here, handing the figures to the creator on the way in.
+    expect(wire(candidate).currentCtcMinor).toBeNull();
+    expect(wire(candidate).expectedCtcMinor).toBeNull();
     const chairman = wire(await asUser('chairman@kaizen.co.in', () => listCandidates({})));
     const row = chairman.find((r: any) => r.id === candidate.id);
     expect(row.currentCtcMinor).toBe('120000050');
@@ -171,7 +174,10 @@ describe('HCM money paise siblings', () => {
         bonusAmount: 15000.5,
       }),
     );
-    expect(wire(referral).bonusAmountMinor).toBe('1500050');
+    // Operations holds no referrals:financial; the create response withholds the
+    // bonus in paise as well as in rupees.
+    expect(wire(referral).bonusAmountMinor).toBeNull();
+    expect(wire(referral).bonusAmount).toBeNull();
     const chairmanReferrals = wire(await asUser('chairman@kaizen.co.in', () => listReferrals({})));
     expect(chairmanReferrals.find((r: any) => r.id === referral.id).bonusAmountMinor).toBe('1500050');
     const opsReferrals = wire(await asUser('operations@kaizen.co.in', () => listReferrals({})));

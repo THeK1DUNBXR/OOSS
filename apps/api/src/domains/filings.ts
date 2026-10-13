@@ -36,11 +36,12 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
-import { istEndOfDay, istYearMonth, SENSITIVITY_RANK } from '@kaizen/shared';
+import { convertPpm, istEndOfDay, istYearMonth, mulRatio, SENSITIVITY_RANK } from '@kaizen/shared';
 import { governedWrite } from '../platform/governedWrite.js';
 import { raiseException, resolveException } from '../platform/exceptions.js';
 import { companyProfile } from './companyProfile.js';
 import { effectiveBalance, holderView, outgoingCount } from './equity.js';
+import { ruleAt, ruleIntegerField } from './statutory.js';
 
 registerGovernedEntities('eqt', ['filing']);
 
@@ -797,6 +798,17 @@ export async function pas3Export(roundId: string): Promise<Buffer> {
 // SH-4 — the pre-fill for a transfer.
 // ---------------------------------------------------------------------------
 
+/**
+ * The share-transfer stamp rate in parts per million, from the APPROVED rule in force on the
+ * transfer date. 150 ppm is 0.015 per cent (Indian Stamp Act 1899, Schedule I, as amended by
+ * the Finance Act 2019 from 1 July 2020; the rule's source carries the citation). Refused when
+ * no approved row covers the date, rather than defaulting to a figure in code.
+ */
+async function shareTransferStampPpm(at: Date): Promise<bigint> {
+  const row = await ruleAt('stamp_duty', 'stamp_duty.share_transfer_rate', 'IN', at);
+  return ruleIntegerField(row.value, 'ratePpm', 'stamp_duty.share_transfer_rate');
+}
+
 export async function sh4Data(transactionId: string): Promise<Sh4Data> {
   const auth = currentAuth();
   await assertCan({ resource: 'compliance', verb: 'view' });
@@ -823,8 +835,16 @@ export async function sh4Data(transactionId: string): Promise<Sh4Data> {
       : [];
 
   const count = num(txn.count) ?? 0;
+  // Exact, in paise. count is Decimal(24,6), so it is scaled to millionths rather than read as a
+  // float. Before this, price x count was rounded in floating point: 6100 rupees x 0.00015 came out
+  // at 91.4999... paise and the stamp rounded down to 0.91. Its exact value is 91.5 paise, which
+  // rounds half up to 0.92, so a demat SH-4 whose stamp lands on a half paisa moves by one paisa.
   const price = minorToRupeesOrNull(txn.pricePerShareMinor);
-  const consideration = price == null ? null : Math.round(price * count * 100) / 100;
+  const considerationMinor =
+    txn.pricePerShareMinor == null
+      ? null
+      : mulRatio(txn.pricePerShareMinor, BigInt(txn.count.times(1_000_000).toFixed(0)), 1_000_000n);
+  const consideration = minorToRupeesOrNull(considerationMinor);
 
   // Whether this particular transfer moved shares held in demat form —
   // both parties' own `dematAccount`, not just the company's overall status,
@@ -846,7 +866,12 @@ export async function sh4Data(transactionId: string): Promise<Sh4Data> {
     pricePerShare: price,
     consideration,
     dematLeg,
-    stampDuty: dematLeg && consideration != null ? Math.round(consideration * 0.00015 * 100) / 100 : null,
+    // Read only when a stamp is computed. A physical transfer never reads the rule, so it still
+    // answers on a date no row covers.
+    stampDuty:
+      dematLeg && considerationMinor != null
+        ? minorToRupeesOrNull(convertPpm(considerationMinor, await shareTransferStampPpm(txn.effectiveOn)))
+        : null,
     stampDutyNote: dematLeg ? null : 'State stamp rate not recorded',
   };
 }

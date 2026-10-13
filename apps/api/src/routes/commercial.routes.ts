@@ -9,7 +9,8 @@ import {
   VERTICALS,
 } from '@kaizen/shared';
 import { handler, str, bool, numeric } from '../lib/http.js';
-import { prisma, num } from '../platform/db.js';
+import { prisma } from '../platform/db.js';
+import { minorString, rupeesOrNull, withDecimalMinor, withRupeeWire } from '../platform/wire.js';
 import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney } from '../platform/permissions.js';
@@ -81,7 +82,8 @@ router.get(
         priceBookId: p.priceBookId,
         priceBookName: p.priceBookName,
         currency: p.currency,
-        unitPrice: money ? num(p.unitPrice) : null,
+        unitPrice: money ? rupeesOrNull(p.unitPriceMinor) : null,
+        unitPriceMinor: money ? minorString(p.unitPriceMinor) : null,
         billingFrequency: p.billingFrequency,
         minQuantity: p.minQuantity,
         maxDiscountPct: p.maxDiscountPct,
@@ -129,10 +131,11 @@ router.get(
     await assertCan({ resource: 'price_book_entries', verb: 'view' });
     // Every version, including superseded ones — a quote must stay reproducible
     // against the exact version it was built on.
-    return prisma.priceBookEntry.findMany({
+    const entries = await prisma.priceBookEntry.findMany({
       where: { offeringId: req.params.id },
       orderBy: [{ priceBookId: 'asc' }, { version: 'desc' }],
     });
+    return entries.map((e) => withRupeeWire(e, ['unitPrice']));
   }),
 );
 
@@ -150,7 +153,7 @@ router.post(
       priceBookName: z.string().optional(),
     });
     const entry = await publishPrice({ offeringId: req.params.id, ...schema.parse(req.body) });
-    res.status(201).json(entry);
+    res.status(201).json(withRupeeWire(entry, ['unitPrice']));
     return undefined;
   }),
 );
@@ -175,7 +178,11 @@ router.get(
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
-    return rows.map((p) => ({ ...p, totalValue: money ? num(p.totalValue) : null }));
+    return rows.map((p) => ({
+      ...p,
+      totalValue: money ? rupeesOrNull(p.totalValueMinor) : null,
+      totalValueMinor: money ? minorString(p.totalValueMinor) : null,
+    }));
   }),
 );
 
@@ -194,7 +201,7 @@ router.post(
       ...input,
       validUntil: input.validUntil ? new Date(input.validUntil) : null,
     });
-    res.status(201).json(proposal);
+    res.status(201).json(withDecimalMinor(proposal, ['totalValue']));
     return undefined;
   }),
 );
@@ -242,9 +249,12 @@ router.get(
       version: q.version,
       status: q.status,
       currency: q.currency,
-      subtotal: money ? num(q.subtotal) : null,
-      discountTotal: money ? num(q.discountTotal) : null,
-      grandTotal: money ? num(q.grandTotal) : null,
+      subtotal: money ? rupeesOrNull(q.subtotalMinor) : null,
+      subtotalMinor: money ? minorString(q.subtotalMinor) : null,
+      discountTotal: money ? rupeesOrNull(q.discountTotalMinor) : null,
+      discountTotalMinor: money ? minorString(q.discountTotalMinor) : null,
+      grandTotal: money ? rupeesOrNull(q.grandTotalMinor) : null,
+      grandTotalMinor: money ? minorString(q.grandTotalMinor) : null,
       issuedAt: q.issuedAt?.toISOString() ?? null,
       validUntil: q.validUntil?.toISOString() ?? null,
       blockedReason: q.blockedReason,
@@ -255,12 +265,15 @@ router.get(
         priceBookEntryVersion: l.priceBookEntryVersion,
         offeringName: l.priceBookEntry.offering.name,
         quantity: l.quantity,
-        listUnitPrice: money ? num(l.listUnitPrice) : null,
+        listUnitPrice: money ? rupeesOrNull(l.listUnitPriceMinor) : null,
+        listUnitPriceMinor: money ? minorString(l.listUnitPriceMinor) : null,
         discountPct: l.discountPct,
         maxDiscountPct: l.priceBookEntry.maxDiscountPct,
         overCeiling: l.discountPct > l.priceBookEntry.maxDiscountPct,
-        discountAmount: money ? num(l.discountAmount) : null,
-        lineTotal: money ? num(l.lineTotal) : null,
+        discountAmount: money ? rupeesOrNull(l.discountAmountMinor) : null,
+        discountAmountMinor: money ? minorString(l.discountAmountMinor) : null,
+        lineTotal: money ? rupeesOrNull(l.lineTotalMinor) : null,
+        lineTotalMinor: money ? minorString(l.lineTotalMinor) : null,
       })),
     }));
   }),
@@ -283,7 +296,7 @@ router.post(
     });
     const input = schema.parse(req.body);
     const quote = await createQuote(input.opportunityId, input.lines);
-    res.status(201).json(quote);
+    res.status(201).json(withRupeeWire(quote, ['subtotal', 'discountTotal', 'grandTotal']));
     return undefined;
   }),
 );
@@ -292,7 +305,8 @@ router.post(
   '/quotes/:id/issue',
   handler(async (req) => {
     const validUntil = req.body?.validUntil ? new Date(req.body.validUntil) : undefined;
-    return issueQuote(req.params.id, validUntil);
+    const result = await issueQuote(req.params.id, validUntil);
+    return { ...result, quote: withRupeeWire(result.quote, ['subtotal', 'discountTotal', 'grandTotal']) };
   }),
 );
 
@@ -366,7 +380,8 @@ async function listAgreements(kind: AgreementKind, filters: { status?: string })
       scope: (r.scope as string | null) ?? null,
       vertical: (r.vertical as string | null) ?? null,
       agreementType: (r.agreementType as string | null) ?? null,
-      commercialValue: money ? num(r.commercialValue as never) : null,
+      commercialValue: money ? rupeesOrNull(r.commercialValueMinor as bigint | null) : null,
+      commercialValueMinor: money ? minorString(r.commercialValueMinor as bigint | null) : null,
       currency: (r.currency as string) ?? 'INR',
       strategicValue: (r.strategicValue as string | null) ?? null,
       startDate: (r.startDate as Date | null)?.toISOString() ?? null,
@@ -397,7 +412,8 @@ for (const [segment, kind] of Object.entries(KIND_MAP)) {
     handler(async (req) => {
       const schema = z.object({ toStatus: z.string(), note: z.string().optional() });
       const input = schema.parse(req.body);
-      return transitionAgreement(kind, req.params.id, input.toStatus, input.note ?? '');
+      const result = await transitionAgreement(kind, req.params.id, input.toStatus, input.note ?? '');
+      return { ...result, agreement: withDecimalMinor(result.agreement, ['commercialValue']) };
     }),
   );
 
@@ -405,7 +421,9 @@ for (const [segment, kind] of Object.entries(KIND_MAP)) {
     `/${segment}/:id/renew`,
     handler(async (req) => {
       const schema = z.object({ endDate: z.string() });
-      return renewAgreement(kind, req.params.id, new Date(schema.parse(req.body).endDate));
+      return withDecimalMinor(await renewAgreement(kind, req.params.id, new Date(schema.parse(req.body).endDate)), [
+        'commercialValue',
+      ]);
     }),
   );
 }
@@ -432,7 +450,7 @@ router.post(
       startDate: input.startDate ? new Date(input.startDate) : null,
       endDate: input.endDate ? new Date(input.endDate) : null,
     });
-    res.status(201).json(mou);
+    res.status(201).json(withDecimalMinor(mou, ['commercialValue']));
     return undefined;
   }),
 );
@@ -458,7 +476,7 @@ router.post(
       startDate: input.startDate ? new Date(input.startDate) : null,
       endDate: input.endDate ? new Date(input.endDate) : null,
     });
-    res.status(201).json(contract);
+    res.status(201).json(withDecimalMinor(contract, ['commercialValue']));
     return undefined;
   }),
 );
@@ -484,7 +502,7 @@ router.post(
       startDate: input.startDate ? new Date(input.startDate) : null,
       endDate: input.endDate ? new Date(input.endDate) : null,
     });
-    res.status(201).json(agreement);
+    res.status(201).json(withDecimalMinor(agreement, ['commercialValue']));
     return undefined;
   }),
 );
@@ -509,7 +527,8 @@ router.get(
     });
     return rows.map((s) => ({
       ...s,
-      requestedValue: money ? num(s.requestedValue) : null,
+      requestedValue: money ? rupeesOrNull(s.requestedValueMinor) : null,
+      requestedValueMinor: money ? minorString(s.requestedValueMinor) : null,
       slaBreached: Boolean(s.slaDueAt && s.slaDueAt < new Date()),
     }));
   }),
@@ -520,7 +539,7 @@ router.post(
   handler(async (req) => {
     const schema = z.object({ approve: z.boolean(), note: z.string().min(1) });
     const input = schema.parse(req.body);
-    return decideApprovalStep(req.params.id, input.approve, input.note);
+    return withDecimalMinor(await decideApprovalStep(req.params.id, input.approve, input.note), ['requestedValue']);
   }),
 );
 
@@ -561,8 +580,10 @@ router.get(
       mandatory: r.mandatory,
       mandatoryBasis: r.mandatoryBasis,
       strategicValueSnapshot: r.strategicValueSnapshot,
-      commercialValueSnapshot: money ? num(r.commercialValueSnapshot) : null,
-      thresholdUsedSnapshot: money ? num(r.thresholdUsedSnapshot) : null,
+      commercialValueSnapshot: money ? rupeesOrNull(r.commercialValueSnapshotMinor) : null,
+      commercialValueSnapshotMinor: money ? minorString(r.commercialValueSnapshotMinor) : null,
+      thresholdUsedSnapshot: money ? rupeesOrNull(r.thresholdUsedSnapshotMinor) : null,
+      thresholdUsedSnapshotMinor: money ? minorString(r.thresholdUsedSnapshotMinor) : null,
       completedById: r.completedById,
       completedByName: null,
       completedAt: r.completedAt?.toISOString() ?? null,
@@ -577,7 +598,10 @@ router.post(
   handler(async (req) => {
     const schema = z.object({ subjectType: z.enum(['opportunity', 'mou']), subjectId: z.string() });
     const input = schema.parse(req.body);
-    return ensureWinLossReview(input.subjectType, input.subjectId);
+    return withDecimalMinor(await ensureWinLossReview(input.subjectType, input.subjectId), [
+      'commercialValueSnapshot',
+      'thresholdUsedSnapshot',
+    ]);
   }),
 );
 
@@ -592,7 +616,10 @@ router.post(
       lostReasonOtherText: z.string().nullish(),
       lesson: z.string().nullish(),
     });
-    return completeWinLossReview(req.params.id, schema.parse(req.body));
+    return withDecimalMinor(await completeWinLossReview(req.params.id, schema.parse(req.body)), [
+      'commercialValueSnapshot',
+      'thresholdUsedSnapshot',
+    ]);
   }),
 );
 

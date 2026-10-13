@@ -52,6 +52,9 @@ import { raiseException } from '../platform/exceptions.js';
 import { runHooks } from '../platform/hooks.js';
 import { registerGovernedEntities, auditWrite } from '../platform/audit.js';
 import { accrueRunLiabilities, payMonthEnd } from './hcm/payrollAccrual.js';
+import { approvedRuleSnapshot, requestPayout, requestReversalOfInward } from './payouts.js';
+import type { PayoutRequest, Transaction } from '@prisma/client';
+import { maskMoney } from './money.js';
 
 // The audit-trail proviso to Companies (Accounts) Rules 2014, Rule 3(1): the
 // software must record every change to these in a trail that cannot be
@@ -302,9 +305,38 @@ export async function groupCounterpartyOptions(): Promise<Array<{ tenantId: stri
   return out;
 }
 
-export async function recordTransaction(input: TransactionInput) {
+/**
+ * Money in is recorded at once. Money out is a request (domains/payouts.ts): it counts when
+ * a second person with payments:approve approves it, so until then the cashbook and any bill
+ * are unchanged. A founder's request counts at once (owner ruling 2026-10-13).
+ */
+export function recordTransaction(input: TransactionInput & { direction: 'in' }): Promise<Transaction>;
+export function recordTransaction(input: TransactionInput & { direction: 'out' }): Promise<PayoutRequest>;
+export function recordTransaction(input: TransactionInput): Promise<Transaction | PayoutRequest>;
+export async function recordTransaction(input: TransactionInput): Promise<Transaction | PayoutRequest> {
   await checkTransactionAllowed(input);
-  return writeTransaction(input);
+  if (input.direction === 'in') return writeTransaction(input);
+  // The outward rows that carry these come from reversals and payroll, which do not pass
+  // through here; refusing them is louder than dropping them silently on the way to a request.
+  if (input.payrollRunId || input.invoiceId || input.loanId || input.reversalOfId) {
+    throw ApiError.unprocessable('An outward entry cannot carry a payroll, invoice, loan or reversal link.');
+  }
+  return requestPayout({
+    kind: 'payment',
+    source: input.source ?? 'manual',
+    txnDate: input.txnDate,
+    amountMinor: toMinorHalfUp(input.amount),
+    accountId: input.accountId,
+    categoryId: input.categoryId ?? null,
+    division: input.division ?? null,
+    counterparty: input.counterparty ?? null,
+    method: input.method ?? null,
+    reference: input.reference ?? null,
+    note: input.note ?? null,
+    vendorBillId: input.vendorBillId ?? null,
+    fixedAssetId: input.fixedAssetId ?? null,
+    intercompanyTenantId: input.intercompanyTenantId ?? null,
+  });
 }
 
 /**
@@ -574,12 +606,20 @@ export async function reverseTransactionIn(
  * The rule itself is reverseTransactionIn's; this checks the caller's grant and
  * the period hook first, as every dated write here does.
  */
-export async function reverseTransaction(id: string, reason: string) {
+export async function reverseTransaction(id: string, reason: string): Promise<Transaction | PayoutRequest> {
   await assertCan({ resource: 'transactions', verb: 'edit' });
   // The reversal is stamped now, so it lands in today's period, not the
   // original's. A closed current month refuses it here, where the entry would
   // otherwise be written into a closed month.
   await runHooks('transaction.before_record', { txnDate: new Date(), source: 'reversal' });
+  // Reversing an inward row writes money out, so it is a request (payments:approve). Reversing
+  // an outward row brings money back and needs no second person. The import undo calls
+  // reverseTransactionIn directly and is not gated here (imports/commit.ts, revertImport).
+  const original = await prisma.transaction.findFirst({
+    where: { id, tenantId: currentAuth().tenantId, deletedAt: null },
+    select: { direction: true },
+  });
+  if (original?.direction === 'in') return requestReversalOfInward(id, reason);
   return governedWrite((tx) => reverseTransactionIn(tx, id, { reason }));
 }
 
@@ -720,44 +760,21 @@ export async function payVendorBill(
     );
   }
 
-  const txn = await recordTransaction({
+  // The request, not the payment: the bill moves and the cashbook row is written only when a
+  // second person approves it (domains/payouts.ts). A founder's request is settled at once.
+  return requestPayout({
+    kind: 'payment',
+    source: 'vendor_bill',
     txnDate: input.paidOn,
-    direction: 'out',
-    amount: input.amount,
+    amountMinor: toMinorHalfUp(input.amount),
     accountId: input.accountId,
     categoryId: bill.categoryId,
     division: bill.division,
     counterparty: bill.vendorName,
     reference: input.reference ?? bill.billNumber,
     note: `Payment against ${bill.recordCode}`,
-    source: 'vendor_bill',
     vendorBillId: bill.id,
   });
-
-  const paid = round2((num(bill.paidAmount) ?? 0) + input.amount);
-  const status = toMinorHalfUp(paid) >= decimalToMinor(bill.total) ? 'paid' : 'part_paid';
-
-  const updated = await prisma.vendorBill.update({
-    where: { id },
-    data: { paidAmount: paid, status },
-  });
-
-  await auditWrite({
-    action: 'update',
-    subjectType: 'vendor_bill',
-    subjectId: bill.id,
-    before: { paidAmount: num(bill.paidAmount), status: bill.status },
-    after: { paidAmount: paid, status },
-  });
-
-  await emit({
-    name: EVENTS.VENDOR_BILL_PAID,
-    subject: { entityType: 'vendor_bill', entityId: bill.id, recordCode: bill.recordCode },
-    newState: { amount: input.amount, paidAmount: paid, status },
-    impact: { domains: ['fin'] },
-    confidentiality: 'confidential',
-  });
-  return { bill: updated, transaction: txn };
 }
 
 /** Supplier ageing — what is overdue and by how long. */
@@ -1220,7 +1237,31 @@ export async function createAsset(input: {
     impact: { domains: ['fin'] },
     confidentiality: 'confidential',
   });
-  return withDecimalMinor(asset, ['cost', 'salvageValue', 'disposalValue']);
+  // Withheld the same way listAssets withholds it: the creator holds assets:create,
+  // which is not the money verb.
+  return maskMoney(withDecimalMinor(asset, ['cost', 'salvageValue', 'disposalValue']), await canSeeMoney('assets'), [
+    'cost',
+    'salvageValue',
+    'disposalValue',
+  ]);
+}
+
+/**
+ * A schedule's money columns, withheld as null for a viewer without `assets:F`.
+ * The period label stays, so the shape of the schedule is unchanged.
+ */
+function withholdSchedule<T extends object, K extends keyof T>(
+  periods: T[],
+  seesMoney: boolean,
+  names: readonly K[],
+): Array<Omit<T, K> & { [P in K]: T[P] | null }> {
+  type Out = Omit<T, K> & { [P in K]: T[P] | null };
+  if (seesMoney) return periods as unknown as Out[];
+  return periods.map((p) => {
+    const out = { ...p } as Record<string, unknown>;
+    for (const name of names) out[name as string] = null;
+    return out as unknown as Out;
+  });
 }
 
 export async function assetSchedule(id: string) {
@@ -1230,7 +1271,7 @@ export async function assetSchedule(id: string) {
   const asset = await prisma.fixedAsset.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!asset) throw ApiError.notFound('Asset');
 
-  return depreciationSchedule({
+  const periods = depreciationSchedule({
     cost: minorToRupees(asset.costMinor),
     salvageValue: minorToRupees(asset.salvageValueMinor),
     usefulLifeMonths: asset.usefulLifeMonths,
@@ -1238,6 +1279,7 @@ export async function assetSchedule(id: string) {
     method: asset.method as 'straight_line' | 'wdv',
     wdvRate: num(asset.wdvRate) ?? 0,
   });
+  return withholdSchedule(periods, await canSeeMoney('assets'), ['opening', 'charge', 'closing'] as const);
 }
 
 export async function listLoans(asOf = new Date()) {
@@ -1320,7 +1362,7 @@ export async function createLoan(input: {
     impact: { domains: ['fin'] },
     confidentiality: 'confidential',
   });
-  return withDecimalMinor(loan, ['principal']);
+  return maskMoney(withDecimalMinor(loan, ['principal']), await canSeeMoney('assets'), ['principal']);
 }
 
 export async function loanSchedule(id: string) {
@@ -1330,12 +1372,19 @@ export async function loanSchedule(id: string) {
   const loan = await prisma.loan.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!loan) throw ApiError.notFound('Loan');
 
-  return amortisationSchedule({
+  const periods = amortisationSchedule({
     principal: minorToRupees(loan.principalMinor),
     annualRate: num(loan.annualRate) ?? 0,
     tenureMonths: loan.tenureMonths,
     startDate: loan.startDate,
   });
+  return withholdSchedule(periods, await canSeeMoney('assets'), [
+    'opening',
+    'instalment',
+    'interest',
+    'principal',
+    'closing',
+  ] as const);
 }
 
 // ---------------------------------------------------------------------------
@@ -1393,16 +1442,40 @@ export async function generateRecurring(period: string): Promise<{ created: numb
     const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
     const day = Math.min(rule.dayOfMonth, lastDay);
 
-    await recordTransaction({
-      txnDate: new Date(Date.UTC(year, month - 1, day)),
-      direction: rule.direction as 'in' | 'out',
-      amount: minorToRupees(rule.amountMinor),
-      accountId: rule.accountId,
-      categoryId: rule.categoryId,
-      division: rule.division,
-      note: rule.label,
-      source: 'recurring',
-    });
+    const txnDate = new Date(Date.UTC(year, month - 1, day));
+    if (rule.direction === 'out') {
+      // An outward rule posts only while the amount, direction and account it was approved
+      // with are still the rule's (domains/payouts.ts). A change waits for a fresh approval;
+      // the period is not marked generated, so it posts once that approval lands.
+      const approved = await approvedRuleSnapshot(rule.id);
+      const amountMinor = rule.amountMinor;
+      if (!approved || approved.amountMinor !== amountMinor || approved.accountId !== rule.accountId) {
+        skipped += 1;
+        continue;
+      }
+      await checkTransactionAllowed({ txnDate, source: 'recurring' });
+      await writeTransactionMinor({
+        txnDate,
+        direction: 'out',
+        amount: amountMinor,
+        accountId: rule.accountId,
+        categoryId: rule.categoryId,
+        division: rule.division,
+        note: rule.label,
+        source: 'recurring',
+      });
+    } else {
+      await recordTransaction({
+        txnDate,
+        direction: 'in',
+        amount: minorToRupees(rule.amountMinor),
+        accountId: rule.accountId,
+        categoryId: rule.categoryId,
+        division: rule.division,
+        note: rule.label,
+        source: 'recurring',
+      });
+    }
 
     await prisma.recurringRule.update({ where: { id: rule.id }, data: { lastGeneratedPeriod: period } });
     await auditWrite({

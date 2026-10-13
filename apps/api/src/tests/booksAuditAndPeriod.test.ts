@@ -22,12 +22,14 @@ import {
   reopenLatestFirst,
   unscopedPrisma,
   type BooksTenant,
+  payOutSettled,
+  payBillSettled,
+  reverseSettled,
+  approveRecurringRuleSettled,
 } from './helpers.js';
 import {
   recordTransaction,
-  reverseTransaction,
   recordVendorBill,
-  payVendorBill,
   createAsset,
   createLoan,
   generateRecurring,
@@ -162,6 +164,7 @@ describe('Audit — each books write leaves one audit row for the change it made
         startDate: new Date(Date.UTC(2016, 0, 1)),
       },
     });
+    await asUser(FINANCE, () => approveRecurringRuleSettled(rule.id));
     await asUser(FINANCE, () => generateRecurring('2016-03'));
     const rows = await auditRows('recurring_rule', rule.id);
     expect(rows.some((r) => r.action === 'update')).toBe(true);
@@ -313,7 +316,7 @@ describe('Closed period — a dated write inside it is refused and writes nothin
   it('paying a bill on a date inside the closed period is refused, and the bill does not move', async () => {
     const err = await expectReject(() =>
       asUser(FINANCE, () =>
-        payVendorBill(payBill.id, { amount: 100, accountId: ACCOUNT_ID, paidOn: new Date('2017-10-15T06:00:00Z') }),
+        payBillSettled(payBill.id, { amount: 100, accountId: ACCOUNT_ID, paidOn: new Date('2017-10-15T06:00:00Z') }),
       ),
     );
     expect(err.status).toBe(422);
@@ -336,6 +339,7 @@ describe('Closed period — a dated write inside it is refused and writes nothin
         startDate: new Date(Date.UTC(2017, 0, 1)),
       },
     });
+    await asUser(FINANCE, () => approveRecurringRuleSettled(rule.id));
     const err = await expectReject(() => asUser(FINANCE, () => generateRecurring(CLOSED)));
     expect(err.status).toBe(422);
     const after = await unscopedPrisma.recurringRule.findUniqueOrThrow({ where: { id: rule.id } });
@@ -351,7 +355,7 @@ describe('Closed period — a dated write inside it is refused and writes nothin
     const today = monthKey(new Date());
     await closeThrough(FIXTURE, today);
     try {
-      const err = await expectReject(() => asUser(FINANCE, () => reverseTransaction(original.id, 'W2 probe')));
+      const err = await expectReject(() => asUser(FINANCE, () => reverseSettled(original.id, 'W2 probe')));
       expect(err.status).toBe(422);
     } finally {
       await reopenLatestFirst(FIXTURE, 'W2 probe finished; reopening the current month');
@@ -403,7 +407,7 @@ describe('Closed period — the IST boundary decides which month a write is in',
   it('23:30 IST on 31 October is refused, and 00:30 IST on 1 November is not, for a ledger entry', async () => {
     const err = await expectReject(() =>
       asUser(FINANCE, () =>
-        recordTransaction({
+        payOutSettled({
           txnDate: new Date('2017-10-31T23:30:00+05:30'),
           direction: 'out',
           amount: 10,
@@ -417,7 +421,7 @@ describe('Closed period — the IST boundary decides which month a write is in',
     expect(err.status).toBe(422);
 
     const txn = await asUser(FINANCE, () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date('2017-11-01T00:30:00+05:30'),
         direction: 'out',
         amount: 10,
@@ -453,6 +457,7 @@ describe('Recurring cadence — months since start are counted in IST', () => {
         startDate: new Date(Date.UTC(2016, 0, 1)),
       },
     });
+    await asUser(FINANCE, () => approveRecurringRuleSettled(rule.id));
     await asUser(FINANCE, () => generateRecurring('2016-01'));
     const after = await unscopedPrisma.recurringRule.findUniqueOrThrow({ where: { id: rule.id } });
     expect(after.lastGeneratedPeriod).toBe('2016-01');

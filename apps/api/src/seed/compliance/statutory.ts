@@ -61,21 +61,51 @@ export async function seedStatutory(): Promise<void> {
       value: { status: 'needs_gazette_verification', forms: {} },
       source: `${UNVERIFIED}Read the current Income-tax Rules and notified appendices before generating certificates.`,
     },
+    // The two figures that were constants in code (S10). Each carries its own start date, because
+    // a rate in force since 2020 must resolve for a transfer made in 2020: the pack's common start
+    // would leave every earlier transfer refused.
+    {
+      domain: 'stamp_duty',
+      key: 'stamp_duty.share_transfer_rate',
+      jurisdiction: 'IN',
+      effectiveFrom: new Date('2020-07-01T00:00:00.000Z'),
+      value: { ratePpm: '150' },
+      source: `${UNVERIFIED}Indian Stamp Act, 1899, Schedule I (Article 62) as amended by the Finance Act, 2019, w.e.f. 1 July 2020: transfer 0.015%, issue 0.005%. Verify the notification and the state Stamp Act that applies to the company before approval.`,
+    },
+    {
+      domain: 'gratuity',
+      key: 'gratuity.factor',
+      jurisdiction: 'IN',
+      effectiveFrom: new Date('1972-09-16T00:00:00.000Z'),
+      value: { daysPerYear: '15', daysPerMonth: '26' },
+      source: `${UNVERIFIED}Payment of Gratuity Act, 1972, s.4(2): 15 days' wages per completed year, month taken as 26 days. Commencement date not yet verified.`,
+    },
   ];
 
   for (const rule of rules) {
+    const effectiveFrom = rule.effectiveFrom ?? EFFECTIVE_FROM;
     const existing = await prisma.statutoryRule.findFirst({
       where: {
         tenantId,
         domain: rule.domain,
         key: rule.key,
         jurisdiction: rule.jurisdiction,
-        effectiveFrom: EFFECTIVE_FROM,
+        effectiveFrom,
       },
     });
     if (!existing) {
       await prisma.statutoryRule.create({
-        data: { tenantId, effectiveFrom: EFFECTIVE_FROM, ...rule, status: 'DRAFT', createdBy: SEED_CREATED_BY },
+        data: {
+          tenantId,
+          domain: rule.domain,
+          key: rule.key,
+          jurisdiction: rule.jurisdiction,
+          effectiveFrom,
+          value: rule.value,
+          source: rule.source,
+          status: 'DRAFT',
+          createdBy: SEED_CREATED_BY,
+        },
       });
     } else if (existing.status === 'DRAFT' && existing.createdBy === null) {
       // A seed row written before the marker existed. Only a DRAFT with no author

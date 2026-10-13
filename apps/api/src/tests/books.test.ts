@@ -23,12 +23,18 @@ import {
   runwayMonths,
   isTrading,
 } from '@kaizen/shared';
-import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from './helpers.js';
 import {
-  recordTransaction,
-  reverseTransaction,
+  asUser,
+  expectReject,
+  prisma,
+  tenantId,
+  unscopedPrisma,
+  payOutSettled,
+  payBillSettled,
+  reverseSettled,
+} from './helpers.js';
+import {
   recordVendorBill,
-  payVendorBill,
   payablesAgeing,
   budgetVariance,
   setBudgetLine,
@@ -245,7 +251,7 @@ describe('The ledger corrects by entry, never by edit', () => {
     const category = await categoryNamed('General Expenses');
 
     const original = await asUser('latha@kaizen.co.in', () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date(),
         direction: 'out',
         amount: 4_321,
@@ -255,7 +261,7 @@ describe('The ledger corrects by entry, never by edit', () => {
       }),
     );
 
-    const reversal = await asUser('latha@kaizen.co.in', () => reverseTransaction(original.id, 'Duplicate entry'));
+    const reversal = await asUser('latha@kaizen.co.in', () => reverseSettled(original.id, 'Duplicate entry'));
 
     expect(reversal.direction).toBe('in');
     expect(Number(reversal.amount)).toBe(4_321);
@@ -270,23 +276,23 @@ describe('The ledger corrects by entry, never by edit', () => {
   it('refuses to reverse the same entry twice', async () => {
     const account = await bankAccount();
     const txn = await asUser('latha@kaizen.co.in', () =>
-      recordTransaction({ txnDate: new Date(), direction: 'out', amount: 100, accountId: account.id }),
+      payOutSettled({ txnDate: new Date(), direction: 'out', amount: 100, accountId: account.id }),
     );
-    await asUser('latha@kaizen.co.in', () => reverseTransaction(txn.id, 'first'));
+    await asUser('latha@kaizen.co.in', () => reverseSettled(txn.id, 'first'));
 
-    const err = await expectReject(() => asUser('latha@kaizen.co.in', () => reverseTransaction(txn.id, 'second')));
+    const err = await expectReject(() => asUser('latha@kaizen.co.in', () => reverseSettled(txn.id, 'second')));
     expect(err.status).toBe(409);
   });
 
   it('refuses to reverse a reversal, which would restore the error', async () => {
     const account = await bankAccount();
     const txn = await asUser('latha@kaizen.co.in', () =>
-      recordTransaction({ txnDate: new Date(), direction: 'out', amount: 200, accountId: account.id }),
+      payOutSettled({ txnDate: new Date(), direction: 'out', amount: 200, accountId: account.id }),
     );
-    const reversal = await asUser('latha@kaizen.co.in', () => reverseTransaction(txn.id, 'wrong'));
+    const reversal = await asUser('latha@kaizen.co.in', () => reverseSettled(txn.id, 'wrong'));
 
     const err = await expectReject(() =>
-      asUser('latha@kaizen.co.in', () => reverseTransaction(reversal.id, 'undo the undo')),
+      asUser('latha@kaizen.co.in', () => reverseSettled(reversal.id, 'undo the undo')),
     );
     expect(err.status).toBe(422);
   });
@@ -295,7 +301,7 @@ describe('The ledger corrects by entry, never by edit', () => {
     const account = await bankAccount();
     const err = await expectReject(() =>
       asUser('latha@kaizen.co.in', () =>
-        recordTransaction({ txnDate: new Date(), direction: 'out', amount: -500, accountId: account.id }),
+        payOutSettled({ txnDate: new Date(), direction: 'out', amount: -500, accountId: account.id }),
       ),
     );
     expect(err.status).toBe(422);
@@ -306,7 +312,7 @@ describe('The ledger corrects by entry, never by edit', () => {
     const category = await categoryNamed('Skill Program Expenses');
 
     const txn = await asUser('latha@kaizen.co.in', () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date(),
         direction: 'out',
         amount: 1_500,
@@ -322,7 +328,7 @@ describe('The ledger corrects by entry, never by edit', () => {
     const category = await categoryNamed('Skill Program Expenses');
 
     const txn = await asUser('latha@kaizen.co.in', () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date(),
         direction: 'out',
         amount: 1_500,
@@ -339,12 +345,12 @@ describe('The ledger corrects by entry, never by edit', () => {
     const before = (await asUser('latha@kaizen.co.in', () => accountBalances())).find((a) => a.id === account.id)!;
 
     const txn = await asUser('latha@kaizen.co.in', () =>
-      recordTransaction({ txnDate: new Date(), direction: 'out', amount: 7_500, accountId: account.id }),
+      payOutSettled({ txnDate: new Date(), direction: 'out', amount: 7_500, accountId: account.id }),
     );
     const after = (await asUser('latha@kaizen.co.in', () => accountBalances())).find((a) => a.id === account.id)!;
     expect(after.balance).toBe(round2(before.balance - 7_500));
 
-    await asUser('latha@kaizen.co.in', () => reverseTransaction(txn.id, 'corrected'));
+    await asUser('latha@kaizen.co.in', () => reverseSettled(txn.id, 'corrected'));
     const restored = (await asUser('latha@kaizen.co.in', () => accountBalances())).find((a) => a.id === account.id)!;
     // The balance is summed from the ledger, so it comes straight back.
     expect(restored.balance).toBe(before.balance);
@@ -412,7 +418,7 @@ describe('Payables — the half the platform was missing', () => {
     expect(Number(bill.total)).toBe(11_800);
 
     const part = await asUser('latha@kaizen.co.in', () =>
-      payVendorBill(bill.id, { amount: 5_000, accountId: account.id, paidOn: new Date() }),
+      payBillSettled(bill.id, { amount: 5_000, accountId: account.id, paidOn: new Date() }),
     );
     expect(part.bill.status).toBe('part_paid');
     // The payment is a ledger entry like any other — bills have no private
@@ -421,7 +427,7 @@ describe('Payables — the half the platform was missing', () => {
     expect(part.transaction.source).toBe('vendor_bill');
 
     const full = await asUser('latha@kaizen.co.in', () =>
-      payVendorBill(bill.id, { amount: 6_800, accountId: account.id, paidOn: new Date() }),
+      payBillSettled(bill.id, { amount: 6_800, accountId: account.id, paidOn: new Date() }),
     );
     expect(full.bill.status).toBe('paid');
   });
@@ -434,7 +440,7 @@ describe('Payables — the half the platform was missing', () => {
 
     const err = await expectReject(() =>
       asUser('latha@kaizen.co.in', () =>
-        payVendorBill(bill.id, { amount: 5_000, accountId: account.id, paidOn: new Date() }),
+        payBillSettled(bill.id, { amount: 5_000, accountId: account.id, paidOn: new Date() }),
       ),
     );
     // An overpayment is a credit note, not a bigger payment.
@@ -469,7 +475,7 @@ describe('Budget variance is computed, never stored', () => {
     const beforeRow = before.rows.find((r) => r.categoryId === category.id)!;
 
     await asUser('latha@kaizen.co.in', () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date(),
         direction: 'out',
         amount: 2_500,
@@ -494,7 +500,7 @@ describe('Budget variance is computed, never stored', () => {
     const period = monthKey(new Date());
 
     await asUser('latha@kaizen.co.in', () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date(),
         direction: 'out',
         amount: 3_333,
@@ -557,7 +563,7 @@ describe('Money is withheld, never zeroed', () => {
     // instead, and the separation now sits between Finance Head and Employee
     // rather than at the top.
     const entry = await asUser('chairman@kaizen.co.in', () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date(),
         direction: 'out',
         amount: 100,
@@ -570,7 +576,7 @@ describe('Money is withheld, never zeroed', () => {
     // An employee holds no grant on the ledger at all. Not narrowed — absent.
     const err = await expectReject(() =>
       asUser('ravi@kaizen.co.in', () =>
-        recordTransaction({ txnDate: new Date(), direction: 'out', amount: 100, accountId: account.id }),
+        payOutSettled({ txnDate: new Date(), direction: 'out', amount: 100, accountId: account.id }),
       ),
     );
     expect(err.status).toBe(403);
@@ -590,7 +596,7 @@ describe('Periods are IST civil months — the first five and a half hours belon
     const beforeMay = await asUser('chairman@kaizen.co.in', () => profitAndLoss('2033-05'));
 
     await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date('2033-04-30T18:00:00Z'),
         direction: 'out',
         amount: 1000,
@@ -600,7 +606,7 @@ describe('Periods are IST civil months — the first five and a half hours belon
       }),
     );
     await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date('2033-04-30T19:00:00Z'),
         direction: 'out',
         amount: 5000,

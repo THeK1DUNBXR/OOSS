@@ -23,9 +23,9 @@ import {
   type Verb,
   type WithholdReason,
   formatMinor,
-  parseMinor,
 } from '@kaizen/shared';
 import { prisma } from './db.js';
+import { rupeesOf } from './wire.js';
 import { currentAuth, type AuthContext } from './context.js';
 import { ApiError } from './errors.js';
 
@@ -406,7 +406,7 @@ async function activeCeilingGrant(auth: AuthContext, authorityClass: string) {
       status: 'active',
       effectiveFrom: { lte: now },
     },
-    orderBy: { ceilingValue: 'desc' },
+    orderBy: { ceilingValueMinor: 'desc' },
   });
   if (!grant || (grant.effectiveTo && grant.effectiveTo <= now)) return null;
   return grant;
@@ -415,7 +415,7 @@ async function activeCeilingGrant(auth: AuthContext, authorityClass: string) {
 export async function resolveAuthorityCeiling(auth: AuthContext, authorityClass: string): Promise<number | null> {
   const grant = await activeCeilingGrant(auth, authorityClass);
   if (!grant) return null;
-  return grant.ceilingValue ? Number(grant.ceilingValue.toString()) : 0;
+  return grant.ceilingValueMinor === null ? 0 : rupeesOf(grant.ceilingValueMinor);
 }
 
 /**
@@ -426,7 +426,7 @@ export async function resolveAuthorityCeiling(auth: AuthContext, authorityClass:
 export async function resolveAuthorityCeilingPaise(auth: AuthContext, authorityClass: string): Promise<bigint | null> {
   const grant = await activeCeilingGrant(auth, authorityClass);
   if (!grant) return null;
-  return grant.ceilingValue ? parseMinor(grant.ceilingValue.toFixed(2)) : 0n;
+  return grant.ceilingValueMinor ?? 0n;
 }
 
 // ---------------------------------------------------------------------------
@@ -673,6 +673,11 @@ export function applyFieldVisibility<T extends Record<string, unknown>>(
   return { data: out, withheld };
 }
 
+function isMoneyKey(key: string): boolean {
+  if (MONEY_FIELDS.includes(key)) return true;
+  return key.endsWith('Minor') && MONEY_FIELDS.includes(key.slice(0, -'Minor'.length));
+}
+
 function walk(
   value: unknown,
   path: string,
@@ -701,8 +706,11 @@ function walk(
       continue;
     }
 
-    // Money masking: present but nulled.
-    if (!options.canSeeMoney && MONEY_FIELDS.includes(key) && typeof v !== 'object') {
+    // Money masking: present but nulled. Not `typeof v !== 'object'`: a Prisma
+    // Decimal is an object, so that test let it through, and the walk then copied
+    // its internal digits (d, e, s) onto the wire for a viewer with no money grant
+    // (MONEY-VISIBILITY). A `<name>Minor` sibling is money by its stem.
+    if (!options.canSeeMoney && isMoneyKey(key) && v !== null && !Array.isArray(v)) {
       withheld.push({ path: childPath, reason: 'no_permission' });
       out[key] = null;
       continue;

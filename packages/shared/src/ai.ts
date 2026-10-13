@@ -121,6 +121,10 @@ export const AI_PROHIBITED_ACTIONS = [
   'filing.submit_return',
   'payroll.run',
   'payroll.execute',
+  // A money-out request is made and approved by people. An agent that could do
+  // either could move money out without a second person (payments:approve).
+  'payout_request.create',
+  'payout_request.approve',
   'email.send',
   'email.dispatch',
   'email.queue_send',

@@ -95,12 +95,14 @@ export type WithMinorPair<T, N extends string, V> = Omit<T, `${N}Minor`> & {
 export function withDecimalMinor<T extends object, N extends string>(
   row: T,
   names: readonly N[],
+  options: { canSee?: boolean } = {},
 ): WithMinorPair<T, N, Prisma.Decimal | null> {
   const out = { ...row } as Record<string, unknown>;
   for (const name of names) {
     const minor = (row as Record<string, unknown>)[`${name}Minor`] as bigint | null | undefined;
     out[name] = minorToDecimal(minor);
-    out[`${name}Minor`] = minorString(minor);
+    // The rupee field is left as the caller had it; only the paise sibling is withheld.
+    out[`${name}Minor`] = options.canSee === false ? null : minorString(minor);
   }
   return out as WithMinorPair<T, N, Prisma.Decimal | null>;
 }
@@ -143,6 +145,16 @@ export function decimalWire(minor: bigint): string {
  */
 export function rupeesOf(minor: bigint): number {
   return Number(minor) / 100;
+}
+
+/** A paise column as the rupee number a legacy field carries, null when the column is null. */
+export function rupeesOrNull(minor: bigint | null | undefined): number | null {
+  return minor === null || minor === undefined ? null : rupeesOf(minor);
+}
+
+/** A paise column as rupees for a sum: zero when the figure is not held. */
+export function rupeesOrZero(minor: bigint | null | undefined): number {
+  return minor === null || minor === undefined ? 0 : rupeesOf(minor);
 }
 
 /**

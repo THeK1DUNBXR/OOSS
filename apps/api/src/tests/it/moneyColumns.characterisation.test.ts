@@ -69,9 +69,9 @@ describe('IT money columns — wire characterisation (pre-conversion)', () => {
         billingCycle: 'monthly',
       }),
     );
-    // Pins today's shape, not a wanted one: createLicence returns the cost to
-    // Operations, who cannot see it on the detail path. Flip this when that leak is fixed.
-    expect(wire(created).costPerPeriod).toBe('1000.25');
+    // Operations creates the licence but cannot see its cost on the detail path,
+    // so the create return withholds it too (MONEY-VISIBILITY).
+    expect(wire(created).costPerPeriod).toBeNull();
     expect(wire(created).pendingRenewalCostPerPeriod).toBeNull();
 
     const detail = wire(await asUser(FINANCE, () => licenceDetail(created.id)));
@@ -116,8 +116,8 @@ describe('IT money columns — wire characterisation (pre-conversion)', () => {
     );
     const newTermEnd = new Date(Date.UTC(2027, 2, 31));
     const proposed = await asUser(OPS, () => proposeRenewal(created.id, { newTermEnd, newCostPerPeriod: 1500.5 }));
-    expect(wire(proposed.licence).pendingRenewalCostPerPeriod).toBe('1500.5');
-    expect(wire(proposed.licence).costPerPeriod).toBe('100.25');
+    expect(wire(proposed.licence).pendingRenewalCostPerPeriod).toBeNull();
+    expect(wire(proposed.licence).costPerPeriod).toBeNull();
 
     const approved = await asUser(FINANCE, () => approveRenewal(created.id, true, 'char'));
     expect(approved.applied).toBe(true);
@@ -165,21 +165,29 @@ describe('IT money columns — wire characterisation (pre-conversion)', () => {
   it('asset: purchaseCost is a two-place string on rows, bookValue a number on detail, and a zero cost stays zero', async () => {
     const tag = `AST-CHAR-${stamp()}`;
     const asset = await asUser(OPS, () => createAsset({ tag, kind: 'laptop', purchaseCost: 1500.25 }));
-    expect(wire(asset).purchaseCost).toBe('1500.25');
+    expect(wire(asset).purchaseCost).toBeNull();
 
+    // Operations holds no it_assets:financial, so the detail withholds the cost and
+    // the book value as the list does. The figures are read back as Finance, which holds it.
     const detail = wire(await asUser(OPS, () => assetDetail(asset.id)));
-    expect(detail.purchaseCost).toBe('1500.25');
-    expect(detail.bookValue).toBe(1500.25);
+    expect(detail.purchaseCost).toBeNull();
+    expect(detail.bookValue).toBeNull();
+    const detailAsFinance = wire(await asUser(FINANCE, () => assetDetail(asset.id)));
+    expect(detailAsFinance.purchaseCost).toBe('1500.25');
+    expect(detailAsFinance.bookValue).toBe(1500.25);
 
     const zeroTag = `AST-CHAR0-${stamp()}`;
     const zero = await asUser(OPS, () => createAsset({ tag: zeroTag, kind: 'phone', purchaseCost: 0 }));
     const zeroDetail = wire(await asUser(OPS, () => assetDetail(zero.id)));
-    expect(zeroDetail.purchaseCost).toBe('0');
-    expect(zeroDetail.bookValue).toBe(0);
+    expect(zeroDetail.purchaseCost).toBeNull();
+    expect(zeroDetail.bookValue).toBeNull();
+    const zeroAsFinance = wire(await asUser(FINANCE, () => assetDetail(zero.id)));
+    expect(zeroAsFinance.purchaseCost).toBe('0');
+    expect(zeroAsFinance.bookValue).toBe(0);
 
     const rows = wire(await asUser(OPS, () => listAssets({})));
     const row = rows.find((r: { id: string }) => r.id === asset.id);
-    expect(row.purchaseCost).toBe('1500.25');
+    expect(row.purchaseCost).toBeNull();
   });
 
   it('asset summary: bookValue is a number and sums the non-disposed fleet', async () => {
@@ -201,9 +209,9 @@ describe('IT money columns — wire characterisation (pre-conversion)', () => {
         budget: 2000.5,
       }),
     );
-    expect(wire(created).budget).toBe('2000.5');
+    expect(wire(created).budget).toBeNull();
     const detail = wire(await asUser(OPS, () => initiativeDetail(created.id)));
-    expect(detail.budget).toBe('2000.5');
+    expect(detail.budget).toBeNull();
   });
 
   it('budget line: planned is a two-place string on the raw row, a number in the FY roll-up', async () => {
@@ -255,5 +263,48 @@ describe('IT money columns — wire characterisation (pre-conversion)', () => {
     const after = wire(await asUser(FINANCE, () => summaryContracts())).valueUnderManagement;
     expect(typeof after).toBe('number');
     expect(typeof before).toBe('number');
+  });
+
+  it('licence history: the renewal prices in the event detail are withheld from operations, and kept for finance', async () => {
+    const app = await asUser(OPS, () =>
+      createApplication({ name: `Char history app ${stamp()}`, category: 'productivity', hosting: 'saas' }),
+    );
+    const licence = await asUser(OPS, () =>
+      createLicence({
+        applicationId: app.id,
+        kind: 'per_seat',
+        seatsPurchased: 10,
+        seatsInUse: 4,
+        costPerPeriod: 50000,
+        billingCycle: 'monthly',
+      }),
+    );
+    const newTermEnd = new Date(Date.UTC(2031, 2, 31));
+    const proposed = await asUser(OPS, () => proposeRenewal(licence.id, { newTermEnd, newCostPerPeriod: 61000.5 }));
+    expect(proposed.applied).toBe(false);
+    await asUser(FINANCE, () => approveRenewal(licence.id, true, 'Within budget.'));
+
+    // The history rows hold the proposed and the approved cost in their detail JSON.
+    const opsEvents = wire(await asUser(OPS, () => licenceDetail(licence.id))).events as Array<{
+      kind: string;
+      detail: Record<string, unknown> | null;
+    }>;
+    const opsProposed = opsEvents.find((e) => e.kind === 'renewal_proposed');
+    const opsApproved = opsEvents.find((e) => e.kind === 'renewal_approved');
+    expect(opsProposed!.detail!.newCostPerPeriod).toBeNull();
+    expect(opsProposed!.detail!.annualisedCost).toBeNull();
+    expect(opsApproved!.detail!.costPerPeriod).toBeNull();
+    // Keys that are not money stay as they were written.
+    expect(opsProposed!.detail!.approvalStepId).toBeTruthy();
+
+    const financeEvents = wire(await asUser(FINANCE, () => licenceDetail(licence.id))).events as Array<{
+      kind: string;
+      detail: Record<string, unknown> | null;
+    }>;
+    const finProposed = financeEvents.find((e) => e.kind === 'renewal_proposed');
+    const finApproved = financeEvents.find((e) => e.kind === 'renewal_approved');
+    expect(finProposed!.detail!.newCostPerPeriod).not.toBeNull();
+    expect(finProposed!.detail!.annualisedCost).not.toBeNull();
+    expect(finApproved!.detail!.costPerPeriod).not.toBeNull();
   });
 });

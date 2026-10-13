@@ -16,7 +16,6 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
-import { minorOf, type DecimalLike } from '../platform/wire.js';
 import { findThreshold } from './thresholds.js';
 import { assertCan } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
@@ -68,12 +67,10 @@ export async function ensureWinLossReview(subjectType: 'opportunity' | 'mou', su
       : await prisma.mou.findFirst({ where: { id: subjectId } });
   if (!subject) throw ApiError.notFound('Subject');
 
-  const commercialMinor = minorOf(
+  const commercial: bigint | null =
     subjectType === 'opportunity'
-      ? (subject as { expectedValue: DecimalLike | null }).expectedValue
-      : (subject as { commercialValue: DecimalLike | null }).commercialValue,
-  );
-  const commercial = commercialMinor === null ? null : BigInt(commercialMinor);
+      ? (subject as { expectedValueMinor: bigint | null }).expectedValueMinor
+      : (subject as { commercialValueMinor: bigint | null }).commercialValueMinor;
   const strategicValue = (subject as { strategicValue: string | null }).strategicValue;
   const threshold = await valueThresholdMinor();
 
@@ -110,8 +107,8 @@ export async function ensureWinLossReview(subjectType: 'opportunity' | 'mou', su
       mandatoryBasis: basis,
       // Frozen at terminal-state entry.
       strategicValueSnapshot: strategicValue,
-      commercialValueSnapshot: commercial === null ? undefined : formatMinor(commercial),
-      thresholdUsedSnapshot: threshold === null ? null : formatMinor(threshold),
+      commercialValueSnapshotMinor: commercial === null ? undefined : commercial,
+      thresholdUsedSnapshotMinor: threshold,
       lostReason: subjectType === 'opportunity' ? (subject as { lostReason: string | null }).lostReason : null,
       dueAt: mandatory ? new Date(Date.now() + GRACE_PERIOD_DAYS * 86_400_000) : null,
     },

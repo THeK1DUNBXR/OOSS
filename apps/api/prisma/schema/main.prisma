@@ -811,7 +811,7 @@ model AuthorityGrant {
   principalLabel String?
 
   authorityClass   String // mou_approval | contract_approval | discount_approval | agent_draft
-  ceilingValue     Decimal? @db.Decimal(18, 2)
+  ceilingValueMinor BigInt?
   currency         String?
   countCeiling     Int?
   countWindow      String?
@@ -851,7 +851,7 @@ model ApprovalStep {
 
   requestedById  String
   requestedAt    DateTime @default(now())
-  requestedValue Decimal? @db.Decimal(18, 2)
+  requestedValueMinor BigInt?
   currency       String?
 
   /// Resolved deterministically, before any notification fires.
@@ -1641,7 +1641,7 @@ model Lead {
 
   source         String   @default("manual")
   sourceDetail   String?
-  estimatedValue Decimal? @db.Decimal(18, 2)
+  estimatedValueMinor BigInt?
   currency       String   @default("INR")
 
   lastInteractionAt      DateTime?
@@ -1706,7 +1706,7 @@ model Opportunity {
   forecastCategoryChangedAt    DateTime?
   forecastCategoryChangeReason String?
 
-  expectedValue     Decimal?  @db.Decimal(18, 2)
+  expectedValueMinor BigInt?
   currency          String    @default("INR")
   expectedCloseDate DateTime?
 
@@ -1800,7 +1800,7 @@ model PriceBookEntry {
   priceBookName String @default("Standard List")
 
   currency         String
-  unitPrice        Decimal @db.Decimal(18, 2)
+  unitPriceMinor   BigInt
   billingFrequency String
   minQuantity      Int     @default(1)
   /// Required, non-nullable, deliberately set — the ceiling the discount
@@ -1837,7 +1837,7 @@ model Proposal {
   quoteId       String?
   title         String
 
-  totalValue Decimal? @db.Decimal(18, 2)
+  totalValueMinor BigInt?
   currency   String   @default("INR")
   documentId String?
 
@@ -1868,10 +1868,10 @@ model Quote {
   version       Int    @default(1)
   status        String @default("draft")
 
-  subtotal      Decimal? @db.Decimal(18, 2)
-  discountTotal Decimal? @db.Decimal(18, 2)
-  grandTotal    Decimal? @db.Decimal(18, 2)
-  currency      String   @default("INR")
+  subtotalMinor      BigInt?
+  discountTotalMinor BigInt?
+  grandTotalMinor    BigInt?
+  currency           String @default("INR")
 
   issuedAt   DateTime?
   validUntil DateTime?
@@ -1909,10 +1909,10 @@ model QuoteLine {
   priceBookEntryVersion Int
 
   quantity       Int      @default(1)
-  listUnitPrice  Decimal  @db.Decimal(18, 2)
-  discountPct    Int      @default(0)
-  discountAmount Decimal? @db.Decimal(18, 2)
-  lineTotal      Decimal? @db.Decimal(18, 2)
+  listUnitPriceMinor  BigInt
+  discountPct         Int     @default(0)
+  discountAmountMinor BigInt?
+  lineTotalMinor      BigInt?
 
   createdAt DateTime @default(now())
 
@@ -1944,7 +1944,7 @@ model Mou {
   status String @default("proposed")
 
   /// May legitimately be zero — an MoU is a coverage instrument.
-  commercialValue Decimal? @db.Decimal(18, 2)
+  commercialValueMinor BigInt?
   currency        String   @default("INR")
   strategicValue  String?
   termMonths      Int?
@@ -1990,7 +1990,7 @@ model Contract {
   status String @default("proposed")
 
   /// Required, must be > 0 — unlike MoU, an unpriced contract is a modelling error.
-  commercialValue Decimal @db.Decimal(18, 2)
+  commercialValueMinor BigInt
   currency        String  @default("INR")
   strategicValue  String?
   termMonths      Int?
@@ -2040,7 +2040,7 @@ model PartnerAgreement {
 
   status String @default("proposed")
 
-  commercialValue Decimal? @db.Decimal(18, 2)
+  commercialValueMinor BigInt?
   currency        String   @default("INR")
   strategicValue  String?
   termMonths      Int?
@@ -2093,8 +2093,8 @@ model WinLossReview {
   mandatory               Boolean  @default(false)
   mandatoryBasis          String   @default("not_mandatory")
   strategicValueSnapshot  String?
-  commercialValueSnapshot Decimal? @db.Decimal(18, 2)
-  thresholdUsedSnapshot   Decimal? @db.Decimal(18, 2)
+  commercialValueSnapshotMinor BigInt?
+  thresholdUsedSnapshotMinor   BigInt?
 
   completedById     String?
   completedAt       DateTime?

@@ -14,8 +14,15 @@
  * of its own beyond the PCT-owned tables.
  */
 
-import { EVENTS, type BillingFrequency, type DeliveryModel, type RevenueTreatment } from '@kaizen/shared';
-import { prisma, num } from '../platform/db.js';
+import {
+  EVENTS,
+  formatMinor,
+  mulRatio,
+  type BillingFrequency,
+  type DeliveryModel,
+  type RevenueTreatment,
+} from '@kaizen/shared';
+import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -29,6 +36,7 @@ import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 // the step's audit row. The Set-backed registry makes the second declaration harmless.
 registerGovernedEntities('gov', ['approval_step']);
 import { assertCan, resolveAuthorityCeiling } from '../platform/permissions.js';
+import { rupeesOf, rupeesOrNull, rupeesOrZero, rupeesToMinor, rupeesToMinorOrNull } from '../platform/wire.js';
 import { notify, raiseException } from '../platform/exceptions.js';
 import { advanceStage } from './opportunities.js';
 
@@ -231,6 +239,8 @@ export async function publishPrice(input: PriceInput) {
   }
 
   const priceBookId = input.priceBookId ?? 'standard';
+  // The list price is stored as paise; the rupee number is only read at the boundary.
+  const unitPriceMinor = rupeesToMinor(input.unitPrice);
 
   const current = await prisma.priceBookEntry.findFirst({
     where: {
@@ -273,7 +283,7 @@ export async function publishPrice(input: PriceInput) {
         priceBookId,
         priceBookName: input.priceBookName ?? (priceBookId === 'standard' ? 'Standard List' : priceBookId),
         currency: input.currency,
-        unitPrice: input.unitPrice,
+        unitPriceMinor,
         billingFrequency: input.billingFrequency,
         minQuantity: input.minQuantity ?? 1,
         maxDiscountPct: input.maxDiscountPct,
@@ -287,7 +297,7 @@ export async function publishPrice(input: PriceInput) {
       action: 'create',
       subjectType: 'price_book_entry',
       subjectId: entry.id,
-      after: { version, unitPrice: input.unitPrice, maxDiscountPct: input.maxDiscountPct },
+      after: { version, unitPriceMinor, maxDiscountPct: input.maxDiscountPct },
       tx,
     });
 
@@ -304,7 +314,8 @@ export async function publishPrice(input: PriceInput) {
       name: EVENTS.PRICE_BOOK_ENTRY_PUBLISHED,
       subject: { entityType: 'price_book_entry', entityId: entry.id },
       related: [{ relation: 'prices', entityType: 'offering', entityId: input.offeringId }],
-      newState: { version, unitPrice: input.unitPrice, currency: input.currency },
+      // The stored price, not the input: a three-decimal input is stored at its paisa.
+      newState: { version, unitPrice: rupeesOf(entry.unitPriceMinor), currency: input.currency },
       impact: { domains: ['crm', 'pct'] },
       confidentiality: 'restricted',
       tx,
@@ -341,7 +352,7 @@ export async function createProposal(input: {
         opportunityId: input.opportunityId,
         quoteId: input.quoteId ?? null,
         title: input.title,
-        totalValue: input.totalValue ?? undefined,
+        totalValueMinor: rupeesToMinorOrNull(input.totalValue ?? undefined),
         currency: input.currency ?? opportunity.currency,
         validUntil: input.validUntil ?? null,
         ownerPartyId: opportunity.ownerPartyId,
@@ -596,17 +607,24 @@ export async function createQuote(opportunityId: string, lines: QuoteLineInput[]
     });
     await auditWrite({ action: 'create', subjectType: 'quote', subjectId: quote.id, after: quote, tx });
 
-    let subtotal = 0;
-    let discountTotal = 0;
+    // Paise throughout. Each figure is rounded once from its exact value, half away from
+    // zero: a line's discount and its total are each rounded from the exact product, and
+    // the quote's discount and total from the exact sums, not from the rounded lines. A
+    // sum of rounded lines would drift a paisa from the header on every tie. The header
+    // sums are kept weighted by the percentage, so the rounding happens once, at the end.
+    let subtotalMinor = 0n;
+    let discountWeighted = 0n;
+    let grandWeighted = 0n;
 
     for (const line of lines) {
       const entry = byId.get(line.priceBookEntryId);
       if (!entry) throw ApiError.unprocessable(`Price book entry ${line.priceBookEntryId} does not resolve.`);
 
-      const listUnitPrice = num(entry.unitPrice)!;
-      const gross = listUnitPrice * line.quantity;
-      const discountAmount = (gross * line.discountPct) / 100;
-      const lineTotal = gross - discountAmount;
+      const quantity = BigInt(line.quantity);
+      const pct = BigInt(line.discountPct);
+      const grossMinor = entry.unitPriceMinor * quantity;
+      const discountAmountMinor = mulRatio(grossMinor, pct, 100n);
+      const lineTotalMinor = mulRatio(grossMinor * (100n - pct), 1n, 100n);
 
       await tx.quoteLine.create({
         data: {
@@ -617,27 +635,35 @@ export async function createQuote(opportunityId: string, lines: QuoteLineInput[]
           // offering" — this is what makes a quote reproducible six months later.
           priceBookEntryVersion: entry.version,
           quantity: line.quantity,
-          listUnitPrice,
+          listUnitPriceMinor: entry.unitPriceMinor,
           discountPct: line.discountPct,
-          discountAmount,
-          lineTotal,
+          discountAmountMinor,
+          lineTotalMinor,
         },
       });
 
-      subtotal += gross;
-      discountTotal += discountAmount;
+      subtotalMinor += grossMinor;
+      discountWeighted += grossMinor * pct;
+      grandWeighted += grossMinor * (100n - pct);
     }
+
+    const discountTotalMinor = mulRatio(discountWeighted, 1n, 100n);
+    const grandTotalMinor = mulRatio(grandWeighted, 1n, 100n);
 
     const updated = await tx.quote.update({
       where: { id: quote.id },
-      data: { subtotal, discountTotal, grandTotal: subtotal - discountTotal },
+      data: { subtotalMinor, discountTotalMinor, grandTotalMinor },
     });
     await auditWrite({
       action: 'update',
       subjectType: 'quote',
       subjectId: quote.id,
-      before: { subtotal: quote.subtotal, discountTotal: quote.discountTotal, grandTotal: quote.grandTotal },
-      after: { subtotal, discountTotal, grandTotal: subtotal - discountTotal },
+      before: {
+        subtotalMinor: quote.subtotalMinor,
+        discountTotalMinor: quote.discountTotalMinor,
+        grandTotalMinor: quote.grandTotalMinor,
+      },
+      after: { subtotalMinor, discountTotalMinor, grandTotalMinor },
       tx,
     });
 
@@ -645,7 +671,16 @@ export async function createQuote(opportunityId: string, lines: QuoteLineInput[]
       name: EVENTS.QUOTE_CREATED,
       subject: { entityType: 'quote', entityId: quote.id, recordCode },
       related: [{ relation: 'quotes_for', entityType: 'opportunity', entityId: opportunityId }],
-      newState: { version: quote.version, grandTotal: subtotal - discountTotal },
+      // Read back from the row just written, so the body is the stored total. The chain
+      // hash covers the body: a float here broke the link once (kaizen_s6b seq 587, 1364),
+      // when 3100.8 - 310.08 went into the body as 2790.7200000000003 and the row kept
+      // 2790.72. The two-place string is formatted from the paise the row stores, and the
+      // paise string is the shape the other money fields take in event bodies.
+      newState: {
+        version: quote.version,
+        grandTotal: formatMinor(updated.grandTotalMinor!),
+        grandTotalMinor: updated.grandTotalMinor!.toString(),
+      },
       confidentiality: 'confidential',
       tx,
     });
@@ -714,7 +749,7 @@ export async function issueQuote(quoteId: string, validUntil?: Date): Promise<Qu
     }));
 
   if (blockedLines.length > 0) {
-    const grandTotal = num(quote.grandTotal) ?? 0;
+    const grandTotal = rupeesOrZero(quote.grandTotalMinor);
     const ceiling = await resolveAuthorityCeiling(auth, 'discount_approval');
 
     // Approver resolution is a single tier here (finance_head+), rather
@@ -745,7 +780,7 @@ export async function issueQuote(quoteId: string, validUntil?: Date): Promise<Qu
           // approved on the quote, which `quotes:approve` covers (seed/grants.ts).
           resource: 'quotes',
           requestedById: auth.partyId ?? 'system',
-          requestedValue: quote.grandTotal ?? undefined,
+          requestedValueMinor: quote.grandTotalMinor ?? undefined,
           currency: quote.currency,
           resolvedApproverId: approver?.partyId ?? null,
           resolvedApproverRole: 'finance_head',
@@ -843,7 +878,7 @@ export async function issueQuote(quoteId: string, validUntil?: Date): Promise<Qu
       name: EVENTS.QUOTE_ISSUED,
       subject: { entityType: 'quote', entityId: quoteId, recordCode: quote.recordCode },
       related: [{ relation: 'quotes_for', entityType: 'opportunity', entityId: quote.opportunityId }],
-      newState: { grandTotal: num(row.grandTotal), validUntil: row.validUntil },
+      newState: { grandTotal: rupeesOrNull(row.grandTotalMinor), validUntil: row.validUntil },
       confidentiality: 'confidential',
       tx,
     });

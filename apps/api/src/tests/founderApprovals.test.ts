@@ -29,6 +29,7 @@ import {
   tenantId,
   unscopedPrisma,
   withFixtureRole,
+  withMfaEnrolled,
 } from './helpers.js';
 
 const CHAIRMAN = 'chairman@kaizen.co.in';
@@ -176,17 +177,8 @@ describe('decideApprovalStep: the founder exemption on the Self-Dealing Bar and 
 });
 
 describe('approveRefund: the founder exemption on requester-is-approver', () => {
-  /** The chairman holds refunds:approve and is named in the MFA policy; enrol it for the call, then put it back. */
-  async function withChairmanMfa<T>(fn: () => Promise<T>): Promise<T> {
-    const user = await unscopedPrisma.user.findFirstOrThrow({ where: { email: CHAIRMAN, tenantId: tid } });
-    const before = { mfaSecret: user.mfaSecret, mfaEnabledAt: user.mfaEnabledAt };
-    await unscopedPrisma.user.update({ where: { id: user.id }, data: { mfaEnabledAt: new Date() } });
-    try {
-      return await fn();
-    } finally {
-      await unscopedPrisma.user.update({ where: { id: user.id }, data: before });
-    }
-  }
+  /** The chairman holds refunds:approve and is named in the MFA policy; enrol it for the call (helpers.ts). */
+  const withChairmanMfa = <T>(fn: () => Promise<T>): Promise<T> => withMfaEnrolled(CHAIRMAN, fn);
 
   async function requestedRefund(requestedById: string) {
     return unscopedPrisma.refund.create({

@@ -13,8 +13,11 @@ import {
   tenantId,
   unscopedPrisma,
   type BooksTenant,
+  payOutSettled,
+  payBillSettled,
+  reverseSettled,
 } from '../helpers.js';
-import { recordTransaction, reverseTransaction, profitAndLoss } from '../../domains/books.js';
+import { profitAndLoss } from '../../domains/books.js';
 import {
   requestClosePeriod,
   closePeriod,
@@ -86,7 +89,7 @@ describe('CMP-AUD-001 — the five-plus-two governed entities produce a diffed A
     const account = await bankAccount();
     const category = await categoryNamed('General Expenses');
     const txn = await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date(),
         direction: 'out',
         amount: 321,
@@ -118,9 +121,8 @@ describe('CMP-AUD-001 — the five-plus-two governed entities produce a diffed A
         },
       }),
     );
-    const { payVendorBill } = await import('../../domains/books.js');
     await asUser('finance@kaizen.co.in', () =>
-      payVendorBill(bill.id, { amount: 1000, accountId: account.id, paidOn: new Date() }),
+      payBillSettled(bill.id, { amount: 1000, accountId: account.id, paidOn: new Date() }),
     );
 
     const record = await unscopedPrisma.auditRecord.findFirst({
@@ -135,7 +137,7 @@ describe('CMP-AUD-001 — the five-plus-two governed entities produce a diffed A
     const account = await bankAccount();
     const category = await categoryNamed('General Expenses');
     const txn = await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date(),
         direction: 'out',
         amount: 555,
@@ -143,7 +145,7 @@ describe('CMP-AUD-001 — the five-plus-two governed entities produce a diffed A
         categoryId: category.id,
       }),
     );
-    const reversal = await asUser('finance@kaizen.co.in', () => reverseTransaction(txn.id, 'CMP-AUD-001 reversal'));
+    const reversal = await asUser('finance@kaizen.co.in', () => reverseSettled(txn.id, 'CMP-AUD-001 reversal'));
 
     const originalUpdate = await unscopedPrisma.auditRecord.findFirst({
       where: { tenantId: TENANT, subjectType: 'transaction', subjectId: txn.id, action: 'update' },
@@ -204,7 +206,7 @@ describe('CMP-AUD-002 — the AuditRecord hash chain', () => {
     const account = await bankAccount();
     const category = await categoryNamed('General Expenses');
     await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date(),
         direction: 'out',
         amount: 42,
@@ -223,7 +225,7 @@ describe('CMP-AUD-002 — the AuditRecord hash chain', () => {
     const account = await bankAccount();
     const category = await categoryNamed('General Expenses');
     const txn = await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date(),
         direction: 'out',
         amount: 77,
@@ -291,7 +293,7 @@ describe('CMP-AUD-003 — a closed accounting period vetoes new or edited entrie
   it('a transaction dated inside the closed period is rejected', async () => {
     const err = await expectReject(() =>
       asUser(FIXTURE.finance, () =>
-        recordTransaction({
+        payOutSettled({
           txnDate: new Date(Date.UTC(2019, 5, 15)),
           direction: 'out',
           amount: 100,
@@ -306,7 +308,7 @@ describe('CMP-AUD-003 — a closed accounting period vetoes new or edited entrie
   it('reversing an entry from before the period existed still posts, dated today rather than backdated', async () => {
     // Recorded in an open period, then the period it is reversed in is today's — open.
     const txn = await asUser(FIXTURE.finance, () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date(),
         direction: 'out',
         amount: 88,
@@ -314,7 +316,7 @@ describe('CMP-AUD-003 — a closed accounting period vetoes new or edited entrie
         categoryId: FIXTURE.categoryId,
       }),
     );
-    const reversal = await asUser(FIXTURE.finance, () => reverseTransaction(txn.id, 'CMP-AUD-003'));
+    const reversal = await asUser(FIXTURE.finance, () => reverseSettled(txn.id, 'CMP-AUD-003'));
     const today = new Date().toISOString().slice(0, 10);
     expect(reversal.txnDate.toISOString().slice(0, 10)).toBe(today);
   });
@@ -477,7 +479,7 @@ describe('Bank reconciliation', () => {
     // one line make the matcher refuse it (matchBankLines: ambiguous).
     const reference = `CHQ-${Math.random().toString(36).slice(2, 10)}`;
     const txn = await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date(),
         direction: 'out',
         amount: 12_345,
@@ -518,7 +520,7 @@ describe("IST boundaries — a closed month does not take the next month's first
   // 2031-04-30T18:00Z is 23:30 IST on 30 April (April); 2031-04-30T19:00Z is 00:30 IST on 1 May (May).
   it('the April close snapshot includes 23:30 IST on 30 April and excludes 00:30 IST on 1 May', async () => {
     await asUser(FIXTURE.finance, () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date('2031-04-30T18:00:00Z'),
         direction: 'out',
         amount: 1000,
@@ -530,7 +532,7 @@ describe("IST boundaries — a closed month does not take the next month's first
     const expected = await asUser(FIXTURE.finance, () => trialBalance(istEndOfDay(2031, 4, 30)));
 
     await asUser(FIXTURE.finance, () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date('2031-04-30T19:00:00Z'),
         direction: 'out',
         amount: 5000,
@@ -572,7 +574,7 @@ describe("IST boundaries — a closed month does not take the next month's first
     const beforeNext = await asUser(FIXTURE.chairman, () => statementForFy(2034));
 
     await asUser(FIXTURE.finance, () =>
-      recordTransaction({
+      payOutSettled({
         txnDate: new Date('2034-03-31T19:00:00Z'),
         direction: 'out',
         amount: 700,

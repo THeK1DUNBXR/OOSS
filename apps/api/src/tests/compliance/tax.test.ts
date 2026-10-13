@@ -3,8 +3,8 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { computeTds, computeAnnualTax, type SlabTable } from '@kaizen/shared';
-import { asUser, expectReject, unscopedPrisma, tenantId } from '../helpers.js';
-import { recordVendorBill, payVendorBill, createCategory } from '../../domains/books.js';
+import { asUser, expectReject, unscopedPrisma, tenantId, payBillSettled } from '../helpers.js';
+import { recordVendorBill, createCategory } from '../../domains/books.js';
 import '../../domains/compliance/tax.js'; // registers the before-pay hook and governed entities
 import {
   computeVendorTds,
@@ -191,7 +191,7 @@ describe('CMP-TDS-001 — a bill under an applicable TDS category cannot be paid
     await unscopedPrisma.vendorBill.update({ where: { id: bill.id }, data: { vendorPan: 'ABCDE1234F' } });
 
     const err = await expectReject(() =>
-      asUser(FINANCE, () => payVendorBill(bill.id, { amount: 50_000, accountId: account.id, paidOn: new Date() })),
+      asUser(FINANCE, () => payBillSettled(bill.id, { amount: 50_000, accountId: account.id, paidOn: new Date() })),
     );
     expect(err.message).toContain('CMP-TDS-001');
 
@@ -204,7 +204,7 @@ describe('CMP-TDS-001 — a bill under an applicable TDS category cannot be paid
     // tracked through the challan, not a reduction of what the bill records
     // as owed.
     const paid = await asUser(FINANCE, () =>
-      payVendorBill(bill.id, { amount: 50_000, accountId: account.id, paidOn: new Date() }),
+      payBillSettled(bill.id, { amount: 50_000, accountId: account.id, paidOn: new Date() }),
     );
     expect(paid.bill.status).toBe('paid');
   });
@@ -224,7 +224,7 @@ describe('CMP-TDS-001 — a bill under an applicable TDS category cannot be paid
     );
 
     const blocked = await expectReject(() =>
-      asUser(FINANCE, () => payVendorBill(bill.id, { amount: 20_000, accountId: account.id, paidOn: new Date() })),
+      asUser(FINANCE, () => payBillSettled(bill.id, { amount: 20_000, accountId: account.id, paidOn: new Date() })),
     );
     expect(blocked.message).toContain('CMP-TDS-001');
 
@@ -233,7 +233,7 @@ describe('CMP-TDS-001 — a bill under an applicable TDS category cannot be paid
     );
 
     const paid = await asUser(FINANCE, () =>
-      payVendorBill(bill.id, { amount: 20_000, accountId: account.id, paidOn: new Date() }),
+      payBillSettled(bill.id, { amount: 20_000, accountId: account.id, paidOn: new Date() }),
     );
     expect(paid.bill.status).toBe('paid');
   });
@@ -244,7 +244,7 @@ describe('CMP-TDS-001 — a bill under an applicable TDS category cannot be paid
       recordVendorBill({ vendorName: `No Rule Vendor ${Date.now()}`, billDate: new Date(), subtotal: 5_000 }),
     );
     const paid = await asUser(FINANCE, () =>
-      payVendorBill(bill.id, { amount: 5_000, accountId: account.id, paidOn: new Date() }),
+      payBillSettled(bill.id, { amount: 5_000, accountId: account.id, paidOn: new Date() }),
     );
     expect(paid.bill.status).toBe('paid');
   });
@@ -338,7 +338,7 @@ describe('CMP-TDS-003 — MSME 45-day payment term', () => {
     );
     await asUser(FINANCE, () => setMsmeTerms(bill.id, { udyamNumber: 'UDYAM-TN-00-0000002' }));
     const paid = await asUser(FINANCE, () =>
-      payVendorBill(bill.id, { amount: 10_000, accountId: account.id, paidOn: new Date() }),
+      payBillSettled(bill.id, { amount: 10_000, accountId: account.id, paidOn: new Date() }),
     );
     expect(paid.bill.status).toBe('paid');
   });
