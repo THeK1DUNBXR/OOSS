@@ -85,3 +85,17 @@ export function grownByPercent(amount: bigint, percent: number): bigint {
   const pct = fractionOf(percent);
   return amount + mulRatio(amount, pct.num, pct.den * 100n);
 }
+
+/**
+ * The paise columns of an Offboarding. Every path that returns an offboarding
+ * (the settlement, the transition, the employee record and the exit view) passes
+ * it through withDecimalMinor, so the rupee fields do not disappear from the
+ * wire when a raw row is returned.
+ */
+export const OFFBOARDING_MONEY = [
+  'settlementAmount',
+  'gratuityAmount',
+  'leaveEncashmentAmount',
+  'bonusAmount',
+  'noticeRecoveryAmount',
+] as const;

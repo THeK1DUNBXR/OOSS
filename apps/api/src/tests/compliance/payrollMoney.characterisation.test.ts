@@ -14,7 +14,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { bigintReplacer, minorToDecimal } from '../../platform/wire.js';
 import { asUser, prisma, tenantId, unscopedPrisma } from '../helpers.js';
-import { hire, transitionEmployment } from '../../domains/employment.js';
+import { getEmployment, hire, transitionEmployment, transitionOffboarding } from '../../domains/employment.js';
+import { getOffboardingForEmployment } from '../../domains/hcm/separations.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import {
   proposeSalaryStructure,
@@ -759,5 +760,34 @@ describe('payroll money: the statutory run, exports, payslips, journal and bank 
         ],
       }
     `);
+  });
+
+  // Each of these returned a raw Offboarding before the paise conversion. Once the
+  // columns became `<name>Minor`, the rupee fields a screen reads were gone from
+  // these responses unless the row went through withDecimalMinor.
+  it('an offboarding keeps its rupee fields on the employee record, the exit view and the transition', async () => {
+    const { employment } = await makeEmployee('offwire', '2015-01-01');
+    await structureFor(employment.id, { basic: 20_000, hra: 8_000 }, '2015-01-01');
+    const offboarding = await asUser('chairman@kaizen.co.in', () =>
+      prisma.offboarding.create({
+        data: { tenantId: TENANT, employmentRelationshipId: employment.id, status: 'Initiated' },
+      }),
+    );
+    await asUser('finance@kaizen.co.in', () => settleOffboarding(offboarding.id));
+
+    const expected = {
+      settlementAmount: '139044.64',
+      settlementAmountMinor: '13904464',
+      gratuityAmount: '138461.54',
+      gratuityAmountMinor: '13846154',
+    };
+    const employee = wire(await asUser('chairman@kaizen.co.in', () => getEmployment(employment.id)));
+    expect(employee.offboarding).toMatchObject(expected);
+    const exitView = wire(await asUser('chairman@kaizen.co.in', () => getOffboardingForEmployment(employment.id)));
+    expect(exitView).toMatchObject(expected);
+    const moved = wire(
+      await asUser('chairman@kaizen.co.in', () => transitionOffboarding(offboarding.id, 'START_NOTICE')),
+    );
+    expect(moved).toMatchObject({ ...expected, status: 'NoticePeriodActive' });
   });
 });

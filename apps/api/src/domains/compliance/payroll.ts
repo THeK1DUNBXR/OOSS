@@ -33,7 +33,7 @@ import {
 } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
 import { rupeesToMinor, withDecimalMinor } from '../../platform/wire.js';
-import { minorToRupees } from '../money.js';
+import { minorToRupees, OFFBOARDING_MONEY } from '../money.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan, scopeFor } from '../../platform/permissions.js';
@@ -905,15 +905,6 @@ export { computeGratuity as gratuity, computeBonus as bonus };
 function monthsBetween(from: Date, to: Date): number {
   return (to.getUTCFullYear() - from.getUTCFullYear()) * 12 + (to.getUTCMonth() - from.getUTCMonth());
 }
-
-/** The paise columns of an offboarding, read back as the Decimals a raw row always returned. */
-const OFFBOARDING_MONEY = [
-  'settlementAmount',
-  'gratuityAmount',
-  'leaveEncashmentAmount',
-  'bonusAmount',
-  'noticeRecoveryAmount',
-] as const;
 
 export async function settleOffboarding(offboardingId: string) {
   const auth = currentAuth();
