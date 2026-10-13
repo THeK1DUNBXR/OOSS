@@ -9,8 +9,8 @@ import {
   VERTICALS,
 } from '@kaizen/shared';
 import { handler, str, bool, numeric } from '../lib/http.js';
-import { prisma, num } from '../platform/db.js';
-import { minorString, rupeesOrNull, withDecimalMinor } from '../platform/wire.js';
+import { prisma } from '../platform/db.js';
+import { minorString, rupeesOrNull, withDecimalMinor, withRupeeWire } from '../platform/wire.js';
 import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney } from '../platform/permissions.js';
@@ -82,7 +82,8 @@ router.get(
         priceBookId: p.priceBookId,
         priceBookName: p.priceBookName,
         currency: p.currency,
-        unitPrice: money ? num(p.unitPrice) : null,
+        unitPrice: money ? rupeesOrNull(p.unitPriceMinor) : null,
+        unitPriceMinor: money ? minorString(p.unitPriceMinor) : null,
         billingFrequency: p.billingFrequency,
         minQuantity: p.minQuantity,
         maxDiscountPct: p.maxDiscountPct,
@@ -130,10 +131,11 @@ router.get(
     await assertCan({ resource: 'price_book_entries', verb: 'view' });
     // Every version, including superseded ones — a quote must stay reproducible
     // against the exact version it was built on.
-    return prisma.priceBookEntry.findMany({
+    const entries = await prisma.priceBookEntry.findMany({
       where: { offeringId: req.params.id },
       orderBy: [{ priceBookId: 'asc' }, { version: 'desc' }],
     });
+    return entries.map((e) => withRupeeWire(e, ['unitPrice']));
   }),
 );
 
@@ -151,7 +153,7 @@ router.post(
       priceBookName: z.string().optional(),
     });
     const entry = await publishPrice({ offeringId: req.params.id, ...schema.parse(req.body) });
-    res.status(201).json(entry);
+    res.status(201).json(withRupeeWire(entry, ['unitPrice']));
     return undefined;
   }),
 );
@@ -247,9 +249,12 @@ router.get(
       version: q.version,
       status: q.status,
       currency: q.currency,
-      subtotal: money ? num(q.subtotal) : null,
-      discountTotal: money ? num(q.discountTotal) : null,
-      grandTotal: money ? num(q.grandTotal) : null,
+      subtotal: money ? rupeesOrNull(q.subtotalMinor) : null,
+      subtotalMinor: money ? minorString(q.subtotalMinor) : null,
+      discountTotal: money ? rupeesOrNull(q.discountTotalMinor) : null,
+      discountTotalMinor: money ? minorString(q.discountTotalMinor) : null,
+      grandTotal: money ? rupeesOrNull(q.grandTotalMinor) : null,
+      grandTotalMinor: money ? minorString(q.grandTotalMinor) : null,
       issuedAt: q.issuedAt?.toISOString() ?? null,
       validUntil: q.validUntil?.toISOString() ?? null,
       blockedReason: q.blockedReason,
@@ -260,12 +265,15 @@ router.get(
         priceBookEntryVersion: l.priceBookEntryVersion,
         offeringName: l.priceBookEntry.offering.name,
         quantity: l.quantity,
-        listUnitPrice: money ? num(l.listUnitPrice) : null,
+        listUnitPrice: money ? rupeesOrNull(l.listUnitPriceMinor) : null,
+        listUnitPriceMinor: money ? minorString(l.listUnitPriceMinor) : null,
         discountPct: l.discountPct,
         maxDiscountPct: l.priceBookEntry.maxDiscountPct,
         overCeiling: l.discountPct > l.priceBookEntry.maxDiscountPct,
-        discountAmount: money ? num(l.discountAmount) : null,
-        lineTotal: money ? num(l.lineTotal) : null,
+        discountAmount: money ? rupeesOrNull(l.discountAmountMinor) : null,
+        discountAmountMinor: money ? minorString(l.discountAmountMinor) : null,
+        lineTotal: money ? rupeesOrNull(l.lineTotalMinor) : null,
+        lineTotalMinor: money ? minorString(l.lineTotalMinor) : null,
       })),
     }));
   }),
@@ -288,7 +296,7 @@ router.post(
     });
     const input = schema.parse(req.body);
     const quote = await createQuote(input.opportunityId, input.lines);
-    res.status(201).json(quote);
+    res.status(201).json(withRupeeWire(quote, ['subtotal', 'discountTotal', 'grandTotal']));
     return undefined;
   }),
 );
@@ -297,7 +305,8 @@ router.post(
   '/quotes/:id/issue',
   handler(async (req) => {
     const validUntil = req.body?.validUntil ? new Date(req.body.validUntil) : undefined;
-    return issueQuote(req.params.id, validUntil);
+    const result = await issueQuote(req.params.id, validUntil);
+    return { ...result, quote: withRupeeWire(result.quote, ['subtotal', 'discountTotal', 'grandTotal']) };
   }),
 );
 
