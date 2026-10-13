@@ -10,6 +10,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, date, dateTime, money } from '../../lib/api.js';
+import { endpoints } from '../../lib/client.js';
 import { useSession } from '../../lib/session.js';
 import {
   Card,
@@ -217,19 +218,10 @@ function SecurityTab() {
 // Registrations
 // ---------------------------------------------------------------------------
 
-interface CompanyProfileView {
-  legalName: string;
-  gstin: string | null;
-  pan: string | null;
-  cin: string | null;
-  tan: string | null;
-  udyamNumber: string | null;
-}
-
 function RegistrationsTab() {
   const profile = useQuery({
     queryKey: ['company-profile'],
-    queryFn: () => api.get<CompanyProfileView>('/books/company-profile'),
+    queryFn: () => endpoints.books.companyProfile(),
   });
   if (profile.isLoading) return <Loading />;
   if (!profile.data) return <EmptyState message="No company profile yet." />;

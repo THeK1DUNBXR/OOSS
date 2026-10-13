@@ -8,8 +8,8 @@
 import { useState } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
-import type { DecisionView } from '@kaizen/shared';
 import { api, date, moneyMinor, relative, titleCase } from '../lib/api.js';
+import { endpoints } from '../lib/client.js';
 import {
   Card,
   ContributionBar,
@@ -43,7 +43,7 @@ export function Decisions() {
     error,
   } = useQuery({
     queryKey: ['decisions'],
-    queryFn: () => api.get<DecisionView[]>('/command/decisions'),
+    queryFn: () => endpoints.command.decisions(),
   });
 
   const { data: calibration } = useQuery({

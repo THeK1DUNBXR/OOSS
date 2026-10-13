@@ -464,7 +464,7 @@
 
 **`packages/shared/src/ai.ts`** (406 lines) — AI_TIERS:11 · AiTierCode:57 · AI_TIER_BY_CODE:59 · HARD_PROHIBITIONS:68 · ProhibitionCode:99 · AI_PROHIBITED_ACTIONS:102 · AiTouchpoint:133 · AI_TOUCHPOINTS:147 · AuthorityBounds:392 · isProhibitedForAgent:403
 
-**`packages/shared/src/api.ts`** (1702 lines) — ApiErrorBody:13 · Paged:25 · WithheldEntry:37 · Filtered:42 · AffiliationSummary:47 · SessionUser:61 · TENANT_KINDS:92 · TenantKind:93 · EntityOption:100 · EntitySelectionResponse:112 · TenantConfig:123 · TENANT_TIERS:153 · TenantTier:154 · TENANT_FEATURES:156 · TenantFeature:167 · INDIA_INFERENCE_REGIONS:169 · GLOBAL_INFERENCE_REGIONS:170 · IndiaInferenceRegion:171 · InferenceRegion:172 · TENANT_ONBOARDING_STATES:174 · TenantOnboardingState:183 · TenantOnboardingEvent:185 · TenantOnboardingStateRecord:188 · TENANT_ONBOARDING_TRANSITIONS:212 · resolveTenantOnboardingTransition:230 · nextTenantOnboardingState:247 · tenantOnboardingStepFor:255 · AuthorityGrantView:268 · LoginResponse:277 · LoginResult:283 · loginNeedsEntitySelection:285 · SURFACE_ARCHETYPES:293 · SurfaceArchetype:294 · NavNodeView:296 · RELEVANCE_BANDS:310 · RelevanceBand:318 · RankedItem:320 · HealthFactorView:331 · HealthScoreView:346 · DeltaItem:363 · NotMeasuredFigure:383 · WhatChangedResponse:389 · ExceptionView:405 · EvidencePackView:430 · DecisionView:444 · AutomationDigestRow:469 · AuthorityInForceRow:484 · CommandCenterResponse:496 · PipelineStageView:515 · PipelineTransitionView:529 · PipelineView:538 · PersonView:556 · EmployeeProfileUpdateInput:584 · DedupCandidate:603 · OrganizationView:616 · AccountView:634 · InstitutionProfileView:646 · LeadView:663 · OpportunityView:699 · RoutingCandidateScore:745 · RoutingAuditView:756 · InteractionView:765 · OfferingView:792 · PriceBookEntryView:812 · QuoteLineView:829 · QuoteView:843 · AgreementView:861 · WinLossReviewView:891 · InvoiceView:921 · InvoiceLineView:976 · InvoiceDocumentView:1006 · ReceiptView:1196 · ReceiptDocumentView:1226 · FinalInvoiceView:1296 · FinalInvoiceDocumentView:1318 · GstFilingView:1406 · CourseView:1427 · TimelineEntryView:1468 · LearnerTimelineView:1485 · CompanyProfileView:1538 · PaymentView:1565 · ReceivablesSummary:1594 · EventView:1610 · AuditRecordView:1635 · JobRunView:1647 · AgentView:1661 · AgentActionView:1674 · NotificationView:1691
+**`packages/shared/src/api.ts`** (1705 lines) — ApiErrorBody:13 · Paged:25 · WithheldEntry:37 · Filtered:42 · AffiliationSummary:47 · SessionUser:61 · TENANT_KINDS:92 · TenantKind:93 · EntityOption:100 · EntitySelectionResponse:112 · TenantConfig:123 · TENANT_TIERS:153 · TenantTier:154 · TENANT_FEATURES:156 · TenantFeature:167 · INDIA_INFERENCE_REGIONS:169 · GLOBAL_INFERENCE_REGIONS:170 · IndiaInferenceRegion:171 · InferenceRegion:172 · TENANT_ONBOARDING_STATES:174 · TenantOnboardingState:183 · TenantOnboardingEvent:185 · TenantOnboardingStateRecord:188 · TENANT_ONBOARDING_TRANSITIONS:212 · resolveTenantOnboardingTransition:230 · nextTenantOnboardingState:247 · tenantOnboardingStepFor:255 · AuthorityGrantView:268 · LoginResponse:277 · LoginResult:283 · loginNeedsEntitySelection:285 · SURFACE_ARCHETYPES:293 · SurfaceArchetype:294 · NavNodeView:296 · RELEVANCE_BANDS:310 · RelevanceBand:318 · RankedItem:320 · HealthFactorView:331 · HealthScoreView:346 · DeltaItem:363 · NotMeasuredFigure:383 · WhatChangedResponse:389 · ExceptionView:405 · EvidencePackView:430 · DecisionView:444 · AutomationDigestRow:469 · AuthorityInForceRow:484 · CommandCenterResponse:496 · PipelineStageView:515 · PipelineTransitionView:529 · PipelineView:538 · PersonView:556 · EmployeeProfileUpdateInput:584 · DedupCandidate:603 · OrganizationView:616 · AccountView:634 · InstitutionProfileView:646 · LeadView:663 · OpportunityView:699 · RoutingCandidateScore:745 · RoutingAuditView:756 · InteractionView:765 · OfferingView:792 · PriceBookEntryView:812 · QuoteLineView:829 · QuoteView:843 · AgreementView:861 · WinLossReviewView:891 · InvoiceView:921 · InvoiceLineView:976 · InvoiceDocumentView:1006 · ReceiptView:1196 · ReceiptDocumentView:1226 · FinalInvoiceView:1296 · FinalInvoiceDocumentView:1318 · GstFilingView:1406 · CourseView:1427 · TimelineEntryView:1468 · LearnerTimelineView:1485 · CompanyProfileView:1538 · PaymentView:1568 · ReceivablesSummary:1597 · EventView:1613 · AuditRecordView:1638 · JobRunView:1650 · AgentView:1664 · AgentActionView:1677 · NotificationView:1694
 
 **`packages/shared/src/board.ts`** (336 lines) — BOARD_MEMBER_ROLES:15 · BoardMemberRole:22 · BOARD_MEMBER_ROLE_LABELS:24 · VOTING_BOARD_ROLES:33 · BOARD_MEMBER_STATUSES:35 · BoardMemberStatus:36 · MEETING_KINDS:38 · MeetingKind:39 · MEETING_KIND_LABELS:41 · MEETING_MODES:48 · MeetingMode:49 · MEETING_MODE_LABELS:51 · MEETING_STATUSES:57 · MeetingStatus:66 · MEETING_STATUS_LABELS:68 · RESOLUTION_KINDS:78 · ResolutionKind:79 · RESOLUTION_KIND_LABELS:81 · RESOLUTION_SUBJECTS:87 · ResolutionSubject:105 · RESOLUTION_SUBJECT_LABELS:107 · RESOLUTION_SUBJECTS_REQUIRING_MEETING:132 · RESOLUTION_PASSED_BY:145 · ResolutionPassedBy:146 · RESOLUTION_OUTCOMES:148 · ResolutionOutcome:149 · RESOLUTION_OUTCOME_LABELS:151 · VOTE_CHOICES:160 · VoteChoice:161 · VOTE_CHOICE_LABELS:163 · BOARD_PACK_ITEM_KINDS:169 · BoardPackItemKind:178 · BOARD_PACK_ITEM_KIND_LABELS:180 · COMPLIANCE_ITEM_STATUSES:190 · ComplianceItemStatus:191 · COMPLIANCE_ITEM_STATUS_LABELS:193 · quorumFor:205 · meetingDemandThreshold:210 · BoardMemberView:218 · BoardMeetingAttendee:234 · BoardMeetingAgendaItem:240 · BoardMeetingView:247 · ResolutionView:272 · VoteView:295 · ComplianceItemView:305 · BoardPackItemView:321 · BoardPackView:331
 
@@ -580,7 +580,7 @@
 
 **`apps/web/src/pages/ChangePassword.tsx`** (119 lines) — ChangePassword:17
 
-**`apps/web/src/pages/CommandCenter.tsx`** (820 lines) — CommandCenter:30
+**`apps/web/src/pages/CommandCenter.tsx`** (821 lines) — CommandCenter:31
 
 **`apps/web/src/pages/Commercial.tsx`** (966 lines) — Offerings:35 · Quotes:220 · Proposals:335 · Agreements:448 · Approvals:638 · WinLoss:735
 
@@ -592,17 +592,17 @@
 
 **`apps/web/src/pages/Executive.tsx`** (854 lines) — Executive:283
 
-**`apps/web/src/pages/FinalInvoiceDocument.tsx`** (302 lines) — FinalInvoiceDocument:43 · FinalInvoices:201
+**`apps/web/src/pages/FinalInvoiceDocument.tsx`** (297 lines) — FinalInvoiceDocument:38 · FinalInvoices:196
 
 **`apps/web/src/pages/Finance.tsx`** (688 lines) — Invoices:60 · Payments:446 · Receivables:623
 
 **`apps/web/src/pages/FounderView.tsx`** (156 lines) — FounderView:43
 
-**`apps/web/src/pages/GstReturns.tsx`** (1107 lines) — GstReturns:71 · CompanyDetails:722
+**`apps/web/src/pages/GstReturns.tsx`** (1108 lines) — GstReturns:72 · CompanyDetails:723
 
 **`apps/web/src/pages/Import.tsx`** (811 lines) — ImportPage:115
 
-**`apps/web/src/pages/InvoiceDocument.tsx`** (409 lines) — InvoiceDocument:61
+**`apps/web/src/pages/InvoiceDocument.tsx`** (410 lines) — InvoiceDocument:62
 
 **`apps/web/src/pages/Leads.tsx`** (489 lines) — Leads:33 · LeadDetail:322
 
@@ -620,7 +620,7 @@
 
 **`apps/web/src/pages/Pipeline.tsx`** (305 lines) — Pipeline:67
 
-**`apps/web/src/pages/ReceiptDocument.tsx`** (261 lines) — ReceiptDocument:42 · Receipts:169
+**`apps/web/src/pages/ReceiptDocument.tsx`** (256 lines) — ReceiptDocument:37 · Receipts:164
 
 **`apps/web/src/pages/Start.tsx`** (337 lines) — Start:46 · SetupBanner:312
 
@@ -682,7 +682,7 @@
 
 **`apps/web/src/pages/compliance/Calendar.tsx`** (429 lines) — ComplianceCalendar:96
 
-**`apps/web/src/pages/compliance/Corporate.tsx`** (800 lines) — ComplianceCorporate:42
+**`apps/web/src/pages/compliance/Corporate.tsx`** (792 lines) — ComplianceCorporate:43
 
 **`apps/web/src/pages/compliance/Gst.tsx`** (667 lines) — ComplianceGst:34
 
@@ -784,7 +784,7 @@
 
 **`apps/web/src/pages/kaizenInvoice/LedgerSheet.tsx`** (279 lines) — LedgerHead:60 · InfoStrip:82 · InfoGrid:102 · InfoRow:106 · ScheduleStrip:115 · DateBoxGrid:134 · DateBoxItem:142 · LedgerTable:153 · TotalsStrip:210 · NoteStrip:225 · SignStrip:246 · Watermark:256 · LedgerSheet:260
 
-**`apps/web/src/pages/kaizenInvoice/NewInvoice.tsx`** (923 lines) — NewInvoice:126
+**`apps/web/src/pages/kaizenInvoice/NewInvoice.tsx`** (924 lines) — NewInvoice:127
 
 **`apps/web/src/pages/kaizenInvoice/PrintPortal.tsx`** (49 lines) — PrintPortal:32
 

@@ -27,6 +27,7 @@ import {
   type PaymentType,
 } from '@kaizen/shared';
 import { api, date, money } from '../lib/api.js';
+import { endpoints } from '../lib/client.js';
 import { Card, ErrorBox, Loading } from '../components/ui.js';
 import { messageOf } from '../components/forms.js';
 import { fmtDate, fmtINR } from './kaizenInvoice/calc.js';
@@ -70,7 +71,7 @@ export function InvoiceDocument() {
     error: loadError,
   } = useQuery({
     queryKey: ['invoice-document', id],
-    queryFn: () => api.get<InvoiceDocumentView>(`/finance/invoices/${id}/document`),
+    queryFn: () => endpoints.finance.invoiceDocument(id!),
     enabled: Boolean(id),
   });
 

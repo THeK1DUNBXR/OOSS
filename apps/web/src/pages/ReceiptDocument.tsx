@@ -16,14 +16,9 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  amountInWords,
-  PAYMENT_MODE_LABELS,
-  type PaymentMode,
-  type ReceiptDocumentView,
-  type ReceiptView,
-} from '@kaizen/shared';
-import { api, dateTime, money } from '../lib/api.js';
+import { amountInWords, PAYMENT_MODE_LABELS, type PaymentMode } from '@kaizen/shared';
+import { dateTime, money } from '../lib/api.js';
+import { endpoints } from '../lib/client.js';
 import { Card, EmptyState, ErrorBox, Loading, Metric, PageHeader, RecordCode } from '../components/ui.js';
 import { fmtDate, fmtINR } from './kaizenInvoice/calc.js';
 import {
@@ -44,7 +39,7 @@ export function ReceiptDocument() {
   const [printKey, setPrintKey] = useState<number | null>(null);
   const { data, isLoading, error } = useQuery({
     queryKey: ['receipt-document', id],
-    queryFn: () => api.get<ReceiptDocumentView>(`/finance/receipts/${id}/document`),
+    queryFn: () => endpoints.finance.receiptDocument(id!),
     enabled: Boolean(id),
   });
 
@@ -173,7 +168,7 @@ export function Receipts() {
     error,
   } = useQuery({
     queryKey: ['receipts'],
-    queryFn: () => api.get<ReceiptView[]>('/finance/receipts'),
+    queryFn: () => endpoints.finance.receipts(),
   });
 
   if (error) return <ErrorBox error={error} />;

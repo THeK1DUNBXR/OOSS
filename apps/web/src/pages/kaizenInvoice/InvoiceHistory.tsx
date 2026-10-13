@@ -10,8 +10,8 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import type { InvoiceView } from '@kaizen/shared';
-import { api, date } from '../../lib/api.js';
+import { date } from '../../lib/api.js';
+import { endpoints } from '../../lib/client.js';
 import { ErrorBox, Loading, PageHeader } from '../../components/ui.js';
 import { KI_APP_CSS } from './style.js';
 import { fmtINR } from './calc.js';
@@ -24,7 +24,7 @@ export function InvoiceHistory() {
     error,
   } = useQuery({
     queryKey: ['invoices'],
-    queryFn: () => api.get<InvoiceView[]>('/finance/invoices'),
+    queryFn: () => endpoints.finance.invoices(),
   });
 
   // This screen is the course-sale ledger specifically — every invoice this
