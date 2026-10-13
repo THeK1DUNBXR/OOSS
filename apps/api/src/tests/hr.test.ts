@@ -43,6 +43,7 @@ import { recordEvidence, listEvidence } from '../domains/performance.js';
 import { openPayrollRun, transitionPayrollRun, payrollCostByDivision } from '../domains/payroll.js';
 import { emittedEvents, setEventCapture } from '../platform/eventBus.js';
 import { bigintReplacer } from '../platform/wire.js';
+import { approvePayrollRules } from './hcm/payrollLedgerFixture.js';
 
 let TENANT: string;
 
@@ -51,6 +52,8 @@ const PAYROLL_PERIOD = '2026-03';
 
 beforeAll(async () => {
   TENANT = await tenantId();
+  // The 2026-03 run is computed by the freeze test below, from the APPROVED statutory rules (FX-73).
+  await approvePayrollRules(TENANT, 'chairman@kaizen.co.in');
 });
 
 async function employmentFor(email: string) {

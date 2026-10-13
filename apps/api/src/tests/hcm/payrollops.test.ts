@@ -23,7 +23,7 @@ import {
 import { hire, transitionEmployment } from '../../domains/employment.js';
 import { encryptField, readRegulated } from '../../domains/compliance/privacy.js';
 import { asSystem } from '../../platform/context.js';
-import { approvePayrollRules, readyPayrollPosting } from './payrollLedgerFixture.js';
+import { approvePayrollRules, readyPayrollPosting, recordStatutoryLines } from './payrollLedgerFixture.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import {
   createPayItem,
@@ -414,6 +414,15 @@ describe('payroll journal', () => {
     await unscopedPrisma.payrollInstruction.updateMany({
       where: { tenantId: TENANT, payrollRunId: run.id },
       data: { pfEmployeeMinor: 600_000n },
+    });
+    // Posting refuses a run whose statutory amounts have no statutory lines (payrollAccrual.ts), so the
+    // hand-built run gets the lines computeInstruction would have written for that 6,000 PF deduction.
+    await recordStatutoryLines({
+      tenantId: TENANT,
+      payrollRunId: run.id,
+      payPeriod: '2032-03',
+      employmentId: a.employment.id,
+      amounts: { PF_EMPLOYEE: 600_000n },
     });
     // The employee above needs a ledger entity, and 2032-03 an open period.
     await readyPayrollPosting(TENANT, {

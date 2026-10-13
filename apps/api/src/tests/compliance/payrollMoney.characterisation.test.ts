@@ -29,6 +29,7 @@ import {
   setEngagementType,
   setBankDetails,
   computeInstruction,
+  createMinimumWageTable,
 } from '../../domains/compliance/payroll.js';
 import { transitionPayrollRun, getPayrollRun } from '../../domains/payroll.js';
 import {
@@ -98,8 +99,11 @@ const rowsSorted = (s: string, headerLines = 0) => {
   const lines = text(s).split('\n');
   return [...lines.slice(0, headerLines), ...lines.slice(headerLines).sort()].join('\n');
 };
-/** A pay period's year is chosen at run time (see RUN_YEAR); its month is the fixed fact. */
-const PERIOD_YEAR = /\b20\d\d-(\d\d)\b/g;
+/**
+ * A pay period's year is chosen at run time (see RUN_YEAR), and the runs move past 2099 once the other
+ * payroll suite has run here, so any year from 2000 to 2999 is masked. Its month is the fixed fact.
+ */
+const PERIOD_YEAR = /\b2\d{3}-(\d\d)\b/g;
 /** A bank advice's reference: the run's record code and a random suffix. */
 const PAYMENT_REF = /PRN-\d{4}-\d+\/[a-z0-9]+/g;
 
@@ -107,6 +111,8 @@ const PAYMENT_REF = /PRN-\d{4}-\d+\/[a-z0-9]+/g;
 const FIXTURE_SOURCE = 'fixture: S10';
 let TENANT: string;
 let RUN_YEAR = 2070;
+/** The first day of this file's zero minimum wage floor, removed after the file. */
+let FLOOR_FROM: Date;
 let seq = 0;
 const stamp = () => `${Date.now()}-${++seq}`;
 // Each run takes a pay period no earlier run in this tenant has used (a run is
@@ -117,12 +123,24 @@ beforeAll(async () => {
   TENANT = await tenantId();
   // computeInstruction reads the approved statutory rules, not the rate tables (S10).
   await approvePayrollRules(TENANT, 'chairman@kaizen.co.in');
+  // No upper bound: payroll.test.ts runs its periods in 2100 and later on this same database, and a
+  // year below its runs would collide with them (payrollRun is unique on tenant and pay period).
   const latest = await unscopedPrisma.payrollRun.findFirst({
-    where: { tenantId: TENANT, payPeriod: { gte: '2070-01', lt: '2100-01' } },
+    where: { tenantId: TENANT, payPeriod: { gte: '2070-01' } },
     orderBy: { payPeriod: 'desc' },
     select: { payPeriod: true },
   });
   if (latest) RUN_YEAR = parseInt(latest.payPeriod.slice(0, 4), 10) + 1;
+  // A zero minimum wage floor for this file's own pay months, so the CMP-PAY-005 check cannot refuse its
+  // approvals. The latest floor on or before a pay month wins, and payroll.test.ts's CMP-PAY-005 test
+  // files 9,99,999 for its months, which would refuse this file's approval if it is still in the table.
+  FLOOR_FROM = new Date(`${period('01')}-01T00:00:00Z`);
+  await unscopedPrisma.minimumWageTable.deleteMany({
+    where: { tenantId: TENANT, state: 'Tamil Nadu', category: 'general', effectiveFrom: FLOOR_FROM },
+  });
+  await asUser('finance@kaizen.co.in', () =>
+    createMinimumWageTable({ state: 'Tamil Nadu', category: 'general', monthlyAmount: 0, effectiveFrom: FLOOR_FROM }),
+  );
   await unscopedPrisma.statutoryRule.deleteMany({
     where: { tenantId: TENANT, source: { startsWith: FIXTURE_SOURCE } },
   });
@@ -164,6 +182,12 @@ afterAll(async () => {
   await unscopedPrisma.statutoryRule.deleteMany({
     where: { tenantId: TENANT, source: { startsWith: FIXTURE_SOURCE } },
   });
+  // Only when beforeAll set the floor: an undefined date would match every Tamil Nadu floor in the tenant.
+  if (FLOOR_FROM) {
+    await unscopedPrisma.minimumWageTable.deleteMany({
+      where: { tenantId: TENANT, state: 'Tamil Nadu', category: 'general', effectiveFrom: FLOOR_FROM },
+    });
+  }
 });
 
 async function makeEmployee(label: string, hireDate = '2020-01-01') {
@@ -293,6 +317,21 @@ function instructionsOf(run: { instructions: Array<Record<string, unknown>> }) {
     .sort((a, b) => a.employee.localeCompare(b.employee));
 }
 
+/**
+ * The rule ids a computed instruction records in computedFrom (FX-73) are random per database, so the
+ * snapshot leaves them out. The batch test checks them against the APPROVED rules in force instead.
+ */
+function withoutRuleIds(row: Record<string, unknown>) {
+  const {
+    pfRuleId: _pf,
+    esiRuleId: _esi,
+    ptRuleId: _pt,
+    lwfRuleId: _lwf,
+    ...computedFrom
+  } = (row.computedFrom ?? {}) as Record<string, unknown>;
+  return { ...row, computedFrom };
+}
+
 function pick(row: Record<string, unknown>, keys: readonly string[]) {
   const out: Record<string, unknown> = {};
   for (const k of keys) out[k] = row[k] ?? null;
@@ -337,12 +376,27 @@ describe('payroll money: the statutory run, exports, payslips, journal and bank 
     await asUser('chairman@kaizen.co.in', () => transitionPayrollRun(run.id, 'APPROVE'));
 
     const view = await asUser('chairman@kaizen.co.in', () => getPayrollRun(run.id));
+    // Each instruction names the APPROVED rule it was computed from, the one in force for the pay month
+    // (the open-ended row, since this file's months are after every bounded history row).
+    const ruleIdOf = async (key: string) =>
+      (
+        await unscopedPrisma.statutoryRule.findFirstOrThrow({
+          where: { tenantId: TENANT, key, status: 'APPROVED', effectiveTo: null },
+        })
+      ).id;
+    const expectedRuleIds = {
+      pfRuleId: await ruleIdOf('pf.rates'),
+      esiRuleId: await ruleIdOf('esi.rates'),
+      ptRuleId: await ruleIdOf('pt.tn_slabs'),
+      lwfRuleId: await ruleIdOf('lwf.tn_contribution'),
+    };
+    for (const i of instructionsOf(view as never)) expect(i.computedFrom).toMatchObject(expectedRuleIds);
     expect(
       wire({
         status: view.status,
         grossTotal: wire(view.grossTotal),
         netTotal: wire(view.netTotal),
-        instructions: instructionsOf(view as never),
+        instructions: instructionsOf(view as never).map(withoutRuleIds),
       }),
     ).toMatchInlineSnapshot(`
       {

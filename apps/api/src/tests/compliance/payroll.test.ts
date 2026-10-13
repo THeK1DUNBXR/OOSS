@@ -390,34 +390,43 @@ describe('payroll runs against the dated tables (real database)', () => {
     // every other seeded employee lacking a salary structure of their own,
     // a real run would trip the "not computed" gate first rather than the
     // one this test is about.
+    const floorFrom = new Date(`${period('03')}-01T00:00:00Z`);
     await asUser('finance@kaizen.co.in', () =>
       createMinimumWageTable({
         state: 'Tamil Nadu',
         category: 'general',
         monthlyAmount: 999_999,
-        effectiveFrom: new Date(`${period('03')}-01T00:00:00Z`),
+        effectiveFrom: floorFrom,
       }),
     );
-    const { employment: emp } = await makeEmployee('below-min-wage');
+    try {
+      const { employment: emp } = await makeEmployee('below-min-wage');
 
-    const rejected = await asUser('finance@kaizen.co.in', async () => {
-      const { runHooks } = await import('../../platform/hooks.js');
-      return expectReject(() =>
-        runHooks('payroll_run.before_approve', {
-          run: { id: 'synthetic-run', preparedById: null, payPeriod: period('03') },
-          instructions: [
-            {
-              id: 'synthetic-instr',
-              computedFrom: { structureId: 'x' },
-              grossAmountMinor: 900_000n,
-              employmentRelationshipId: emp.id,
-            },
-          ],
-          approverPartyId: 'someone-else',
-        }),
-      );
-    });
-    expect(rejected.message).toMatch(/CMP-PAY-005|minimum wage/i);
+      const rejected = await asUser('finance@kaizen.co.in', async () => {
+        const { runHooks } = await import('../../platform/hooks.js');
+        return expectReject(() =>
+          runHooks('payroll_run.before_approve', {
+            run: { id: 'synthetic-run', preparedById: null, payPeriod: period('03') },
+            instructions: [
+              {
+                id: 'synthetic-instr',
+                computedFrom: { structureId: 'x' },
+                grossAmountMinor: 900_000n,
+                employmentRelationshipId: emp.id,
+              },
+            ],
+            approverPartyId: 'someone-else',
+          }),
+        );
+      });
+      expect(rejected.message).toMatch(/CMP-PAY-005|minimum wage/i);
+    } finally {
+      // The floor is the latest row on or before every later pay month in the tenant, so a row left here
+      // refuses the approvals of every suite that runs after this one on the same database.
+      await unscopedPrisma.minimumWageTable.deleteMany({
+        where: { tenantId: TENANT, state: 'Tamil Nadu', category: 'general', effectiveFrom: floorFrom },
+      });
+    }
   });
 
   it('ECR export uses the # ~ # delimited EPFO text format', async () => {

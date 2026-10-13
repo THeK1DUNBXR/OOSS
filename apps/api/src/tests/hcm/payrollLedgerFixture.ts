@@ -58,9 +58,54 @@ const FIXTURE_CITATION =
 const DUTY_EPOCH = new Date('2000-01-01T00:00:00.000Z');
 
 /**
- * Makes the payroll statutory rules APPROVED for a tenant, through the domain path: createStatutoryRule
- * as the approver, then approveStatutoryRule as the approver (the founder, who may approve his own
- * rule, audited as author_is_approver).
+ * The payroll suites run pay months from 2015, and the seeded rules take effect on 2024-04-01. Before
+ * FX-73 each rate was a constant that applied on every date, so these suites were written against one
+ * figure throughout. The fixture therefore approves the same values for a bounded history, from
+ * 2000-01-01 up to the seeded row's own date. The history row ends where the seeded row begins, so it
+ * never overlaps it, and the two can be approved in either order.
+ */
+const HISTORY_FROM = new Date('2000-01-01T00:00:00.000Z');
+
+/**
+ * Makes one rule APPROVED for a tenant, through the domain path: createStatutoryRule as the approver,
+ * then approveStatutoryRule as the approver (the founder, who may approve his own rule, audited as
+ * author_is_approver). Idempotent: an APPROVED row with the same series and dates is left as it is.
+ */
+async function approveFixtureRule(
+  tenantId: string,
+  approverEmail: string,
+  seed: (typeof PAYROLL_RULE_SEEDS)[number],
+  effectiveFrom: Date,
+  effectiveTo: Date | null,
+): Promise<void> {
+  const approved = await unscopedPrisma.statutoryRule.findFirst({
+    where: {
+      tenantId,
+      domain: seed.domain,
+      key: seed.key,
+      jurisdiction: seed.jurisdiction,
+      status: 'APPROVED',
+      effectiveFrom,
+      effectiveTo,
+    },
+  });
+  if (approved) return;
+  const draft = await asUser(approverEmail, () =>
+    createStatutoryRule({
+      domain: seed.domain,
+      key: seed.key,
+      jurisdiction: seed.jurisdiction,
+      effectiveFrom,
+      effectiveTo,
+      value: seed.value,
+      source: seed.source,
+    }),
+  );
+  await asUser(approverEmail, () => approveStatutoryRule(draft.id, { source: FIXTURE_CITATION }));
+}
+
+/**
+ * Makes the payroll statutory rules APPROVED for a tenant, through the domain path (approveFixtureRule).
  *
  * The seed rows stay DRAFT. The G10 check counts every seed-marked row and needs none APPROVED, so the
  * fixture creates its own rows from the same values (PAYROLL_RULE_SEEDS) and approves those.
@@ -80,28 +125,8 @@ export async function approvePayrollRules(tenantId: string, approverEmail: strin
     }
   }
   for (const seed of PAYROLL_RULE_SEEDS) {
-    const approved = await unscopedPrisma.statutoryRule.findFirst({
-      where: {
-        tenantId,
-        domain: seed.domain,
-        key: seed.key,
-        jurisdiction: seed.jurisdiction,
-        status: 'APPROVED',
-        effectiveTo: null,
-      },
-    });
-    if (approved) continue;
-    const draft = await asUser(approverEmail, () =>
-      createStatutoryRule({
-        domain: seed.domain,
-        key: seed.key,
-        jurisdiction: seed.jurisdiction,
-        effectiveFrom: seed.effectiveFrom,
-        value: seed.value,
-        source: seed.source,
-      }),
-    );
-    await asUser(approverEmail, () => approveStatutoryRule(draft.id, { source: FIXTURE_CITATION }));
+    await approveFixtureRule(tenantId, approverEmail, seed, HISTORY_FROM, seed.effectiveFrom);
+    await approveFixtureRule(tenantId, approverEmail, seed, seed.effectiveFrom, null);
   }
 }
 

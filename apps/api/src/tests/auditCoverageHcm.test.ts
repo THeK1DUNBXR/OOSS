@@ -14,6 +14,7 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
+import { istYearMonth } from '@kaizen/shared';
 import { asUser, prisma, tenantId, unscopedPrisma } from './helpers.js';
 import { createJob, createOrgUnit, hire, transitionEmployment } from '../domains/employment.js';
 import { createBenefitPlan } from '../domains/hcm/compensation.js';
@@ -33,6 +34,8 @@ import { runGratuityAccrual } from '../jobs/compliance/payroll.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 
 const CHAIRMAN = 'chairman@kaizen.co.in';
+/** Source prefix on the gratuity factor row this file approves, so it removes only its own. */
+const GRATUITY_FACTOR_SOURCE = 'fixture: auditCoverageHcm';
 
 let TENANT: string;
 
@@ -52,14 +55,26 @@ async function auditRowsFor(subjectType: string, subjectId: string) {
   });
 }
 
-/** A pay period in 2099 that no payroll run has opened yet in this tenant. */
+/**
+ * A pay period from 2099 on that no payroll run has opened yet in this tenant. The suites share one
+ * database and every rerun opens new months, so a fixed twelve months of 2099 run out after a few runs.
+ */
 async function freePayPeriod(): Promise<string> {
-  for (let month = 1; month <= 12; month += 1) {
-    const payPeriod = `2099-${String(month).padStart(2, '0')}`;
-    const taken = await unscopedPrisma.payrollRun.findFirst({ where: { tenantId: TENANT, payPeriod } });
-    if (!taken) return payPeriod;
+  const taken = new Set(
+    (
+      await unscopedPrisma.payrollRun.findMany({
+        where: { tenantId: TENANT, payPeriod: { gte: '2099-01' } },
+        select: { payPeriod: true },
+      })
+    ).map((r) => r.payPeriod),
+  );
+  for (let year = 2099; year < 2200; year += 1) {
+    for (let month = 1; month <= 12; month += 1) {
+      const payPeriod = `${year}-${String(month).padStart(2, '0')}`;
+      if (!taken.has(payPeriod)) return payPeriod;
+    }
   }
-  throw new Error('No free 2099 pay period is left in the test tenant.');
+  throw new Error('No free pay period from 2099 is left in the test tenant.');
 }
 
 /** A person hired into a position of their own, and activated. Runs as the chairman. */
@@ -285,22 +300,59 @@ describe('FX-22 audit coverage: HCM and payroll writes', () => {
   });
 
   it('jobs/compliance/payroll.ts runGratuityAccrual writes one create row per accrual it makes', async () => {
-    await asUser(CHAIRMAN, async () => {
-      const before = new Set(
-        (await unscopedPrisma.gratuityAccrual.findMany({ where: { tenantId: TENANT } })).map((a) => a.id),
-      );
-      await runGratuityAccrual();
-      const created = (await unscopedPrisma.gratuityAccrual.findMany({ where: { tenantId: TENANT } })).filter(
-        (a) => !before.has(a.id),
-      );
-      // Depends on the seeded employees having basic pay and a gratuity rule in
-      // force. If this fails with zero accruals, check those first.
-      expect(created.length).toBeGreaterThan(0);
-      for (const accrual of created) {
-        const rows = await auditRowsFor('gratuity_accrual', accrual.id);
-        expect(rows).toHaveLength(1);
-        expect(rows[0]?.action).toBe('create');
-      }
+    // The job reads the gratuity factor in force today (ruleAt), and refuses each employee when none is
+    // APPROVED. The seeded factor is DRAFT, so this test inserts its own APPROVED row, with the seed's
+    // figure (15 days over 26, Payment of Gratuity Act 1972 s.4(2)). It is removed afterwards, because the
+    // gratuity suite in this database uses the same series for the same dates, and the two would overlap.
+    //
+    // The job is idempotent per IST month, so an accrual already written this month is skipped and not
+    // counted here. The gratuity suite runs the job for this month in the same database, so this
+    // month's rows are cleared first. Otherwise the test would pass or fail on the order of the files.
+    const { year, month } = istYearMonth(new Date());
+    await unscopedPrisma.gratuityAccrual.deleteMany({
+      where: { tenantId: TENANT, asOfDate: new Date(Date.UTC(year, month - 1, 1)) },
     });
+    await unscopedPrisma.statutoryRule.deleteMany({
+      where: { tenantId: TENANT, source: { startsWith: GRATUITY_FACTOR_SOURCE } },
+    });
+    await unscopedPrisma.statutoryRule.create({
+      data: {
+        tenantId: TENANT,
+        domain: 'gratuity',
+        key: 'gratuity.factor',
+        jurisdiction: 'IN',
+        effectiveFrom: new Date('2000-01-01T00:00:00.000Z'),
+        effectiveTo: null,
+        value: { daysPerYear: '15', daysPerMonth: '26' },
+        source: `${GRATUITY_FACTOR_SOURCE} test-local, the seed's 15/26 (Payment of Gratuity Act 1972 s.4(2))`,
+        status: 'APPROVED',
+        createdBy: 'fixture:maker',
+        approvedBy: 'fixture:checker',
+        approvedAt: new Date(),
+      },
+    });
+    try {
+      await asUser(CHAIRMAN, async () => {
+        const before = new Set(
+          (await unscopedPrisma.gratuityAccrual.findMany({ where: { tenantId: TENANT } })).map((a) => a.id),
+        );
+        await runGratuityAccrual();
+        const created = (await unscopedPrisma.gratuityAccrual.findMany({ where: { tenantId: TENANT } })).filter(
+          (a) => !before.has(a.id),
+        );
+        // Depends on the seeded employees having basic pay. If this fails with zero accruals, check the
+        // gratuity rule in force first, then whether the month was already accrued.
+        expect(created.length).toBeGreaterThan(0);
+        for (const accrual of created) {
+          const rows = await auditRowsFor('gratuity_accrual', accrual.id);
+          expect(rows).toHaveLength(1);
+          expect(rows[0]?.action).toBe('create');
+        }
+      });
+    } finally {
+      await unscopedPrisma.statutoryRule.deleteMany({
+        where: { tenantId: TENANT, source: { startsWith: GRATUITY_FACTOR_SOURCE } },
+      });
+    }
   });
 });
