@@ -54,7 +54,7 @@ async function approvedRefund(amount = 500) {
       tenantId: TENANT,
       recordCode: `N-FX33-${randomUUID().slice(0, 8)}`,
       receiptId: 'REC-fixture-0001',
-      amount,
+      amountMinor: BigInt(amount) * 100n,
       reason: 'FX-33 fixture',
       status: 'approved',
       requestedById: 'fx33-requester',

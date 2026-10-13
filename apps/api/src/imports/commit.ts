@@ -14,6 +14,7 @@
 
 import { Prisma, type ImportBatch, type ImportRow } from '@prisma/client';
 import { prisma, unscopedPrisma, dec, type DbTx } from '../platform/db.js';
+import { rupeesToMinor } from '../platform/wire.js';
 import { currentAuth } from '../platform/context.js';
 import { assertCan } from '../platform/permissions.js';
 import { assertCanAssignRole } from '../platform/roleAssignment.js';
@@ -2706,7 +2707,7 @@ async function commitOpeningRegisterRow(data: Record<string, unknown>) {
         name: shareClassName,
         kind: INSTRUMENT_CLASS_KIND[instrument] ?? 'equity',
         instrument,
-        faceValue: dec(faceValue)!,
+        faceValueMinor: rupeesToMinor(faceValue),
       },
     });
   }
@@ -2793,7 +2794,7 @@ async function commitOpeningRegisterRow(data: Record<string, unknown>) {
       shareClassId: shareClass.id,
       toHolderId: holderRow.id,
       count: dec(count)!,
-      pricePerShare: data.pricePerShare == null ? null : dec(Number(data.pricePerShare)),
+      pricePerShareMinor: data.pricePerShare == null ? null : rupeesToMinor(Number(data.pricePerShare)),
       distinctiveFrom,
       distinctiveTo,
       effectiveOn,

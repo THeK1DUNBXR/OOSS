@@ -2280,7 +2280,7 @@ model Document {
   deletedAt       DateTime?
   // ---- Retention, stamp duty and e-signature (workstream H) ----
   retainUntil     DateTime?
-  stampDutyAmount Decimal?  @db.Decimal(14, 2)
+  stampDutyAmountMinor BigInt?
   stampDutyRef    String?
   eSignProvider   String?
   eSignRef        String?
@@ -2343,7 +2343,7 @@ model ShareClass {
   name            String
   kind            String // equity | preference | debenture
   instrument      String // equity | sweat_equity | ccps | ocps | rps | ccd | ocd | ncd | convertible_note | warrant | option | phantom
-  faceValue       Decimal  @db.Decimal(18, 2)
+  faceValueMinor  BigInt
   votesPerShare   Decimal  @default(1) @db.Decimal(24, 6)
   /// Liquidation preference, anti-dilution, pro-rata, board seat, information
   /// rights, dividend rate — shaped per instrument, so a free-form object
@@ -2459,7 +2459,7 @@ model ShareTransaction {
   toHolderId   String?
 
   count         Decimal  @db.Decimal(24, 6)
-  pricePerShare Decimal? @db.Decimal(18, 2)
+  pricePerShareMinor BigInt?
 
   /// Assigned by `makeEffective`, gaplessly per class — never caller-supplied.
   distinctiveFrom BigInt?
@@ -2556,7 +2556,7 @@ model ShareCertificate {
   signatories        Json   @default("[]")
   holderNameSnapshot String
 
-  stampDutyPaid   Decimal?  @db.Decimal(18, 2)
+  stampDutyPaidMinor BigInt?
   stampDutyPaidOn DateTime?
 
   /// Names the spin-out batch that issued this certificate (equity-portal
@@ -2613,7 +2613,7 @@ model Valuation {
 
   valuerName      String?
   perShareByClass Json
-  equityValue     Decimal?  @db.Decimal(18, 2)
+  equityValueMinor BigInt?
   reportRef       String?
   validUntil      DateTime?
   note            String?
@@ -2653,11 +2653,11 @@ model FundingRound {
   openedOn DateTime?
   closedOn DateTime?
 
-  preMoneyValuation    Decimal? @db.Decimal(18, 2)
-  postMoneyValuation   Decimal? @db.Decimal(18, 2)
+  preMoneyValuationMinor BigInt?
+  postMoneyValuationMinor BigInt?
   /// What was actually raised, computed by `closeRound` from the round's own
   /// effective allotments — never entered by hand.
-  raised               Decimal? @db.Decimal(18, 2)
+  raisedMinor          BigInt?
   /// `{ [shareClassId]: pricePerShare }` — the price each class is offered at
   /// under this round, distinct from any one transaction's own price so a
   /// round can be quoted before the first allotment is proposed against it.
@@ -2905,7 +2905,7 @@ model EsopPlan {
   /// already running under the status it was created with.
   isDpiitRecognised Boolean @default(false)
 
-  exercisePriceDefault Decimal? @db.Decimal(18, 2)
+  exercisePriceDefaultMinor BigInt?
   /// `{cliffMonths, totalMonths, frequency: 'monthly'|'quarterly'|'annual'}`.
   vestingDefault       Json
 
@@ -2936,7 +2936,7 @@ model OptionGrant {
 
   grantedOn     DateTime
   count         Decimal  @db.Decimal(24, 6)
-  exercisePrice Decimal  @db.Decimal(18, 2)
+  exercisePriceMinor BigInt
   /// `{cliffMonths, schedule: [{on, count}]}`.
   vesting       Json
 
@@ -3013,13 +3013,13 @@ model OptionExercise {
 
   requestedOn   DateTime
   count         Decimal  @db.Decimal(24, 6)
-  exercisePrice Decimal  @db.Decimal(18, 2)
+  exercisePriceMinor BigInt
 
-  fmvPerShare    Decimal? @db.Decimal(18, 2)
+  fmvPerShareMinor BigInt?
   fmvBasis       String   @default("none") // merchant_banker | none
   fmvValuationId String?
 
-  perquisite     Decimal? @db.Decimal(18, 2)
+  perquisiteMinor BigInt?
   perquisiteNote String?
   taxDeferred    Boolean  @default(false)
 
