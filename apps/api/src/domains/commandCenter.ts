@@ -31,7 +31,7 @@ import {
 import { createHash } from 'node:crypto';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
-import { wireInt } from '../platform/wire.js';
+import { rupeesOrNull, wireInt } from '../platform/wire.js';
 import { latestPulse } from './health.js';
 import { findThreshold } from './thresholds.js';
 
@@ -435,7 +435,7 @@ export async function liveAndHandled(windowHours = 24) {
         principalLabel: g.principalLabel ?? g.principalId,
         principalType: g.principalType,
         authorityClass: g.authorityClass,
-        ceilingValue: num(g.ceilingValue),
+        ceilingValue: rupeesOrNull(g.ceilingValueMinor),
         currency: g.currency,
         status: g.status,
         dependentAutomations: definitions

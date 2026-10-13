@@ -26,6 +26,7 @@ import { prisma } from './db.js';
 import { currentAuth } from './context.js';
 import { emit } from './eventBus.js';
 import { assertCan, evaluate, resolveAuthorityCeiling } from './permissions.js';
+import { rupeesToMinorOrNull } from './wire.js';
 import { ApiError } from './errors.js';
 import { notify, raiseException } from './exceptions.js';
 import { auditWrite, registerGovernedEntities } from './audit.js';
@@ -232,7 +233,7 @@ export async function evaluateApprovalGate(
       action,
       resource,
       requestedById: auth.partyId ?? 'system',
-      requestedValue: subject.commercialValue ?? undefined,
+      requestedValueMinor: rupeesToMinorOrNull(subject.commercialValue ?? undefined),
       currency: subject.currency,
       resolvedApproverId: approver?.partyId ?? null,
       resolvedApproverRole: approverRole,

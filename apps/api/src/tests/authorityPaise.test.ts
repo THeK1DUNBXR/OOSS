@@ -34,7 +34,7 @@ beforeAll(async () => {
       principalType: 'agent',
       principalId: agent.id,
       authorityClass: AUTHORITY_CLASS,
-      ceilingValue: 0.3,
+      ceilingValueMinor: 30n,
       currency: 'INR',
       status: 'active',
       effectiveFrom: new Date('2020-01-01T00:00:00.000Z'),
@@ -80,6 +80,6 @@ describe('FX-32: the HOW MUCH gate compares paise, and refuses anything that is 
     const grant = await unscopedPrisma.authorityGrant.findFirstOrThrow({
       where: { authorityClass: AUTHORITY_CLASS, principalId: agentId },
     });
-    expect(grant.ceilingValue?.toFixed(2)).toBe('0.30');
+    expect(grant.ceilingValueMinor).toBe(30n);
   });
 });

@@ -1654,7 +1654,7 @@ describe('CRM-LEAD-006 — the forecast category state machine', () => {
           stageKey: shaped.stageKey,
           forecastCategory: 'best_case',
           expectedCloseDate: new Date(Date.now() - 10 * 86_400_000),
-          expectedValue: 100_000,
+          expectedValueMinor: 10000000n,
         },
       });
 
@@ -1871,7 +1871,7 @@ describe('CRM-MOU-002 — the approval gate', () => {
           title: 'Self-dealing probe',
           organizationId: (await prisma.organization.findFirstOrThrow({})).id,
           status: 'proposed',
-          commercialValue: 100_000,
+          commercialValueMinor: 10000000n,
           currency: 'INR',
           // The acting principal is the owner.
           ownerPartyId: p.partyId,

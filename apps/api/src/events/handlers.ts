@@ -14,7 +14,8 @@
  */
 
 import { EVENTS, allocate, type EventEnvelope } from '@kaizen/shared';
-import { prisma, num } from '../platform/db.js';
+import { prisma } from '../platform/db.js';
+import { rupeesOrZero } from '../platform/wire.js';
 import { subscribe, wouldLoop } from '../platform/eventBus.js';
 import { createInvoice, rehydrateReceivables, issueFeeInstalments } from '../domains/finance.js';
 import { paiseOf, poundsOf } from '../domains/allocation.js';
@@ -113,7 +114,7 @@ export function registerSubscribers(): void {
         {
           offeringId: opportunity?.offeringId ?? null,
           description: `${contract.recordCode} — ${contract.title}`,
-          unitPrice: num(contract.commercialValue) ?? 0,
+          unitPrice: rupeesOrZero(contract.commercialValueMinor),
         },
       ],
       issue: true,
