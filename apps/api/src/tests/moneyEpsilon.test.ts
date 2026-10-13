@@ -16,6 +16,7 @@ import {
   isLikelyMatch,
   journalTotals,
   matchGstr2b,
+  parseMinor,
   type BookedBill,
   type Gstr2bB2bRow,
   type JournalLine,
@@ -345,7 +346,7 @@ describe('GSTR-1 tax reconciliation (gstReturns.ts)', () => {
       const store = (cgst: string, sgst: string) =>
         unscopedPrisma.invoice.update({
           where: { id: invoice.id },
-          data: { cgstAmount: cgst, sgstAmount: sgst, igstAmount: '0' },
+          data: { cgstAmountMinor: parseMinor(cgst), sgstAmountMinor: parseMinor(sgst), igstAmountMinor: 0n },
         });
 
       await store('1.07', '1.07');

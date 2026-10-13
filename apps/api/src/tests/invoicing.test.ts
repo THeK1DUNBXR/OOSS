@@ -454,8 +454,8 @@ describe('a draft is editable and an issued tax invoice is not', () => {
       });
       expect(fixed.lines).toHaveLength(1);
       expect(fixed.lines[0].description).toBe('Right');
-      expect(Number(fixed.taxableValue.toString())).toBe(10_000);
-      expect(Number(fixed.grandTotal.toString())).toBe(11_200);
+      expect(fixed.taxableValueMinor).toBe(1_000_000n);
+      expect(fixed.grandTotalMinor).toBe(1_120_000n);
     });
   });
 
@@ -525,7 +525,7 @@ describe('an instalment issues a receipt and never restates the invoice', () => 
 
       const row = await prisma.invoice.findFirstOrThrow({ where: { id: invoice.id } });
       expect(row.paymentType).toBe('part');
-      expect(Number(row.amountPayableNow!.toString())).toBe(20_000);
+      expect(row.amountPayableNowMinor).toBe(2_000_000n);
       expect(row.paymentMode).toBe('cash');
       expect(row.status).toBe('part_paid');
     });
@@ -549,7 +549,7 @@ describe('an instalment issues a receipt and never restates the invoice', () => 
       const row = await prisma.invoice.findFirstOrThrow({ where: { id: invoice.id } });
       // The declaration is still what the customer was told on the day. This is
       // the whole point: a tax invoice is final.
-      expect(Number(row.amountPayableNow!.toString())).toBe(20_000);
+      expect(row.amountPayableNowMinor).toBe(2_000_000n);
       expect(row.paymentMode).toBe('cash');
       // Status follows the receipts, and is not part of what is printed.
       expect(row.status).toBe('part_paid');
@@ -1085,7 +1085,7 @@ describe('tenancy is the gate before the axes', () => {
         recordCode: `INV-2026-9${String(Date.now()).slice(-4)}`,
         status: 'issued',
         currency: 'INR',
-        grandTotal: 5000,
+        grandTotalMinor: 500_000n,
       },
     });
 
@@ -1721,8 +1721,8 @@ describe('a student’s timeline is one record made of four kinds of day', () =>
 describe('one reading of what an invoice is for', () => {
   it('prefers the priced total and falls back to the lines', () => {
     const priced = totalsOf({
-      grandTotal: 11_800,
-      lines: [{ amount: 10_000 }],
+      grandTotalMinor: 1_180_000n,
+      lines: [{ amountMinor: 1_000_000n }],
       receipts: [{ allocatedAmount: 5000 }],
       creditNotes: [{ amount: 800 }],
     });
@@ -1731,15 +1731,15 @@ describe('one reading of what an invoice is for', () => {
     expect(priced.creditNoted).toBe(800);
     expect(priced.outstanding).toBe(6000);
 
-    const legacy = totalsOf({ grandTotal: 0, lines: [{ amount: 10_000 }], receipts: [] });
+    const legacy = totalsOf({ grandTotalMinor: 0n, lines: [{ amountMinor: 1_000_000n }], receipts: [] });
     expect(legacy.payable).toBe(10_000);
     expect(legacy.outstanding).toBe(10_000);
   });
 
   it('never reports a negative amount outstanding', () => {
     const over = totalsOf({
-      grandTotal: 1000,
-      lines: [{ amount: 1000 }],
+      grandTotalMinor: 100_000n,
+      lines: [{ amountMinor: 100_000n }],
       receipts: [{ allocatedAmount: 1000 }],
       creditNotes: [{ amount: 500 }],
     });

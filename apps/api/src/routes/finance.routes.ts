@@ -4,6 +4,7 @@ import { DIVISIONS, PAYMENT_MODES, parseMinor, type Division, type PaymentMode }
 import { handler, str, numeric, bool } from '../lib/http.js';
 import { prisma, num } from '../platform/db.js';
 import { minorOf, paiseSum, wireInt } from '../platform/wire.js';
+import { minorToRupees } from '../domains/money.js';
 import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney, visibilityWhere } from '../platform/permissions.js';
@@ -176,10 +177,12 @@ router.get(
         dueDate: inv.dueDate?.toISOString() ?? null,
         total: money ? totals.payable : null,
         totalMinor: money ? minor.payableMinor : null,
-        taxableValue: money ? (num(inv.taxableValue) ?? 0) : null,
-        taxableValueMinor: money ? minorOf(inv.taxableValue) : null,
-        taxAmount: money ? (num(inv.cgstAmount) ?? 0) + (num(inv.sgstAmount) ?? 0) + (num(inv.igstAmount) ?? 0) : null,
-        taxAmountMinor: money ? wireInt(paiseSum([inv.cgstAmount, inv.sgstAmount, inv.igstAmount])) : null,
+        taxableValue: money ? minorToRupees(inv.taxableValueMinor) : null,
+        taxableValueMinor: money ? wireInt(inv.taxableValueMinor) : null,
+        taxAmount: money
+          ? minorToRupees(inv.cgstAmountMinor) + minorToRupees(inv.sgstAmountMinor) + minorToRupees(inv.igstAmountMinor)
+          : null,
+        taxAmountMinor: money ? wireInt(inv.cgstAmountMinor + inv.sgstAmountMinor + inv.igstAmountMinor) : null,
         allocated: money ? totals.allocated : null,
         allocatedMinor: money ? minor.allocatedMinor : null,
         outstanding: money ? totals.outstanding : null,
@@ -189,8 +192,8 @@ router.get(
         // `status`: the status follows the receipts, and this is the declaration
         // the customer was handed.
         paymentType: inv.paymentType,
-        amountPayableNow: money ? (num(inv.amountPayableNow) ?? 0) : null,
-        amountPayableNowMinor: money ? minorOf(inv.amountPayableNow) : null,
+        amountPayableNow: money ? minorToRupees(inv.amountPayableNowMinor) : null,
+        amountPayableNowMinor: money ? wireInt(inv.amountPayableNowMinor) : null,
         paymentMode: inv.paymentMode,
         paymentReference: inv.paymentReference,
         interState: inv.interState,
@@ -212,16 +215,16 @@ router.get(
           enrollmentId: l.enrollmentId,
           description: l.description,
           quantity: l.quantity,
-          unitPrice: money ? num(l.unitPrice) : null,
-          unitPriceMinor: money ? minorOf(l.unitPrice) : null,
-          amount: money ? num(l.amount) : null,
-          amountMinor: money ? minorOf(l.amount) : null,
-          discountAmount: money ? num(l.discountAmount) : null,
-          discountAmountMinor: money ? minorOf(l.discountAmount) : null,
+          unitPrice: money ? minorToRupees(l.unitPriceMinor) : null,
+          unitPriceMinor: money ? wireInt(l.unitPriceMinor) : null,
+          amount: money ? minorToRupees(l.amountMinor) : null,
+          amountMinor: money ? wireInt(l.amountMinor) : null,
+          discountAmount: money ? minorToRupees(l.discountAmountMinor) : null,
+          discountAmountMinor: money ? wireInt(l.discountAmountMinor) : null,
           discountPercent: money ? num(l.discountPercent) : null,
           gstRate: num(l.gstRate),
-          taxAmount: money ? num(l.taxAmount) : null,
-          taxAmountMinor: money ? minorOf(l.taxAmount) : null,
+          taxAmount: money ? minorToRupees(l.taxAmountMinor) : null,
+          taxAmountMinor: money ? wireInt(l.taxAmountMinor) : null,
           hsnSac: l.hsnSac,
           // Derived from the offering's default treatment — never asked of sales.
           revenueMethod: l.revenueMethod,

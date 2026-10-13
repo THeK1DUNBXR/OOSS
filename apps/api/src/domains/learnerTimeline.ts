@@ -38,6 +38,7 @@ import { assertCan } from '../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { raiseException } from '../platform/exceptions.js';
 import { governedWrite } from '../platform/governedWrite.js';
+import { minorToRupees } from './money.js';
 
 // daily_progress is written only here; registered at module load so this module
 // alone is enough for the write to be audited (see corporate/board.ts).
@@ -539,7 +540,7 @@ export async function learnerTimeline(enrollmentId: string, options: { limit?: n
       recordCode: inv.recordCode ?? inv.draftReference ?? inv.id,
       status: inv.status,
       issuedDate: inv.issuedDate?.toISOString() ?? null,
-      payable: num(inv.grandTotal) || inv.lines.reduce((s, l) => s + (num(l.amount) ?? 0), 0),
+      payable: minorToRupees(inv.grandTotalMinor) || inv.lines.reduce((s, l) => s + minorToRupees(l.amountMinor), 0),
       allocated: inv.receipts.reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0),
       paymentType: inv.paymentType,
       paymentMode: inv.paymentMode,

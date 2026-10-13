@@ -122,7 +122,7 @@ describe('CMP-GST-001: a nil/exempt line reports as such and drops out of taxabl
       const line = exemptInvoice.lines[0];
       expect(line.supplyType).toBe('exempt');
       expect(num(line.gstRate)).toBe(0);
-      expect(num(line.taxAmount)).toBe(0);
+      expect(line.taxAmount).toBe('0');
       expect(line.exemptionNotification).toBe('12/2017-CT(R) entry 66');
 
       const after3b = await computeGstr3b(currentPeriod);
@@ -159,8 +159,8 @@ describe('CMP-GST-001: a nil/exempt line reports as such and drops out of taxabl
       const line = afterClassify.lines.find((l) => l.id === lineId)!;
       expect(line.supplyType).toBe('nil');
       expect(num(line.gstRate)).toBe(0);
-      expect(num(line.taxAmount)).toBe(0);
-      expect(num(afterClassify.grandTotal)).toBe(2000);
+      expect(line.taxAmountMinor).toBe(0n);
+      expect(afterClassify.grandTotalMinor).toBe(200_000n);
 
       const backToTaxable = await classifyInvoiceLine(draft.id, lineId, {
         supplyType: 'taxable',
@@ -168,7 +168,7 @@ describe('CMP-GST-001: a nil/exempt line reports as such and drops out of taxabl
       } as never);
       const line2 = backToTaxable.lines.find((l) => l.id === lineId)!;
       expect(num(line2.gstRate)).toBe(12);
-      expect(num(line2.taxAmount)).toBe(240);
+      expect(line2.taxAmountMinor).toBe(24_000n);
     });
   });
 
