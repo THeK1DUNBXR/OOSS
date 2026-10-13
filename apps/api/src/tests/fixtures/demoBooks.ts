@@ -12,7 +12,7 @@
  * Development and Education while they build, and by how much.
  */
 
-import { round2 } from '@kaizen/shared';
+import { round2, toMinorHalfUp } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
@@ -426,7 +426,7 @@ export async function seedDemoBooks() {
         accountId: bank,
         division: 'shared',
         direction: 'out',
-        amount: spec.amount,
+        amountMinor: toMinorHalfUp(spec.amount),
         cadence: spec.cadence,
         dayOfMonth: spec.dayOfMonth,
         startDate: start,
@@ -463,7 +463,7 @@ export async function seedDemoBooks() {
           period,
           categoryId: categories.get(spec.name)!,
           division: DIVISION_OF[spec.division] ?? 'shared',
-          amount: average,
+          amountMinor: toMinorHalfUp(average),
           note: 'Trailing three-month average',
         },
       });
@@ -553,8 +553,8 @@ export async function seedDemoBooks() {
         recordCode: await nextRecordCode('FA'),
         name: spec.name,
         purchaseDate,
-        cost: spec.cost,
-        salvageValue: round2(spec.cost * 0.05),
+        costMinor: toMinorHalfUp(spec.cost),
+        salvageValueMinor: toMinorHalfUp(round2(spec.cost * 0.05)),
         usefulLifeMonths: spec.usefulLifeMonths,
         method: 'straight_line',
         division: spec.division,
@@ -573,7 +573,7 @@ export async function seedDemoBooks() {
         tenantId,
         recordCode: await nextRecordCode('LN'),
         lender: 'Tamil Nadu Mercantile Bank — equipment loan',
-        principal: 500_000,
+        principalMinor: 50000000n,
         annualRate: 11.5,
         tenureMonths: 36,
         startDate,

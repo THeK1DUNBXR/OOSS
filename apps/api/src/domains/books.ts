@@ -46,6 +46,8 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { lockLegacyPeriod, lockLegacyPeriods } from '../platform/periodLock.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney, assertScopeAll } from '../platform/permissions.js';
+import { minorString, rupeesToMinor, withDecimalMinor } from '../platform/wire.js';
+import { minorToRupees } from './money.js';
 import { raiseException } from '../platform/exceptions.js';
 import { runHooks } from '../platform/hooks.js';
 import { registerGovernedEntities, auditWrite } from '../platform/audit.js';
@@ -1019,27 +1021,32 @@ export async function setBudgetLine(input: {
       period: input.period,
       categoryId: input.categoryId,
       division: input.division ?? '',
-      amount: input.amount,
+      amountMinor: rupeesToMinor(input.amount),
       note: input.note ?? null,
     },
-    update: { amount: input.amount, note: input.note ?? null },
+    update: { amountMinor: rupeesToMinor(input.amount), note: input.note ?? null },
   });
 
   await auditWrite({
     action: existing ? 'update' : 'create',
     subjectType: 'budget_line',
     subjectId: line.id,
-    before: existing ? { amount: num(existing.amount) } : null,
+    before: existing ? { amount: minorToRupees(existing.amountMinor) } : null,
     after: { period: input.period, categoryId: input.categoryId, amount: input.amount },
   });
 
   await emit({
     name: EVENTS.BUDGET_LINE_SET,
     subject: { entityType: 'budget_line', entityId: line.id },
-    newState: { period: input.period, categoryId: input.categoryId, amount: input.amount },
+    newState: {
+      period: input.period,
+      categoryId: input.categoryId,
+      amount: input.amount,
+      amountMinor: minorString(line.amountMinor),
+    },
     impact: { domains: ['fin'] },
   });
-  return line;
+  return withDecimalMinor(line, ['amount']);
 }
 
 /**
@@ -1073,7 +1080,7 @@ export async function budgetVariance(period: string) {
 
   const rows = lines.map((line) => {
     const key = `${line.categoryId}|${line.division ?? ''}`;
-    const budget = num(line.amount) ?? 0;
+    const budget = minorToRupees(line.amountMinor);
     const actual = actualBy.get(key) ?? 0;
     actualBy.delete(key);
     return {
@@ -1081,6 +1088,7 @@ export async function budgetVariance(period: string) {
       categoryName: line.category.name,
       division: line.division || null,
       budget,
+      budgetMinor: minorString(line.amountMinor),
       actual,
       variance: round2(budget - actual),
       overspent: actual > budget,
@@ -1097,6 +1105,7 @@ export async function budgetVariance(period: string) {
       categoryName: categoryName.get(categoryId) ?? 'Uncategorised',
       division: division || null,
       budget: 0,
+      budgetMinor: '0',
       actual,
       variance: round2(-actual),
       overspent: true,
@@ -1130,8 +1139,8 @@ export async function listAssets(asOf = new Date()) {
 
   return assets.map((a) => {
     const input = {
-      cost: num(a.cost) ?? 0,
-      salvageValue: num(a.salvageValue) ?? 0,
+      cost: minorToRupees(a.costMinor),
+      salvageValue: minorToRupees(a.salvageValueMinor),
       usefulLifeMonths: a.usefulLifeMonths,
       purchaseDate: a.purchaseDate,
       method: a.method as 'straight_line' | 'wdv',
@@ -1143,6 +1152,7 @@ export async function listAssets(asOf = new Date()) {
       name: a.name,
       purchaseDate: a.purchaseDate,
       cost: input.cost,
+      costMinor: minorString(a.costMinor),
       method: a.method,
       division: a.division,
       disposedAt: a.disposedAt,
@@ -1178,8 +1188,8 @@ export async function createAsset(input: {
       recordCode,
       name: input.name,
       purchaseDate: input.purchaseDate,
-      cost: input.cost,
-      salvageValue: input.salvageValue ?? 0,
+      costMinor: rupeesToMinor(input.cost),
+      salvageValueMinor: rupeesToMinor(input.salvageValue ?? 0),
       usefulLifeMonths: input.usefulLifeMonths,
       method: input.method ?? 'straight_line',
       wdvRate: input.wdvRate ?? 0,
@@ -1215,11 +1225,16 @@ export async function createAsset(input: {
   await emit({
     name: EVENTS.FIXED_ASSET_RECORDED,
     subject: { entityType: 'fixed_asset', entityId: asset.id, recordCode },
-    newState: { cost: input.cost, purchaseDate: input.purchaseDate, usefulLifeMonths: input.usefulLifeMonths },
+    newState: {
+      cost: input.cost,
+      costMinor: minorString(asset.costMinor),
+      purchaseDate: input.purchaseDate,
+      usefulLifeMonths: input.usefulLifeMonths,
+    },
     impact: { domains: ['fin'] },
     confidentiality: 'confidential',
   });
-  return asset;
+  return withDecimalMinor(asset, ['cost', 'salvageValue', 'disposalValue']);
 }
 
 export async function assetSchedule(id: string) {
@@ -1230,8 +1245,8 @@ export async function assetSchedule(id: string) {
   if (!asset) throw ApiError.notFound('Asset');
 
   return depreciationSchedule({
-    cost: num(asset.cost) ?? 0,
-    salvageValue: num(asset.salvageValue) ?? 0,
+    cost: minorToRupees(asset.costMinor),
+    salvageValue: minorToRupees(asset.salvageValueMinor),
     usefulLifeMonths: asset.usefulLifeMonths,
     purchaseDate: asset.purchaseDate,
     method: asset.method as 'straight_line' | 'wdv',
@@ -1250,7 +1265,7 @@ export async function listLoans(asOf = new Date()) {
 
   return loans.map((l) => {
     const input = {
-      principal: num(l.principal) ?? 0,
+      principal: minorToRupees(l.principalMinor),
       annualRate: num(l.annualRate) ?? 0,
       tenureMonths: l.tenureMonths,
       startDate: l.startDate,
@@ -1262,6 +1277,7 @@ export async function listLoans(asOf = new Date()) {
       recordCode: l.recordCode,
       lender: l.lender,
       principal: input.principal,
+      principalMinor: minorString(l.principalMinor),
       annualRate: input.annualRate,
       tenureMonths: l.tenureMonths,
       startDate: l.startDate,
@@ -1292,7 +1308,7 @@ export async function createLoan(input: {
       tenantId: auth.tenantId,
       recordCode,
       lender: input.lender,
-      principal: input.principal,
+      principalMinor: rupeesToMinor(input.principal),
       annualRate: input.annualRate,
       tenureMonths: input.tenureMonths,
       startDate: input.startDate,
@@ -1309,11 +1325,16 @@ export async function createLoan(input: {
   await emit({
     name: EVENTS.LOAN_RECORDED,
     subject: { entityType: 'loan', entityId: loan.id, recordCode },
-    newState: { principal: input.principal, annualRate: input.annualRate, tenureMonths: input.tenureMonths },
+    newState: {
+      principal: input.principal,
+      principalMinor: minorString(loan.principalMinor),
+      annualRate: input.annualRate,
+      tenureMonths: input.tenureMonths,
+    },
     impact: { domains: ['fin'] },
     confidentiality: 'confidential',
   });
-  return loan;
+  return withDecimalMinor(loan, ['principal']);
 }
 
 export async function loanSchedule(id: string) {
@@ -1324,7 +1345,7 @@ export async function loanSchedule(id: string) {
   if (!loan) throw ApiError.notFound('Loan');
 
   return amortisationSchedule({
-    principal: num(loan.principal) ?? 0,
+    principal: minorToRupees(loan.principalMinor),
     annualRate: num(loan.annualRate) ?? 0,
     tenureMonths: loan.tenureMonths,
     startDate: loan.startDate,
@@ -1390,7 +1411,7 @@ export async function generateRecurring(period: string): Promise<{ created: numb
       // with are still the rule's (domains/payouts.ts). A change waits for a fresh approval;
       // the period is not marked generated, so it posts once that approval lands.
       const approved = await approvedRuleSnapshot(rule.id);
-      const amountMinor = decimalToMinor(rule.amount);
+      const amountMinor = rule.amountMinor;
       if (!approved || approved.amountMinor !== amountMinor || approved.accountId !== rule.accountId) {
         skipped += 1;
         continue;
@@ -1410,7 +1431,7 @@ export async function generateRecurring(period: string): Promise<{ created: numb
       await recordTransaction({
         txnDate,
         direction: 'in',
-        amount: num(rule.amount) ?? 0,
+        amount: minorToRupees(rule.amountMinor),
         accountId: rule.accountId,
         categoryId: rule.categoryId,
         division: rule.division,
@@ -1430,7 +1451,12 @@ export async function generateRecurring(period: string): Promise<{ created: numb
     await emit({
       name: EVENTS.RECURRING_GENERATED,
       subject: { entityType: 'recurring_rule', entityId: rule.id },
-      newState: { period, amount: num(rule.amount) ?? 0, direction: rule.direction },
+      newState: {
+        period,
+        amount: minorToRupees(rule.amountMinor),
+        amountMinor: minorString(rule.amountMinor),
+        direction: rule.direction,
+      },
       impact: { domains: ['fin'] },
       confidentiality: 'confidential',
     });
@@ -1600,7 +1626,7 @@ export async function cashForecast(months = 6) {
 
   const committedMonthly = rules
     .filter((r) => r.cadence === 'monthly' && r.direction === 'out')
-    .reduce((s, r) => round2(s + (num(r.amount) ?? 0)), 0);
+    .reduce((s, r) => round2(s + minorToRupees(r.amountMinor)), 0);
 
   const periods = monthsBack(monthKey(new Date()), 1).concat(
     Array.from({ length: months }, (_, i) => {

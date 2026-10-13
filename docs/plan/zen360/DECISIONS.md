@@ -1243,6 +1243,11 @@ Append-only. Source: the owner's answers of 2026-10-12 (night), as written in th
   - What was built: #68 (L2 harness).
 - **L2 mapping: "Suspence - Rishikesh".** The owner's account of this treatment: transfers to the founder's personal savings account, so that he could pay company expenses by debit card or UPI, because the current account had neither. Treat it as a balance-sheet clearing account, class asset, with the founder as paying agent. The net is held by the founder (positive) or owed to the founder (negative). It is not an expense and not capital.
   - Founder-related transactions: the independent reviewer is an authorised director (D-10). The founder authority ruling above supersedes D-10 for founder deals.
+- **Quote money to paise (2026-10-13).** Quote, QuoteLine and PriceBookEntry money moves to paise with ties rounded half away from zero (`toMinorHalfUp`, `packages/shared/src/money.ts:104`). Some stored quote figures change by one paisa at exact half-paisa ties, and the PR names them.
+- **S10 statutory tables (2026-10-13).** The statutory parameter tables (GST, TDS, income-tax slabs, PF, ESI, LWF, minimum wage, stamp duty) move to date-effective `StatutoryRule` rows (CLAUDE.md rule 4), with the 0.00015 stamp-duty rate in `apps/api/src/domains/filings.ts:849` and the 15/26 gratuity factor in `apps/api/src/jobs/compliance/payroll.ts:61` — not a type change in place.
+- **Invoice posting in Phase 0 (2026-10-13).** Invoice issue and collection post to the journal in Phase 0 through `platform/ledger.ts` `post()`/`postInTx()` with trial-balance tests. Today they post nothing: `buildInvoiceIssueEntry` (`packages/shared/src/postingRules.ts:177`) has no app caller; its only callers are in `apps/api/src/tests/ledger/postingPlumbing.test.ts`.
+- **CMP-PAY-004 fixture (2026-10-13).** The CMP-PAY-004 test fixture (`apps/api/src/tests/compliance/payroll.test.ts:344`) gets a fee at the seeded minimum-wage floor so the payroll suite reruns on one database.
+- **demoDataset.ts edits (2026-10-13).** Agents may edit only the lines the typecheck names after a column rename (field name and paise value), nothing else in the file.
 
 Built, not tied to a decision in this note: FX-51 and FX-64 are in PR #67, which is open, not merged.
 

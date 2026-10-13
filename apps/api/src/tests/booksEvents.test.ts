@@ -176,7 +176,7 @@ describe('Books writes emit their event', () => {
         categoryId: CATEGORY_ID,
         accountId: ACCOUNT_ID,
         direction: 'out',
-        amount: 100,
+        amountMinor: 10000n,
         cadence: 'monthly',
         dayOfMonth: 1,
         startDate: new Date(Date.UTC(2016, 0, 1)),

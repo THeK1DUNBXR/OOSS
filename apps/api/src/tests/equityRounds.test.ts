@@ -331,7 +331,7 @@ describe('EQT-RND-005 — a buy-back beyond ten percent needs a special resoluti
           tenantId: SUB,
           recordCode: await nextRecordCode('LN'),
           lender: `Big Bank ${suffix}`,
-          principal: 1_000_000,
+          principalMinor: 100000000n,
           annualRate: 12,
           tenureMonths: 60,
           startDate: new Date(),
