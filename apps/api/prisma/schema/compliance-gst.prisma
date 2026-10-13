@@ -48,10 +48,11 @@ model RcmSelfInvoice {
   /// month unless corrected. What ties this row to a GSTR-3B period.
   period String
 
-  taxableValue Decimal @db.Decimal(18, 2)
-  cgstAmount   Decimal @default(0) @db.Decimal(18, 2)
-  sgstAmount   Decimal @default(0) @db.Decimal(18, 2)
-  igstAmount   Decimal @default(0) @db.Decimal(18, 2)
+  /// Paise (ORDERED-PLAN 1.6 slice S4).
+  taxableValueMinor BigInt
+  cgstAmountMinor   BigInt @default(0)
+  sgstAmountMinor   BigInt @default(0)
+  igstAmountMinor   BigInt @default(0)
 
   createdAt   DateTime @default(now())
   createdById String?
@@ -86,7 +87,8 @@ model DebitNote {
   recordCode String
 
   invoiceId  String
-  amount     Decimal  @db.Decimal(18, 2)
+  /// Paise (ORDERED-PLAN 1.6 slice S4).
+  amountMinor BigInt
   currency   String   @default("INR")
   /// rate_difference | quantity_shortfall | post_supply_price_revision | other
   reasonCode String
@@ -152,7 +154,8 @@ model Gstr2bMatch {
   status     String
   /// 2B value less books value, positive where the portal shows more than the
   /// books claim.
-  difference Decimal @default(0) @db.Decimal(18, 2)
+  /// Paise (ORDERED-PLAN 1.6 slice S4).
+  differenceMinor BigInt @default(0)
   ctin       String?
   inum       String?
 

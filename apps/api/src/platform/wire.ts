@@ -62,3 +62,44 @@ export function withMinor<T extends object, K extends keyof T & string>(
 export function paiseSum(values: readonly DecimalLike[]): bigint {
   return values.reduce((total, value) => total + parseMinor(value.toFixed(2)), 0n);
 }
+
+/**
+ * A paise value as the rupee string Prisma's Decimal printed for the same figure:
+ * the same digits with trailing zeros dropped ("1234.5", "1000", "0"). A route
+ * that used to return a raw Decimal row keeps its JSON this way, with the paise
+ * sibling added beside it.
+ */
+export function decimalWire(minor: bigint): string {
+  const magnitude = minor < 0n ? -minor : minor;
+  const whole = (magnitude / 100n).toString();
+  const fraction = (magnitude % 100n).toString().padStart(2, '0').replace(/0+$/, '');
+  const body = fraction ? `${whole}.${fraction}` : whole;
+  return minor < 0n ? `-${body}` : body;
+}
+
+/**
+ * Paise as a JavaScript number in rupees, for the places that have always sent
+ * one (a list of figures, the arguments of the shared GST functions). Exact for
+ * any figure a GST return can hold: the quotient of two exact integers is the
+ * nearest double to the two-place decimal, which is what Number() of Prisma's
+ * string gives. Kept off the write path: money goes in as paise.
+ */
+export function rupeesOf(minor: bigint): number {
+  return Number(minor) / 100;
+}
+
+/**
+ * A row whose paise columns (`<key>Minor`, bigint) go back out as the Decimal-string
+ * rupee fields they were, with the paise sibling beside each. The rupee fields
+ * are the ones the web reads; the sibling is the one a new client should use.
+ */
+export function withRupeeWire<T extends object>(row: T, keys: readonly string[]): Record<string, unknown> {
+  const source = row as unknown as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...source };
+  for (const key of keys) {
+    const minor = source[`${key}Minor`] as bigint;
+    out[key] = decimalWire(minor);
+    out[`${key}Minor`] = wireInt(minor);
+  }
+  return out;
+}

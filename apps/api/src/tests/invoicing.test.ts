@@ -1291,7 +1291,7 @@ describe('filing a return closes its month', () => {
       const { filing } = await prepareReturn('GSTR1', period);
       expect(filing.status).toBe('prepared');
       expect(filing.arn).toBeNull();
-      expect(Number(filing.taxableValue.toString())).toBe(10_000);
+      expect(filing.taxableValueMinor).toBe(1_000_000n);
 
       const noArn = await expectReject(() => markReturnFiled(filing.id, { arn: 'x' }));
       expect(noArn.message).toMatch(/acknowledgement/);

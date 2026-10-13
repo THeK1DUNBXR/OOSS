@@ -156,7 +156,7 @@ describe('GSTR-2B recompute supersedes the previous set (FX-71c)', () => {
       update: {},
     });
     const foreign = await unscopedPrisma.gstr2bMatch.create({
-      data: { tenantId: other.id, period, status: 'matched', difference: 0, ctin: GSTIN, inum: `${period}-X` },
+      data: { tenantId: other.id, period, status: 'matched', differenceMinor: 0n, ctin: GSTIN, inum: `${period}-X` },
     });
 
     await twoRecomputes(period);
