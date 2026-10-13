@@ -58,7 +58,7 @@
 
 **`apps/api/src/domains/commandCenter.ts`** (701 lines) — materialityFloorMinor:77 · narrativeWindowHours:83 · measuredMinor:99 · clearsMaterialityFloor:109 · computeReachSignature:126 · whatChanged:165 · attentionQueue:293 · liveAndHandled:373 · peopleAndCapability:488 · touchWatermark:537 · banner:559 · commandCenter:599 · drillPathFor:685
 
-**`apps/api/src/domains/commercial.ts`** (873 lines) — OfferingInput:46 · suggestRevenueTreatment:61 · createOffering:79 · publishOffering:131 · retireOffering:153 · detectOfferingCoverageGaps:181 · PriceInput:210 · publishPrice:227 · createProposal:328 · sendProposal:385 · respondToProposal:437 · detectStalledProposals:494 · QuoteLineInput:559 · createQuote:565 · QuoteIssueResult:695 · issueQuote:711
+**`apps/api/src/domains/commercial.ts`** (891 lines) — OfferingInput:47 · suggestRevenueTreatment:62 · createOffering:80 · publishOffering:132 · retireOffering:154 · detectOfferingCoverageGaps:182 · PriceInput:211 · publishPrice:228 · createProposal:332 · sendProposal:389 · respondToProposal:441 · detectStalledProposals:498 · QuoteLineInput:563 · createQuote:569 · QuoteIssueResult:713 · issueQuote:729
 
 **`apps/api/src/domains/commitments.ts`** (410 lines) — COMMITMENT_STATES:35 · CommitmentState:36 · COMMITMENT_TRANSITIONS:43 · OPEN_COMMITMENT_STATES:55 · COMMITMENT_SOURCE_TYPES:58 · CommitmentSourceType:59 · ProposeCommitmentInput:69 · CommitmentFilter:81 · proposeCommitment:103 · confirmCommitment:157 · markCommitmentMet:179 · markCommitmentMissed:183 · cancelCommitment:188 · reassignCommitment:193 · authoriseCommitmentHandover:225 · handOverCommitmentInTx:235 · listCommitments:256 · getCommitment:271 · markCommitmentMissedIfDue:286
 
@@ -564,7 +564,7 @@
 
 **`apps/api/src/routes/compliance/corporate.routes.ts`** (370 lines) — GET /registers/:kind/export.csv:109
 
-**`apps/api/src/routes/crm.routes.ts`** (1185 lines) — GET ${l.pipelineId}:${l.stageKey}:751 · GET ${o.pipelineId}:${o.stageKey}:920
+**`apps/api/src/routes/crm.routes.ts`** (1190 lines) — GET ${l.pipelineId}:${l.stageKey}:751 · GET ${o.pipelineId}:${o.stageKey}:920
 
 **`apps/api/src/routes/marketing/preferences.routes.ts`** (149 lines) — GET /unsubscribe/:token:104 · POST /unsubscribe/:token:136
 

@@ -1010,7 +1010,12 @@ router.get(
           pipeline: withDecimalMinor(opportunity.pipeline, ['commitApprovalThreshold']),
         },
         proposal: proposal ? withDecimalMinor(proposal, ['totalValue'], { canSee: money }) : proposal,
-        quote,
+        quote: quote
+          ? {
+              ...withDecimalMinor(quote, ['subtotal', 'discountTotal', 'grandTotal']),
+              lines: quote.lines.map((l) => withDecimalMinor(l, ['listUnitPrice', 'discountAmount', 'lineTotal'])),
+            }
+          : quote,
         contract: contract ? withDecimalMinor(contract, ['commercialValue'], { canSee: money }) : contract,
         mou: mou ? withDecimalMinor(mou, ['commercialValue'], { canSee: money }) : mou,
       } as unknown as Record<string, unknown>,
