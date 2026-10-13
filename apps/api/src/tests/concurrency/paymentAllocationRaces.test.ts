@@ -8,6 +8,7 @@
  * collections against one invoice all passed the check.
  */
 import { describe, expect, it } from 'vitest';
+import { formatMinor } from '@kaizen/shared';
 import { asUser, prisma, tenantId, unscopedPrisma } from '../helpers.js';
 import { createInvoice, collectInvoicePayment, totalsOf } from '../../domains/invoicing.js';
 import { allocatePayment, issueFeeInstalments, recordPayment } from '../../domains/finance.js';
@@ -38,7 +39,7 @@ async function anIssuedInvoice() {
 /** Sums what the invoice has been allocated, from its receipts, in paise-exact pounds. */
 async function allocatedTo(invoiceId: string): Promise<number> {
   const receipts = await prisma.receipt.findMany({ where: { invoiceId } });
-  return receipts.reduce((s, r) => s + Number(r.allocatedAmount.toString()), 0);
+  return Number(formatMinor(receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n)));
 }
 
 describe('concurrent collections against one invoice', () => {
@@ -102,7 +103,7 @@ describe('concurrent allocations of one payment', () => {
         ),
       );
       const receipts = await prisma.receipt.findMany({ where: { paymentId: payment.id } });
-      const allocated = receipts.reduce((s, r) => s + Number(r.allocatedAmount.toString()), 0);
+      const allocated = Number(formatMinor(receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n)));
       return { settled, allocated };
     });
 
@@ -125,7 +126,7 @@ describe('concurrent allocations to one fee instalment', () => {
         ),
       );
       const receipts = await prisma.receipt.findMany({ where: { feeInstalmentId: instalment!.id } });
-      const taken = receipts.reduce((s, r) => s + Number(r.allocatedAmount.toString()), 0);
+      const taken = Number(formatMinor(receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n)));
       return { settled, taken };
     });
 

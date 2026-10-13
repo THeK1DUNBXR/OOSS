@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { DIVISIONS, PAYMENT_MODES, parseMinor, type Division, type PaymentMode } from '@kaizen/shared';
+import { DIVISIONS, PAYMENT_MODES, type Division, type PaymentMode } from '@kaizen/shared';
 import { handler, str, numeric, bool } from '../lib/http.js';
 import { prisma, num } from '../platform/db.js';
-import { minorOf, paiseSum, wireInt } from '../platform/wire.js';
-import { minorToRupees } from '../domains/money.js';
+import { minorString, wireInt } from '../platform/wire.js';
+import { minorToRupees, minorToRupeesOrNull } from '../domains/money.js';
+import { poundsOf } from '../domains/allocation.js';
 import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney, visibilityWhere } from '../platform/permissions.js';
@@ -473,10 +474,10 @@ router.get(
     });
 
     return rows.map((p) => {
-      const allocated = p.receipts.reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0);
-      const amount = num(p.amount) ?? 0;
-      const amountPaise = parseMinor(p.amount.toFixed(2));
-      const allocatedPaise = paiseSum(p.receipts.map((r) => r.allocatedAmount));
+      const amountPaise = p.amountMinor;
+      const allocatedPaise = p.receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n);
+      const amount = poundsOf(amountPaise);
+      const allocated = poundsOf(allocatedPaise);
       return {
         id: p.id,
         recordCode: p.recordCode,
@@ -492,18 +493,18 @@ router.get(
         allocatedMinor: money ? wireInt(allocatedPaise) : null,
         // A payment may exist before its resolving obligation is even issued —
         // an explicitly representable unallocated state.
-        unallocated: money ? amount - allocated : null,
+        unallocated: money ? poundsOf(amountPaise - allocatedPaise) : null,
         unallocatedMinor: money ? wireInt(amountPaise - allocatedPaise) : null,
         receipts: p.receipts.map((r) => ({
           id: r.id,
           recordCode: r.recordCode,
           invoiceId: r.invoiceId,
           feeInstalmentId: r.feeInstalmentId,
-          allocatedAmount: money ? num(r.allocatedAmount) : null,
-          allocatedAmountMinor: money ? minorOf(r.allocatedAmount) : null,
+          allocatedAmount: money ? poundsOf(r.allocatedAmountMinor) : null,
+          allocatedAmountMinor: money ? minorString(r.allocatedAmountMinor) : null,
           allocatedAt: r.allocatedAt.toISOString(),
-          balanceAfter: money ? num(r.balanceAfter) : null,
-          balanceAfterMinor: money ? minorOf(r.balanceAfter) : null,
+          balanceAfter: money ? poundsOf(r.balanceAfterMinor) : null,
+          balanceAfterMinor: money ? minorString(r.balanceAfterMinor) : null,
         })),
         // bankAccountReference is regulated: structurally excluded from this
         // projection entirely, not merely nulled.
@@ -560,7 +561,7 @@ router.get(
         tenantId: auth.tenantId,
         ...(str(req.query.dunningStage) ? { dunningStage: str(req.query.dunningStage) } : {}),
       },
-      orderBy: { amountOutstanding: 'desc' },
+      orderBy: { amountOutstandingMinor: 'desc' },
       take: 200,
     });
 
@@ -568,7 +569,8 @@ router.get(
       subjectType: r.subjectType,
       subjectId: r.subjectId,
       subjectLabel: r.subjectLabel ?? r.subjectId,
-      amountOutstanding: money ? num(r.amountOutstanding) : null,
+      amountOutstanding: money ? minorToRupeesOrNull(r.amountOutstandingMinor) : null,
+      amountOutstandingMinor: money ? minorString(r.amountOutstandingMinor) : null,
       nextDueDate: r.nextDueDate?.toISOString() ?? null,
       dunningStage: r.dunningStage,
       currency: r.currency,

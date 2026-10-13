@@ -16,6 +16,7 @@ import {
   parseGrant,
   maxSensitivity,
   isUnrouted,
+  formatMinor,
 } from '@kaizen/shared';
 import {
   asPrincipal,
@@ -2384,11 +2385,11 @@ describe('Finance — obligation, movement and allocation are three distinct fac
       const reversal = await reversePayment(original.id, 'Bounced.');
 
       expect(reversal.id).not.toBe(original.id);
-      expect(Number(reversal.amount.toString())).toBe(-5000);
+      expect(reversal.amountMinor).toBe('-500000');
       expect(reversal.reversalOfPaymentId).toBe(original.id);
 
       const stillThere = await prisma.payment.findFirstOrThrow({ where: { id: original.id } });
-      expect(Number(stillThere.amount.toString())).toBe(5000);
+      expect(stillThere.amountMinor).toBe(500_000n);
     });
   });
 
@@ -2410,7 +2411,7 @@ describe('Finance — obligation, movement and allocation are three distinct fac
       const { invoiceSummary } = await import('../domains/finance.js');
       const invoice = await prisma.invoice.findFirstOrThrow({ include: { receipts: true } });
       const summary = await invoiceSummary(invoice.id);
-      const receiptSum = invoice.receipts.reduce((s, r) => s + Number(r.allocatedAmount.toString()), 0);
+      const receiptSum = Number(formatMinor(invoice.receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n)));
       expect(summary.allocated).toBeCloseTo(receiptSum, 2);
       expect(summary.outstanding).toBeCloseTo(summary.total - receiptSum, 2);
     });

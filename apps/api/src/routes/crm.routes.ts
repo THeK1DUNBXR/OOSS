@@ -1028,7 +1028,7 @@ router.get(
       winLossReview: winLoss
         ? withDecimalMinor(winLoss, ['commercialValueSnapshot', 'thresholdUsedSnapshot'])
         : winLoss,
-      receivables,
+      receivables: receivables ? withDecimalMinor(receivables, ['amountOutstanding']) : receivables,
       withheld: filtered.withheld,
       wonGateSatisfied: Boolean(opportunity.contractId || opportunity.mouId),
     };

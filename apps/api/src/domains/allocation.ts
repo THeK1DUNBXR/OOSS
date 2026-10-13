@@ -123,13 +123,13 @@ export async function lockAndLoadFeeInstalment(tx: DbTx, input: { tenantId: stri
 export function positionOfInvoice(invoice: {
   grandTotalMinor: bigint;
   lines: Array<{ amountMinor: bigint }>;
-  receipts: Array<{ allocatedAmount: { toFixed(digits: number): string } }>;
+  receipts: Array<{ allocatedAmountMinor: bigint }>;
   creditNotes?: Array<{ amount: { toFixed(digits: number): string } }>;
 }) {
   const grandTotal = invoice.grandTotalMinor;
   const linesTotal = invoice.lines.reduce((s, l) => s + l.amountMinor, 0n);
   const payable = grandTotal > 0n ? grandTotal : linesTotal;
-  const allocated = invoice.receipts.reduce((s, r) => s + paiseOf(r.allocatedAmount), 0n);
+  const allocated = invoice.receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n);
   const creditNoted = (invoice.creditNotes ?? []).reduce((s, c) => s + paiseOf(c.amount), 0n);
   return { payable, allocated, creditNoted, outstanding: clampZero(sub(sub(payable, allocated), creditNoted)) };
 }
@@ -137,10 +137,10 @@ export function positionOfInvoice(invoice: {
 /** What a fee instalment still owes, in paise, from its amount and the receipts against it. */
 export function outstandingOfInstalment(instalment: {
   amount: { toFixed(digits: number): string };
-  receipts: Array<{ allocatedAmount: { toFixed(digits: number): string } }>;
+  receipts: Array<{ allocatedAmountMinor: bigint }>;
 }) {
   const amount = paiseOf(instalment.amount);
-  const allocated = instalment.receipts.reduce((s, r) => s + paiseOf(r.allocatedAmount), 0n);
+  const allocated = instalment.receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n);
   return { amount, allocated, outstanding: clampZero(sub(amount, allocated)) };
 }
 

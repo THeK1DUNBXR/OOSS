@@ -30,7 +30,8 @@
 import { EVENTS, decimalToMinor, round2, toMinorHalfUp, type PaymentMode } from '@kaizen/shared';
 import { raiseException } from '../platform/exceptions.js';
 import { prisma, num } from '../platform/db.js';
-import { minorOf } from '../platform/wire.js';
+import { wireInt } from '../platform/wire.js';
+import { poundsOf } from './allocation.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -105,19 +106,19 @@ export async function listReceipts(filter: { invoiceId?: string; limit?: number 
     invoiceCode: r.invoice ? invoiceLabel(r.invoice) : null,
     feeInstalmentId: r.feeInstalmentId,
     customerName: nameOf.get(r.invoice?.organizationId ?? r.invoice?.personId ?? '') ?? null,
-    amount: num(r.allocatedAmount) ?? 0,
-    amountMinor: minorOf(r.allocatedAmount),
+    amount: poundsOf(r.allocatedAmountMinor),
+    amountMinor: wireInt(r.allocatedAmountMinor),
     currency: r.invoice?.currency ?? r.payment.currency,
-    subjectTotal: num(r.subjectTotal) ?? 0,
-    subjectTotalMinor: minorOf(r.subjectTotal),
-    balanceAfter: num(r.balanceAfter) ?? 0,
-    balanceAfterMinor: minorOf(r.balanceAfter),
+    subjectTotal: poundsOf(r.subjectTotalMinor),
+    subjectTotalMinor: wireInt(r.subjectTotalMinor),
+    balanceAfter: poundsOf(r.balanceAfterMinor),
+    balanceAfterMinor: wireInt(r.balanceAfterMinor),
     paymentMode: r.paymentMode ?? r.payment.method,
     paymentReference: r.paymentReference ?? r.payment.gatewayReference,
     paymentCode: r.payment.recordCode,
     note: r.note,
     /** True when this instalment cleared the invoice. */
-    settledIt: toMinorHalfUp(num(r.balanceAfter) ?? 0) <= 0n,
+    settledIt: r.balanceAfterMinor <= 0n,
   }));
 }
 
@@ -168,14 +169,15 @@ export async function receiptDocument(receiptId: string) {
   const siblings = await prisma.receipt.findMany({
     where: { tenantId: auth.tenantId, invoiceId: receipt.invoiceId },
     orderBy: { allocatedAt: 'asc' },
-    select: { id: true, recordCode: true, allocatedAmount: true, allocatedAt: true, paymentMode: true },
+    select: { id: true, recordCode: true, allocatedAmountMinor: true, allocatedAt: true, paymentMode: true },
   });
   const index = siblings.findIndex((r) => r.id === receipt.id);
-  const receivedToDate = round2(siblings.slice(0, index + 1).reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0));
+  const receivedToDate = poundsOf(siblings.slice(0, index + 1).reduce((s, r) => s + r.allocatedAmountMinor, 0n));
 
-  const amount = num(receipt.allocatedAmount) ?? 0;
-  const subjectTotal = num(receipt.subjectTotal) || totalsOf(invoice).payable;
-  const balanceAfter = num(receipt.balanceAfter) ?? round2(Math.max(subjectTotal - receivedToDate, 0));
+  const amount = poundsOf(receipt.allocatedAmountMinor);
+  // A receipt written before its subject total was snapshotted reads 0, and the invoice's own figure stands in.
+  const subjectTotal = poundsOf(receipt.subjectTotalMinor) || totalsOf(invoice).payable;
+  const balanceAfter = poundsOf(receipt.balanceAfterMinor);
 
   return {
     id: receipt.id,
@@ -237,7 +239,7 @@ export async function receiptDocument(receiptId: string) {
       amountReceivedNow: amount,
       receivedToDate,
       balanceAfter,
-      isPartPayment: toMinorHalfUp(balanceAfter) > 0n,
+      isPartPayment: receipt.balanceAfterMinor > 0n,
       instalmentNumber: index + 1,
       instalmentsSoFar: siblings.length,
     },
@@ -247,7 +249,7 @@ export async function receiptDocument(receiptId: string) {
       number: i + 1,
       recordCode: r.recordCode,
       issuedAt: r.allocatedAt.toISOString(),
-      amount: num(r.allocatedAmount) ?? 0,
+      amount: poundsOf(r.allocatedAmountMinor),
       mode: r.paymentMode,
       isThisOne: r.id === receipt.id,
     })),
@@ -346,14 +348,14 @@ async function issueFinalInvoice(invoiceId: string, input: { note?: string | nul
     number: i + 1,
     recordCode: r.recordCode,
     issuedAt: r.allocatedAt.toISOString(),
-    amount: num(r.allocatedAmount) ?? 0,
+    amount: poundsOf(r.allocatedAmountMinor),
     mode: r.paymentMode ?? r.payment.method,
     reference: r.paymentReference ?? r.payment.gatewayReference,
     paymentCode: r.payment.recordCode,
-    balanceAfter: num(r.balanceAfter) ?? 0,
+    balanceAfter: poundsOf(r.balanceAfterMinor),
   }));
 
-  const totalReceived = round2(rows.reduce((s, r) => s + r.amount, 0));
+  const totalReceived = poundsOf(receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n));
   const balance = round2(Math.max(totals.payable - totalReceived - totals.creditNoted, 0));
 
   // An earlier statement is superseded rather than replaced: both were true when
@@ -532,14 +534,14 @@ export async function finalizeCourseFeeInvoice(invoiceId: string, trigger: 'sett
     number: i + 1,
     recordCode: r.recordCode,
     issuedAt: r.allocatedAt.toISOString(),
-    amount: num(r.allocatedAmount) ?? 0,
+    amount: poundsOf(r.allocatedAmountMinor),
     mode: r.paymentMode ?? r.payment.method,
     reference: r.paymentReference ?? r.payment.gatewayReference,
     paymentCode: r.payment.recordCode,
-    balanceAfter: num(r.balanceAfter) ?? 0,
+    balanceAfter: poundsOf(r.balanceAfterMinor),
   }));
 
-  const totalReceived = round2(rows.reduce((s, r) => s + r.amount, 0));
+  const totalReceived = poundsOf(receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n));
   const balance = round2(Math.max(totals.payable - totalReceived - totals.creditNoted, 0));
 
   const numbering = await documentNumbering();

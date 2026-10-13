@@ -11,6 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parseMinor } from '@kaizen/shared';
 import { booksTenant, unscopedPrisma, type BooksTenant } from './helpers.js';
 
 // The table owner has BYPASSRLS, so row-level security only shows a cross-tenant row to
@@ -54,7 +55,7 @@ async function aPayment(amount: string, tenantId = FIX.tenantId) {
     data: {
       tenantId,
       recordCode: `PAYB-${randomUUID().slice(0, 8)}`,
-      amount: new Prisma.Decimal(amount),
+      amountMinor: parseMinor(amount),
       gatewayReference: `BOUNDS-${randomUUID()}`,
       receivedAt: new Date('2030-06-15T00:00:00.000Z'),
     },
@@ -62,7 +63,7 @@ async function aPayment(amount: string, tenantId = FIX.tenantId) {
 }
 
 function insertReceipt(tx: Prisma.TransactionClient, paymentId: string, amount: string) {
-  return tx.$executeRaw`INSERT INTO "receipts" ("id","tenantId","recordCode","paymentId","allocatedAmount") VALUES (${randomUUID()}, ${FIX.tenantId}, ${'RCPB-' + randomUUID().slice(0, 8)}, ${paymentId}, ${amount}::numeric)`;
+  return tx.$executeRaw`INSERT INTO "receipts" ("id","tenantId","recordCode","paymentId","allocatedAmountMinor") VALUES (${randomUUID()}, ${FIX.tenantId}, ${'RCPB-' + randomUUID().slice(0, 8)}, ${paymentId}, ${parseMinor(amount)}::bigint)`;
 }
 
 describe('the database refuses a receipt that over-allocates its payment or allocates nothing', () => {
@@ -72,8 +73,11 @@ describe('the database refuses a receipt that over-allocates its payment or allo
       await insertReceipt(tx, p.id, '60.00');
       await insertReceipt(tx, p.id, '40.00');
     });
-    const sum = await unscopedPrisma.receipt.aggregate({ where: { paymentId: p.id }, _sum: { allocatedAmount: true } });
-    expect(sum._sum.allocatedAmount?.toFixed(2)).toBe('100.00');
+    const sum = await unscopedPrisma.receipt.aggregate({
+      where: { paymentId: p.id },
+      _sum: { allocatedAmountMinor: true },
+    });
+    expect(sum._sum.allocatedAmountMinor).toBe(10_000n);
   });
 
   it('refuses a receipt that takes its payment past the amount', async () => {
@@ -121,24 +125,28 @@ describe('the database refuses a receipt that over-allocates its payment or allo
     await first;
     expect(whileFirstOpen).toBe('still waiting');
     await expect(second).rejects.toThrow(/more than the payment amount/);
-    const sum = await unscopedPrisma.receipt.aggregate({ where: { paymentId: p.id }, _sum: { allocatedAmount: true } });
-    expect(sum._sum.allocatedAmount?.toFixed(2)).toBe('60.00');
+    const sum = await unscopedPrisma.receipt.aggregate({
+      where: { paymentId: p.id },
+      _sum: { allocatedAmountMinor: true },
+    });
+    expect(sum._sum.allocatedAmountMinor).toBe(6_000n);
   });
 
   it('refuses an update that raises a receipt past the payment amount', async () => {
     const p = await aPayment('100.00');
     await asOwner((tx) => insertReceipt(tx, p.id, '60.00'));
     await expect(
-      asOwner((tx) => tx.$executeRaw`UPDATE "receipts" SET "allocatedAmount" = 150 WHERE "paymentId" = ${p.id}`),
+      asOwner((tx) => tx.$executeRaw`UPDATE "receipts" SET "allocatedAmountMinor" = 15000 WHERE "paymentId" = ${p.id}`),
     ).rejects.toThrow(/more than the payment amount/);
   });
 
-  it('refuses a payment amount lowered below what its receipts already allocate', async () => {
+  it('refuses a payment amount lowered below what its receipts already allocate, and names both in paise', async () => {
     const p = await aPayment('100.00');
     await asOwner((tx) => insertReceipt(tx, p.id, '60.00'));
+    // The trigger is re-created on "amountMinor" (migration 20261013254000), so a paise write is what it watches.
     await expect(
-      asOwner((tx) => tx.$executeRaw`UPDATE "payments" SET "amount" = 50 WHERE "id" = ${p.id}`),
-    ).rejects.toThrow(/more than the payment amount/);
+      asOwner((tx) => tx.$executeRaw`UPDATE "payments" SET "amountMinor" = 5000 WHERE "id" = ${p.id}`),
+    ).rejects.toThrow(/more than the payment amount: 6000 paise against 5000 paise/);
   });
 
   it('refuses a receipt of zero or less', async () => {

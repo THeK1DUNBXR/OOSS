@@ -576,7 +576,7 @@ describe('an instalment issues a receipt and never restates the invoice', () => 
       expect(row.status).toBe('part_paid');
 
       // The receipt is the document that says what just happened.
-      expect(Number(second.receipt.allocatedAmount.toString())).toBe(15_000);
+      expect(Number(second.receipt.allocatedAmount!.toString())).toBe(15_000);
       expect(Number(second.receipt.subjectTotal!.toString())).toBe(70_800);
       expect(Number(second.receipt.balanceAfter!.toString())).toBe(35_800);
       expect(second.receipt.paymentMode).toBe('upi');
@@ -1794,7 +1794,7 @@ describe('one reading of what an invoice is for', () => {
     const priced = totalsOf({
       grandTotalMinor: 1_180_000n,
       lines: [{ amountMinor: 1_000_000n }],
-      receipts: [{ allocatedAmount: 5000 }],
+      receipts: [{ allocatedAmountMinor: 500_000n }],
       creditNotes: [{ amount: 800 }],
     });
     expect(priced.payable).toBe(11_800);
@@ -1811,7 +1811,7 @@ describe('one reading of what an invoice is for', () => {
     const over = totalsOf({
       grandTotalMinor: 100_000n,
       lines: [{ amountMinor: 100_000n }],
-      receipts: [{ allocatedAmount: 1000 }],
+      receipts: [{ allocatedAmountMinor: 100_000n }],
       creditNotes: [{ amount: 500 }],
     });
     expect(over.outstanding).toBe(0);
