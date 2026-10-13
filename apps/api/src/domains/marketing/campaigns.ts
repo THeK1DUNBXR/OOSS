@@ -25,7 +25,9 @@ import {
   type CampaignDetailView,
   type CampaignApprovalView,
 } from '@kaizen/shared';
-import { prisma, num, type DbTx } from '../../platform/db.js';
+import { prisma, type DbTx } from '../../platform/db.js';
+import { minorToRupees, minorToRupeesOrNull } from '../money.js';
+import { minorString, rupeesToMinor, rupeesToMinorOrNull } from '../../platform/wire.js';
 import { currentAuth } from '../../platform/context.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { governedWrite } from '../../platform/governedWrite.js';
@@ -186,9 +188,12 @@ function toCampaignView(row: NonNullable<CampaignRow>, names: Map<string, string
     startAt: row.startAt.toISOString(),
     endAt: row.endAt.toISOString(),
     status: row.status as CampaignStatus,
-    budgetPlanned: num(row.budgetPlanned) ?? 0,
-    budgetCommitted: num(row.budgetCommitted) ?? 0,
-    budgetActual: num(row.budgetActual) ?? 0,
+    budgetPlanned: minorToRupees(row.budgetPlannedMinor),
+    budgetPlannedMinor: minorString(row.budgetPlannedMinor),
+    budgetCommitted: minorToRupees(row.budgetCommittedMinor),
+    budgetCommittedMinor: minorString(row.budgetCommittedMinor),
+    budgetActual: minorToRupees(row.budgetActualMinor),
+    budgetActualMinor: minorString(row.budgetActualMinor),
     currency: row.currency,
     ownerPartyId: row.ownerPartyId ?? '',
     ownerName: row.ownerPartyId ? (names.get(row.ownerPartyId) ?? 'Unknown') : '',
@@ -199,7 +204,8 @@ function toCampaignView(row: NonNullable<CampaignRow>, names: Map<string, string
     utmCampaign: row.utmCampaign,
     targetLeads: row.targetLeads,
     targetEnrolments: row.targetEnrolments,
-    targetPipelineValue: num(row.targetPipelineValue),
+    targetPipelineValue: minorToRupeesOrNull(row.targetPipelineValueMinor),
+    targetPipelineValueMinor: minorString(row.targetPipelineValueMinor),
     offeringId: row.offeringId,
     offeringName: row.offering?.name ?? null,
     courseId: row.courseId,
@@ -222,12 +228,12 @@ async function campaignSpendTotal(
   tenantId: string,
   campaignId: string,
   db: DbTx = prisma as unknown as DbTx,
-): Promise<number> {
+): Promise<bigint> {
   const agg = await db.marketingSpend.aggregate({
     where: { tenantId, campaignId, deletedAt: null },
-    _sum: { amount: true },
+    _sum: { amountMinor: true },
   });
-  return num(agg._sum.amount) ?? 0;
+  return agg._sum.amountMinor ?? 0n;
 }
 
 /**
@@ -238,10 +244,10 @@ async function campaignSpendTotal(
 export async function recomputeCampaignActual(
   campaignId: string,
   db: DbTx = prisma as unknown as DbTx,
-): Promise<number> {
+): Promise<bigint> {
   const auth = currentAuth();
   const total = await campaignSpendTotal(auth.tenantId, campaignId, db);
-  await db.marketingCampaign.update({ where: { id: campaignId }, data: { budgetActual: total } });
+  await db.marketingCampaign.update({ where: { id: campaignId }, data: { budgetActualMinor: total } });
   return total;
 }
 
@@ -307,7 +313,7 @@ export async function createCampaign(input: CampaignCreateInput): Promise<Campai
         startAt: input.startAt,
         endAt: input.endAt,
         status: 'draft',
-        budgetPlanned: input.budgetPlanned,
+        budgetPlannedMinor: rupeesToMinor(input.budgetPlanned),
         currency: input.currency ?? 'INR',
         // The creator is the campaign's owner/proposer — the party the
         // Self-Dealing Bar checks against at approval time.
@@ -316,7 +322,8 @@ export async function createCampaign(input: CampaignCreateInput): Promise<Campai
         utmCampaign,
         targetLeads: input.targetLeads ?? null,
         targetEnrolments: input.targetEnrolments ?? null,
-        targetPipelineValue: input.targetPipelineValue ?? undefined,
+        targetPipelineValueMinor:
+          input.targetPipelineValue == null ? undefined : rupeesToMinor(input.targetPipelineValue),
         offeringId: input.offeringId ?? null,
         courseId: input.courseId ?? null,
         audienceId: input.audienceId ?? null,
@@ -408,14 +415,15 @@ export async function getCampaign(id: string): Promise<CampaignDetailView> {
     decidedById: a.decidedById,
     decision: a.decision as CampaignApprovalView['decision'],
     reason: a.reason,
-    thresholdAmount: num(a.thresholdAmount),
+    thresholdAmount: minorToRupeesOrNull(a.thresholdAmountMinor),
+    thresholdAmountMinor: minorString(a.thresholdAmountMinor),
     createdAt: a.createdAt.toISOString(),
   }));
 
   return {
     ...view,
     approvals,
-    spendTotal,
+    spendTotal: minorToRupees(spendTotal),
     touchpointCount,
     leadCount,
     events: events.map((e) => ({
@@ -458,7 +466,7 @@ export async function updateCampaign(id: string, patch: CampaignUpdateInput): Pr
         ...(patch.channelMix !== undefined ? { channelMix: patch.channelMix } : {}),
         ...(patch.startAt !== undefined ? { startAt: patch.startAt } : {}),
         ...(patch.endAt !== undefined ? { endAt: patch.endAt } : {}),
-        ...(patch.budgetPlanned !== undefined ? { budgetPlanned: patch.budgetPlanned } : {}),
+        ...(patch.budgetPlanned !== undefined ? { budgetPlannedMinor: rupeesToMinor(patch.budgetPlanned) } : {}),
         ...(patch.currency !== undefined ? { currency: patch.currency } : {}),
         ...(patch.offeringId !== undefined ? { offeringId: patch.offeringId } : {}),
         ...(patch.courseId !== undefined ? { courseId: patch.courseId } : {}),
@@ -467,7 +475,9 @@ export async function updateCampaign(id: string, patch: CampaignUpdateInput): Pr
         ...(patch.tags !== undefined ? { tags: patch.tags } : {}),
         ...(patch.targetLeads !== undefined ? { targetLeads: patch.targetLeads } : {}),
         ...(patch.targetEnrolments !== undefined ? { targetEnrolments: patch.targetEnrolments } : {}),
-        ...(patch.targetPipelineValue !== undefined ? { targetPipelineValue: patch.targetPipelineValue } : {}),
+        ...(patch.targetPipelineValue !== undefined
+          ? { targetPipelineValueMinor: rupeesToMinorOrNull(patch.targetPipelineValue) }
+          : {}),
         updatedById: currentAuth().partyId,
       },
       include: CAMPAIGN_INCLUDE,
@@ -562,8 +572,13 @@ export async function submitCampaign(id: string): Promise<CampaignDetailView> {
   if (row.status !== 'draft') throw ApiError.conflict(`Cannot submit a campaign that is ${row.status}.`);
 
   const policy = await getMarketingPolicy(auth.tenantId);
-  const budgetPlanned = num(row.budgetPlanned) ?? 0;
-  const approvalRequired = budgetPlanned > policy.campaignApprovalThreshold;
+  // The threshold is a rupee policy value; it is compared in paise as rounded
+  // by rupeesToMinor. A sub-paisa policy value is not a configuration anyone
+  // should hold, and rounding it is the only way to compare it exactly.
+  const budgetPlannedMinor = row.budgetPlannedMinor;
+  const thresholdMinor = rupeesToMinor(policy.campaignApprovalThreshold);
+  const approvalRequired = budgetPlannedMinor > thresholdMinor;
+  const budgetPlanned = minorToRupees(budgetPlannedMinor);
 
   if (approvalRequired) {
     await prisma.$transaction(async (tx) => {
@@ -575,7 +590,7 @@ export async function submitCampaign(id: string): Promise<CampaignDetailView> {
           campaignId: id,
           requestedById: auth.partyId ?? 'system',
           decision: 'pending',
-          thresholdAmount: policy.campaignApprovalThreshold,
+          thresholdAmountMinor: thresholdMinor,
           createdById: auth.partyId,
         },
       });
@@ -589,7 +604,7 @@ export async function submitCampaign(id: string): Promise<CampaignDetailView> {
         EVENTS.MKT_CAMPAIGN_SUBMITTED,
         updated,
         { status: 'draft' },
-        { status: 'pending_approval', budgetPlanned },
+        { status: 'pending_approval', budgetPlanned, budgetPlannedMinor: minorString(budgetPlannedMinor) },
       );
     });
   } else {
@@ -604,7 +619,7 @@ export async function submitCampaign(id: string): Promise<CampaignDetailView> {
         EVENTS.MKT_CAMPAIGN_SCHEDULED,
         updated,
         { status: 'draft' },
-        { status: 'scheduled', budgetPlanned },
+        { status: 'scheduled', budgetPlanned, budgetPlannedMinor: minorString(budgetPlannedMinor) },
       );
     });
   }

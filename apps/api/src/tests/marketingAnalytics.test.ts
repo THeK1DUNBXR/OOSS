@@ -161,7 +161,7 @@ describe('MKT-ANA-002 — channel cost per lead', () => {
           recordCode: await nextCode('SPN'),
           channelKey: 'print_only_channel_test',
           division: 'software',
-          amount: 5000,
+          amountMinor: 500000n,
           spendDate: new Date(Date.now() - 86_400_000),
         },
       });

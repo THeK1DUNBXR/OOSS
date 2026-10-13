@@ -18,6 +18,7 @@
 import { randomUUID } from 'node:crypto';
 import { EVENTS, ATTRIBUTION_MODELS, type AttributionModel, type ChannelKey } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../../platform/db.js';
+import { rupeesToMinorOrNull, withDecimalMinor } from '../../platform/wire.js';
 import { currentAuth } from '../../platform/context.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { governedWrite } from '../../platform/governedWrite.js';
@@ -89,7 +90,7 @@ export async function recordTouchpoint(input: TouchpointInput) {
         occurredAt: input.occurredAt ?? new Date(),
         utm: (input.utm ?? {}) as never,
         sourceRef: input.sourceRef ?? null,
-        cost: input.cost ?? null,
+        costMinor: rupeesToMinorOrNull(input.cost ?? null),
         createdById: auth.partyId,
       },
     });
@@ -115,7 +116,7 @@ export async function recordTouchpoint(input: TouchpointInput) {
       tx,
     });
 
-    return touchpoint;
+    return withDecimalMinor(touchpoint, ['cost']);
   });
 }
 
@@ -142,11 +143,12 @@ export async function listTouchpoints(filters: TouchpointFilters = {}) {
       : {}),
   };
 
-  const items = await prisma.marketingTouchpoint.findMany({
+  const rows = await prisma.marketingTouchpoint.findMany({
     where: where as never,
     orderBy: { occurredAt: 'desc' },
     take: 500,
   });
+  const items = rows.map((row) => withDecimalMinor(row, ['cost']));
   return { items, total: items.length };
 }
 

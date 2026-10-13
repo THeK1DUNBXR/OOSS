@@ -10,6 +10,7 @@
 
 import { EVENTS, REFERRAL_TRANSITIONS, type ReferralStatus } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
+import { rupeesToMinorOrNull, withDecimalMinor } from '../../platform/wire.js';
 import { currentAuth } from '../../platform/context.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { governedWrite } from '../../platform/governedWrite.js';
@@ -48,18 +49,18 @@ export async function createReferralProgram(input: ReferralProgramInput) {
       name: input.name,
       kind: input.kind,
       rewardKind: input.rewardKind ?? 'none',
-      rewardAmount: input.rewardAmount ?? null,
+      rewardAmountMinor: rupeesToMinorOrNull(input.rewardAmount ?? null),
       terms: input.terms ?? null,
       createdById: auth.partyId,
     },
   });
-  return program;
+  return withDecimalMinor(program, ['rewardAmount']);
 }
 
 export async function listReferralPrograms(filters: { active?: boolean } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_referrals', verb: 'view' });
-  return prisma.marketingReferralProgram.findMany({
+  const rows = await prisma.marketingReferralProgram.findMany({
     where: {
       tenantId: auth.tenantId,
       deletedAt: null,
@@ -67,6 +68,7 @@ export async function listReferralPrograms(filters: { active?: boolean } = {}) {
     },
     orderBy: { createdAt: 'desc' },
   });
+  return rows.map((row) => withDecimalMinor(row, ['rewardAmount']));
 }
 
 export async function loadReferralProgram(id: string) {
@@ -76,7 +78,7 @@ export async function loadReferralProgram(id: string) {
     where: { id, tenantId: auth.tenantId, deletedAt: null },
   });
   if (!program) throw ApiError.notFound('Referral program');
-  return program;
+  return withDecimalMinor(program, ['rewardAmount']);
 }
 
 export async function updateReferralProgram(id: string, patch: Partial<ReferralProgramInput>) {
@@ -93,7 +95,7 @@ export async function updateReferralProgram(id: string, patch: Partial<ReferralP
         ...(patch.name !== undefined ? { name: patch.name } : {}),
         ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
         ...(patch.rewardKind !== undefined ? { rewardKind: patch.rewardKind } : {}),
-        ...(patch.rewardAmount !== undefined ? { rewardAmount: patch.rewardAmount } : {}),
+        ...(patch.rewardAmount !== undefined ? { rewardAmountMinor: rupeesToMinorOrNull(patch.rewardAmount) } : {}),
         ...(patch.terms !== undefined ? { terms: patch.terms } : {}),
         updatedById: auth.partyId,
       },
@@ -113,7 +115,7 @@ export async function updateReferralProgram(id: string, patch: Partial<ReferralP
       newState: { name: updated.name },
       tx,
     });
-    return updated;
+    return withDecimalMinor(updated, ['rewardAmount']);
   });
 }
 
@@ -124,7 +126,8 @@ async function setProgramActive(id: string, active: boolean) {
     where: { id, tenantId: auth.tenantId, deletedAt: null },
   });
   if (!program) throw ApiError.notFound('Referral program');
-  return prisma.marketingReferralProgram.update({ where: { id }, data: { active } });
+  const updated = await prisma.marketingReferralProgram.update({ where: { id }, data: { active } });
+  return withDecimalMinor(updated, ['rewardAmount']);
 }
 
 export const activateReferralProgram = (id: string) => setProgramActive(id, true);

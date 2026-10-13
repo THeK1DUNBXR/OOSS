@@ -29,6 +29,7 @@ import {
   type Sh4Data,
 } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
+import { minorToRupees, minorToRupeesOrNull } from './money.js';
 import { currentAuth } from '../platform/context.js';
 import { assertCan } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
@@ -500,7 +501,7 @@ async function mgt1RowsForClass(shareClassId: string): Promise<Mgt1Row[]> {
         : [];
 
     const shareClass = await prisma.shareClass.findFirstOrThrow({ where: { id: shareClassId } });
-    const faceValue = num(shareClass.faceValue);
+    const faceValue = minorToRupees(shareClass.faceValueMinor);
 
     let email = '';
     if (holder.kind === 'person' && holder.personId) {
@@ -682,9 +683,9 @@ export async function pas3AllotteeList(roundId: string): Promise<{ round: Record
     if (!holder) continue;
     const view = await holderView(holder);
     const shareClass = await prisma.shareClass.findFirstOrThrow({ where: { id: t.shareClassId } });
-    const faceValue = num(shareClass.faceValue) ?? 0;
+    const faceValue = minorToRupees(shareClass.faceValueMinor);
     const count = num(t.count) ?? 0;
-    const price = num(t.pricePerShare);
+    const price = minorToRupeesOrNull(t.pricePerShareMinor);
     const nominalValue = Math.round(faceValue * count * 100) / 100;
     const total = price == null ? null : Math.round(price * count * 100) / 100;
     const premium = price == null ? null : Math.round((price - faceValue) * count * 100) / 100;
@@ -736,7 +737,7 @@ async function capitalAsOf(asOf: Date): Promise<number> {
   for (const t of transactions) {
     const cls = classById.get(t.shareClassId);
     if (!cls) continue;
-    const faceValue = num(cls.faceValue) ?? 0;
+    const faceValue = minorToRupees(cls.faceValueMinor);
     if (t.toHolderId) total += faceValue * (num(t.count) ?? 0);
     if (t.fromHolderId) total -= faceValue * outgoingCount(t);
   }
@@ -822,7 +823,7 @@ export async function sh4Data(transactionId: string): Promise<Sh4Data> {
       : [];
 
   const count = num(txn.count) ?? 0;
-  const price = num(txn.pricePerShare);
+  const price = minorToRupeesOrNull(txn.pricePerShareMinor);
   const consideration = price == null ? null : Math.round(price * count * 100) / 100;
 
   // Whether this particular transfer moved shares held in demat form —

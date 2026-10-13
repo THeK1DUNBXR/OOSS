@@ -16,6 +16,7 @@
 
 import { EVENTS, isCanonicalPosition, PIPELINE_POSITIONS } from '@kaizen/shared';
 import { prisma } from '../platform/db.js';
+import { rupeesToMinor, withDecimalMinor } from '../platform/wire.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
@@ -83,7 +84,8 @@ export async function createPipeline(input: PipelineInput) {
         defaultForecastMethod: input.defaultForecastMethod ?? 'weighted_stage',
         requiresAwardArtefact: input.requiresAwardArtefact ?? 'none',
         isDefault: input.isDefault ?? false,
-        commitApprovalThreshold: input.commitApprovalThreshold ?? undefined,
+        commitApprovalThresholdMinor:
+          input.commitApprovalThreshold == null ? undefined : rupeesToMinor(input.commitApprovalThreshold),
         createdById: auth.partyId,
       },
     });
@@ -102,7 +104,7 @@ export async function createPipeline(input: PipelineInput) {
       tx,
     });
 
-    return pipeline;
+    return withDecimalMinor(pipeline, ['commitApprovalThreshold']);
   });
 }
 
@@ -483,7 +485,7 @@ export async function loadPipelineWithStages(pipelineId: string) {
     },
   });
   if (!pipeline) throw ApiError.notFound('Pipeline');
-  return pipeline;
+  return withDecimalMinor(pipeline, ['commitApprovalThreshold']);
 }
 
 export async function stageFor(pipelineId: string, stageKey: string) {

@@ -473,6 +473,13 @@ export const MONEY_FIELDS = [
   'equityValue',
   'paidUpAmount',
   'stampDutyPaid',
+  // The paise siblings of the four above (MONEY-S7). `applyFieldVisibility` matches
+  // by exact key, so a `<name>Minor` that is not listed here would carry the figure
+  // past the mask that its Decimal is held behind.
+  'faceValueMinor',
+  'pricePerShareMinor',
+  'equityValueMinor',
+  'stampDutyPaidMinor',
 ];
 
 /**

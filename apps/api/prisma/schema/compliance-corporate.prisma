@@ -250,7 +250,7 @@ model Refund {
   invoiceId String?
   receiptId String?
 
-  amount Decimal @db.Decimal(14, 2)
+  amountMinor BigInt
   reason String
 
   status String @default("requested") // requested | approved | paid

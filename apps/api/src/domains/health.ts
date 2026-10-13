@@ -37,6 +37,7 @@ import {
   type HealthBand,
 } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
+import { minorToRupees } from './money.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
@@ -680,11 +681,11 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
       }),
       prisma.marketingSpend.aggregate({
         where: { tenantId: auth.tenantId, deletedAt: null, spendDate: { gte: thisWindowStart, lte: now } },
-        _sum: { amount: true },
+        _sum: { amountMinor: true },
       }),
       prisma.marketingSpend.aggregate({
         where: { tenantId: auth.tenantId, deletedAt: null, spendDate: { gte: priorWindowStart, lt: thisWindowStart } },
-        _sum: { amount: true },
+        _sum: { amountMinor: true },
       }),
       prisma.consent.count({ where: { tenantId: auth.tenantId, purposeCode: 'marketing', status: 'granted' } }),
       prisma.marketingTouchpoint.findMany({
@@ -718,8 +719,8 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
         OR: [{ campaignId: { not: null } }, { channelKey: { not: null } }],
       },
     });
-    const spendThis = num(spendThis30._sum.amount) ?? 0;
-    const spendPrior = num(spendPrior30._sum.amount) ?? 0;
+    const spendThis = minorToRupees(spendThis30._sum.amountMinor ?? 0n);
+    const spendPrior = minorToRupees(spendPrior30._sum.amountMinor ?? 0n);
     const cplThis = attributedLeads.length > 0 ? spendThis / attributedLeads.length : null;
     const cplPrior = priorAttributedLeads > 0 ? spendPrior / priorAttributedLeads : null;
     // Neutral (ratio 1) when either side cannot be computed — never a
