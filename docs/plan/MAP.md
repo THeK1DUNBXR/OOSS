@@ -84,7 +84,7 @@
 
 **`apps/api/src/domains/compliance/corporate/rateLimit.ts`** (74 lines) — recoveryRateLimit:54 · loginRateLimit:63
 
-**`apps/api/src/domains/compliance/corporate/refunds.ts`** (217 lines) — listRefunds:29 · requestRefund:38 · approveRefund:84 · payRefund:121 · currentRefundPolicy:184 · listRefundPolicyVersions:189 · publishRefundPolicy:194
+**`apps/api/src/domains/compliance/corporate/refunds.ts`** (225 lines) — listRefunds:30 · requestRefund:39 · approveRefund:85 · payRefund:129 · currentRefundPolicy:192 · listRefundPolicyVersions:197 · publishRefundPolicy:202
 
 **`apps/api/src/domains/compliance/corporate/registers.ts`** (118 lines) — RegisterEntryInput:19 · listRegisterEntries:26 · createRegisterEntry:44 · currentRegister:85 · exportRegisterCsv:102
 
@@ -96,7 +96,7 @@
 
 **`apps/api/src/domains/compliance/labour.ts`** (1289 lines) — listHolidays:77 · createHoliday:87 · deleteHoliday:113 · holidayDatesInRange:124 · leaveWorkingDayCount:134 · runLeaveYearClose:182 · encashLeave:272 · listWorkingHoursRules:352 · createWorkingHoursRule:358 · runWeeklyHoursCheck:391 · overtimeAccruals:470 · RegisterExport:483 · registerWages:488 · registerLeave:526 · registerMusterRoll:546 · registerEmployees:571 · listIccMembers:602 · appointIccMember:611 · endIccMemberTerm:642 · validateCommittee:659 · listPoshComplaints:688 · createPoshComplaint:696 · transitionPoshComplaint:740 · runPoshOverdueCheck:772 · createPoshWorkshop:804 · listPoshWorkshops:823 · poshAnnualReport:830 · markPoshAnnualReportFiled:881 · listDisciplinaryCases:904 · openDisciplinaryCase:924 · advanceDisciplinaryCase:981 · issueLetter:1094 · listLetters:1146 · letterDocument:1160 · recordBgvConsent:1172 · recordCodeOfConductAck:1192 · handleOffboardingCompleted:1223
 
-**`apps/api/src/domains/compliance/payroll.ts`** (999 lines) — listPfRateTables:66 · PfRateTableInput:72 · createPfRateTable:83 · currentPfRateTable:92 · listEsiRateTables:120 · EsiRateTableInput:126 · createEsiRateTable:133 · currentEsiRateTable:149 · listPtSlabTables:162 · PtSlabTableInput:171 · createPtSlabTable:178 · currentPtSlabs:202 · listLwfRateTables:211 · LwfRateTableInput:217 · createLwfRateTable:226 · currentLwfRateTable:252 · listMinimumWageTables:259 · MinimumWageTableInput:268 · createMinimumWageTable:275 · listSalaryStructures:305 · SalaryStructureInput:317 · proposeSalaryStructure:329 · approveSalaryStructure:367 · computeInstruction:414 · listPayslips:716 · getPayslip:757 · payslipDocument:775 · exportEcr:784 · exportEsic:820 · settleOffboarding:854 · setEngagementType:938 · BankDetailsInput:963 · setBankDetails:972
+**`apps/api/src/domains/compliance/payroll.ts`** (1013 lines) — listPfRateTables:67 · PfRateTableInput:73 · createPfRateTable:84 · currentPfRateTable:93 · listEsiRateTables:121 · EsiRateTableInput:127 · createEsiRateTable:134 · currentEsiRateTable:150 · listPtSlabTables:163 · PtSlabTableInput:172 · createPtSlabTable:179 · currentPtSlabs:203 · listLwfRateTables:212 · LwfRateTableInput:218 · createLwfRateTable:227 · currentLwfRateTable:253 · listMinimumWageTables:260 · MinimumWageTableInput:269 · createMinimumWageTable:276 · listSalaryStructures:306 · SalaryStructureInput:318 · proposeSalaryStructure:330 · approveSalaryStructure:368 · computeInstruction:428 · listPayslips:730 · getPayslip:771 · payslipDocument:789 · exportEcr:798 · exportEsic:834 · settleOffboarding:868 · setEngagementType:952 · BankDetailsInput:977 · setBankDetails:986
 
 **`apps/api/src/domains/compliance/privacy.ts`** (1618 lines) — NoticePurpose:55 · getCurrentNotice:63 · publishNotice:77 · acknowledgeNotice:136 · currentNoticePurposeCodes:166 · resolvePurpose:186 · grantConsent:196 · withdrawConsent:274 · listConsentsForPerson:330 · grantedConsentCodes:352 · MinorGateInput:370 · parseStatedDateOfBirth:391 · assertMinorHasGuardian:404 · requireGuardianConsentForMinor:430 · flagMajorityTransitions:486 · raiseDataRequest:519 · listDataRequests:560 · ErasureBlocker:661 · fulfilDataRequest:847 · refuseDataRequest:1104 · detectOverdueDataRequests:1124 · raiseBreach:1153 · transitionBreach:1206 · listBreaches:1246 · runBreachLadder:1261 · runRetentionReport:1296 · getRetention:1338 · runAccessReview:1385 · encryptField:1484 · decryptField:1493 · readRegulated:1506 · backfillEncryptAtRest:1526 · encryptionStatus:1582
 
@@ -292,7 +292,7 @@
 
 **`apps/api/src/platform/approvalPolicySync.ts`** (175 lines) — LADDER_CONVERGENCES:47 · ApprovalPolicySyncResult:57 · reconcileApprovalGatePolicies:65 · reconcileApprovalGatePoliciesForAllTenants:154
 
-**`apps/api/src/platform/approvals.ts`** (461 lines) — ApprovalPolicyContent:37 · DEFAULT_APPROVAL_POLICY:53 · GateSubject:66 · GateResult:99 · evaluateApprovalGate:128 · decideApprovalStep:330
+**`apps/api/src/platform/approvals.ts`** (481 lines) — ApprovalPolicyContent:40 · DEFAULT_APPROVAL_POLICY:56 · GateSubject:69 · GateResult:102 · evaluateApprovalGate:131 · decideApprovalStep:335
 
 **`apps/api/src/platform/audit.ts`** (522 lines) — AUDIT_ACTIONS:20 · AuditAction:34 · registerGovernedEntities:43 · governedEntities:49 · isGoverned:55 · diffForAudit:134 · computeAuditHash:177 · hashPayloadOf:185 · createChainedAuditRecord:216 · AuditChainVerification:283 · verifyAuditChain:303 · chainUnhashedAuditRecords:372 · AuditWriteInput:400 · auditWrite:415 · auditRegulatedRead:455 · auditExport:482 · auditBulkOperation:500
 

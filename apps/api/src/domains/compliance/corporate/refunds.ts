@@ -22,6 +22,7 @@ import { assertStepUpForApprove } from './security.js';
 import { documentPrefix } from '../../companyProfile.js';
 import { nextDocumentNumber, DOCUMENT_SERIES } from '../../../platform/documentNumber.js';
 import { checkTransactionAllowed, writeTransactionMinor } from '../../books.js';
+import { isFounder, type FounderOverride } from '../../statutory.js';
 
 // Registered beside the writer for the reason given in corporate/board.ts.
 registerGovernedEntities('cmp_corporate', ['refund', 'refund_policy']);
@@ -92,10 +93,16 @@ export async function approveRefund(id: string) {
       `This refund is '${refund.status}', not 'requested'. Only a requested refund can be approved.`,
     );
   }
+  // The founder is exempt (owner ruling 2026-10-12), and the waiver is audited as
+  // author_is_approver, so the exemption is on the record rather than silent.
+  const founderOverride: FounderOverride[] = [];
   if (refund.requestedById === auth.partyId) {
-    throw ApiError.forbidden('The person who requested a refund cannot also approve it.', [
-      { axis: 'WHO', passed: false, reason: 'self_approval_barred' },
-    ]);
+    if (!(await isFounder())) {
+      throw ApiError.forbidden('The person who requested a refund cannot also approve it.', [
+        { axis: 'WHO', passed: false, reason: 'self_approval_barred' },
+      ]);
+    }
+    founderOverride.push('author_is_approver');
   }
 
   const updated = await prisma.refund.update({
@@ -108,6 +115,7 @@ export async function approveRefund(id: string) {
     subjectId: id,
     before: { status: 'requested' },
     after: { status: 'approved' },
+    ...(founderOverride.length > 0 ? { meta: { founderOverride } } : {}),
   });
   return updated;
 }
