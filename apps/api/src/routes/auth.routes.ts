@@ -131,8 +131,9 @@ router.post(
 );
 
 /**
- * Recovers a locked-out employee's sign-in. The founder or the IT desk calls it;
- * the employee cannot, and no code is sent to a phone or an inbox. The response
+ * Recovers a locked-out employee's sign-in. The recovery holder calls it (the IT
+ * admin once onboarding names one, otherwise the founder); the employee cannot,
+ * and no code is sent to a phone or an inbox. The response
  * carries the one-time password, so it is marked uncacheable. See
  * domains/accountRecovery.ts for the refusals and the audit.
  */
