@@ -158,7 +158,7 @@
 
 **`apps/api/src/domains/hcm/workforce.ts`** (879 lines) — ProfileExtensionInput:59 · getProfileExtension:90 · upsertProfileExtension:110 · UploadDocumentInput:172 · listEmployeeDocuments:180 · uploadEmployeeDocument:194 · verifyEmployeeDocument:235 · getEmployeeDocumentContent:273 · SetReportingLineInput:287 · listReportingLines:294 · setReportingLine:309 · orgChart:362 · DirectoryFilter:404 · directorySearch:410 · employee360:475 · listCostCentres:582 · createCostCentre:588 · listLocations:596 · createLocation:602 · listGrades:625 · createGrade:631 · ProposeStatusChangeInput:645 · proposeStatusChange:671 · listStatusChanges:708 · decideStatusChange:744 · applyStatusChange:797
 
-**`apps/api/src/domains/health.ts`** (1121 lines) — FactorResult:68 · ComputeResult:81 · computeCommercialHealth:95 · computeDomainHealth:241 · applyFalsifiabilityCheck:848 · computeAndPersistAll:920 · PulseEntry:1014 · latestPulse:1030 · healthAsOfDay:1106 · quarterTargetMinor:1117
+**`apps/api/src/domains/health.ts`** (1120 lines) — FactorResult:67 · ComputeResult:80 · computeCommercialHealth:94 · computeDomainHealth:240 · applyFalsifiabilityCheck:847 · computeAndPersistAll:919 · PulseEntry:1013 · latestPulse:1029 · healthAsOfDay:1105 · quarterTargetMinor:1116
 
 **`apps/api/src/domains/hiring.ts`** (421 lines) — listRequisitions:45 · createRequisition:63 · transitionRequisition:111 · listApplications:138 · createApplication:161 · ApplicationTransitionInput:231 · PreparedApplicationTransition:241 · prepareApplicationTransition:252 · applyApplicationTransition:304 · transitionApplication:344 · joinFromApplication:362 · hiringFunnel:404
 

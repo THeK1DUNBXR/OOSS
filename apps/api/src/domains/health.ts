@@ -44,7 +44,6 @@ import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { raiseException } from '../platform/exceptions.js';
 import { findThreshold } from './thresholds.js';
-import { minorToRupees } from './money.js';
 
 /**
  * What each area is called on screen. The codes stay as the identifiers — the
