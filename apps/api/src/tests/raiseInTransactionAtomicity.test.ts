@@ -118,7 +118,7 @@ describe('a challan paid in a closed period raises EX-FIN-008 in the same transa
         recordCode: unique('W2-ATOMIC-CHALLAN'),
         month: '2026-09',
         sectionGroup: '194C_IND',
-        amount: 100,
+        amountMinor: 10000n,
         deducteeCount: 1,
       },
     });

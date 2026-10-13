@@ -99,7 +99,7 @@ describe('Money out — a payment already made is never refused by a closed mont
         recordCode: unique('W2-PAID-CHALLAN'),
         month: '2026-09',
         sectionGroup: '194C_IND',
-        amount: 100,
+        amountMinor: 10000n,
         deducteeCount: 1,
       },
     });
@@ -139,7 +139,7 @@ describe('Money out — a payment already made is never refused by a closed mont
         recordCode: unique('W2-OPEN-CHALLAN'),
         month: '2026-09',
         sectionGroup: '194C_IND',
-        amount: 100,
+        amountMinor: 10000n,
         deducteeCount: 1,
       },
     });

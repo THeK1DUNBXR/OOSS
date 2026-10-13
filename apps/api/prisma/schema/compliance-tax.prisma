@@ -100,7 +100,7 @@ model TdsChallan {
   /// code, salary TDS deposits as "192".
   sectionGroup String
 
-  amount        Decimal   @default(0) @db.Decimal(14, 2)
+  amountMinor   BigInt    @default(0)
   deducteeCount Int       @default(0)
   bsrCode       String?
   challanNo     String?
@@ -201,7 +201,7 @@ model AdvanceTaxPayment {
 
   fy             String
   instalmentDate DateTime
-  amount         Decimal  @default(0) @db.Decimal(14, 2)
+  amountMinor    BigInt   @default(0)
   paidOn         DateTime
   /// The open accounting period the payment is booked in, when `paidOn` fell in a
   /// closed one. `paidOn` stays the real date. Interim policy, pending the

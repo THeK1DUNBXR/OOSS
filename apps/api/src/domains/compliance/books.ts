@@ -13,9 +13,9 @@
  * everything else.
  */
 
-import { istDateKey, istFinancialYearStart, toMinorHalfUp } from '@kaizen/shared';
+import { decimalToMinor, istDateKey, istFinancialYearStart, toMinorHalfUp } from '@kaizen/shared';
 import { minorToRupees } from '../money.js';
-import { minorString } from '../../platform/wire.js';
+import { minorString, rupeesToMinor } from '../../platform/wire.js';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import {
@@ -660,20 +660,18 @@ export async function statementForFy(fyStartYear: number) {
     where: { tenantId: auth.tenantId, deletedAt: null, txnDate: { lt: to } },
     _sum: { amount: true },
   });
-  const inflowByAccount = new Map<string, number>();
-  const outflowByAccount = new Map<string, number>();
+  const inflowByAccount = new Map<string, bigint>();
+  const outflowByAccount = new Map<string, bigint>();
   for (const row of balances) {
     const target = row.direction === 'in' ? inflowByAccount : outflowByAccount;
-    target.set(row.accountId, num(row._sum.amount) ?? 0);
+    target.set(row.accountId, movementMinor(row._sum.amount));
   }
 
   const bsHeads = new Map<string, number>();
   const bsUnmapped = new Map<string, number>();
   for (const account of accounts) {
-    const balance = round2(
-      (num(account.openingBalance) ?? 0) +
-        (inflowByAccount.get(account.id) ?? 0) -
-        (outflowByAccount.get(account.id) ?? 0),
+    const balance = minorToRupees(
+      account.openingBalanceMinor + (inflowByAccount.get(account.id) ?? 0n) - (outflowByAccount.get(account.id) ?? 0n),
     );
     const mapping = await resolveAccountMapping(account.id, account.ledgerGroup);
     if (!mapping || mapping.statement !== 'balance_sheet') {
@@ -879,19 +877,18 @@ export async function trialBalance(asOf: Date, tx?: DbTx) {
     where: { tenantId: auth.tenantId, deletedAt: null, txnDate: { lte: asOf } },
     _sum: { amount: true },
   });
-  const inflow = new Map<string, number>();
-  const outflow = new Map<string, number>();
+  const inflow = new Map<string, bigint>();
+  const outflow = new Map<string, bigint>();
   for (const row of movementsByAccount) {
     const target = row.direction === 'in' ? inflow : outflow;
-    target.set(row.accountId, num(row._sum.amount) ?? 0);
+    target.set(row.accountId, movementMinor(row._sum.amount));
   }
 
   const rows: Array<{ name: string; debit: number; credit: number }> = [];
-  let openingSum = 0;
   for (const account of accounts) {
-    const opening = num(account.openingBalance) ?? 0;
-    openingSum = round2(openingSum + opening);
-    const balance = round2(opening + (inflow.get(account.id) ?? 0) - (outflow.get(account.id) ?? 0));
+    const balance = minorToRupees(
+      account.openingBalanceMinor + (inflow.get(account.id) ?? 0n) - (outflow.get(account.id) ?? 0n),
+    );
     rows.push({ name: account.name, debit: balance >= 0 ? balance : 0, credit: balance < 0 ? -balance : 0 });
   }
 
@@ -1037,6 +1034,14 @@ export interface BankLineInput {
 }
 
 /**
+ * A Transaction amount sum as paise. Transaction.amount is still a Decimal column, so
+ * the sum is read through its own two-place string; a group with no rows sums to nothing.
+ */
+function movementMinor(sum: Prisma.Decimal | null): bigint {
+  return sum === null ? 0n : decimalToMinor(sum);
+}
+
+/**
  * What makes a statement line the same line on a re-import. The day is the IST
  * day, so a line dated 00:30 IST is the day it names.
  */
@@ -1093,6 +1098,7 @@ export async function importBankStatement(
       skipped += 1;
       continue;
     }
+    const amountMinor = rupeesToMinor(line.amount);
     let row;
     try {
       row = await prisma.bankStatementLine.create({
@@ -1100,7 +1106,7 @@ export async function importBankStatement(
           tenantId: auth.tenantId,
           accountId,
           date: line.date,
-          amount: line.amount,
+          amountMinor,
           direction: line.direction,
           reference: line.reference ?? null,
           narration: line.narration ?? null,
@@ -1124,6 +1130,7 @@ export async function importBankStatement(
         accountId,
         date: line.date,
         amount: line.amount,
+        amountMinor: minorString(amountMinor),
         direction: line.direction,
         reference: line.reference ?? null,
       },
@@ -1163,11 +1170,11 @@ export async function matchBankLines(accountId: string) {
     const fits = transactions.filter((t) => {
       if (usedTxnIds.has(t.id)) return false;
       return isLikelyMatch({
-        bankAmount: num(line.amount) ?? 0,
+        bankAmountMinor: line.amountMinor,
         bankDate: line.date,
         bankDirection: line.direction as 'in' | 'out',
         bankReference: line.reference,
-        txnAmount: num(t.amount) ?? 0,
+        txnAmountMinor: decimalToMinor(t.amount),
         txnDate: t.txnDate,
         txnDirection: t.direction as 'in' | 'out',
         txnReference: t.reference,
@@ -1252,7 +1259,8 @@ export async function reconciliationReport(accountId: string) {
     unmatchedBank: unmatchedBank.map((l) => ({
       id: l.id,
       date: l.date.toISOString().slice(0, 10),
-      amount: money ? num(l.amount) : null,
+      amount: money ? minorToRupees(l.amountMinor) : null,
+      amountMinor: money ? minorString(l.amountMinor) : null,
       direction: l.direction,
       reference: l.reference,
       narration: l.narration,

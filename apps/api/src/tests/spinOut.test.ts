@@ -423,7 +423,7 @@ describe('EQT-SPN-002, 003, 004, 007 — commit', () => {
     const account = await unscopedPrisma.ledgerAccount.findFirstOrThrow({
       where: { tenantId: SUB, spinOutBatchId: COMMIT_BATCH.batchId },
     });
-    expect(Number(account.openingBalance)).toBe(0);
+    expect(account.openingBalanceMinor).toBe(0n);
     expect(account.openingNote).toMatch(/transfer of funds/);
     expect(COMMIT_BATCH.accountsOpened.length).toBeGreaterThan(0);
   });

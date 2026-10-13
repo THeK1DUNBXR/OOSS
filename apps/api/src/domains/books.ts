@@ -100,10 +100,11 @@ async function isInSameGroup(tenantId: string, candidateTenantId: string): Promi
 export async function listAccounts() {
   const auth = currentAuth();
   await assertCan({ resource: 'ledger_accounts', verb: 'view' });
-  return prisma.ledgerAccount.findMany({
+  const rows = await prisma.ledgerAccount.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null },
     orderBy: [{ active: 'desc' }, { name: 'asc' }],
   });
+  return rows.map((r) => withDecimalMinor(r, ['openingBalance']));
 }
 
 export async function createAccount(input: {
@@ -122,7 +123,7 @@ export async function createAccount(input: {
       name: input.name,
       accountType: input.accountType ?? 'bank',
       displayReference: input.displayReference ?? null,
-      openingBalance: input.openingBalance ?? 0,
+      openingBalanceMinor: rupeesToMinor(input.openingBalance ?? 0),
       openingDate: input.openingDate ?? null,
       ledgerGroup: input.ledgerGroup ?? (input.accountType === 'loan' ? 'liability' : 'asset'),
     },
@@ -135,7 +136,8 @@ export async function createAccount(input: {
       name: account.name,
       accountType: account.accountType,
       ledgerGroup: account.ledgerGroup,
-      openingBalance: num(account.openingBalance),
+      openingBalance: minorToRupees(account.openingBalanceMinor),
+      openingBalanceMinor: minorString(account.openingBalanceMinor),
     },
   });
   await emit({
@@ -145,7 +147,7 @@ export async function createAccount(input: {
     impact: { domains: ['fin'] },
     confidentiality: 'confidential',
   });
-  return account;
+  return withDecimalMinor(account, ['openingBalance']);
 }
 
 export async function listCategories() {
@@ -214,27 +216,27 @@ export async function accountBalances(asOf = new Date()) {
     _sum: { amount: true },
   });
 
-  const inflow = new Map<string, number>();
-  const outflow = new Map<string, number>();
+  const inflow = new Map<string, bigint>();
+  const outflow = new Map<string, bigint>();
   for (const row of movements) {
     const target = row.direction === 'in' ? inflow : outflow;
-    target.set(row.accountId, num(row._sum.amount) ?? 0);
+    target.set(row.accountId, row._sum.amount === null ? 0n : decimalToMinor(row._sum.amount));
   }
 
   return accounts.map((a) => {
-    const opening = num(a.openingBalance) ?? 0;
-    const inn = inflow.get(a.id) ?? 0;
-    const out = outflow.get(a.id) ?? 0;
+    const openingMinor = a.openingBalanceMinor;
+    const inMinor = inflow.get(a.id) ?? 0n;
+    const outMinor = outflow.get(a.id) ?? 0n;
     return {
       id: a.id,
       name: a.name,
       accountType: a.accountType,
       ledgerGroup: a.ledgerGroup,
       displayReference: a.displayReference,
-      opening,
-      inflow: inn,
-      outflow: out,
-      balance: round2(opening + inn - out),
+      opening: minorToRupees(openingMinor),
+      inflow: minorToRupees(inMinor),
+      outflow: minorToRupees(outMinor),
+      balance: minorToRupees(openingMinor + inMinor - outMinor),
     };
   });
 }
