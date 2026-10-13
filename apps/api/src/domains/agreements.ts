@@ -22,7 +22,7 @@ import {
   type AgreementType,
   type SeverityCode,
 } from '@kaizen/shared';
-import { prisma, num, type DbTx } from '../platform/db.js';
+import { prisma, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -30,6 +30,7 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { assertCan } from '../platform/permissions.js';
+import { rupeesOf, rupeesToMinor, withDecimalMinor } from '../platform/wire.js';
 import { evaluateApprovalGate } from '../platform/approvals.js';
 import { raiseException } from '../platform/exceptions.js';
 import { createRelationship } from './relationships.js';
@@ -77,7 +78,7 @@ export async function createMou(input: {
         vertical: input.vertical ?? null,
         status: 'proposed',
         // Zero is a valid coverage-instrument state for an MoU.
-        commercialValue: input.commercialValue ?? 0,
+        commercialValueMinor: rupeesToMinor(input.commercialValue ?? 0),
         currency: input.currency ?? 'INR',
         strategicValue: input.strategicValue ?? null,
         termMonths: input.termMonths ?? null,
@@ -155,7 +156,7 @@ export async function createContract(input: {
         opportunityId: input.opportunityId ?? null,
         quoteId: input.quoteId ?? null,
         status: 'proposed',
-        commercialValue: input.commercialValue,
+        commercialValueMinor: rupeesToMinor(input.commercialValue),
         currency: input.currency ?? 'INR',
         strategicValue: input.strategicValue ?? null,
         termMonths: input.termMonths ?? null,
@@ -261,7 +262,7 @@ export async function createPartnerAgreement(input: {
         scope: input.scope ?? null,
         territoryScope: input.territoryScope ?? null,
         status: 'proposed',
-        commercialValue: input.commercialValue ?? 0,
+        commercialValueMinor: rupeesToMinor(input.commercialValue ?? 0),
         currency: input.currency ?? 'INR',
         strategicValue: input.strategicValue ?? null,
         termMonths: input.termMonths ?? null,
@@ -319,6 +320,10 @@ const POLICY_CODE: Record<AgreementKind, string> = {
   partner_agreement: 'POL-CRM-PARTNER-APPROVAL',
 };
 
+/** A paise column as the rupee number an agreement event or the renewal carries; null when the column is null. */
+const rupeesOfMinor = (minor: unknown): number | null =>
+  minor === null || minor === undefined ? null : rupeesOf(minor as bigint);
+
 async function loadAgreement(kind: AgreementKind, id: string) {
   if (kind === 'mou') return prisma.mou.findFirst({ where: { id } });
   if (kind === 'contract') return prisma.contract.findFirst({ where: { id } });
@@ -375,7 +380,7 @@ export async function transitionAgreement(
         type: kind,
         label: `${agreement.recordCode} — ${agreement.title}`,
         ownerPartyId: (agreement.ownerPartyId as string | null) ?? null,
-        commercialValue: num(agreement.commercialValue as never),
+        commercialValue: rupeesOfMinor(agreement.commercialValueMinor),
         currency: (agreement.currency as string) ?? 'INR',
         strategicValue: (agreement.strategicValue as string | null) ?? null,
         termMonths: (agreement.termMonths as number | null) ?? null,
@@ -454,7 +459,7 @@ export async function transitionAgreement(
       previousState: { status: from },
       newState: {
         status: toStatus,
-        commercialValue: num(agreement.commercialValue as never),
+        commercialValue: rupeesOfMinor(agreement.commercialValueMinor),
         currency: agreement.currency,
         startDate: agreement.startDate,
         endDate: agreement.endDate,
@@ -462,13 +467,14 @@ export async function transitionAgreement(
       reason: { reasonCode: `${kind}_${toStatus}`, note },
       impact: {
         domains: kind === 'contract' && toStatus === 'signed' ? ['crm', 'fin', 'prj'] : ['crm'],
-        materiality: agreement.commercialValue
-          ? {
-              measure: `${kind}_value`,
-              value: num(agreement.commercialValue as never)!,
-              currency: (agreement.currency as string) ?? 'INR',
-            }
-          : null,
+        materiality:
+          agreement.commercialValueMinor !== null && agreement.commercialValueMinor !== undefined
+            ? {
+                measure: `${kind}_value`,
+                value: rupeesOfMinor(agreement.commercialValueMinor)!,
+                currency: (agreement.currency as string) ?? 'INR',
+              }
+            : null,
       },
       // The load-bearing cross-domain event: Finance subscribes for billing
       // schedule publication, deriving revenue recognition from the offering's
@@ -629,7 +635,7 @@ export async function renewAgreement(kind: AgreementKind, id: string, endDate: D
   const base = {
     title: `${existing.title} (renewed)`,
     organizationId: existing.organizationId as string | null,
-    commercialValue: num(existing.commercialValue as never) ?? 0,
+    commercialValue: rupeesOfMinor(existing.commercialValueMinor) ?? 0,
     currency: existing.currency as string,
     strategicValue: existing.strategicValue as string | null,
     termMonths: existing.termMonths as number | null,

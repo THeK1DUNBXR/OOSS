@@ -14,7 +14,13 @@
  * of its own beyond the PCT-owned tables.
  */
 
-import { EVENTS, type BillingFrequency, type DeliveryModel, type RevenueTreatment } from '@kaizen/shared';
+import {
+  EVENTS,
+  decimalToMinor,
+  type BillingFrequency,
+  type DeliveryModel,
+  type RevenueTreatment,
+} from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -29,6 +35,7 @@ import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 // the step's audit row. The Set-backed registry makes the second declaration harmless.
 registerGovernedEntities('gov', ['approval_step']);
 import { assertCan, resolveAuthorityCeiling } from '../platform/permissions.js';
+import { rupeesToMinorOrNull } from '../platform/wire.js';
 import { notify, raiseException } from '../platform/exceptions.js';
 import { advanceStage } from './opportunities.js';
 
@@ -341,7 +348,7 @@ export async function createProposal(input: {
         opportunityId: input.opportunityId,
         quoteId: input.quoteId ?? null,
         title: input.title,
-        totalValue: input.totalValue ?? undefined,
+        totalValueMinor: rupeesToMinorOrNull(input.totalValue ?? undefined),
         currency: input.currency ?? opportunity.currency,
         validUntil: input.validUntil ?? null,
         ownerPartyId: opportunity.ownerPartyId,
@@ -645,7 +652,17 @@ export async function createQuote(opportunityId: string, lines: QuoteLineInput[]
       name: EVENTS.QUOTE_CREATED,
       subject: { entityType: 'quote', entityId: quote.id, recordCode },
       related: [{ relation: 'quotes_for', entityType: 'opportunity', entityId: opportunityId }],
-      newState: { version: quote.version, grandTotal: subtotal - discountTotal },
+      // Read back from the row just written, not from the float sum above: 3100.8 - 310.08
+      // is 2790.7200000000003 in floats, and the chain hash covers the body, so the float
+      // broke the link when the row kept 2790.72 (kaizen_s6b seq 587, 1364). The decimal
+      // string is exact and is what the row stores; a JS number here would reintroduce the
+      // float read this change removed. The paise string is the shape the other money
+      // fields take in event bodies.
+      newState: {
+        version: quote.version,
+        grandTotal: updated.grandTotal!.toFixed(2),
+        grandTotalMinor: decimalToMinor(updated.grandTotal!).toString(),
+      },
       confidentiality: 'confidential',
       tx,
     });
@@ -745,7 +762,7 @@ export async function issueQuote(quoteId: string, validUntil?: Date): Promise<Qu
           // approved on the quote, which `quotes:approve` covers (seed/grants.ts).
           resource: 'quotes',
           requestedById: auth.partyId ?? 'system',
-          requestedValue: quote.grandTotal ?? undefined,
+          requestedValueMinor: quote.grandTotal ? decimalToMinor(quote.grandTotal) : undefined,
           currency: quote.currency,
           resolvedApproverId: approver?.partyId ?? null,
           resolvedApproverRole: 'finance_head',

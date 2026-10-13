@@ -448,19 +448,19 @@ describe('MONEY-S6 marketing and pipeline: wire characterisation (pre-conversion
       });
 
       await reset();
-      await unscopedPrisma.opportunity.update({ where: { id: opp.id }, data: { expectedValue: 1000000 } });
+      await unscopedPrisma.opportunity.update({ where: { id: opp.id }, data: { expectedValueMinor: 100000000n } });
       const equal = await asClerk(() => changeForecastCategory({ opportunityId: opp.id, to: 'commit' }));
       expect(equal.forecastCategory).toBe('commit');
 
       await reset();
-      await unscopedPrisma.opportunity.update({ where: { id: opp.id }, data: { expectedValue: 1000000.01 } });
+      await unscopedPrisma.opportunity.update({ where: { id: opp.id }, data: { expectedValueMinor: 100000001n } });
       const over = await expectReject(() =>
         asClerk(() => changeForecastCategory({ opportunityId: opp.id, to: 'commit' })),
       );
       expect(over.status).toBe(403);
 
       await reset();
-      await unscopedPrisma.opportunity.update({ where: { id: opp.id }, data: { expectedValue: 999999.99 } });
+      await unscopedPrisma.opportunity.update({ where: { id: opp.id }, data: { expectedValueMinor: 99999999n } });
       const under = await asClerk(() => changeForecastCategory({ opportunityId: opp.id, to: 'commit' }));
       expect(under.forecastCategory).toBe('commit');
     } finally {

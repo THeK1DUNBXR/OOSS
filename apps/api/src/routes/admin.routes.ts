@@ -14,14 +14,14 @@ import {
   formatGrant,
 } from '@kaizen/shared';
 import { handler, str, bool, numeric } from '../lib/http.js';
-import { prisma, num } from '../platform/db.js';
+import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, invalidateGrantCache } from '../platform/permissions.js';
 import { verifyChain } from '../platform/eventBus.js';
 import { paiseOfInput } from '../domains/allocation.js';
 import { governedEntities } from '../platform/audit.js';
-import { wireInt } from '../platform/wire.js';
+import { minorString, rupeesOrNull, wireInt } from '../platform/wire.js';
 import { assertCanWriteGrant } from '../platform/roleAssignment.js';
 import { agentRoster, decideAgentAction, pauseAgent, revokeAuthority, propose } from '../agents/index.js';
 import { ALL_JOBS, runManualJobs } from '../jobs/scheduler.js';
@@ -203,9 +203,13 @@ router.get(
     const auth = currentAuth();
     const rows = await prisma.authorityGrant.findMany({
       where: { tenantId: auth.tenantId },
-      orderBy: [{ authorityClass: 'asc' }, { ceilingValue: 'desc' }],
+      orderBy: [{ authorityClass: 'asc' }, { ceilingValueMinor: 'desc' }],
     });
-    return rows.map((g) => ({ ...g, ceilingValue: num(g.ceilingValue) }));
+    return rows.map((g) => ({
+      ...g,
+      ceilingValue: rupeesOrNull(g.ceilingValueMinor),
+      ceilingValueMinor: minorString(g.ceilingValueMinor),
+    }));
   }),
 );
 
