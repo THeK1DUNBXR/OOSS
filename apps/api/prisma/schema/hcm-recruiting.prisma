@@ -52,8 +52,8 @@ model CandidateProfile {
   resumeText  String?
   /// Money withheld = null + reason for anyone lacking `candidates:financial`,
   /// never a masked zero.
-  currentCtc  Decimal? @db.Decimal(14, 2)
-  expectedCtc Decimal? @db.Decimal(14, 2)
+  currentCtcMinor  BigInt?
+  expectedCtcMinor BigInt?
   noticeDays  Int?
   tags        Json     @default("[]")
 
@@ -123,7 +123,7 @@ model OfferLetter {
   recordCode String
 
   applicationId     String
-  ctc               Decimal   @db.Decimal(14, 2)
+  ctcMinor               BigInt
   joiningDate       DateTime
   validUntil        DateTime
   /// Draft | ApprovalPending | Approved | Sent | Accepted | Declined | Rescinded
@@ -156,7 +156,7 @@ model Referral {
   referrerEmploymentId String
   candidatePersonId    String
   applicationId        String?
-  bonusAmount          Decimal? @db.Decimal(12, 2)
+  bonusAmountMinor          BigInt?
   /// Submitted | Shortlisted | Hired | BonusPaid | Rejected
   status               String   @default("Submitted")
 

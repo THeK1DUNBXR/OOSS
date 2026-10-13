@@ -20,7 +20,7 @@ model Asset {
   serial   String?
 
   purchaseDate DateTime?
-  cost         Decimal?  @db.Decimal(12, 2)
+  costMinor         BigInt?
 
   /// in_stock | assigned | repair | retired
   status String  @default("in_stock")
@@ -80,8 +80,8 @@ model TravelRequest {
   /// flight | train | road | other
   mode         String
 
-  estimatedCost    Decimal  @db.Decimal(12, 2)
-  advanceRequested Decimal? @db.Decimal(12, 2)
+  estimatedCostMinor    BigInt
+  advanceRequestedMinor BigInt?
 
   /// submitted | approved | rejected | settled
   status String @default("submitted")

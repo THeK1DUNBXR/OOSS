@@ -44,7 +44,8 @@ import {
   trailingMonths,
   type Metric,
 } from '@kaizen/shared';
-import { prisma, num, Prisma } from '../../platform/db.js';
+import { prisma, num } from '../../platform/db.js';
+import { minorToRupees } from '../money.js';
 import { currentAuth } from '../../platform/context.js';
 import { assertScopeAll, canSeeMoney } from '../../platform/permissions.js';
 import { auditExport } from '../../platform/audit.js';
@@ -579,7 +580,7 @@ export async function compRatioDistribution(): Promise<Metric<Array<{ bucket: st
     'payGrade',
     (model) =>
       model.findMany({ where: { tenantId: auth.tenantId } }) as Promise<
-        Array<{ id: string; level: number; midPay: Prisma.Decimal | number }>
+        Array<{ id: string; level: number; midPayMinor: bigint }>
       >,
   );
   if (payGrades === null) {
@@ -595,7 +596,7 @@ export async function compRatioDistribution(): Promise<Metric<Array<{ bucket: st
   const ambiguousLevels = new Set<number>();
   for (const pg of payGrades) {
     if (midPayByLevel.has(pg.level)) ambiguousLevels.add(pg.level);
-    else midPayByLevel.set(pg.level, num(pg.midPay) ?? 0);
+    else midPayByLevel.set(pg.level, minorToRupees(pg.midPayMinor));
   }
   for (const level of ambiguousLevels) midPayByLevel.delete(level);
 

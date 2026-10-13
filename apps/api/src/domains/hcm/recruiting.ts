@@ -27,6 +27,8 @@ import {
   type OfferEvent,
 } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
+import { rupeesToMinor, rupeesToMinorOrNull, withDecimalMinor } from '../../platform/wire.js';
+import { maskMoney } from '../money.js';
 import { governedWrite } from '../../platform/governedWrite.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -159,9 +161,12 @@ export async function transitionJobPosting(id: string, event: JobPostingEvent, n
 // row that becomes the employee's Person row on hire, per `hiring.ts`.
 // ---------------------------------------------------------------------------
 
-function maskCandidateMoney<T extends { currentCtc: unknown; expectedCtc: unknown }>(row: T, canSee: boolean): T {
-  if (canSee) return row;
-  return { ...row, currentCtc: null, expectedCtc: null };
+/**
+ * A money view of a row: the Decimal string the wire has always carried, with
+ * its `<name>Minor` sibling, both nulled for a viewer without the money verb.
+ */
+function moneyView<T extends object, N extends string>(row: T, canSee: boolean, names: readonly N[]) {
+  return maskMoney(withDecimalMinor(row, names), canSee, names);
 }
 
 export async function listCandidates(filter: { source?: string; q?: string } = {}) {
@@ -188,7 +193,10 @@ export async function listCandidates(filter: { source?: string; q?: string } = {
     ? rows.filter((r) => byId.get(r.personId)?.fullName.toLowerCase().includes(filter.q!.toLowerCase()))
     : rows;
 
-  return filtered.map((r) => ({ ...maskCandidateMoney(r, canSee), person: byId.get(r.personId) ?? null }));
+  return filtered.map((r) => ({
+    ...moneyView(r, canSee, ['currentCtc', 'expectedCtc'] as const),
+    person: byId.get(r.personId) ?? null,
+  }));
 }
 
 export async function createCandidate(
@@ -212,7 +220,7 @@ export async function createCandidate(
   });
 
   const existing = await prisma.candidateProfile.findFirst({ where: { tenantId: auth.tenantId, personId: person.id } });
-  if (existing) return { ...existing, person };
+  if (existing) return { ...withDecimalMinor(existing, ['currentCtc', 'expectedCtc'] as const), person };
 
   // findOrCreatePerson (identity.ts:178) writes the person and its own events
   // before this point, outside this transaction. Only the candidate profile,
@@ -224,8 +232,8 @@ export async function createCandidate(
         personId: person.id,
         source: input.source ?? 'direct',
         resumeText: input.resumeText ?? null,
-        currentCtc: input.currentCtc ?? null,
-        expectedCtc: input.expectedCtc ?? null,
+        currentCtcMinor: rupeesToMinorOrNull(input.currentCtc) ?? null,
+        expectedCtcMinor: rupeesToMinorOrNull(input.expectedCtc) ?? null,
         noticeDays: input.noticeDays ?? null,
         tags: input.tags ?? [],
       },
@@ -249,7 +257,7 @@ export async function createCandidate(
     return created;
   });
 
-  return { ...profile, person };
+  return { ...withDecimalMinor(profile, ['currentCtc', 'expectedCtc'] as const), person };
 }
 
 // ---------------------------------------------------------------------------
@@ -457,9 +465,8 @@ export async function listScorecards(roundId: string) {
 // partyId check `approveSalaryStructure` uses in compliance/payroll.ts.
 // ---------------------------------------------------------------------------
 
-function maskOfferMoney<T extends { ctc: unknown }>(row: T, canSee: boolean): T {
-  if (canSee) return row;
-  return { ...row, ctc: null };
+function maskOfferMoney<T extends object>(row: T, canSee: boolean) {
+  return moneyView(row, canSee, ['ctc'] as const);
 }
 
 export async function listOffers(filter: { applicationId?: string; status?: string } = {}) {
@@ -497,7 +504,7 @@ export async function createOffer(input: { applicationId: string; ctc: number; j
       tenantId: auth.tenantId,
       recordCode,
       applicationId: input.applicationId,
-      ctc: input.ctc,
+      ctcMinor: rupeesToMinor(input.ctc),
       joiningDate: input.joiningDate,
       validUntil: input.validUntil,
       proposedByPartyId: auth.partyId,
@@ -505,7 +512,7 @@ export async function createOffer(input: { applicationId: string; ctc: number; j
   });
 
   await auditWrite({ action: 'create', subjectType: 'offer_letter', subjectId: offer.id, after: offer as never });
-  return offer;
+  return withDecimalMinor(offer, ['ctc'] as const);
 }
 
 export async function transitionOffer(
@@ -651,7 +658,7 @@ export async function transitionOffer(
         if (applicationMove) await applyApplicationTransition(tx, applicationMove);
       },
     });
-    return updated;
+    return withDecimalMinor(updated, ['ctc'] as const);
   });
 }
 
@@ -669,9 +676,8 @@ export async function joinAndOnboard(
 // Referrals
 // ---------------------------------------------------------------------------
 
-function maskReferralMoney<T extends { bonusAmount: unknown }>(row: T, canSee: boolean): T {
-  if (canSee) return row;
-  return { ...row, bonusAmount: null };
+function maskReferralMoney<T extends object>(row: T, canSee: boolean) {
+  return moneyView(row, canSee, ['bonusAmount'] as const);
 }
 
 export async function listReferrals(filter: { referrerEmploymentId?: string } = {}) {
@@ -742,7 +748,7 @@ export async function createReferral(input: {
         referrerEmploymentId: input.referrerEmploymentId,
         candidatePersonId: person.id,
         applicationId: input.applicationId ?? null,
-        bonusAmount: input.bonusAmount ?? null,
+        bonusAmountMinor: rupeesToMinorOrNull(input.bonusAmount) ?? null,
       },
     });
 
@@ -765,7 +771,7 @@ export async function createReferral(input: {
       tx,
     });
 
-    return referral;
+    return withDecimalMinor(referral, ['bonusAmount'] as const);
   });
 }
 
@@ -791,7 +797,7 @@ export async function updateReferralStatus(id: string, status: string) {
 
   const updated = await prisma.referral.update({ where: { id }, data: { status } });
   await auditWrite({ action: 'update', subjectType: 'referral', subjectId: id, before: referral, after: updated });
-  return updated;
+  return withDecimalMinor(updated, ['bonusAmount'] as const);
 }
 
 // ---------------------------------------------------------------------------
