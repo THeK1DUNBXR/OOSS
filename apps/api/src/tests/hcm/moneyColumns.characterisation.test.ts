@@ -237,8 +237,8 @@ describe('HCM money columns: wire characterisation (pre-conversion)', () => {
         expectedCtc: 1500000,
       }),
     );
-    expect(wire(candidate).currentCtc).toBe('1200000.5');
-    expect(wire(candidate).expectedCtc).toBe('1500000');
+    expect(wire(candidate).currentCtc).toBeNull();
+    expect(wire(candidate).expectedCtc).toBeNull();
 
     const asChairman = wire(await asUser('chairman@kaizen.co.in', () => listCandidates({})));
     const row = asChairman.find((r: any) => r.id === candidate.id);
@@ -287,7 +287,7 @@ describe('HCM money columns: wire characterisation (pre-conversion)', () => {
         validUntil: new Date(Date.now() + 14 * 86_400_000),
       }),
     );
-    expect(wire(offer).ctc).toBe('1200000.25');
+    expect(wire(offer).ctc).toBeNull();
     const asChairman = wire(await asUser('chairman@kaizen.co.in', () => listOffers({})));
     expect(asChairman.find((o: any) => o.id === offer.id).ctc).toBe('1200000.25');
 
@@ -299,7 +299,7 @@ describe('HCM money columns: wire characterisation (pre-conversion)', () => {
         bonusAmount: 15000.5,
       }),
     );
-    expect(wire(referral).bonusAmount).toBe('15000.5');
+    expect(wire(referral).bonusAmount).toBeNull();
     const referralsAsChairman = wire(await asUser('chairman@kaizen.co.in', () => listReferrals({})));
     expect(referralsAsChairman.find((r: any) => r.id === referral.id).bonusAmount).toBe('15000.5');
     const referralsAsOps = wire(await asUser('operations@kaizen.co.in', () => listReferrals({})));

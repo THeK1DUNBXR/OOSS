@@ -54,6 +54,7 @@ import { registerGovernedEntities, auditWrite } from '../platform/audit.js';
 import { accrueRunLiabilities, payMonthEnd } from './hcm/payrollAccrual.js';
 import { approvedRuleSnapshot, requestPayout, requestReversalOfInward } from './payouts.js';
 import type { PayoutRequest, Transaction } from '@prisma/client';
+import { maskMoney } from './money.js';
 
 // The audit-trail proviso to Companies (Accounts) Rules 2014, Rule 3(1): the
 // software must record every change to these in a trail that cannot be
@@ -1234,7 +1235,31 @@ export async function createAsset(input: {
     impact: { domains: ['fin'] },
     confidentiality: 'confidential',
   });
-  return withDecimalMinor(asset, ['cost', 'salvageValue', 'disposalValue']);
+  // Withheld the same way listAssets withholds it: the creator holds assets:create,
+  // which is not the money verb.
+  return maskMoney(withDecimalMinor(asset, ['cost', 'salvageValue', 'disposalValue']), await canSeeMoney('assets'), [
+    'cost',
+    'salvageValue',
+    'disposalValue',
+  ]);
+}
+
+/**
+ * A schedule's money columns, withheld as null for a viewer without `assets:F`.
+ * The period label stays, so the shape of the schedule is unchanged.
+ */
+function withholdSchedule<T extends object, K extends keyof T>(
+  periods: T[],
+  seesMoney: boolean,
+  names: readonly K[],
+): Array<Omit<T, K> & { [P in K]: T[P] | null }> {
+  type Out = Omit<T, K> & { [P in K]: T[P] | null };
+  if (seesMoney) return periods as unknown as Out[];
+  return periods.map((p) => {
+    const out = { ...p } as Record<string, unknown>;
+    for (const name of names) out[name as string] = null;
+    return out as unknown as Out;
+  });
 }
 
 export async function assetSchedule(id: string) {
@@ -1244,7 +1269,7 @@ export async function assetSchedule(id: string) {
   const asset = await prisma.fixedAsset.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!asset) throw ApiError.notFound('Asset');
 
-  return depreciationSchedule({
+  const periods = depreciationSchedule({
     cost: minorToRupees(asset.costMinor),
     salvageValue: minorToRupees(asset.salvageValueMinor),
     usefulLifeMonths: asset.usefulLifeMonths,
@@ -1252,6 +1277,7 @@ export async function assetSchedule(id: string) {
     method: asset.method as 'straight_line' | 'wdv',
     wdvRate: num(asset.wdvRate) ?? 0,
   });
+  return withholdSchedule(periods, await canSeeMoney('assets'), ['opening', 'charge', 'closing'] as const);
 }
 
 export async function listLoans(asOf = new Date()) {
@@ -1334,7 +1360,7 @@ export async function createLoan(input: {
     impact: { domains: ['fin'] },
     confidentiality: 'confidential',
   });
-  return withDecimalMinor(loan, ['principal']);
+  return maskMoney(withDecimalMinor(loan, ['principal']), await canSeeMoney('assets'), ['principal']);
 }
 
 export async function loanSchedule(id: string) {
@@ -1344,12 +1370,19 @@ export async function loanSchedule(id: string) {
   const loan = await prisma.loan.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!loan) throw ApiError.notFound('Loan');
 
-  return amortisationSchedule({
+  const periods = amortisationSchedule({
     principal: minorToRupees(loan.principalMinor),
     annualRate: num(loan.annualRate) ?? 0,
     tenureMonths: loan.tenureMonths,
     startDate: loan.startDate,
   });
+  return withholdSchedule(periods, await canSeeMoney('assets'), [
+    'opening',
+    'instalment',
+    'interest',
+    'principal',
+    'closing',
+  ] as const);
 }
 
 // ---------------------------------------------------------------------------

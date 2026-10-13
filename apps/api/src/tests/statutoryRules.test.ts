@@ -17,6 +17,7 @@ import {
   holdStatutoryRule,
   ruleAt,
   STATUTORY_APPROVER_DUTY,
+  ruleIntegerField,
   StatutoryRuleNotFoundError,
 } from '../domains/statutory.js';
 import { asPrincipal, asUser, authFor, expectReject, tenantId, withFixtureRole } from './helpers.js';
@@ -397,5 +398,14 @@ describe('StatutoryRule drafting and approval (FIXES P2, P3)', () => {
     await expect(
       asUser(CREATOR, () => ruleAt('test', KEY, FX_JURISDICTION, new Date('2026-06-01T00:00:00.000Z'))),
     ).rejects.toBeInstanceOf(StatutoryRuleNotFoundError);
+  });
+});
+
+describe('ruleIntegerField (S10): a rule value is read as written, never coerced', () => {
+  it('reads an integer string, and refuses a number, a fraction, an empty string, a missing field and a non-object', () => {
+    expect(ruleIntegerField({ ratePpm: '150' }, 'ratePpm', 'k')).toBe(150n);
+    for (const bad of [{ ratePpm: 150 }, { ratePpm: '1.5' }, { ratePpm: '' }, {}, null, 'x']) {
+      expect(() => ruleIntegerField(bad as never, 'ratePpm', 'k')).toThrow(/has no integer ratePpm/);
+    }
   });
 });

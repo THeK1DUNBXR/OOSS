@@ -22,6 +22,7 @@ import {
   recordValuation,
 } from '../domains/equity.js';
 import { createRound } from '../domains/rounds.js';
+import { StatutoryRuleNotFoundError } from '../domains/statutory.js';
 import {
   mgt1Register,
   mgt1Export,
@@ -134,6 +135,54 @@ async function allot(
   return as('finance@kaizen.co.in', () => makeEffective(proposed.id));
 }
 
+/**
+ * Test-local stamp rate rows (S10). The 200 ppm row is a fixture, not a rate anyone pays:
+ * it exists so a test can tell which row was read. The 150 ppm row carries the cited
+ * 0.015 per cent, so the demat figure the older test pins is unchanged. The DRAFT row
+ * covers 2019 as well, to show a DRAFT never resolves. APPROVED rows may not overlap, so
+ * the layout is 200 ppm up to 2025-01-01, then 150 ppm open-ended.
+ */
+async function insertStampRateRows(tid: string) {
+  const base = { tenantId: tid, domain: 'stamp_duty', key: 'stamp_duty.share_transfer_rate', jurisdiction: 'IN' };
+  await unscopedPrisma.statutoryRule.create({
+    data: {
+      ...base,
+      effectiveFrom: new Date('2020-07-01T00:00:00.000Z'),
+      effectiveTo: new Date('2025-01-01T00:00:00.000Z'),
+      value: { ratePpm: '200' },
+      source: 'fixture: S10 test-local, deliberately not the cited rate',
+      status: 'APPROVED',
+      createdBy: 'fixture:maker',
+      approvedBy: 'fixture:checker',
+      approvedAt: new Date(),
+    } as never,
+  });
+  await unscopedPrisma.statutoryRule.create({
+    data: {
+      ...base,
+      effectiveFrom: new Date('2025-01-01T00:00:00.000Z'),
+      effectiveTo: null,
+      value: { ratePpm: '150' },
+      source: 'fixture: S10 test-local, the cited 0.015 per cent',
+      status: 'APPROVED',
+      createdBy: 'fixture:maker',
+      approvedBy: 'fixture:checker',
+      approvedAt: new Date(),
+    } as never,
+  });
+  await unscopedPrisma.statutoryRule.create({
+    data: {
+      ...base,
+      effectiveFrom: new Date('2015-01-01T00:00:00.000Z'),
+      effectiveTo: null,
+      value: { ratePpm: '300' },
+      source: 'fixture: S10 test-local DRAFT',
+      status: 'DRAFT',
+      createdBy: 'fixture:maker',
+    } as never,
+  });
+}
+
 async function transfer(
   shareClassId: string,
   fromHolderId: string,
@@ -163,6 +212,7 @@ beforeAll(async () => {
     parentTenantSlug: 'kaizen',
   });
   SUB = tenantId;
+  await insertStampRateRows(SUB);
 
   await as('chairman@kaizen.co.in', () =>
     updateCompanyProfile({
@@ -285,6 +335,69 @@ describe('EQT-FIL-003 — SH-4 data computes 0.015 percent stamp duty for demat 
     expect(physData.dematLeg).toBe(false);
     expect(physData.stampDuty).toBeNull();
     expect(physData.stampDutyNote).toBe('State stamp rate not recorded');
+  });
+});
+
+describe('S10 — the SH-4 stamp rate is the StatutoryRule row in force on the transfer date', () => {
+  async function dematPair(label: string) {
+    const cls = await newClass(`S10 ${label} ${suffix}`);
+    const from = await newHolder(`S10 From ${label} ${suffix}`, { dematAccount: { dpId: 'DP1', clientId: 'C1' } });
+    const to = await newHolder(`S10 To ${label} ${suffix}`, { dematAccount: { dpId: 'DP2', clientId: 'C2' } });
+    await allot(cls.id, from.id, 1000, { pricePerShare: 20 });
+    return { cls, from, to };
+  }
+
+  // Moves the transfer's effective date without re-running the workflow, so one
+  // transfer can be read on several dates.
+  async function dateTransfer(transactionId: string, iso: string) {
+    await unscopedPrisma.shareTransaction.update({
+      where: { id: transactionId },
+      data: { effectiveOn: new Date(`${iso}T06:00:00.000Z`) },
+    });
+  }
+
+  it('reads the row in force on the transfer date: 2024-12-31 is the 200 ppm row, 2025-01-01 the 150 ppm row', async () => {
+    const { cls, from, to } = await dematPair('boundary');
+    const txn = await transfer(cls.id, from.id, to.id, 300, 20);
+
+    await dateTransfer(txn.id, '2024-12-31');
+    const before = await as('chairman@kaizen.co.in', () => sh4Data(txn.id));
+    expect(before.consideration).toBe(6000);
+    expect(before.stampDuty).toBe(1.2); // 600000 paise x 200 ppm = 120 paise
+
+    await dateTransfer(txn.id, '2025-01-01');
+    const after = await as('chairman@kaizen.co.in', () => sh4Data(txn.id));
+    expect(after.stampDuty).toBe(0.9); // 600000 paise x 150 ppm = 90 paise
+  });
+
+  it('rounds the exact stamp half up to the paisa: 305 shares at 20 is 91.5 paise, which is 92', async () => {
+    // The float formula multiplied 6100 by 0.00015 and got 91.4999..., rounding down to
+    // 0.91. The exact product is a tie, and the tie goes up, as round2 does elsewhere.
+    const { cls, from, to } = await dematPair('tie');
+    const txn = await transfer(cls.id, from.id, to.id, 305, 20);
+    const data = await as('chairman@kaizen.co.in', () => sh4Data(txn.id));
+    expect(data.consideration).toBe(6100);
+    expect(data.stampDuty).toBe(0.92);
+  });
+
+  it('a demat transfer with no approved row on its date is refused, and the DRAFT row does not stand in', async () => {
+    const { cls, from, to } = await dematPair('refusal');
+    const txn = await transfer(cls.id, from.id, to.id, 300, 20);
+    await dateTransfer(txn.id, '2019-06-01');
+    await expect(as('chairman@kaizen.co.in', () => sh4Data(txn.id))).rejects.toBeInstanceOf(StatutoryRuleNotFoundError);
+  });
+
+  it('a physical transfer reads no rate, so it still answers on a date with no row', async () => {
+    const from = await newHolder('S10 Physical From');
+    const to = await newHolder('S10 Physical To');
+    const cls = await newClass(`S10 physical ${suffix}`);
+    await allot(cls.id, from.id, 1000, { pricePerShare: 20 });
+    const txn = await transfer(cls.id, from.id, to.id, 300, 20);
+    await dateTransfer(txn.id, '2019-06-01');
+    const data = await as('chairman@kaizen.co.in', () => sh4Data(txn.id));
+    expect(data.dematLeg).toBe(false);
+    expect(data.stampDuty).toBeNull();
+    expect(data.stampDutyNote).toBe('State stamp rate not recorded');
   });
 });
 

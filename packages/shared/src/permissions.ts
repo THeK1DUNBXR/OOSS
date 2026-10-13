@@ -480,6 +480,9 @@ export const MONEY_FIELDS = [
   'pricePerShareMinor',
   'equityValueMinor',
   'stampDutyPaidMinor',
+  // The opportunity detail carries the pipeline's commit-approval threshold, a
+  // rupee figure, beside the paise sibling `isMoneyKey` derives from it.
+  'commitApprovalThreshold',
 ];
 
 /**
