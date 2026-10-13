@@ -28,6 +28,8 @@ import {
   computeCapTable,
 } from '@kaizen/shared';
 import { prisma, unscopedPrisma, dec, num, type DbTx } from '../platform/db.js';
+import { rupeesToMinor, rupeesToMinorOrNull, withDecimalMinor } from '../platform/wire.js';
+import { minorToRupees, minorToRupeesOrNull } from './money.js';
 import { currentAuth, getContext } from '../platform/context.js';
 import { encryptField, readRegulated } from './compliance/privacy.js';
 import { assertCan, assertScopeAll, can, canSeeMoney, scopeFor } from '../platform/permissions.js';
@@ -84,7 +86,7 @@ export async function createShareClass(input: ShareClassInput) {
         name: input.name,
         kind: input.kind,
         instrument: input.instrument,
-        faceValue: dec(input.faceValue)!,
+        faceValueMinor: rupeesToMinor(input.faceValue),
         votesPerShare: dec(input.votesPerShare ?? 1)!,
         rights: (input.rights ?? {}) as never,
         conversionTerms: (input.conversionTerms ?? undefined) as never,
@@ -174,7 +176,7 @@ function shareClassView(row: {
   name: string;
   kind: string;
   instrument: string;
-  faceValue: unknown;
+  faceValueMinor: bigint;
   votesPerShare: unknown;
   rights: unknown;
   conversionTerms: unknown;
@@ -188,7 +190,7 @@ function shareClassView(row: {
     name: row.name,
     kind: row.kind,
     instrument: row.instrument,
-    faceValue: num(row.faceValue as never),
+    faceValue: minorToRupees(row.faceValueMinor),
     votesPerShare: num(row.votesPerShare as never) ?? 1,
     rights: (row.rights ?? {}) as Record<string, unknown>,
     conversionTerms: (row.conversionTerms ?? null) as Record<string, unknown> | null,
@@ -639,7 +641,7 @@ export async function recordExerciseAllotment(input: ExerciseAllotmentInput) {
         shareClassId: input.shareClassId,
         toHolderId: input.toHolderId,
         count: dec(input.count)!,
-        pricePerShare: dec(input.pricePerShare),
+        pricePerShareMinor: rupeesToMinorOrNull(input.pricePerShare) ?? null,
         effectiveOn: new Date(input.effectiveOn),
         considerationTransactionId: input.considerationTransactionId ?? null,
         status: 'approved',
@@ -804,7 +806,7 @@ export async function proposeAllotment(input: ProposeAllotmentInput) {
         shareClassId: input.shareClassId,
         toHolderId: input.toHolderId,
         count: dec(input.count)!,
-        pricePerShare: input.pricePerShare == null ? null : dec(input.pricePerShare),
+        pricePerShareMinor: rupeesToMinorOrNull(input.pricePerShare) ?? null,
         effectiveOn: new Date(input.effectiveOn),
         considerationTransactionId: input.considerationTransactionId ?? null,
         boardResolutionRef: input.boardResolutionRef ?? null,
@@ -891,7 +893,7 @@ export async function proposeTransfer(input: ProposeTransferInput) {
         fromHolderId: input.fromHolderId,
         toHolderId: input.toHolderId,
         count: dec(input.count)!,
-        pricePerShare: input.pricePerShare == null ? null : dec(input.pricePerShare),
+        pricePerShareMinor: rupeesToMinorOrNull(input.pricePerShare) ?? null,
         effectiveOn: new Date(input.effectiveOn),
         considerationTransactionId: input.considerationTransactionId ?? null,
         status: 'proposed',
@@ -953,7 +955,7 @@ export async function approveShareTransaction(id: string) {
   const fromParty = fromHolder?.personId ?? null;
   const ownerPartyId = [toParty, fromParty].find((p) => p && p === auth.partyId) ?? toParty ?? fromParty ?? null;
 
-  const value = (num(txn.pricePerShare) ?? 0) * (num(txn.count) ?? 0);
+  const value = (minorToRupeesOrNull(txn.pricePerShareMinor) ?? 0) * (num(txn.count) ?? 0);
 
   const result = await evaluateApprovalGate(
     'POL-EQT-SHARE-APPROVAL',
@@ -1126,7 +1128,7 @@ export async function issueCertificateFor(input: {
       tx,
     });
 
-    return cert;
+    return withDecimalMinor(cert, ['stampDutyPaid'] as const);
   });
 }
 
@@ -1513,7 +1515,7 @@ export async function reverseShareTransactionIn(tx: DbTx, id: string, reason: st
       fromHolderId: txn.toHolderId,
       toHolderId: txn.fromHolderId,
       count: txn.count,
-      pricePerShare: txn.pricePerShare,
+      pricePerShareMinor: txn.pricePerShareMinor,
       distinctiveFrom: txn.distinctiveFrom,
       distinctiveTo: txn.distinctiveTo,
       effectiveOn: new Date(),
@@ -1582,7 +1584,7 @@ export function shareTransactionView(row: {
   fromHolderId: string | null;
   toHolderId: string | null;
   count: unknown;
-  pricePerShare: unknown;
+  pricePerShareMinor: bigint | null;
   distinctiveFrom: unknown;
   distinctiveTo: unknown;
   effectiveOn: Date | null;
@@ -1593,7 +1595,7 @@ export function shareTransactionView(row: {
   proposedByPartyId: string;
   pricePerShareRaw?: never;
 }) {
-  const pricePerShare = num(row.pricePerShare as never);
+  const pricePerShare = minorToRupeesOrNull(row.pricePerShareMinor);
   return {
     id: row.id,
     recordCode: row.recordCode,
@@ -1670,7 +1672,7 @@ export async function capTable(asOf?: string) {
     if (t.toHolderId) {
       const k = `${t.toHolderId}::${t.shareClassId}`;
       net.set(k, (net.get(k) ?? 0) + amount);
-      const price = num(t.pricePerShare) ?? 0;
+      const price = minorToRupeesOrNull(t.pricePerShareMinor) ?? 0;
       if (price > 0 && !t.considerationTransactionId) pending.set(k, true);
     }
     if (t.fromHolderId) {
@@ -1860,7 +1862,7 @@ export async function certificateDocument(id: string) {
     prisma.shareClass.findFirstOrThrow({ where: { id: row.shareClassId } }),
   ]);
 
-  const faceValue = num(shareClass.faceValue);
+  const faceValue = minorToRupees(shareClass.faceValueMinor);
   const count = num(row.count)!;
 
   return {
@@ -1962,7 +1964,7 @@ export async function recordValuation(input: ValuationInput) {
         basis: input.basis,
         valuerName: input.valuerName ?? null,
         perShareByClass: input.perShareByClass as never,
-        equityValue: input.equityValue == null ? null : dec(input.equityValue),
+        equityValueMinor: input.equityValue == null ? null : rupeesToMinor(input.equityValue),
         reportRef: input.reportRef ?? null,
         validUntil: input.validUntil ? new Date(input.validUntil) : null,
         note: input.note ?? null,
@@ -2018,7 +2020,7 @@ export function valuationView(row: {
   basis: string;
   valuerName: string | null;
   perShareByClass: unknown;
-  equityValue: unknown;
+  equityValueMinor: bigint | null;
   reportRef: string | null;
   validUntil: Date | null;
   note: string | null;
@@ -2031,7 +2033,7 @@ export function valuationView(row: {
     basis: row.basis,
     valuerName: row.valuerName,
     perShareByClass: (row.perShareByClass ?? {}) as Record<string, number>,
-    equityValue: num(row.equityValue as never),
+    equityValue: minorToRupeesOrNull(row.equityValueMinor),
     reportRef: row.reportRef,
     validUntil: row.validUntil ? row.validUntil.toISOString() : null,
     note: row.note,

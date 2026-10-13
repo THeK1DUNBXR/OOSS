@@ -5,7 +5,8 @@
  * read the number back into a sum.
  *
  * Moved here from domains/it/money.ts (MONEY-S8-HCM), which re-exports them so
- * the IT call sites are unchanged.
+ * the IT call sites are unchanged. The equity and corporate columns (MONEY-S7)
+ * use the same helpers.
  */
 
 import { poundsOf } from './allocation.js';
@@ -17,7 +18,7 @@ export function minorToRupees(minor: bigint): number {
   return poundsOf(minor);
 }
 
-/** As minorToRupees, with a nullable column: null stays null, it is not read as zero. */
+/** As minorToRupees, with a null or missing column read as null. */
 export function minorToRupeesOrNull(minor: bigint | null | undefined): number | null {
   return minor === null || minor === undefined ? null : minorToRupees(minor);
 }
@@ -34,7 +35,7 @@ export function withNumberMinor<T extends object, N extends string>(
   const out = { ...row } as Record<string, unknown>;
   for (const name of names) {
     const minor = (row as Record<string, unknown>)[`${name}Minor`] as bigint | null | undefined;
-    out[name] = minor === null || minor === undefined ? null : minorToRupees(minor);
+    out[name] = minorToRupeesOrNull(minor);
     out[`${name}Minor`] = minorString(minor);
   }
   return out as WithMinorPair<T, N, number | null>;

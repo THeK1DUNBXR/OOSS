@@ -84,7 +84,7 @@
 
 **`apps/api/src/domains/compliance/corporate/rateLimit.ts`** (74 lines) — recoveryRateLimit:54 · loginRateLimit:63
 
-**`apps/api/src/domains/compliance/corporate/refunds.ts`** (225 lines) — listRefunds:30 · requestRefund:39 · approveRefund:85 · payRefund:129 · currentRefundPolicy:192 · listRefundPolicyVersions:197 · publishRefundPolicy:202
+**`apps/api/src/domains/compliance/corporate/refunds.ts`** (226 lines) — listRefunds:30 · requestRefund:40 · approveRefund:86 · payRefund:130 · currentRefundPolicy:193 · listRefundPolicyVersions:198 · publishRefundPolicy:203
 
 **`apps/api/src/domains/compliance/corporate/registers.ts`** (118 lines) — RegisterEntryInput:19 · listRegisterEntries:26 · createRegisterEntry:44 · currentRegister:85 · exportRegisterCsv:102
 
@@ -106,17 +106,17 @@
 
 **`apps/api/src/domains/decisions.ts`** (652 lines) — RaiseDecisionInput:47 · raiseDecision:62 · OPEN_DECISION_STATES:198 · decisionQueue:206 · DispositionInput:254 · disposeDecision:266 · linkDecision:484 · listDecisionLinks:543 · reviewDecision:582 · decisionCalibration:627
 
-**`apps/api/src/domains/documents.ts`** (536 lines) — DOCUMENT_EVENTS:39 · DOCUMENT_LIFECYCLE:47 · DocumentLifecycleStatus:48 · DOCUMENT_SOURCES:50 · DocumentSource:51 · DOCUMENT_TRANSITIONS:58 · MAX_DOCUMENT_BYTES:69 · sha256Hex:75 · RegisterUploadInput:222 · registerUpload:239 · AddVersionInput:282 · addVersion:294 · ChangeLifecycleInput:371 · changeLifecycleStatus:383 · SetRetentionInput:420 · setRetentionClass:432 · getDocument:485 · DocumentFilter:491 · listDocuments:502 · readContent:525
+**`apps/api/src/domains/documents.ts`** (548 lines) — DocumentWire:37 · DOCUMENT_EVENTS:50 · DOCUMENT_LIFECYCLE:58 · DocumentLifecycleStatus:59 · DOCUMENT_SOURCES:61 · DocumentSource:62 · DOCUMENT_TRANSITIONS:69 · MAX_DOCUMENT_BYTES:80 · sha256Hex:86 · RegisterUploadInput:233 · registerUpload:250 · AddVersionInput:293 · addVersion:305 · ChangeLifecycleInput:382 · changeLifecycleStatus:394 · SetRetentionInput:431 · setRetentionClass:443 · getDocument:496 · DocumentFilter:502 · listDocuments:513 · readContent:537
 
 **`apps/api/src/domains/education.ts`** (411 lines) — ENROLLMENT_STATUSES:32 · EnrollmentStatus:33 · enrolStudent:36 · enrolStudentRecorded:46 · setEnrollmentStatus:326
 
 **`apps/api/src/domains/employment.ts`** (1582 lines) — listOrgUnits:89 · createOrgUnit:98 · listJobs:117 · createJob:123 · listPositions:129 · createPosition:144 · transitionPosition:184 · listEmployments:209 · getEmployment:232 · redactRegulatedEmploymentFields:273 · hire:340 · EmploymentTransitionInput:460 · transitionEmployment:475 · setConfirmationState:602 · EmployeeProfileInput:639 · updateEmployeeProfile:738 · proposeAssignment:901 · transitionAssignment:970 · proposeCompensation:1016 · transitionCompensation:1106 · currentCompensation:1180 · listCompensationForEmployment:1226 · transitionOnboarding:1281 · OffboardingTransitionOptions:1309 · transitionOffboarding:1334 · detectOverdueConfirmations:1450 · detectMissingCompensation:1489 · headcountByDivision:1539
 
-**`apps/api/src/domains/equity.ts`** (2201 lines) — ShareClassInput:60 · createShareClass:72 · ShareClassUpdateInput:115 · updateShareClass:130 · listShareClasses:161 · HolderInput:205 · sealHolderPan:261 · holderPanFor:273 · createHolder:282 · HolderUpdateInput:367 · updateHolder:382 · listHolders:444 · holder:457 · holderView:467 · encryptHolderPansAtRest:522 · holderForExercise:563 · ExerciseAllotmentInput:602 · recordExerciseAllotment:621 · nextFolioNumber:680 · effectiveBalance:723 · outgoingCount:755 · ProposeAllotmentInput:763 · proposeAllotment:775 · ProposeTransferInput:841 · proposeTransfer:851 · approveShareTransaction:938 · rejectShareTransaction:1014 · nextDistinctiveStart:1044 · issueCertificateFor:1065 · makeEffective:1146 · reverseShareTransaction:1471 · reverseShareTransactionIn:1492 · shareTransactionView:1577 · listShareLedger:1618 · capTable:1635 · holdingsFor:1760 · certificate:1812 · certificateDocument:1846 · listCertificates:1888 · ValuationInput:1939 · recordValuation:1952 · listValuations:1993 · latestValuation:2004 · valuationView:2014 · EntityDocumentInput:2046 · publishDocument:2055 · listDocuments:2104 · detectOverdueCertificates:2159
+**`apps/api/src/domains/equity.ts`** (2203 lines) — ShareClassInput:62 · createShareClass:74 · ShareClassUpdateInput:117 · updateShareClass:132 · listShareClasses:163 · HolderInput:207 · sealHolderPan:263 · holderPanFor:275 · createHolder:284 · HolderUpdateInput:369 · updateHolder:384 · listHolders:446 · holder:459 · holderView:469 · encryptHolderPansAtRest:524 · holderForExercise:565 · ExerciseAllotmentInput:604 · recordExerciseAllotment:623 · nextFolioNumber:682 · effectiveBalance:725 · outgoingCount:757 · ProposeAllotmentInput:765 · proposeAllotment:777 · ProposeTransferInput:843 · proposeTransfer:853 · approveShareTransaction:940 · rejectShareTransaction:1016 · nextDistinctiveStart:1046 · issueCertificateFor:1067 · makeEffective:1148 · reverseShareTransaction:1473 · reverseShareTransactionIn:1494 · shareTransactionView:1579 · listShareLedger:1620 · capTable:1637 · holdingsFor:1762 · certificate:1814 · certificateDocument:1848 · listCertificates:1890 · ValuationInput:1941 · recordValuation:1954 · listValuations:1995 · latestValuation:2006 · valuationView:2016 · EntityDocumentInput:2048 · publishDocument:2057 · listDocuments:2106 · detectOverdueCertificates:2161
 
-**`apps/api/src/domains/esop.ts`** (1291 lines) — EsopPlanInput:48 · createPlan:57 · ActivatePlanInput:107 · activatePlan:114 · listPlans:201 · plan:211 · ProposeGrantInput:276 · proposeGrant:287 · approveGrant:428 · cancelGrant:478 · lapseGrant:514 · listGrants:606 · grant:618 · runVesting:649 · runExpiredExerciseWindows:753 · handleEmploymentExit:841 · RequestExerciseInput:952 · requestExercise:958 · rejectExercise:1030 · approveExercise:1063 · listExercises:1178 · myGrants:1192 · sh6Register:1221 · sh6Export:1257
+**`apps/api/src/domains/esop.ts`** (1293 lines) — EsopPlanInput:50 · createPlan:59 · ActivatePlanInput:109 · activatePlan:116 · listPlans:203 · plan:213 · ProposeGrantInput:278 · proposeGrant:289 · approveGrant:430 · cancelGrant:480 · lapseGrant:516 · listGrants:608 · grant:620 · runVesting:651 · runExpiredExerciseWindows:755 · handleEmploymentExit:843 · RequestExerciseInput:954 · requestExercise:960 · rejectExercise:1032 · approveExercise:1065 · listExercises:1180 · myGrants:1194 · sh6Register:1223 · sh6Export:1259
 
-**`apps/api/src/domains/filings.ts`** (1000 lines) — assertDematCompliant:60 · assertFemaPricingFloor:99 · handleAllotmentEffectiveForFema:156 · handleTransferEffectiveForFema:182 · runFlaReturn:225 · checkDematRequirements:321 · latestHalfYearEnd:382 · runPas6HalfYearly:391 · pas6:426 · mgt1Register:534 · mgt2Register:556 · mgt1Export:625 · mgt2Export:644 · pas3AllotteeList:666 · pas3Export:746 · sh4Data:799 · RecordFilingInput:871 · recordFiling:883 · listFilings:959
+**`apps/api/src/domains/filings.ts`** (1001 lines) — assertDematCompliant:61 · assertFemaPricingFloor:100 · handleAllotmentEffectiveForFema:157 · handleTransferEffectiveForFema:183 · runFlaReturn:226 · checkDematRequirements:322 · latestHalfYearEnd:383 · runPas6HalfYearly:392 · pas6:427 · mgt1Register:535 · mgt2Register:557 · mgt1Export:626 · mgt2Export:645 · pas3AllotteeList:667 · pas3Export:747 · sh4Data:800 · RecordFilingInput:872 · recordFiling:884 · listFilings:960
 
 **`apps/api/src/domains/finance.ts`** (597 lines) — issueFeeInstalments:78 · recordPayment:115 · reversePayment:219 · allocatePayment:275 · issueCreditNote:479 · rehydrateReceivables:542 · detectOverduePayments:550
 
@@ -248,7 +248,7 @@
 
 **`apps/api/src/domains/marketing/settings.ts`** (379 lines) — ensureDefaultChannels:55 · listChannels:76 · createChannel:95 · updateChannel:127 · listAdapterStatus:165 · MarketingPolicy:173 · DEFAULT_MARKETING_POLICY:182 · marketingPolicy:192 · getPolicy:199 · patchPolicy:204 · createClaim:230 · listClaims:259 · approveClaim:276 · rejectClaim:308 · retireClaim:337 · recentWebhooks:360 · aiTouchpoints:374
 
-**`apps/api/src/domains/money.ts`** (85 lines) — minorToRupees:16 · minorToRupeesOrNull:21 · withNumberMinor:30 · maskMoney:48 · fractionOf:62 · grownByPercent:81
+**`apps/api/src/domains/money.ts`** (86 lines) — minorToRupees:17 · minorToRupeesOrNull:22 · withNumberMinor:31 · maskMoney:49 · fractionOf:63 · grownByPercent:82
 
 **`apps/api/src/domains/onboarding.ts`** (379 lines) — OnboardingStep:35 · OnboardingState:61 · onboardingState:69 · hasImported:184 · TenantOnboardingRunView:189 · tenantOnboardingRun:289 · advanceOnboarding:307
 
@@ -268,7 +268,7 @@
 
 **`apps/api/src/domains/relationships.ts`** (271 lines) — RelationshipInput:26 · createRelationship:44 · supersedeRelationship:90 · refineRelationship:132 · traverse:184 · resolveEdge:208 · relationshipStrengthScore:239
 
-**`apps/api/src/domains/rounds.ts`** (1309 lines) — FundingRoundInput:51 · createRound:70 · updateRound:120 · listRounds:169 · round:179 · openRound:208 · closeRound:338 · cancelRound:408 · fundingRoundView:438 · FreeReservesResult:499 · freeReservesProxy:515 · BuybackTests:547 · buybackTests:568 · ProposeConversionInput:667 · proposeConversion:685 · ProposeRedemptionInput:762 · proposeRedemption:772 · ProposeBuybackInput:845 · proposeBuyback:861 · ProposeBonusInput:952 · proposeBonus:966 · CreateRightsOffersInput:1099 · createRightsOffers:1108 · listRightsOffers:1147 · acceptRightsOffer:1153 · renounceRightsOffer:1208 · scenarioRound:1292 · scenarioWaterfall:1298
+**`apps/api/src/domains/rounds.ts`** (1315 lines) — FundingRoundInput:53 · createRound:72 · updateRound:122 · listRounds:171 · round:181 · openRound:213 · closeRound:343 · cancelRound:414 · fundingRoundView:444 · FreeReservesResult:505 · freeReservesProxy:521 · BuybackTests:553 · buybackTests:574 · ProposeConversionInput:673 · proposeConversion:691 · ProposeRedemptionInput:768 · proposeRedemption:778 · ProposeBuybackInput:851 · proposeBuyback:867 · ProposeBonusInput:958 · proposeBonus:972 · CreateRightsOffersInput:1105 · createRightsOffers:1114 · listRightsOffers:1153 · acceptRightsOffer:1159 · renounceRightsOffer:1214 · scenarioRound:1298 · scenarioWaterfall:1304
 
 **`apps/api/src/domains/routing.ts`** (458 lines) — RoutingSubject:30 · RoutingOutcome:39 · routeLead:144 · raiseUnroutedException:341 · routingAuditFor:381 · createTerritory:395 · updateRoutingRule:433
 
@@ -368,7 +368,7 @@
 
 **`apps/api/src/imports/classify.ts`** (113 lines) — LedgerClass:15 · classifyLedger:18 · isAccountName:81 · divisionFor:92 · JOURNAL_ACCOUNT_NAME:111 · JOURNAL_ACCOUNT_TYPE:112
 
-**`apps/api/src/imports/commit.ts`** (2827 lines) — CommitResult:55 · commitImport:201 · revertImport:1190
+**`apps/api/src/imports/commit.ts`** (2828 lines) — CommitResult:56 · commitImport:202 · revertImport:1191
 
 **`apps/api/src/imports/detect.ts`** (320 lines) — ImportKind:18 · Detection:47 · findHeaderRow:73 · detectGrid:106 · detectWorkbook:236 · isTallyLedgerSheet:286 · countLedgers:290 · detectSourceFormat:303
 
@@ -546,7 +546,7 @@
 
 **`packages/shared/src/money.ts`** (213 lines) — add:16 · sub:20 · neg:24 · abs:28 · compare:33 · isZero:37 · parseMinor:47 · formatMinor:60 · DecimalLike:72 · decimalToMinor:81 · toMinorHalfUp:104 · mulRatio:140 · allocate:164 · applyBps:189 · convertPpm:198
 
-**`packages/shared/src/permissions.ts`** (569 lines) — VERBS:22 · VerbLetter:32 · Verb:33 · DISTINCT_GRANT_VERBS:36 · SCOPES:38 · Scope:39 · ParsedGrant:41 · parseGrant:52 · formatGrant:84 · RESOURCES:103 · Resource:381 · ROLE_SLUGS:409 · RoleSlug:423 · APPROVAL_LADDER:426 · APPROVAL_EXCLUDED_ROLES:428 · MONEY_FIELDS:434 · REGULATED_EXCLUDED_FIELDS:484 · AXES:511 · AxisCode:522 · AxisOutcome:524 · PermissionDecision:530 · ROLE_CLASSIFICATION_CEILING:545
+**`packages/shared/src/permissions.ts`** (576 lines) — VERBS:22 · VerbLetter:32 · Verb:33 · DISTINCT_GRANT_VERBS:36 · SCOPES:38 · Scope:39 · ParsedGrant:41 · parseGrant:52 · formatGrant:84 · RESOURCES:103 · Resource:381 · ROLE_SLUGS:409 · RoleSlug:423 · APPROVAL_LADDER:426 · APPROVAL_EXCLUDED_ROLES:428 · MONEY_FIELDS:434 · REGULATED_EXCLUDED_FIELDS:491 · AXES:518 · AxisCode:529 · AxisOutcome:531 · PermissionDecision:537 · ROLE_CLASSIFICATION_CEILING:552
 
 **`packages/shared/src/planes.ts`** (390 lines) — PLANES:8 · PlaneCode:71 · BOUNDED_CONTEXTS:78 · BoundedContext:103 · ModuleRegisterEntry:110 · MODULE_REGISTER:119
 

@@ -194,7 +194,7 @@ describe('approveRefund: the founder exemption on requester-is-approver', () => 
         tenantId: tid,
         recordCode: `FA-REF-${stamp()}`,
         receiptId: `REC-fa-${stamp()}`,
-        amount: 500,
+        amountMinor: 50000n,
         reason: 'Founder exemption fixture',
         status: 'requested',
         requestedById,

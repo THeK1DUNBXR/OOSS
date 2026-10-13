@@ -12,7 +12,6 @@
  * `approvedById` is compared against `requestedById`, not inferred from role.
  */
 
-import { parseMinor } from '@kaizen/shared';
 import { prisma } from '../../../platform/db.js';
 import { currentAuth } from '../../../platform/context.js';
 import { ApiError } from '../../../platform/errors.js';
@@ -22,6 +21,7 @@ import { assertStepUpForApprove } from './security.js';
 import { documentPrefix } from '../../companyProfile.js';
 import { nextDocumentNumber, DOCUMENT_SERIES } from '../../../platform/documentNumber.js';
 import { checkTransactionAllowed, writeTransactionMinor } from '../../books.js';
+import { rupeesToMinor, withDecimalMinor } from '../../../platform/wire.js';
 import { isFounder, type FounderOverride } from '../../statutory.js';
 
 // Registered beside the writer for the reason given in corporate/board.ts.
@@ -30,10 +30,11 @@ registerGovernedEntities('cmp_corporate', ['refund', 'refund_policy']);
 export async function listRefunds(status?: string) {
   await assertCan({ resource: 'refunds', verb: 'view' });
   const auth = currentAuth();
-  return prisma.refund.findMany({
+  const rows = await prisma.refund.findMany({
     where: { tenantId: auth.tenantId, ...(status ? { status } : {}) },
     orderBy: { requestedAt: 'desc' },
   });
+  return rows.map((row) => withDecimalMinor(row, ['amount'] as const));
 }
 
 export async function requestRefund(input: {
@@ -63,7 +64,7 @@ export async function requestRefund(input: {
         recordCode,
         invoiceId: input.invoiceId ?? null,
         receiptId: input.receiptId ?? null,
-        amount: input.amount,
+        amountMinor: rupeesToMinor(input.amount),
         reason: input.reason,
         status: 'requested',
         requestedById: auth.partyId!,
@@ -78,7 +79,7 @@ export async function requestRefund(input: {
     subjectId: refund.id,
     after: { recordCode, amount: input.amount },
   });
-  return refund;
+  return withDecimalMinor(refund, ['amount'] as const);
 }
 
 /** CMP-COR-004 / the proposer-never-approves rule: approver cannot be the requester. */
@@ -117,14 +118,14 @@ export async function approveRefund(id: string) {
     after: { status: 'approved' },
     ...(founderOverride.length > 0 ? { meta: { founderOverride } } : {}),
   });
-  return updated;
+  return withDecimalMinor(updated, ['amount'] as const);
 }
 
 /**
  * Books the outward movement. Never touches the original invoice/receipt —
  * `writeTransactionMinor` writes a new row, direction `out`, source `refund`, inside the
- * payment's own transaction. The refund amount stays bigint paise end to end: a Decimal
- * read as a JavaScript number could round before the row is written.
+ * payment's own transaction. The refund amount stays bigint paise end to end: the row's
+ * `amountMinor` is the figure written, never a Decimal read back as a JavaScript number.
  */
 export async function payRefund(id: string, input: { accountId: string; method?: string; reference?: string | null }) {
   await assertStepUpForApprove('Paying a refund');
@@ -159,7 +160,7 @@ export async function payRefund(id: string, input: { accountId: string; method?:
       {
         txnDate: new Date(),
         direction: 'out',
-        amount: parseMinor(refund.amount.toString()),
+        amount: refund.amountMinor,
         accountId: input.accountId,
         method: input.method ?? 'bank_transfer',
         reference: input.reference ?? refund.recordCode,
@@ -181,7 +182,7 @@ export async function payRefund(id: string, input: { accountId: string; method?:
       after: { status: 'paid', paidPaymentId: txn.id },
       tx,
     });
-    return updated;
+    return withDecimalMinor(updated, ['amount'] as const);
   });
 }
 

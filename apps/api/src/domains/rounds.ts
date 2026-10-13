@@ -41,8 +41,10 @@ import { emit } from '../platform/eventBus.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { raiseException } from '../platform/exceptions.js';
-import { effectiveBalance, shareTransactionView, holderView, outgoingCount } from './equity.js';
+import { effectiveBalance, shareTransactionView, outgoingCount } from './equity.js';
 import { round2 } from '@kaizen/shared';
+import { rupeesToMinor } from '../platform/wire.js';
+import { minorToRupees, minorToRupeesOrNull } from './money.js';
 
 // ---------------------------------------------------------------------------
 // Rounds
@@ -81,7 +83,7 @@ export async function createRound(input: FundingRoundInput) {
         name: input.name,
         kind: input.kind,
         status: 'draft',
-        preMoneyValuation: input.preMoneyValuation == null ? null : dec(input.preMoneyValuation),
+        preMoneyValuationMinor: input.preMoneyValuation == null ? null : rupeesToMinor(input.preMoneyValuation),
         pricePerShareByClass: (input.pricePerShareByClass ?? undefined) as never,
         valuationId: input.valuationId ?? null,
         boardResolutionRef: input.boardResolutionRef ?? null,
@@ -134,7 +136,7 @@ export async function updateRound(id: string, input: Partial<FundingRoundInput>)
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),
       ...(input.preMoneyValuation !== undefined
-        ? { preMoneyValuation: input.preMoneyValuation == null ? null : dec(input.preMoneyValuation) }
+        ? { preMoneyValuationMinor: input.preMoneyValuation == null ? null : rupeesToMinor(input.preMoneyValuation) }
         : {}),
       ...(input.pricePerShareByClass !== undefined
         ? { pricePerShareByClass: (input.pricePerShareByClass ?? undefined) as never }
@@ -189,14 +191,17 @@ export async function round(id: string) {
 
   const effective = transactions.filter((t) => t.status === 'effective');
   const raised = effective
-    .filter((t) => t.type === 'allotment' && t.pricePerShare)
-    .reduce((sum, t) => sum + (num(t.count) ?? 0) * (num(t.pricePerShare) ?? 0), 0);
+    .filter((t) => t.type === 'allotment' && t.pricePerShareMinor != null)
+    .reduce((sum, t) => sum + (num(t.count) ?? 0) * (minorToRupeesOrNull(t.pricePerShareMinor) ?? 0), 0);
 
   return {
     round: fundingRoundView(row),
     transactions: transactions.map(shareTransactionView),
     raised: round2(raised),
-    postMoney: row.preMoneyValuation != null ? round2((num(row.preMoneyValuation) ?? 0) + raised) : null,
+    postMoney:
+      row.preMoneyValuationMinor != null
+        ? round2((minorToRupeesOrNull(row.preMoneyValuationMinor) ?? 0) + raised)
+        : null,
   };
 }
 
@@ -347,9 +352,10 @@ export async function closeRound(id: string) {
     where: { tenantId: auth.tenantId, roundId: id, status: 'effective' },
   });
   const raised = transactions
-    .filter((t) => t.type === 'allotment' && t.pricePerShare)
-    .reduce((sum, t) => sum + (num(t.count) ?? 0) * (num(t.pricePerShare) ?? 0), 0);
-  const postMoney = row.preMoneyValuation != null ? round2((num(row.preMoneyValuation) ?? 0) + raised) : null;
+    .filter((t) => t.type === 'allotment' && t.pricePerShareMinor != null)
+    .reduce((sum, t) => sum + (num(t.count) ?? 0) * (minorToRupeesOrNull(t.pricePerShareMinor) ?? 0), 0);
+  const postMoney =
+    row.preMoneyValuationMinor != null ? round2((minorToRupeesOrNull(row.preMoneyValuationMinor) ?? 0) + raised) : null;
 
   const updated = await governedWrite(async (tx) => {
     const next = await tx.fundingRound.update({
@@ -357,8 +363,8 @@ export async function closeRound(id: string) {
       data: {
         status: 'closed',
         closedOn: new Date(),
-        raised: dec(round2(raised)),
-        postMoneyValuation: postMoney == null ? null : dec(postMoney),
+        raisedMinor: rupeesToMinor(round2(raised)),
+        postMoneyValuationMinor: postMoney == null ? null : rupeesToMinor(postMoney),
       },
     });
 
@@ -443,9 +449,9 @@ export function fundingRoundView(row: {
   status: string;
   openedOn: Date | null;
   closedOn: Date | null;
-  preMoneyValuation: unknown;
-  postMoneyValuation: unknown;
-  raised: unknown;
+  preMoneyValuationMinor: bigint | null;
+  postMoneyValuationMinor: bigint | null;
+  raisedMinor: bigint | null;
   pricePerShareByClass: unknown;
   valuationId: string | null;
   boardResolutionRef: string | null;
@@ -470,9 +476,9 @@ export function fundingRoundView(row: {
     status: row.status,
     openedOn: row.openedOn ? row.openedOn.toISOString() : null,
     closedOn: row.closedOn ? row.closedOn.toISOString() : null,
-    preMoneyValuation: num(row.preMoneyValuation as never),
-    postMoneyValuation: num(row.postMoneyValuation as never),
-    raised: num(row.raised as never),
+    preMoneyValuation: minorToRupeesOrNull(row.preMoneyValuationMinor),
+    postMoneyValuation: minorToRupeesOrNull(row.postMoneyValuationMinor),
+    raised: minorToRupeesOrNull(row.raisedMinor),
     pricePerShareByClass: (row.pricePerShareByClass ?? null) as Record<string, number> | null,
     valuationId: row.valuationId,
     boardResolutionRef: row.boardResolutionRef,
@@ -581,14 +587,14 @@ export async function buybackTests(): Promise<BuybackTests> {
   let securitiesPremium = 0;
   for (const t of txns) {
     const amount = num(t.count) ?? 0;
-    const price = num(t.pricePerShare) ?? 0;
+    const price = minorToRupeesOrNull(t.pricePerShareMinor) ?? 0;
 
     // Incoming leg: allotted into a share-capital class.
     const inClass = classById.get(t.shareClassId);
     if (t.toHolderId && inClass) {
-      paidUpCapital += amount * (num(inClass.faceValue) ?? 0);
-      if (price > (num(inClass.faceValue) ?? 0)) {
-        securitiesPremium += amount * (price - (num(inClass.faceValue) ?? 0));
+      paidUpCapital += amount * minorToRupees(inClass.faceValueMinor);
+      if (price > minorToRupees(inClass.faceValueMinor)) {
+        securitiesPremium += amount * (price - minorToRupees(inClass.faceValueMinor));
       }
     }
 
@@ -599,7 +605,7 @@ export async function buybackTests(): Promise<BuybackTests> {
     const outClassId = t.type === 'conversion' && t.fromShareClassId ? t.fromShareClassId : t.shareClassId;
     const outClass = classById.get(outClassId);
     if (t.fromHolderId && outClass) {
-      paidUpCapital -= outgoingCount(t) * (num(outClass.faceValue) ?? 0);
+      paidUpCapital -= outgoingCount(t) * minorToRupees(outClass.faceValueMinor);
     }
   }
   paidUpCapital = round2(Math.max(0, paidUpCapital));
@@ -794,7 +800,7 @@ export async function proposeRedemption(input: ProposeRedemptionInput) {
         `A redemption funded from reserves needs reserves to be measurable. ${reserves.basis}`,
       );
     }
-    if (reserves.amount < input.count * (num(shareClass.faceValue) ?? 0)) {
+    if (reserves.amount < input.count * minorToRupees(shareClass.faceValueMinor)) {
       throw ApiError.unprocessable(
         `Measured free reserves (${reserves.amount}) do not cover the face value of the shares being redeemed from them.`,
       );
@@ -922,7 +928,7 @@ export async function proposeBuyback(input: ProposeBuybackInput) {
         shareClassId: input.shareClassId,
         fromHolderId: input.holderId,
         count: dec(input.count)!,
-        pricePerShare: dec(input.pricePerShare),
+        pricePerShareMinor: rupeesToMinor(input.pricePerShare),
         effectiveOn: new Date(input.effectiveOn),
         roundId: input.roundId,
         status: 'proposed',
@@ -1302,7 +1308,7 @@ export async function scenarioWaterfall(exitValue: number) {
   const auth = currentAuth();
   const classes = await prisma.shareClass.findMany({ where: { tenantId: auth.tenantId } });
   const priceByClass: Record<string, number> = {};
-  for (const c of classes) priceByClass[c.id] = num(c.faceValue) ?? 0;
+  for (const c of classes) priceByClass[c.id] = minorToRupees(c.faceValueMinor);
 
   return waterfall(capTableRows, priceByClass, exitValue);
 }
