@@ -26,11 +26,10 @@
  * leaves it unset and reports only, because the owner set the ceiling for the
  * full run and not for the short one.
  *
- * Not asserted: that each accepted allocation posts a journal entry. The draft
- * says it does, but allocatePayment writes no journal rows (domains/finance.ts
- * allocatePayment, no post or postInTx call). The trial balance is checked
- * because the brief asks for it, and it is a check on the tenant's journal as a
- * whole, not on these allocations.
+ * Journal. Each accepted allocation against an invoice with an issue entry posts
+ * one receipt entry (domains/finance.ts allocatePayment, postReceiptAllocation,
+ * gated by receiptPostsFor). The trial balance is checked over the tenant's
+ * whole journal, so it covers those receipt entries as well as the rest.
  */
 
 import { describe, expect, it } from 'vitest';

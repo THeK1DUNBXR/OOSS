@@ -120,7 +120,7 @@
 
 **`apps/api/src/domains/filings.ts`** (1026 lines) — assertDematCompliant:62 · assertFemaPricingFloor:101 · handleAllotmentEffectiveForFema:158 · handleTransferEffectiveForFema:184 · runFlaReturn:227 · checkDematRequirements:323 · latestHalfYearEnd:384 · runPas6HalfYearly:393 · pas6:428 · mgt1Register:536 · mgt2Register:558 · mgt1Export:627 · mgt2Export:646 · pas3AllotteeList:668 · pas3Export:748 · sh4Data:812 · RecordFilingInput:897 · recordFiling:909 · listFilings:985
 
-**`apps/api/src/domains/finance.ts`** (806 lines) — issueFeeInstalments:87 · recordPayment:141 · reversePayment:256 · allocatePayment:338 · issueCreditNote:610 · rehydrateReceivables:751 · detectOverduePayments:759
+**`apps/api/src/domains/finance.ts`** (811 lines) — issueFeeInstalments:87 · recordPayment:141 · reversePayment:256 · allocatePayment:343 · issueCreditNote:615 · rehydrateReceivables:756 · detectOverduePayments:764
 
 **`apps/api/src/domains/founderView.ts`** (307 lines) — FounderSource:41 · FOUNDER_SOURCES:247 · founderView:293
 
@@ -324,7 +324,7 @@
 
 **`apps/api/src/platform/exceptions.ts`** (453 lines) — RaiseExceptionInput:34 · passesFourPropertyTest:60 · OPEN_STATES:71 · raiseException:115 · acknowledgeException:290 · resolveException:305 · escalateException:333 · severityToPriority:408 · NotifyInput:423 · notify:435
 
-**`apps/api/src/platform/governedWrite.ts`** (29 lines) — governedWrite:26
+**`apps/api/src/platform/governedWrite.ts`** (38 lines) — governedWrite:32
 
 **`apps/api/src/platform/grantSync.ts`** (135 lines) — GrantAddition:42 · addMissingGrants:57 · addMissingGrantsForAllTenants:126
 

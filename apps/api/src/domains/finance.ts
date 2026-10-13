@@ -335,6 +335,11 @@ export async function reversePayment(paymentId: string, reason: string) {
 // Allocation
 // ---------------------------------------------------------------------------
 
+// Allocations against one payment serialise on its row lock (lockPayment), so under a burst
+// the last caller waits for the others rather than being refused with a 500 (P2028 at
+// Prisma's default 2 s maxWait).
+const ALLOCATION_TX = { maxWait: 10_000 };
+
 export async function allocatePayment(input: {
   paymentId: string;
   invoiceId?: string | null;
@@ -521,7 +526,7 @@ export async function allocatePayment(input: {
     });
 
     return receipt;
-  });
+  }, ALLOCATION_TX);
 
   await settleIfFullyPaid(input.invoiceId ?? null, input.feeInstalmentId ?? null);
   return receiptWire(receipt);
