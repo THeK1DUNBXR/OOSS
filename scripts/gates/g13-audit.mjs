@@ -52,6 +52,8 @@
 //                 raised a notice is audited where it happens.
 //   jobClaim      scheduler lease and attempt state (jobs/scheduler.ts), not business state.
 //   jobFiringLog  dedupe claim for a job's repeat notice (jobs/scheduler.ts claimFiring).
+//   eventConsumerReceipt  a subscriber's "already ran" mark for one event (platform/outbox.ts
+//                 recordReceipt). The event it marks is the record; the receipt only stops a rerun.
 // eventDeadLetter is not exempt: a dead letter is a delivery the business did not get.
 //
 // Roots: domains, routes, jobs, imports, platform, events. cli, agents, lib, seed
@@ -107,6 +109,7 @@ export const EXEMPT_MODELS = new Set([
   'notification',
   'jobClaim',
   'jobFiringLog',
+  'eventConsumerReceipt',
 ]);
 
 // Seed and fixture directories, and seed files (seed.ts, seed-demo.ts). A file
