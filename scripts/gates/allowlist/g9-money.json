@@ -305,7 +305,7 @@
     {
       "file": "apps/api/src/domains/health.ts",
       "rule": "num(",
-      "count": 6,
+      "count": 4,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -377,7 +377,7 @@
     {
       "file": "apps/api/src/domains/marketing/analytics.ts",
       "rule": "num(",
-      "count": 10,
+      "count": 4,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -395,25 +395,13 @@
     {
       "file": "apps/api/src/domains/marketing/budget.ts",
       "rule": "num(",
-      "count": 11,
+      "count": 1,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
       "file": "apps/api/src/domains/marketing/budget.ts",
       "rule": "Number(",
       "count": 3,
-      "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
-    },
-    {
-      "file": "apps/api/src/domains/marketing/campaigns.ts",
-      "rule": "num(",
-      "count": 7,
-      "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
-    },
-    {
-      "file": "apps/api/src/domains/marketing/events.ts",
-      "rule": "num(",
-      "count": 2,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {

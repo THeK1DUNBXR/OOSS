@@ -1399,7 +1399,7 @@ model PipelineDefinition {
 
   /// A tenant may additionally require manager-level grant for commit
   /// promotion above a value threshold — a configurable toggle, not a fixed rule.
-  commitApprovalThreshold Decimal? @db.Decimal(18, 2)
+  commitApprovalThresholdMinor BigInt?
 
   effectiveFrom DateTime  @default(now())
   effectiveTo   DateTime?

@@ -32,10 +32,10 @@ model MarketingCampaign {
 
   status String @default("draft")
 
-  budgetPlanned   Decimal @default(0) @db.Decimal(18, 2)
-  budgetCommitted Decimal @default(0) @db.Decimal(18, 2)
+  budgetPlannedMinor BigInt @default(0)
+  budgetCommittedMinor BigInt @default(0)
   /// Computed from MarketingSpend rows, never written directly by request code.
-  budgetActual    Decimal @default(0) @db.Decimal(18, 2)
+  budgetActualMinor BigInt @default(0)
   currency        String  @default("INR")
 
   ownerPartyId     String?
@@ -47,7 +47,7 @@ model MarketingCampaign {
 
   targetLeads         Int?
   targetEnrolments    Int?
-  targetPipelineValue Decimal? @db.Decimal(18, 2)
+  targetPipelineValueMinor BigInt?
 
   offeringId String?
   offering   Offering?          @relation(fields: [offeringId], references: [id])
@@ -97,7 +97,7 @@ model MarketingCampaignApproval {
   decidedById     String?
   decision        String   @default("pending")
   reason          String?
-  thresholdAmount Decimal? @db.Decimal(18, 2)
+  thresholdAmountMinor BigInt?
 
   createdById String?
   updatedById String?
@@ -487,7 +487,7 @@ model MarketingTouchpoint {
   occurredAt DateTime @default(now())
   utm        Json     @default("{}")
   sourceRef  String?
-  cost       Decimal? @db.Decimal(18, 2)
+  costMinor BigInt?
 
   createdById String?
   updatedById String?
@@ -582,8 +582,8 @@ model MarketingEvent {
 
   status String @default("planned")
 
-  costPlanned Decimal @default(0) @db.Decimal(18, 2)
-  costActual  Decimal @default(0) @db.Decimal(18, 2)
+  costPlannedMinor BigInt @default(0)
+  costActualMinor BigInt @default(0)
   division    String  @default("education")
 
   createdById String?
@@ -734,7 +734,7 @@ model MarketingReferralProgram {
   name         String
   kind         String
   rewardKind   String   @default("none")
-  rewardAmount Decimal? @db.Decimal(18, 2)
+  rewardAmountMinor BigInt?
   active       Boolean  @default(true)
   terms        String?
 
@@ -803,8 +803,8 @@ model MarketingBudget {
   campaignId String?
   campaign   MarketingCampaign? @relation(fields: [campaignId], references: [id])
 
-  planned   Decimal @default(0) @db.Decimal(18, 2)
-  committed Decimal @default(0) @db.Decimal(18, 2)
+  plannedMinor BigInt @default(0)
+  committedMinor BigInt @default(0)
   note      String?
 
   createdById String?
@@ -830,7 +830,7 @@ model MarketingSpend {
   channelKey String
   division   String
 
-  amount    Decimal  @db.Decimal(18, 2)
+  amountMinor BigInt
   spendDate DateTime
 
   vendorOrganizationId String?

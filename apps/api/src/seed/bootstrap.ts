@@ -34,6 +34,7 @@ import { seedFounderDuty } from './compliance/statutory.js';
 import { seedIt } from './it/index.js';
 import { AI_TOUCHPOINTS, EVENTS } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from '../platform/db.js';
+import { rupeesToMinor } from '../platform/wire.js';
 import { config } from '../platform/config.js';
 import { asSystem } from '../platform/context.js';
 import { hashPassword } from '../lib/auth.js';
@@ -2284,7 +2285,8 @@ async function seedPipelines() {
         defaultForecastMethod: seed.defaultForecastMethod,
         requiresAwardArtefact: seed.requiresAwardArtefact,
         isDefault: seed.isDefault ?? false,
-        commitApprovalThreshold: seed.commitApprovalThreshold ?? undefined,
+        commitApprovalThresholdMinor:
+          seed.commitApprovalThreshold == null ? undefined : rupeesToMinor(seed.commitApprovalThreshold),
       },
     });
 

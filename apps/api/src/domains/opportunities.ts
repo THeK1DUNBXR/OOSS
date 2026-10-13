@@ -407,11 +407,11 @@ export async function changeForecastCategory(input: ForecastChangeInput) {
 
       // A tenant may additionally require manager-level grant for commit above
       // a value threshold — configurable per pipeline, not a fixed rule.
-      const threshold = opportunity.pipeline.commitApprovalThreshold;
+      const thresholdMinor = opportunity.pipeline.commitApprovalThresholdMinor;
       if (
-        threshold &&
+        thresholdMinor !== null &&
         opportunity.expectedValue &&
-        parseMinor(opportunity.expectedValue.toFixed(2)) > parseMinor(threshold.toFixed(2))
+        parseMinor(opportunity.expectedValue.toFixed(2)) > thresholdMinor
       ) {
         await assertCan({
           resource: 'opportunities',
