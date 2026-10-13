@@ -23,7 +23,7 @@ import {
 import { hire, transitionEmployment } from '../../domains/employment.js';
 import { encryptField, readRegulated } from '../../domains/compliance/privacy.js';
 import { asSystem } from '../../platform/context.js';
-import { readyPayrollPosting } from './payrollLedgerFixture.js';
+import { approvePayrollRules, readyPayrollPosting } from './payrollLedgerFixture.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import {
   createPayItem,
@@ -56,6 +56,8 @@ let fixtureSeq = 0;
 
 beforeAll(async () => {
   TENANT = await tenantId();
+  // The statutory rules a run is computed and posted from are approved here, in setup (S10).
+  await approvePayrollRules(TENANT, 'chairman@kaizen.co.in');
 });
 
 async function employmentFor(email: string) {
@@ -414,7 +416,11 @@ describe('payroll journal', () => {
       data: { pfEmployeeMinor: 600_000n },
     });
     // The employee above needs a ledger entity, and 2032-03 an open period.
-    await readyPayrollPosting(TENANT, { months: ['2032-03'], divisions: ['software'] });
+    await readyPayrollPosting(TENANT, {
+      months: ['2032-03'],
+      divisions: ['software'],
+      approverEmail: 'chairman@kaizen.co.in',
+    });
 
     const opsJournal = await asUser('operations@kaizen.co.in', () => generatePayrollJournal(run.id));
     const noGrant = await expectReject(() =>

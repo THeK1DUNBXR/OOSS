@@ -433,9 +433,10 @@ export interface PayrollAccrualLine {
  * the stored instruction components: net pay, PF (employee, employer and EPS),
  * ESI (both shares), PT, LWF (both shares) and salary TDS.
  *
- * EDLI and admin charges are not in this source: the statutory lines do not store
- * them (compliance/payroll.ts computeInstruction), so they are not posted here.
- * Adding them is a statutory-lines change, not an accrual change.
+ * The caller (payrollAccrual.ts) folds the EDLI and PF admin charges into
+ * `employerMinor` and `pfPayableMinor`. They are employer costs, computed on the
+ * EPS wage and stored as statutory lines, so they are not in gross or net and this
+ * source does not carry them separately.
  */
 export interface PayrollAccrualSource {
   byLine: readonly PayrollAccrualLine[];

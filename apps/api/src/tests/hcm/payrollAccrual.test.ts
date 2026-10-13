@@ -13,6 +13,7 @@ import { parseMinor, type PostingRole } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from '../../platform/db.js';
 import { assertTrialBalance, journalTrialBalance } from '../../platform/balances.js';
 import { asUser, booksTenant, expectReject, type BooksTenant } from '../helpers.js';
+import { approvePayrollRules, recordStatutoryLines } from './payrollLedgerFixture.js';
 import { postPayrollJournal } from '../../domains/hcm/payrollops.js';
 import { postPayrollToBooks } from '../../domains/books.js';
 import { setPayrollDivisionLine } from '../../domains/hcm/payrollDivisionLines.js';
@@ -93,6 +94,8 @@ async function fixture(slug: string, omit: readonly string[] = []): Promise<Fixt
       effectiveFrom,
     },
   });
+  // The run's statutory lines name the approved rules they were computed from (FX-73, S10).
+  await approvePayrollRules(tid, `chairman@${slug}.books.test`);
   const accounts: Record<string, string> = {};
   for (const role of ALL_ROLES) {
     const account = await unscopedPrisma.ledgerAccount.create({
@@ -156,6 +159,9 @@ interface Row {
   lwfEe?: string;
   lwfEr?: string;
   tds?: string;
+  /** Employer costs the rules compute (EDLI and the PF admin charge), stored as statutory lines. */
+  edli?: string;
+  admin?: string;
   /** Stored net pay, when a test needs it wrong. Otherwise gross less the employee-side deductions. */
   netOverride?: string;
 }
@@ -208,6 +214,24 @@ async function makeRun(tid: string, payPeriod: string, rows: Row[], status = 'Ap
         lwfEmployeeMinor: zero(r.lwfEe),
         lwfEmployerMinor: zero(r.lwfEr),
         tdsAmountMinor: zero(r.tds),
+      },
+    });
+    await recordStatutoryLines({
+      tenantId: tid,
+      payrollRunId: run.id,
+      payPeriod,
+      employmentId: r.employmentId,
+      amounts: {
+        PF_EMPLOYEE: zero(r.pfEe),
+        PF_EMPLOYER: zero(r.pfEr),
+        EPS_EMPLOYER: zero(r.eps),
+        EDLI_EMPLOYER: zero(r.edli),
+        ADMIN_EMPLOYER: zero(r.admin),
+        ESI_EMPLOYEE: zero(r.esiEe),
+        ESI_EMPLOYER: zero(r.esiEr),
+        PT_EMPLOYEE: zero(r.pt),
+        LWF_EMPLOYEE: zero(r.lwfEe),
+        LWF_EMPLOYER: zero(r.lwfEr),
       },
     });
   }

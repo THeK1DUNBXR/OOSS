@@ -19,6 +19,86 @@ export const SEED_CREATED_BY = 'system:statutory-seed';
 const UNVERIFIED = 'UNVERIFIED: ';
 
 /**
+ * The payroll rates, moved from the typed rate tables (S10). Each value is copied exactly from
+ * seed/compliance/payroll.ts, which is where the tables were seeded: rates are integer parts per
+ * million, money is integer paise, and every number is a string, as ruleIntegerField reads it.
+ *
+ * None of the rate-table seeds carries a notification reference, so each source says so. The
+ * UNVERIFIED prefix is what makes approval ask for a citation (approvalSource), which is the point:
+ * a rate with no citation is not approved by the seed or by a person who only copies it.
+ *
+ * The rate tables stay in place and are no longer read by payroll. A row here is the one payroll
+ * reads, and only when it is APPROVED and in force on the pay month.
+ */
+const PAYROLL_EFFECTIVE_FROM = new Date('2024-04-01T00:00:00.000Z');
+
+export const PAYROLL_RULE_SEEDS = [
+  {
+    domain: 'pf',
+    key: 'pf.rates',
+    jurisdiction: 'IN',
+    effectiveFrom: PAYROLL_EFFECTIVE_FROM,
+    value: {
+      employeeRatePpm: '120000',
+      employerRatePpm: '120000',
+      epsRatePpm: '83300',
+      edliRatePpm: '5000',
+      adminRatePpm: '5000',
+      wageCeilingMinor: '1500000',
+      voluntary: false,
+    },
+    source: `${UNVERIFIED}migrated from pfRateTable seed, source not recorded.`,
+  },
+  {
+    domain: 'esi',
+    key: 'esi.rates',
+    jurisdiction: 'IN',
+    effectiveFrom: PAYROLL_EFFECTIVE_FROM,
+    value: {
+      employeeRatePpm: '7500',
+      employerRatePpm: '32500',
+      wageCeilingMinor: '2100000',
+    },
+    source: `${UNVERIFIED}migrated from esiRateTable seed, source not recorded.`,
+  },
+  {
+    domain: 'pt',
+    key: 'pt.tn_slabs',
+    jurisdiction: 'IN-TN',
+    effectiveFrom: PAYROLL_EFFECTIVE_FROM,
+    value: {
+      state: 'TN',
+      slabs: [
+        { minGrossMinor: '0', maxGrossMinor: '2100000', halfYearlyAmountMinor: '0' },
+        { minGrossMinor: '2100100', maxGrossMinor: '3000000', halfYearlyAmountMinor: '13500' },
+        { minGrossMinor: '3000100', maxGrossMinor: '4500000', halfYearlyAmountMinor: '31500' },
+        { minGrossMinor: '4500100', maxGrossMinor: '6000000', halfYearlyAmountMinor: '69000' },
+        { minGrossMinor: '6000100', maxGrossMinor: '7500000', halfYearlyAmountMinor: '102500' },
+        { minGrossMinor: '7500100', maxGrossMinor: null, halfYearlyAmountMinor: '125000' },
+      ],
+      confirmNote:
+        'Confirm against the Greater Chennai Corporation (or the applicable local body) professional tax schedule currently in force.',
+    },
+    source: `${UNVERIFIED}migrated from professionalTaxSlabTable seed (TN), source not recorded.`,
+  },
+  {
+    domain: 'lwf',
+    key: 'lwf.tn_contribution',
+    jurisdiction: 'IN-TN',
+    effectiveFrom: PAYROLL_EFFECTIVE_FROM,
+    value: {
+      state: 'TN',
+      employeeAmountMinor: '2000',
+      employerAmountMinor: '4000',
+      dueMonth: 12,
+      confirmNote:
+        'Confirm the current Tamil Nadu Labour Welfare Fund Act contribution against the latest notification.',
+    },
+    source: `${UNVERIFIED}migrated from lwfRateTable seed (TN), source not recorded.`,
+  },
+];
+
+/**
  * The pack is deliberately marked for legal verification. It makes the
  * effective-dated shape available without pretending that this seed is a
  * gazette or a substitute for counsel's sign-off.
@@ -80,6 +160,7 @@ export async function seedStatutory(): Promise<void> {
       value: { daysPerYear: '15', daysPerMonth: '26' },
       source: `${UNVERIFIED}Payment of Gratuity Act, 1972, s.4(2): 15 days' wages per completed year, month taken as 26 days. Commencement date not yet verified.`,
     },
+    ...PAYROLL_RULE_SEEDS,
   ];
 
   for (const rule of rules) {

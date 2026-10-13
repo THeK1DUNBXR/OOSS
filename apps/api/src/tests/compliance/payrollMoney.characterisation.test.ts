@@ -15,6 +15,7 @@ import { rupeesToMinor } from '../../platform/wire.js';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { bigintReplacer, minorToDecimal } from '../../platform/wire.js';
 import { asUser, prisma, tenantId, unscopedPrisma } from '../helpers.js';
+import { approvePayrollRules } from '../hcm/payrollLedgerFixture.js';
 import { getEmployment, hire, transitionEmployment, transitionOffboarding } from '../../domains/employment.js';
 import { getOffboardingForEmployment } from '../../domains/hcm/separations.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
@@ -114,6 +115,8 @@ const period = (month: string) => `${RUN_YEAR}-${month}`;
 
 beforeAll(async () => {
   TENANT = await tenantId();
+  // computeInstruction reads the approved statutory rules, not the rate tables (S10).
+  await approvePayrollRules(TENANT, 'chairman@kaizen.co.in');
   const latest = await unscopedPrisma.payrollRun.findFirst({
     where: { tenantId: TENANT, payPeriod: { gte: '2070-01', lt: '2100-01' } },
     orderBy: { payPeriod: 'desc' },

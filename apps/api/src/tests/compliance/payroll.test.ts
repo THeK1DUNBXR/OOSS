@@ -21,6 +21,7 @@ import {
   ENCRYPTED_FIELD_PREFIX,
 } from '@kaizen/shared';
 import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from '../helpers.js';
+import { approvePayrollRules } from '../hcm/payrollLedgerFixture.js';
 import {
   hire,
   transitionEmployment,
@@ -57,6 +58,8 @@ const period = (month: string) => `${RUN_YEAR}-${month}`;
 
 beforeAll(async () => {
   TENANT = await tenantId();
+  // computeInstruction reads the approved statutory rules, not the rate tables (S10).
+  await approvePayrollRules(TENANT, 'chairman@kaizen.co.in');
   const latest = await unscopedPrisma.payrollRun.findFirst({
     where: { tenantId: TENANT, payPeriod: { gte: '2100-01' } },
     orderBy: { payPeriod: 'desc' },

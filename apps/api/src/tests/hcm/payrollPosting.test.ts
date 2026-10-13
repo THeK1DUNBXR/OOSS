@@ -41,6 +41,7 @@ beforeAll(async () => {
   await readyPayrollPosting(TENANT, {
     months: ['2044-01', '2044-02', '2044-03', '2044-04', '2044-05', '2044-06', '2044-07'],
     divisions: ['software', 'skill'],
+    approverEmail: 'chairman@kaizen.co.in',
   });
 });
 
