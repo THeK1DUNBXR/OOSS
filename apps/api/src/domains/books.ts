@@ -875,18 +875,18 @@ export async function priceInvoiceGst(
   }
 
   const lines: GstLineInput[] = invoice.lines.map((l) => ({
-    taxableValue: num(l.amount) ?? 0,
+    taxableValue: minorToRupees(l.amountMinor),
     gstRate: num(l.gstRate) ?? 0,
   }));
   const gst = computeGst(lines, input.interState);
 
   const updated = await prisma.$transaction(async (tx) => {
     for (const line of invoice.lines) {
-      const value = num(line.amount) ?? 0;
+      const value = minorToRupees(line.amountMinor);
       const rate = num(line.gstRate) ?? 0;
       await tx.invoiceLine.update({
         where: { id: line.id },
-        data: { taxAmount: round2((value * rate) / 100) },
+        data: { taxAmountMinor: rupeesToMinor(round2((value * rate) / 100)) },
       });
     }
     return tx.invoice.update({
@@ -896,12 +896,12 @@ export async function priceInvoiceGst(
         placeOfSupply: input.placeOfSupply ?? null,
         customerGstin: input.customerGstin ?? null,
         division: input.division ?? invoice.division,
-        taxableValue: gst.taxableValue,
-        cgstAmount: gst.cgst,
-        sgstAmount: gst.sgst,
-        igstAmount: gst.igst,
-        roundOff: gst.roundOff,
-        grandTotal: gst.grandTotal,
+        taxableValueMinor: rupeesToMinor(gst.taxableValue),
+        cgstAmountMinor: rupeesToMinor(gst.cgst),
+        sgstAmountMinor: rupeesToMinor(gst.sgst),
+        igstAmountMinor: rupeesToMinor(gst.igst),
+        roundOffMinor: rupeesToMinor(gst.roundOff),
+        grandTotalMinor: rupeesToMinor(gst.grandTotal),
       },
     });
   });
@@ -909,7 +909,7 @@ export async function priceInvoiceGst(
     action: 'update',
     subjectType: 'invoice',
     subjectId: invoiceId,
-    before: { interState: invoice.interState, grandTotal: num(invoice.grandTotal) },
+    before: { interState: invoice.interState, grandTotal: minorToRupees(invoice.grandTotalMinor) },
     after: { interState: input.interState, placeOfSupply: input.placeOfSupply ?? null, grandTotal: gst.grandTotal },
   });
 
@@ -947,10 +947,10 @@ export async function gstSummary(period: string) {
 
   const output = invoices.reduce(
     (acc, i) => ({
-      taxable: round2(acc.taxable + (num(i.taxableValue) ?? 0)),
-      cgst: round2(acc.cgst + (num(i.cgstAmount) ?? 0)),
-      sgst: round2(acc.sgst + (num(i.sgstAmount) ?? 0)),
-      igst: round2(acc.igst + (num(i.igstAmount) ?? 0)),
+      taxable: round2(acc.taxable + minorToRupees(i.taxableValueMinor)),
+      cgst: round2(acc.cgst + minorToRupees(i.cgstAmountMinor)),
+      sgst: round2(acc.sgst + minorToRupees(i.sgstAmountMinor)),
+      igst: round2(acc.igst + minorToRupees(i.igstAmountMinor)),
     }),
     { taxable: 0, cgst: 0, sgst: 0, igst: 0 },
   );

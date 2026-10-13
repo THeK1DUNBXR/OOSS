@@ -42,6 +42,7 @@ import { invoiceLabel, isCourseFeeInvoice, loadInvoiceForRead, totalsOf } from '
 import { companyProfile, documentNumbering } from './companyProfile.js';
 import { openAccountingDate, periodRefusesEntries } from './compliance/books.js';
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../platform/documentNumber.js';
+import { minorToRupees } from './money.js';
 
 // ---------------------------------------------------------------------------
 // Receipts
@@ -758,20 +759,20 @@ export async function finalInvoiceDocument(finalInvoiceId: string) {
       dueDate: invoice.dueDate?.toISOString() ?? null,
       placeOfSupply: invoice.placeOfSupply,
       interState: invoice.interState,
-      taxableValue: num(invoice.taxableValue) ?? 0,
-      cgst: num(invoice.cgstAmount) ?? 0,
-      sgst: num(invoice.sgstAmount) ?? 0,
-      igst: num(invoice.igstAmount) ?? 0,
-      roundOff: num(invoice.roundOff) ?? 0,
+      taxableValue: minorToRupees(invoice.taxableValueMinor),
+      cgst: minorToRupees(invoice.cgstAmountMinor),
+      sgst: minorToRupees(invoice.sgstAmountMinor),
+      igst: minorToRupees(invoice.igstAmountMinor),
+      roundOff: minorToRupees(invoice.roundOffMinor),
       lines: invoice.lines.map((l) => ({
         description: l.description,
         courseName: l.courseId ? (courseMap.get(l.courseId)?.name ?? null) : null,
         hsnSac: l.hsnSac,
         quantity: l.quantity,
-        unitPrice: num(l.unitPrice) ?? 0,
-        amount: num(l.amount) ?? 0,
+        unitPrice: minorToRupees(l.unitPriceMinor),
+        amount: minorToRupees(l.amountMinor),
         gstRate: num(l.gstRate) ?? 0,
-        taxAmount: num(l.taxAmount) ?? 0,
+        taxAmount: minorToRupees(l.taxAmountMinor),
       })),
     },
 
