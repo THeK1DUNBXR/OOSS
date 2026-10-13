@@ -54,6 +54,7 @@ registerGovernedEntities('hcm_recruiting', [
   'interview_scorecard',
   'background_verification',
   'onboarding_task',
+  'onboarding_task_template',
 ]);
 
 function slugify(title: string, stamp: string): string {
@@ -833,7 +834,7 @@ export async function createBackgroundVerification(input: {
     );
   }
 
-  return prisma.backgroundVerification.create({
+  const bgv = await prisma.backgroundVerification.create({
     data: {
       tenantId: auth.tenantId,
       applicationId: input.applicationId ?? null,
@@ -842,6 +843,19 @@ export async function createBackgroundVerification(input: {
       checks: input.checks,
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'background_verification',
+    subjectId: bgv.id,
+    after: {
+      applicationId: bgv.applicationId,
+      employmentId: bgv.employmentId,
+      vendor: bgv.vendor,
+      checks: bgv.checks,
+      status: bgv.status,
+    },
+  });
+  return bgv;
 }
 
 export async function updateBackgroundVerification(
@@ -911,7 +925,7 @@ export async function createOnboardingTemplate(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'onboarding_tasks', verb: 'create' });
-  return prisma.onboardingTaskTemplate.create({
+  const template = await prisma.onboardingTaskTemplate.create({
     data: {
       tenantId: auth.tenantId,
       title: input.title,
@@ -920,6 +934,18 @@ export async function createOnboardingTemplate(input: {
       dueOffsetDays: input.dueOffsetDays ?? 0,
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'onboarding_task_template',
+    subjectId: template.id,
+    after: {
+      title: template.title,
+      category: template.category,
+      assignee: template.assignee,
+      dueOffsetDays: template.dueOffsetDays,
+    },
+  });
+  return template;
 }
 
 export async function instantiateOnboardingTasks(employmentId: string, hireEffectiveDate: Date) {
@@ -935,9 +961,13 @@ export async function instantiateOnboardingTasks(employmentId: string, hireEffec
   if (already > 0) return prisma.onboardingTask.findMany({ where: { tenantId: auth.tenantId, employmentId } });
 
   const templates = await prisma.onboardingTaskTemplate.findMany({ where: { tenantId: auth.tenantId, active: true } });
-  const tasks = await prisma.$transaction(
-    templates.map((t) =>
-      prisma.onboardingTask.create({
+  // An interactive transaction rather than the array form: each task needs the
+  // transaction client for its audit row, and the array form gives no handle to
+  // it. Atomicity is the same either way.
+  const tasks = await prisma.$transaction(async (tx) => {
+    const created: Awaited<ReturnType<typeof prisma.onboardingTask.create>>[] = [];
+    for (const t of templates) {
+      const task = await tx.onboardingTask.create({
         data: {
           tenantId: auth.tenantId,
           employmentId,
@@ -946,9 +976,18 @@ export async function instantiateOnboardingTasks(employmentId: string, hireEffec
           assignee: t.assignee,
           dueDate: taskDueDate(hireEffectiveDate, t.dueOffsetDays),
         },
-      }),
-    ),
-  );
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'onboarding_task',
+        subjectId: task.id,
+        after: { employmentId, templateId: t.id, title: task.title, assignee: task.assignee },
+        tx,
+      });
+      created.push(task);
+    }
+    return created;
+  });
 
   return tasks;
 }

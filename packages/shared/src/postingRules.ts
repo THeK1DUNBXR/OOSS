@@ -10,6 +10,8 @@
  * is unmapped and a posting that needs it is refused.
  */
 
+import { allocate, mulRatio } from './money.js';
+
 /**
  * Every role a posting can name. A role added here needs a migration-free data
  * row per tenant before any domain can post with it; a role removed here
@@ -275,6 +277,113 @@ export function invoiceIssueRoles(
   return roles;
 }
 
+export interface CreditNoteSource {
+  partyId: string;
+  /**
+   * Positive paise: the gross amount the note takes off the invoice, tax included. The
+   * credit note stores one amount and no tax of its own (finance.ts issueCreditNote), and
+   * positionOfInvoice subtracts it from the grand total, so it is read as gross.
+   */
+  amountMinor: bigint;
+  /** The invoice's taxable value: its lines summed, as postInvoiceIssue sums them. */
+  taxableMinor: bigint;
+  /** The business line the invoice's issue entry booked its revenue and round-off under. */
+  lineId: string;
+  /** The invoice's grand total as stored; the proportion the note is split by. */
+  grandTotalMinor: bigint;
+  cgstMinor: bigint;
+  sgstMinor: bigint;
+  igstMinor: bigint;
+  roundOffMinor: bigint;
+}
+
+/**
+ * The entry a credit note posts: the receivable is credited the note's amount, and
+ * revenue and each output tax are debited the share of the invoice that the note
+ * takes back. The shares follow the invoice's own components, so the reversal is in
+ * the invoice's proportion and a full credit reverses the issue to the paisa.
+ *
+ * The round-off share is taken first, with mulRatio (half away from zero), because
+ * round-off can be negative and allocate refuses a negative weight. The rest is split
+ * by allocate over the taxable value and the three taxes, all of which are not
+ * negative. The parts sum to the amount exactly, so the entry balances without a
+ * remainder being absorbed anywhere.
+ */
+export function buildCreditNoteEntry(source: CreditNoteSource, accounts: ResolvedPostingAccounts): PostingLine[] {
+  requireBigints({
+    amountMinor: source.amountMinor,
+    taxableMinor: source.taxableMinor,
+    grandTotalMinor: source.grandTotalMinor,
+    cgstMinor: source.cgstMinor,
+    sgstMinor: source.sgstMinor,
+    igstMinor: source.igstMinor,
+    roundOffMinor: source.roundOffMinor,
+  });
+  const amount = source.amountMinor;
+  if (amount <= 0n) {
+    throw new PostingRuleError('A credit note must be for a positive amount.', 'INVALID_AMOUNT');
+  }
+  const { taxableMinor, cgstMinor, sgstMinor, igstMinor, roundOffMinor, grandTotalMinor } = source;
+  if (taxableMinor < 0n || cgstMinor < 0n || sgstMinor < 0n || igstMinor < 0n) {
+    throw new PostingRuleError(
+      'The invoice has a negative taxable or tax component, so its credit cannot be split.',
+      'INVALID_AMOUNT',
+    );
+  }
+  const components = taxableMinor + cgstMinor + sgstMinor + igstMinor + roundOffMinor;
+  if (components !== grandTotalMinor) {
+    throw new PostingRuleError(
+      `Invoice components do not add to the grand total: out by ${grandTotalMinor - components} paise.`,
+      'UNBALANCED_SOURCE',
+    );
+  }
+  if (grandTotalMinor <= 0n) {
+    throw new PostingRuleError('The invoice has no receivable to credit.', 'INVALID_AMOUNT');
+  }
+
+  const roundOffShare = roundOffMinor === 0n ? 0n : mulRatio(amount, roundOffMinor, grandTotalMinor);
+  const rest = amount - roundOffShare;
+  const [taxableShare = 0n, cgstShare = 0n, sgstShare = 0n, igstShare = 0n] =
+    rest === 0n ? [] : allocate(rest, [taxableMinor, cgstMinor, sgstMinor, igstMinor]);
+
+  const lines: PostingLine[] = [
+    { accountId: accountFor(accounts, 'TRADE_RECEIVABLE'), amountMinor: -amount, partyId: source.partyId },
+  ];
+  if (taxableShare !== 0n) {
+    lines.push({
+      accountId: accountFor(accounts, 'REVENUE', source.lineId),
+      amountMinor: taxableShare,
+      lineId: source.lineId,
+    });
+  }
+  if (cgstShare !== 0n) lines.push({ accountId: accountFor(accounts, 'OUTPUT_CGST'), amountMinor: cgstShare });
+  if (sgstShare !== 0n) lines.push({ accountId: accountFor(accounts, 'OUTPUT_SGST'), amountMinor: sgstShare });
+  if (igstShare !== 0n) lines.push({ accountId: accountFor(accounts, 'OUTPUT_IGST'), amountMinor: igstShare });
+  if (roundOffShare !== 0n) {
+    lines.push({ accountId: accountFor(accounts, 'ROUND_OFF'), amountMinor: roundOffShare, lineId: source.lineId });
+  }
+
+  assertBalancedLines(lines, 'Credit note');
+  return lines;
+}
+
+/**
+ * The posting roles a credit note needs. They are the roles its invoice's issue needed,
+ * since the reversal goes to the same accounts: a credit note never needs a role the
+ * issue did not, so an invoice that issued can always be credited under the same mapping.
+ */
+export function creditNoteRoles(
+  source: Pick<CreditNoteSource, 'lineId' | 'taxableMinor' | 'cgstMinor' | 'sgstMinor' | 'igstMinor' | 'roundOffMinor'>,
+): Array<{ role: PostingRole; scopeKey?: string }> {
+  return invoiceIssueRoles({
+    revenue: [{ lineId: source.lineId, taxableMinor: source.taxableMinor }],
+    cgstMinor: source.cgstMinor,
+    sgstMinor: source.sgstMinor,
+    igstMinor: source.igstMinor,
+    roundOffMinor: source.roundOffMinor,
+  });
+}
+
 /** The posting roles a receipt allocation needs: the bank for its payment mode, and the receivable. */
 export function receiptAllocationRoles(paymentMode: string): Array<{ role: PostingRole; scopeKey?: string }> {
   return [{ role: 'BANK', scopeKey: paymentMode }, { role: 'TRADE_RECEIVABLE' }];
@@ -324,9 +433,10 @@ export interface PayrollAccrualLine {
  * the stored instruction components: net pay, PF (employee, employer and EPS),
  * ESI (both shares), PT, LWF (both shares) and salary TDS.
  *
- * EDLI and admin charges are not in this source: the statutory lines do not store
- * them (compliance/payroll.ts computeInstruction), so they are not posted here.
- * Adding them is a statutory-lines change, not an accrual change.
+ * The caller (payrollAccrual.ts) folds the EDLI and PF admin charges into
+ * `employerMinor` and `pfPayableMinor`. They are employer costs, computed on the
+ * EPS wage and stored as statutory lines, so they are not in gross or net and this
+ * source does not carry them separately.
  */
 export interface PayrollAccrualSource {
   byLine: readonly PayrollAccrualLine[];

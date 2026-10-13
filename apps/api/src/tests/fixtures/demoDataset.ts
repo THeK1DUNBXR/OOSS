@@ -1,4 +1,4 @@
-import { toMinorHalfUp } from '@kaizen/shared';
+import { formatMinor, toMinorHalfUp } from '@kaizen/shared';
 /**
  * The demonstration dataset — test subjects, not product data.
  *
@@ -1628,7 +1628,7 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
         data: {
           tenantId,
           recordCode: await nextRecordCode('PAY'),
-          amount: collected,
+          amountMinor: toMinorHalfUp(collected),
           currency: 'INR',
           gatewayReference: `TXN-${randomUUID().slice(0, 12).toUpperCase()}`,
           receivedAt: new Date(closedAt.getTime() + 12 * 86_400_000),
@@ -1643,12 +1643,12 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
           recordCode: docNumber('R', i + 1),
           paymentId: payment.id,
           invoiceId: invoice.id,
-          allocatedAmount: collected,
+          allocatedAmountMinor: toMinorHalfUp(collected),
           allocatedAt: new Date(closedAt.getTime() + 12 * 86_400_000),
           // A receipt carries its own copy of the position, because it is a
           // document: "this much, of that much, leaving this".
-          subjectTotal: gst.grandTotal,
-          balanceAfter: round2(gst.grandTotal - collected),
+          subjectTotalMinor: toMinorHalfUp(gst.grandTotal),
+          balanceAfterMinor: toMinorHalfUp(round2(gst.grandTotal - collected)),
           paymentMode: 'bank_transfer',
         },
       });
@@ -1672,7 +1672,7 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
         subjectType: 'account',
         subjectId: org.id,
         subjectLabel: org.name,
-        amountOutstanding: i === 0 ? 0 : i === 1 ? w.value * 0.6 : w.value,
+        amountOutstandingMinor: toMinorHalfUp(i === 0 ? 0 : i === 1 ? w.value * 0.6 : w.value),
         currency: 'INR',
         nextDueDate: new Date(closedAt.getTime() + 30 * 86_400_000),
         dunningStage: i === 2 ? 'chase' : i === 1 ? 'reminder' : null,
@@ -2069,7 +2069,7 @@ async function seedEducation(people: SeededPerson[], orgs: SeededOrg[]) {
         code: c.code,
         description: `${c.weeks}-week cohort programme with placement support.`,
         durationWeeks: c.weeks,
-        feeAmount: c.fee,
+        feeAmountMinor: toMinorHalfUp(c.fee),
         gstRate: 18,
         hsnSac: TRAINING_SAC,
         division: 'education',
@@ -2234,7 +2234,7 @@ async function seedStudentBillingAndTimelines() {
 
   for (const [index, enrollment] of enrollments.entries()) {
     const course = enrollment.cohort.course;
-    const fee = Number((course.feeAmount ?? 60_000).toString());
+    const fee = Number(formatMinor(course.feeAmountMinor ?? 6_000_000n));
     const rate = Number((course.gstRate ?? 18).toString());
     // A student is an unregistered buyer in their own state: CGST and SGST, and
     // no customer GSTIN to report them under. That is the B2C case, and it is
@@ -2320,7 +2320,7 @@ async function seedStudentBillingAndTimelines() {
         data: {
           tenantId,
           recordCode: await nextRecordCode('PAY'),
-          amount: instalment.amount,
+          amountMinor: toMinorHalfUp(instalment.amount),
           currency: 'INR',
           gatewayReference: `${invoice.recordCode}/${instalment.mode}/${n + 1}`,
           receivedAt: at,
@@ -2339,10 +2339,10 @@ async function seedStudentBillingAndTimelines() {
           recordCode: receiptCode,
           paymentId: payment.id,
           invoiceId: invoice.id,
-          allocatedAmount: instalment.amount,
+          allocatedAmountMinor: toMinorHalfUp(instalment.amount),
           allocatedAt: at,
-          subjectTotal: gst.grandTotal,
-          balanceAfter,
+          subjectTotalMinor: toMinorHalfUp(gst.grandTotal),
+          balanceAfterMinor: toMinorHalfUp(balanceAfter),
           paymentMode: instalment.mode,
           paymentReference: instalment.reference,
         },
@@ -2376,9 +2376,9 @@ async function seedStudentBillingAndTimelines() {
           recordCode: docNumber('TI', 1),
           invoiceId: invoice.id,
           issuedAt: new Date(issuedAt.getTime() + 15 * 86_400_000),
-          totalPayable: gst.grandTotal,
-          totalReceived: received,
-          balance: round2(Math.max(gst.grandTotal - received, 0)),
+          totalPayableMinor: toMinorHalfUp(gst.grandTotal),
+          totalReceivedMinor: toMinorHalfUp(received),
+          balanceMinor: toMinorHalfUp(round2(Math.max(gst.grandTotal - received, 0))),
           settled: received >= gst.grandTotal - 0.001,
           receiptCodes,
           receiptCount: receiptCodes.length,

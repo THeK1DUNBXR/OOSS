@@ -22,6 +22,7 @@ import { assertCan } from '../../platform/permissions.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { grantConsent, withdrawConsent, listConsentsForPerson } from '../compliance/privacy.js';
 import { suppressedPersonIds } from './audiences.js';
 
@@ -367,16 +368,26 @@ export async function withdrawByToken(token: string): Promise<{ personId: string
 async function setDoNotContactSystem(personId: string, reason: string) {
   const auth = currentAuth();
   const recordCode = await nextRecordCode('SND');
-  await prisma.marketingPreference.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      personId,
-      channelKey: 'all',
-      optedIn: false,
-      doNotContact: true,
-      reason,
-      changedAt: new Date(),
-    },
+  await governedWrite(async (tx) => {
+    const pref = await tx.marketingPreference.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        personId,
+        channelKey: 'all',
+        optedIn: false,
+        doNotContact: true,
+        reason,
+        changedAt: new Date(),
+      },
+    });
+    // A do-not-contact has to be on the record, because it is what stops the next send.
+    await auditWrite({
+      action: 'create',
+      subjectType: 'preference',
+      subjectId: pref.id,
+      after: { recordCode, channelKey: 'all', doNotContact: true, reason },
+      tx,
+    });
   });
 }

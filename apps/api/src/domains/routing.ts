@@ -20,7 +20,8 @@ import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { raiseException } from '../platform/exceptions.js';
-import { auditWrite } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+registerGovernedEntities('crm', ['routing_audit']);
 import { governedWrite } from '../platform/governedWrite.js';
 import { assertCan } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
@@ -321,15 +322,24 @@ async function persistAudit(
   unroutedReason: string | null,
 ) {
   const auth = currentAuth();
-  await prisma.routingAudit.create({
-    data: {
-      tenantId: auth.tenantId,
-      leadId,
-      territoryId,
-      candidates: candidates as never,
-      winnerPartyId,
-      unroutedReason,
-    },
+  await governedWrite(async (tx) => {
+    const row = await tx.routingAudit.create({
+      data: {
+        tenantId: auth.tenantId,
+        leadId,
+        territoryId,
+        candidates: candidates as never,
+        winnerPartyId,
+        unroutedReason,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'routing_audit',
+      subjectId: row.id,
+      after: { leadId, territoryId, winnerPartyId, unroutedReason },
+      tx,
+    });
   });
 }
 

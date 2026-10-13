@@ -173,6 +173,8 @@ async function recomputeLeaveBalance(tx: DbTx, leaveBalanceId: string) {
     where: { leaveBalanceId },
     _sum: { amountDays: true },
   });
+  // Not audited: balanceDays is a cache of the ledger. The ledger rows the carry-
+  // forward posts are the audited movements.
   await tx.leaveBalance.update({ where: { id: leaveBalanceId }, data: { balanceDays: num(sum._sum.amountDays) ?? 0 } });
 }
 
@@ -683,6 +685,8 @@ export async function validateCommittee() {
 async function nextLabourNumber(entity: string, db: DbTx = prisma as unknown as DbTx): Promise<string> {
   const auth = currentAuth();
   const year = istYearMonth(new Date()).year;
+  // Not audited: this is a number series, a counter. The record that takes the
+  // number is the audited write.
   const row = await db.recordSequence.upsert({
     where: { tenantId_entityType_year: { tenantId: auth.tenantId, entityType: `LAB:${entity}`, year } },
     create: { tenantId: auth.tenantId, entityType: `LAB:${entity}`, year, nextSequence: 2 },
@@ -816,7 +820,7 @@ export async function createPoshWorkshop(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'posh_cases', verb: 'create' });
-  return prisma.poshWorkshop.create({
+  const workshop = await prisma.poshWorkshop.create({
     data: {
       tenantId: auth.tenantId,
       heldOn: input.heldOn,
@@ -825,6 +829,14 @@ export async function createPoshWorkshop(input: {
       note: input.note ?? null,
     },
   });
+  // The note is left out of the audit row; complaint audit rows carry number and status only.
+  await auditWrite({
+    action: 'create',
+    subjectType: 'posh_workshop',
+    subjectId: workshop.id,
+    after: { heldOn: workshop.heldOn, topic: workshop.topic, attendeeCount: workshop.attendeeCount },
+  });
+  return workshop;
 }
 
 export async function listPoshWorkshops() {

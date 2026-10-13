@@ -22,9 +22,9 @@ import {
   type PaymentMode,
   type PaymentType,
   type PaymentView,
-  type ReceivablesSummary,
 } from '@kaizen/shared';
 import { api, date, money, moneyExact, relative, titleCase } from '../lib/api.js';
+import { endpoints } from '../lib/client.js';
 import {
   Card,
   EmptyState,
@@ -72,7 +72,7 @@ export function Invoices() {
     error,
   } = useQuery({
     queryKey: ['invoices'],
-    queryFn: () => api.get<InvoiceView[]>('/finance/invoices'),
+    queryFn: () => endpoints.finance.invoices(),
   });
 
   const issue = useMutation({
@@ -454,7 +454,7 @@ export function Payments() {
     error,
   } = useQuery({
     queryKey: ['payments'],
-    queryFn: () => api.get<PaymentView[]>('/finance/payments'),
+    queryFn: () => endpoints.finance.payments(),
   });
 
   if (error) return <ErrorBox error={error} />;
@@ -555,7 +555,7 @@ function AllocateModal({ payment, onClose }: { payment: PaymentView | null; onCl
 
   const { data: invoices = [] } = useQuery({
     queryKey: ['invoices', 'open'],
-    queryFn: () => api.get<InvoiceView[]>('/finance/invoices'),
+    queryFn: () => endpoints.finance.invoices(),
     enabled: Boolean(payment),
   });
 
@@ -627,7 +627,7 @@ export function Receivables() {
     error,
   } = useQuery({
     queryKey: ['receivables'],
-    queryFn: () => api.get<ReceivablesSummary[]>('/finance/receivables'),
+    queryFn: () => endpoints.finance.receivables(),
   });
 
   if (error) return <ErrorBox error={error} />;

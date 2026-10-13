@@ -359,8 +359,8 @@ router.post(
   ),
 );
 
-// Public-shaped (a verification code, not an id) but still behind requireAuth
-// via this router's mount — see certificates.ts's own note.
+// The staff check. The public one, for a verifier outside the company, is
+// `/api/compliance/public/certificates/:code` (publicCertificates.routes.ts).
 router.get(
   '/certificates/verify/:code',
   handler(async (req) => verifyCertificate(req.params.code)),

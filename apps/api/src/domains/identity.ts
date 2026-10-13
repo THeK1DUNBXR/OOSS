@@ -332,14 +332,25 @@ async function applyPersonMerge(db: DbTx, sourceId: string, targetId: string) {
     data: { dedupeStatus: 'merged', mergedIntoId: targetId },
   });
 
-  // Relationship rows on the merged-away person are left unchanged; traversal
-  // from the surviving id follows the mergedInto chain to assemble full history.
-  await db.affiliation.updateMany({
+  // Active affiliations move to the survivor, because they are what the survivor
+  // is now working as. Their ids are returned so the merge audit row can name
+  // them: the move itself is not reversible from the merged row alone, and an
+  // unmerge needs to know which affiliations to put back. Ended ones stay on the
+  // merged-away person, and traversal from the surviving id follows the mergedInto
+  // chain to assemble the rest of the history.
+  const moving = await db.affiliation.findMany({
     where: { partyId: sourceId, status: 'active' },
-    data: { partyId: targetId },
+    select: { id: true },
   });
+  const movedAffiliationIds = moving.map((a) => a.id);
+  if (movedAffiliationIds.length) {
+    await db.affiliation.updateMany({
+      where: { id: { in: movedAffiliationIds } },
+      data: { partyId: targetId },
+    });
+  }
 
-  return { source, target, updated };
+  return { source, target, updated, movedAffiliationIds };
 }
 
 /**
@@ -372,7 +383,7 @@ export async function mergePersons(sourceId: string, targetId: string, note: str
       subjectId: sourceId,
       before: { dedupeStatus: merged.source.dedupeStatus },
       after: { dedupeStatus: 'merged', mergedIntoId: targetId },
-      meta: { note, targetRecordCode: merged.target.recordCode },
+      meta: { note, targetRecordCode: merged.target.recordCode, movedAffiliationIds: merged.movedAffiliationIds },
       tx,
     });
 
@@ -490,17 +501,19 @@ async function confirmMergeCandidate(
     if (count !== 1) throw ApiError.conflict('Merge candidate was resolved by someone else.');
 
     const { person: incoming, recordCode } = await insertPersonRow(tx, mc.incomingPayload as PersonInput);
-    const { source, target } = await applyPersonMerge(tx, incoming.id, mc.candidatePersonId);
+    const { source, target, movedAffiliationIds } = await applyPersonMerge(tx, incoming.id, mc.candidatePersonId);
 
-    // Audited before the commit, so the audit write cannot be lost to a commit
-    // that succeeded without it. auditWrite takes its own chain lock; it does
-    // not touch the rows this transaction holds.
+    // Audit rows go through this transaction. Written on their own connection,
+    // a later failure in this transaction (the emits below, say) would roll the
+    // merge back and leave three audit rows describing a merge that never
+    // happened. Ordering is still audit before event, as governedWrite requires.
     await auditWrite({
       action: 'create',
       subjectType: 'person',
       subjectId: incoming.id,
       after: { fullName: incoming.fullName, recordCode },
       meta: { mergeCandidateId: mc.id },
+      tx,
     });
     await auditWrite({
       action: 'merge',
@@ -508,7 +521,13 @@ async function confirmMergeCandidate(
       subjectId: incoming.id,
       before: { dedupeStatus: source.dedupeStatus },
       after: { dedupeStatus: 'merged', mergedIntoId: target.id },
-      meta: { note, targetRecordCode: target.recordCode, mergeCandidateId: mc.id },
+      meta: {
+        note,
+        targetRecordCode: target.recordCode,
+        mergeCandidateId: mc.id,
+        movedAffiliationIds,
+      },
+      tx,
     });
     await auditWrite({
       action: 'update',
@@ -517,6 +536,7 @@ async function confirmMergeCandidate(
       before: { state: 'open' },
       after: { state: 'confirmed' },
       meta: { note },
+      tx,
     });
 
     // Every audit row above precedes these events (governedWrite.ts), so the

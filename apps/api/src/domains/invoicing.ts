@@ -60,7 +60,6 @@ import {
   amountInWords,
   computeGst,
   computePaymentSchedule,
-  invoicePayable,
   isInterState,
   istMonthKey,
   isValidGstin,
@@ -76,12 +75,20 @@ import {
 } from '@kaizen/shared';
 import { istDateKey, toMinorHalfUp } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../platform/db.js';
-import { withMinor, withRupeeWire, wireInt, rupeesToMinor, type DecimalLike } from '../platform/wire.js';
-import { minorToRupees } from './money.js';
+import {
+  withDecimalMinor,
+  withMinor,
+  withRupeeWire,
+  wireInt,
+  rupeesToMinor,
+  type DecimalLike,
+} from '../platform/wire.js';
+import { minorToRupees, minorToRupeesOrNull } from './money.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
+import { isUniqueViolation } from './businessLines.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { companyProfile, documentNumbering, supplyingParty } from './companyProfile.js';
@@ -261,17 +268,18 @@ export interface InvoiceTotals {
 export function totalsOf(invoice: {
   grandTotalMinor: bigint;
   lines: WithAmount[];
-  receipts: Array<{ allocatedAmount: unknown }>;
-  creditNotes?: Array<{ amount: unknown }>;
+  receipts: Array<{ allocatedAmountMinor: bigint }>;
+  creditNotes?: Array<{ amountMinor: bigint }>;
 }): InvoiceTotals {
-  const payable = invoicePayable(minorToRupees(invoice.grandTotalMinor), lineTotalOf(invoice.lines));
-  const allocated = round2(invoice.receipts.reduce((s, r) => s + (num(r.allocatedAmount as never) ?? 0), 0));
-  const creditNoted = round2((invoice.creditNotes ?? []).reduce((s, c) => s + (num(c.amount as never) ?? 0), 0));
+  // The same reading as positionOfInvoice, which is exact in paise. This used to
+  // sum floats and round the result; for two-place values the two agree, so the
+  // rupee figures on the wire do not move.
+  const p = positionOfInvoice(invoice);
   return {
-    payable,
-    allocated,
-    creditNoted,
-    outstanding: round2(Math.max(payable - allocated - creditNoted, 0)),
+    payable: poundsOf(p.payable),
+    allocated: poundsOf(p.allocated),
+    creditNoted: poundsOf(p.creditNoted),
+    outstanding: poundsOf(p.outstanding),
   };
 }
 
@@ -307,22 +315,24 @@ const INVOICE_MONEY = [
   'amountPayableNow',
 ] as const;
 const LINE_MONEY = ['unitPrice', 'amount', 'discountAmount', 'taxAmount'] as const;
+// The receipt and payment columns are paise now. The rupee field keeps the type it always
+// had on a raw row, a Decimal whose JSON is the two-place string with trailing zeros dropped
+// ("300.45", "1457"), so a client that reads the string still reads the string.
 const RECEIPT_MONEY = ['allocatedAmount', 'subjectTotal', 'balanceAfter'] as const;
-const PAYMENT_MONEY = ['amount', 'foreignAmount'] as const;
 
-export function paymentWire<T extends { amount: DecimalLike; foreignAmount: DecimalLike | null }>(payment: T) {
-  return withMinor(payment, PAYMENT_MONEY);
+export function paymentWire<T extends { amountMinor: bigint; foreignAmount: DecimalLike | null }>(payment: T) {
+  return withMinor(withDecimalMinor(payment, ['amount']), ['foreignAmount']);
 }
 
 interface ReceiptWireRow {
-  allocatedAmount: DecimalLike;
-  subjectTotal: DecimalLike;
-  balanceAfter: DecimalLike;
-  payment?: { amount: DecimalLike; foreignAmount: DecimalLike | null };
+  allocatedAmountMinor: bigint;
+  subjectTotalMinor: bigint;
+  balanceAfterMinor: bigint;
+  payment?: { amountMinor: bigint; foreignAmount: DecimalLike | null };
 }
 
 export function receiptWire<T extends ReceiptWireRow>(receipt: T) {
-  const out = withMinor(receipt, RECEIPT_MONEY);
+  const out = withDecimalMinor(receipt, RECEIPT_MONEY);
   return receipt.payment ? { ...out, payment: paymentWire(receipt.payment) } : out;
 }
 
@@ -688,7 +698,7 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
       }
       courseId = addon.courseId;
       description = description || addon.name;
-      if (unitPrice === null) unitPrice = num(addon.price);
+      if (unitPrice === null) unitPrice = minorToRupees(addon.priceMinor);
       if (gstRate === null) gstRate = num(addon.gstRate);
       hsnSac = hsnSac ?? addon.hsnSac;
     }
@@ -704,7 +714,7 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
         );
       }
       description = description || `${course.name} (${course.code})`;
-      if (unitPrice === null) unitPrice = num(course.feeAmount);
+      if (unitPrice === null) unitPrice = minorToRupeesOrNull(course.feeAmountMinor);
       if (gstRate === null) gstRate = num(course.gstRate);
       hsnSac = hsnSac ?? course.hsnSac;
       // A course sold over weeks is earned over weeks. That is the course's own
@@ -874,6 +884,19 @@ export async function createInvoice(input: InvoiceInput) {
   // Read before the transaction: the profile goes through the global client,
   // which refuses inside one. The numbers are taken inside it, so a failed
   // write gives its number back (documentNumber.ts).
+  // A payment taken with the invoice is refused here, before the invoice is written, if
+  // its explicit reference is already on file. Left to collectInvoicePayment, that 409
+  // comes after the invoice has committed and INVOICE_ISSUED has fired: the invoice
+  // stays issued behind a refusal, and a client retry issues a second one. A derived
+  // key is not checked here: it embeds the new invoice's number, so it cannot clash.
+  // The payments permission is asserted first, as collection does, so the refusal does
+  // not reveal a payment's record code to someone who may not hold payments.
+  if (payingNow > 0) {
+    await assertCan({ resource: 'payments', verb: 'create' });
+    const reference = input.payment?.reference?.trim();
+    if (reference) await refuseIfReferenceOnFile(auth.tenantId, reference, { explicit: true });
+  }
+
   const numbering = await documentNumbering();
   // Refused before anything is written: an invoice with no entity to be booked to is
   // not created, whether it is a draft or an issue (invoicePosting.ts).
@@ -996,7 +1019,7 @@ export async function createInvoice(input: InvoiceInput) {
 async function writeLines(tx: DbTx, invoiceId: string, priced: PricedLine[]) {
   const auth = currentAuth();
   for (const line of priced) {
-    await tx.invoiceLine.create({
+    const row = await tx.invoiceLine.create({
       data: {
         tenantId: auth.tenantId,
         invoiceId,
@@ -1020,6 +1043,18 @@ async function writeLines(tx: DbTx, invoiceId: string, priced: PricedLine[]) {
         supplyType: line.supplyType,
         exemptionNotification: line.exemptionNotification,
       },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'invoice_line',
+      subjectId: row.id,
+      after: {
+        invoiceId,
+        position: row.position,
+        amountMinor: String(row.amountMinor),
+        taxAmountMinor: String(row.taxAmountMinor),
+      },
+      tx,
     });
   }
 }
@@ -1155,6 +1190,18 @@ export async function issueInvoiceDraft(
   await runHooks('accounting_document.before_write', { date: issuedDate, what: 'This invoice' });
   // GST classification rules and e-invoicing readiness attach here (workstream B).
   await runHooks('invoice.before_issue', { invoice: existing, lines: existing.lines, issuedDate });
+
+  // The payment taken at issue is checked before the draft becomes a document, for the
+  // reason given in createInvoice. Without it a refused collection leaves the draft
+  // issued, with a number, and a retry of the issue has nothing left to refuse. The
+  // narrow race, two issues of different drafts with one new reference, is not closed
+  // here (see refuseIfReferenceOnFile).
+  const paying = options.payment && options.payment.amount > 0 ? options.payment : null;
+  if (paying) {
+    await assertCan({ resource: 'payments', verb: 'create' });
+    const reference = paying.reference?.trim();
+    if (reference) await refuseIfReferenceOnFile(auth.tenantId, reference, { explicit: true });
+  }
 
   // Here is where the invoice number is allocated, and nowhere else: at the
   // moment the draft becomes a document. Allocating it inside the same update
@@ -1296,6 +1343,67 @@ export async function voidInvoice(invoiceId: string, reason: string) {
 // ---------------------------------------------------------------------------
 
 /**
+ * What a clashing gateway reference was matched on. An explicit reference is the one
+ * the clerk typed. A derived key is the invoice, the mode, the IST day and the amount,
+ * and the refusal has to say which of the two it was.
+ */
+export type ReferenceBasis = { explicit: true } | { explicit: false; invoice: string };
+
+function referenceClashConflict(
+  clash: { recordCode: string },
+  gatewayReference: string,
+  basis: ReferenceBasis,
+): ApiError {
+  return ApiError.conflict(
+    basis.explicit
+      ? `A payment with the reference ${gatewayReference} is already on file as ${clash.recordCode}. ` +
+          'Two payments with one reference cannot both be reconciled later, so this one is refused rather than accepted and left ambiguous.'
+      : `A payment of the same amount for ${basis.invoice} on this day is already on file as ${clash.recordCode}. ` +
+          'If this is a second payment, give it its own reference.',
+    { existing: clash.recordCode },
+  );
+}
+
+/**
+ * Refuses a gateway reference already on file, before anything is written.
+ *
+ * createInvoice and issueInvoiceDraft call this before their transactions, and not
+ * only collectInvoicePayment (which checks the same thing again). A clash found there
+ * comes after the invoice has committed and INVOICE_ISSUED has fired: the caller gets
+ * a 409, the invoice stays issued, and a client retry issues a second one. Refused
+ * first, nothing is written. What this does not close is two issues racing with one
+ * new reference: both pass here, and the loser's collection refuses after its own
+ * invoice has committed. Closing that needs the issue and the collection in one
+ * transaction, which is a restructure, not this check.
+ */
+export async function refuseIfReferenceOnFile(
+  tenantId: string,
+  gatewayReference: string,
+  basis: ReferenceBasis,
+): Promise<void> {
+  const clash = await prisma.payment.findFirst({ where: { tenantId, gatewayReference } });
+  if (clash) throw referenceClashConflict(clash, gatewayReference, basis);
+}
+
+/**
+ * Whether a payment insert's unique violation is the gateway-reference constraint.
+ *
+ * Prisma names the constraint in `meta.target` when it reports it, as the field list
+ * or the constraint name. Inside an interactive transaction it does not: the race
+ * suite saw `target: null` on every P2002 from these inserts (ledger.ts:150-154 says
+ * the same). So an absent target does not refuse. The caller re-reads the reference,
+ * and a row carrying it is the proof. A target naming other fields, such as recordCode,
+ * is not this clash and is rethrown.
+ */
+export function isGatewayReferenceClash(err: unknown): boolean {
+  if (!isUniqueViolation(err)) return false;
+  const target = (err as { meta?: { target?: unknown } }).meta?.target;
+  if (target === undefined || target === null) return true;
+  const fields = Array.isArray(target) ? target.map(String) : [String(target)];
+  return fields.some((field) => field.includes('gatewayReference'));
+}
+
+/**
  * Takes a payment against an invoice and issues the receipt for it.
  *
  * One call, because at a counter it is one act: the money arrives, a receipt
@@ -1357,19 +1465,10 @@ export async function collectInvoicePayment(
   const gatewayReference =
     input.reference?.trim() || `${invoiceLabel(invoice)}/${input.mode}/${istDateKey(receivedAt)}/${amount.toFixed(2)}`;
 
-  const clash = await prisma.payment.findFirst({
-    where: { tenantId: auth.tenantId, gatewayReference },
-  });
-  if (clash) {
-    throw ApiError.conflict(
-      input.reference?.trim()
-        ? `A payment with the reference ${gatewayReference} is already on file as ${clash.recordCode}. ` +
-            'Two payments with one reference cannot both be reconciled later, so this one is refused rather than accepted and left ambiguous.'
-        : `A payment of the same amount for ${invoiceLabel(invoice)} on this day is already on file as ${clash.recordCode}. ` +
-            'If this is a second payment, give it its own reference.',
-      { existing: clash.recordCode },
-    );
-  }
+  const basis: ReferenceBasis = input.reference?.trim()
+    ? { explicit: true }
+    : { explicit: false, invoice: invoiceLabel(invoice) };
+  await refuseIfReferenceOnFile(auth.tenantId, gatewayReference, basis);
 
   // The company's numbering profile goes through the global client, which
   // refuses inside a transaction, so it is read here.
@@ -1412,7 +1511,7 @@ export async function collectInvoicePayment(
       data: {
         tenantId: auth.tenantId,
         recordCode: paymentCode,
-        amount,
+        amountMinor: amountPaise,
         currency: invoice.currency,
         gatewayReference,
         receivedAt,
@@ -1435,11 +1534,11 @@ export async function collectInvoicePayment(
         recordCode: receiptCode,
         paymentId: payment.id,
         invoiceId: invoice.id,
-        allocatedAmount: amount,
+        allocatedAmountMinor: amountPaise,
         allocatedAt: receivedAt,
         allocatedById: auth.partyId,
-        subjectTotal: payable,
-        balanceAfter,
+        subjectTotalMinor: position.payable,
+        balanceAfterMinor: balanceAfterPaise,
         paymentMode: input.mode,
         paymentReference: input.reference?.trim() || null,
         legacyReference: input.legacyReference?.trim() || null,
@@ -1467,7 +1566,7 @@ export async function collectInvoicePayment(
     });
 
     // The allocation's entry, in this transaction. The amount is the receipt's own
-    // allocatedAmount, so the journal says what the customer was handed.
+    // allocatedAmountMinor, so the journal says what the customer was handed.
     // Owner decision, 2026-10-13: an invoice issued before posting was wired has no issue
     // entry, so a receipt against it posts nothing, and the receivable is never credited
     // with no debit behind it. The receipt row is still written.
@@ -1475,7 +1574,7 @@ export async function collectInvoicePayment(
       await postReceiptAllocation(tx, {
         receiptId: receipt.id,
         receiptCode,
-        allocatedAmount: receipt.allocatedAmount,
+        allocatedAmountMinor: receipt.allocatedAmountMinor,
         paymentMode: input.mode,
         invoice: locked,
         receivedAt,
@@ -1487,14 +1586,27 @@ export async function collectInvoicePayment(
       action: 'create',
       subjectType: 'payment',
       subjectId: payment.id,
-      after: { recordCode: paymentCode, amount, mode: input.mode, against: invoiceLabel(invoice) },
+      after: {
+        recordCode: paymentCode,
+        amount,
+        amountMinor: wireInt(amountPaise),
+        mode: input.mode,
+        against: invoiceLabel(invoice),
+      },
     });
     await auditWrite({
       tx,
       action: 'create',
       subjectType: 'receipt',
       subjectId: receipt.id,
-      after: { recordCode: receiptCode, amount, against: invoiceLabel(invoice), balanceAfter },
+      after: {
+        recordCode: receiptCode,
+        amount,
+        amountMinor: wireInt(amountPaise),
+        against: invoiceLabel(invoice),
+        balanceAfter,
+        balanceAfterMinor: wireInt(balanceAfterPaise),
+      },
     });
 
     await emit({
@@ -1505,7 +1617,15 @@ export async function collectInvoicePayment(
         { relation: 'against', entityType: 'invoice', entityId: invoice.id },
         { relation: 'from', entityType: 'payment', entityId: payment.id },
       ],
-      newState: { amount, mode: input.mode, subjectTotal: payable, balanceAfter, settled },
+      newState: {
+        amount,
+        amountMinor: wireInt(amountPaise),
+        mode: input.mode,
+        subjectTotal: payable,
+        balanceAfter,
+        balanceAfterMinor: wireInt(balanceAfterPaise),
+        settled,
+      },
       impact: {
         domains: ['fin'],
         materiality: { measure: 'payment_amount', value: amount, currency: invoice.currency },
@@ -1523,10 +1643,13 @@ export async function collectInvoicePayment(
       ],
       newState: {
         amount,
+        amountMinor: wireInt(amountPaise),
         mode: input.mode,
         receipt: receiptCode,
         allocated,
+        allocatedMinor: wireInt(allocatedPaise),
         outstanding: balanceAfter,
+        outstandingMinor: wireInt(balanceAfterPaise),
         settled,
         // The invoice itself was not restated unless this was the payment it was
         // handed over with.
@@ -1561,6 +1684,14 @@ export async function collectInvoicePayment(
       allocatedMinor: wireInt(allocatedPaise),
       balanceAfterMinor: wireInt(balanceAfterPaise),
     };
+  }).catch(async (err: unknown) => {
+    // A concurrent collection with the same reference committed between the check above
+    // and this insert. The loser gets the same 409 as the sequential check, not a 500.
+    // The row is re-read, and only a row carrying this reference is taken as the clash.
+    if (!isGatewayReferenceClash(err)) throw err;
+    const winner = await prisma.payment.findFirst({ where: { tenantId: auth.tenantId, gatewayReference } });
+    if (!winner) throw err;
+    throw referenceClashConflict(winner, gatewayReference, basis);
   });
   const { settled } = result;
 
@@ -2016,10 +2147,10 @@ export async function invoiceDocument(invoiceId: string) {
       number: i + 1,
       recordCode: r.recordCode,
       issuedAt: r.allocatedAt.toISOString(),
-      amount: num(r.allocatedAmount) ?? 0,
+      amount: poundsOf(r.allocatedAmountMinor),
       mode: r.paymentMode ?? r.payment.method,
       reference: r.paymentReference ?? r.payment.gatewayReference,
-      balanceAfter: num(r.balanceAfter) ?? 0,
+      balanceAfter: poundsOf(r.balanceAfterMinor),
     })),
 
     /** Final invoices raised against it, newest first. */
@@ -2027,8 +2158,10 @@ export async function invoiceDocument(invoiceId: string) {
       id: f.id,
       recordCode: f.recordCode,
       issuedAt: f.issuedAt.toISOString(),
-      totalReceived: num(f.totalReceived) ?? 0,
-      balance: num(f.balance) ?? 0,
+      totalReceived: minorToRupees(f.totalReceivedMinor),
+      totalReceivedMinor: wireInt(f.totalReceivedMinor),
+      balance: minorToRupees(f.balanceMinor),
+      balanceMinor: wireInt(f.balanceMinor),
       settled: f.settled,
       status: f.status,
       receiptCount: f.receiptCount,
@@ -2036,7 +2169,8 @@ export async function invoiceDocument(invoiceId: string) {
 
     creditNotes: creditNotes.map((c) => ({
       recordCode: c.recordCode,
-      amount: num(c.amount) ?? 0,
+      amount: minorToRupees(c.amountMinor),
+      amountMinor: wireInt(c.amountMinor),
       reason: c.reason,
       issuedAt: c.issuedAt.toISOString(),
     })),
@@ -2073,10 +2207,11 @@ export async function rehydrateReceivablesFor(
     include: { lines: true, receipts: true },
   });
 
-  let outstanding = 0;
+  // Paise, each invoice's balance clamped at zero before it is added, as the invoice shows it.
+  let outstanding = 0n;
   let nextDue: Date | null = null;
   for (const inv of invoices) {
-    outstanding = round2(outstanding + totalsOf(inv).outstanding);
+    outstanding += positionOfInvoice(inv).outstanding;
     if (inv.dueDate && (!nextDue || inv.dueDate < nextDue)) nextDue = inv.dueDate;
   }
 
@@ -2089,23 +2224,28 @@ export async function rehydrateReceivablesFor(
       ? ((await prisma.organization.findFirst({ where: { id: subjectId }, select: { name: true } }))?.name ?? subjectId)
       : subjectId;
 
-  return prisma.receivablesProjection.upsert({
+  // Not audited: a receivables projection is rebuilt from the invoices and receipts on
+  // every hydrate, so it is a read model of them, not a record. Listed for an owner
+  // decision on a CLAUDE.md rule 5 exemption.
+  const projection = await prisma.receivablesProjection.upsert({
     where: { tenantId_subjectType_subjectId: { tenantId: auth.tenantId, subjectType, subjectId } },
     create: {
       tenantId: auth.tenantId,
       subjectType,
       subjectId,
       subjectLabel: label,
-      amountOutstanding: outstanding,
+      amountOutstandingMinor: outstanding,
       nextDueDate: nextDue,
       dunningStage,
     },
     update: {
       subjectLabel: label,
-      amountOutstanding: outstanding,
+      amountOutstandingMinor: outstanding,
       nextDueDate: nextDue,
       dunningStage,
       hydratedAt: new Date(),
     },
   });
+  // The rupee Decimal the projection row always returned, beside its paise sibling.
+  return withDecimalMinor(projection, ['amountOutstanding']);
 }

@@ -1,12 +1,13 @@
 /**
  * Account recovery for a locked-out employee (ORDERED-PLAN Wave 6).
  *
- * The founder or the IT desk recovers the sign-in, and the one-time password is
- * shown to them and nowhere else. No code goes to a phone, an inbox or any other
- * channel the employee could lose or have taken: the owner chose this over SMS
- * because a SIM swap would hand the sign-in to whoever holds the number
- * (DECISIONS round 22 item e). This module has no SMS, phone or messaging path,
- * and a test holds it to that.
+ * One holder recovers the sign-in, and the one-time password is shown to them and
+ * nowhere else: the IT admin once onboarding names one, otherwise the founder
+ * (DECISIONS round 23 c, C-015). `recoveryHolder` resolves who that is. No code
+ * goes to a phone, an inbox or any other channel the employee could lose or have
+ * taken: the owner chose this over SMS because a SIM swap would hand the sign-in
+ * to whoever holds the number (DECISIONS round 22 item e). This module has no
+ * SMS, phone or messaging path, and a test holds it to that.
  *
  * The recoverer learns the password, so the recoverer may recover only an
  * account whose roles they could assign themselves. A recovered password is
@@ -30,22 +31,46 @@ import { ApiError } from '../platform/errors.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { prisma } from '../platform/db.js';
 import { principalHoldsOtherEntities, recoverSignIn } from '../lib/auth.js';
+import { FOUNDER_DUTY, resolveDutyHolder } from './statutory.js';
 import { verifyTotp } from './compliance/corporate/totp.js';
 
 /** The reason must say something: twenty non-whitespace characters, not twenty characters of padding. */
 export const RECOVERY_REASON_MIN_CHARS = 20;
 
 /**
- * The founder is the `chairman` role: the superadmin row the matrix generates
- * from every resource (seed/grants.ts, the chairman block), and the account the
- * install seeds first (seed/bootstrap.ts, FOUNDING_ACCOUNTS). ROLE_SLUGS has no
- * separate founder slug, so this is the one slug that means it.
+ * The duty that names the internal IT admin. It is a tenant duty with one holder at
+ * a time, as FOUNDER_DUTY is, so naming the admin is an assignment and handing it
+ * over is an end followed by an assign. Nothing in onboarding names it yet, so until
+ * something does, `recoveryHolder` falls back to the founder.
+ */
+export const IT_ADMIN_DUTY = 'it_admin';
+
+export type RecoveryHolderKind = 'it_admin' | 'founder';
+
+/**
+ * Who may recover a sign-in in the tenant of the request: the IT admin once one is
+ * named, otherwise the founder. Read from the duties, never from a grant or a role
+ * slug, so someone who holds account_recovery:approve but was not named is not the
+ * holder. Null when neither duty has a holder.
+ */
+export async function recoveryHolder(
+  at: Date = new Date(),
+): Promise<{ kind: RecoveryHolderKind; partyId: string } | null> {
+  const itAdmin = await resolveDutyHolder(IT_ADMIN_DUTY, at);
+  if (itAdmin) return { kind: 'it_admin', partyId: itAdmin.partyId };
+  const founder = await resolveDutyHolder(FOUNDER_DUTY, at);
+  return founder ? { kind: 'founder', partyId: founder.partyId } : null;
+}
+
+/**
+ * The `chairman` role is how a founder account is recognised when it is the
+ * target, which is a different question from who the holder is. The holder is the
+ * founder duty's holder, and the founder duty can move to another person at
+ * onboarding, so the holder is never read from this slug.
  *
- * Interim default, pending an owner question. The IT desk can recover any
- * account it is granted over, so letting it recover the founder's would let the
- * desk take over the company's top sign-in, which is the SIM-swap risk the owner
- * chose this path to avoid. Until the owner rules on a founder-only procedure,
- * a founder account is recovered by the operator, outside the app.
+ * A founder account is still refused as a target. The IT admin could otherwise
+ * take over the company's top sign-in, which is the SIM-swap risk the owner chose
+ * this path to avoid, so a founder account is recovered by the operator.
  */
 const FOUNDER_ROLE = 'chairman';
 
@@ -73,8 +98,31 @@ export async function recoverAccount(input: RecoverAccountInput): Promise<Recove
   const auth = currentAuth();
   const resetMfa = input.resetMfa === true;
 
+  // The grant above says the caller may recover; the holder check says the caller is the
+  // person the company named to do it. Both must hold, so a grant held by someone else
+  // does not make them a recoverer.
+  const holder = await recoveryHolder();
+  if (!holder) {
+    throw new ApiError(
+      422,
+      'UNPROCESSABLE',
+      'No founder is named for this tenant, so no one can recover a sign-in here. The founder duty is set at bootstrap.',
+      { reasonCode: 'recovery_holder_not_set' },
+    );
+  }
+  if (!auth.partyId || auth.partyId !== holder.partyId) {
+    throw new ApiError(
+      403,
+      'FORBIDDEN',
+      holder.kind === 'it_admin'
+        ? 'Only the IT admin named at onboarding can recover a sign-in in this company.'
+        : 'Only the founder can recover a sign-in until onboarding names an IT admin.',
+      { reasonCode: 'recovery_holder_only' },
+    );
+  }
+
   if (input.userId === auth.userId) {
-    throw ApiError.forbidden('You cannot recover your own sign-in. The founder or the IT desk recovers it for you.');
+    throw ApiError.forbidden('You cannot recover your own sign-in. The recovery holder recovers it for you.');
   }
 
   const reason = input.reason.trim();
@@ -167,7 +215,7 @@ export async function recoverAccount(input: RecoverAccountInput): Promise<Recove
       action: 'update',
       subjectType: 'user',
       subjectId: current.id,
-      meta: { kind: 'account_recovery', reason, resetMfa, sessionsRevoked },
+      meta: { kind: 'account_recovery', reason, resetMfa, sessionsRevoked, holder: holder.kind },
     });
 
     await emit({

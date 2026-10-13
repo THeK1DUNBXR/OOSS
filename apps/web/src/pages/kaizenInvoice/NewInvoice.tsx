@@ -16,8 +16,9 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { PAYMENT_MODES, PAYMENT_MODE_LABELS, amountInWords, computePaymentSchedule, round2 } from '@kaizen/shared';
-import type { CompanyProfileView, CourseView, PaymentMode } from '@kaizen/shared';
+import type { CourseView, PaymentMode } from '@kaizen/shared';
 import { api } from '../../lib/api.js';
+import { endpoints } from '../../lib/client.js';
 import { ErrorBox, Loading, PageHeader } from '../../components/ui.js';
 import { messageOf } from '../../components/forms.js';
 import { adultOnRecord, ageBasisBody, type AgeBasisValues } from '../../components/learnerAge.js';
@@ -130,11 +131,11 @@ export function NewInvoice() {
     error: coursesError,
   } = useQuery({
     queryKey: ['courses', { includeRetired: false }],
-    queryFn: () => api.get<CourseView[]>('/education/courses'),
+    queryFn: () => endpoints.education.courses(),
   });
   const { data: company, error: companyError } = useQuery({
     queryKey: ['company-profile'],
-    queryFn: () => api.get<CompanyProfileView>('/books/company-profile'),
+    queryFn: () => endpoints.books.companyProfile(),
   });
   const { data: states } = useQuery({
     queryKey: ['gst-states'],

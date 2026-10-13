@@ -170,16 +170,26 @@ export async function addTransition(
   const auth = currentAuth();
   await assertCan({ resource: 'pipeline_transitions', verb: 'create' });
 
-  return prisma.pipelineTransition.create({
-    data: {
-      tenantId: auth.tenantId,
-      pipelineId,
-      fromStageKey: input.fromStageKey,
-      toStageKey: input.toStageKey,
-      requiresApproval: input.requiresApproval ?? false,
-      requiredPermission: input.requiredPermission ?? 'opportunities:edit',
-      emitsEvent: input.emitsEvent ?? EVENTS.OPPORTUNITY_STAGE_CHANGED,
-    },
+  return governedWrite(async (tx) => {
+    const transition = await tx.pipelineTransition.create({
+      data: {
+        tenantId: auth.tenantId,
+        pipelineId,
+        fromStageKey: input.fromStageKey,
+        toStageKey: input.toStageKey,
+        requiresApproval: input.requiresApproval ?? false,
+        requiredPermission: input.requiredPermission ?? 'opportunities:edit',
+        emitsEvent: input.emitsEvent ?? EVENTS.OPPORTUNITY_STAGE_CHANGED,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'pipeline_transition',
+      subjectId: transition.id,
+      after: { pipelineId, fromStageKey: input.fromStageKey, toStageKey: input.toStageKey },
+      tx,
+    });
+    return transition;
   });
 }
 

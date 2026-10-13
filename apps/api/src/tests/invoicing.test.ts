@@ -20,6 +20,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import {
   amountInWords,
   computeGst,
+  formatMinor,
   gstinCheckDigit,
   istDateKey,
   istMidnight,
@@ -33,7 +34,7 @@ import {
   supplyTypeOf,
 } from '@kaizen/shared';
 import { asUser, expectReject, prisma, tenantId, unscopedPrisma, withFixtureRole } from './helpers.js';
-import { num } from '../platform/db.js';
+import { minorToRupees } from '../domains/money.js';
 import {
   collectInvoicePayment,
   createInvoice,
@@ -576,7 +577,7 @@ describe('an instalment issues a receipt and never restates the invoice', () => 
       expect(row.status).toBe('part_paid');
 
       // The receipt is the document that says what just happened.
-      expect(Number(second.receipt.allocatedAmount.toString())).toBe(15_000);
+      expect(Number(second.receipt.allocatedAmount!.toString())).toBe(15_000);
       expect(Number(second.receipt.subjectTotal!.toString())).toBe(70_800);
       expect(Number(second.receipt.balanceAfter!.toString())).toBe(35_800);
       expect(second.receipt.paymentMode).toBe('upi');
@@ -740,9 +741,9 @@ describe('the final invoice names the receipts it consolidates', () => {
       const final = await raiseFinalInvoice(invoice.id, { note: 'Fee settled.' });
       expect(final.receiptCount).toBe(2);
       expect(final.receiptCodes).toContain(second.receipt.recordCode);
-      expect(Number(final.totalPayable.toString())).toBe(70_800);
-      expect(Number(final.totalReceived.toString())).toBe(70_800);
-      expect(Number(final.balance.toString())).toBe(0);
+      expect(final.totalPayableMinor).toBe('7080000');
+      expect(final.totalReceivedMinor).toBe('7080000');
+      expect(final.balanceMinor).toBe('0');
       expect(final.settled).toBe(true);
 
       const doc = await finalInvoiceDocument(final.id);
@@ -766,7 +767,7 @@ describe('the final invoice names the receipts it consolidates', () => {
       });
       const final = await raiseFinalInvoice(invoice.id);
       expect(final.settled).toBe(false);
-      expect(Number(final.balance.toString())).toBe(600);
+      expect(final.balanceMinor).toBe('60000');
     });
   });
 
@@ -799,8 +800,8 @@ describe('the final invoice names the receipts it consolidates', () => {
       expect(reread.status).toBe('superseded');
       expect(reread.supersededById).toBe(second.id);
       // The first is still readable and still says what it said.
-      expect(Number(reread.totalReceived.toString())).toBe(400);
-      expect(Number(second.totalReceived.toString())).toBe(1000);
+      expect(reread.totalReceivedMinor).toBe(40_000n);
+      expect(second.totalReceivedMinor).toBe('100000');
     });
   });
 });
@@ -1481,7 +1482,7 @@ describe('the course catalogue is editable and carries its price', () => {
 
   it('fills an invoice line from the course, so nobody has to know the price list', async () => {
     await asUser('chairman@kaizen.co.in', async () => {
-      const course = await prisma.course.findFirstOrThrow({ where: { feeAmount: { not: null }, active: true } });
+      const course = await prisma.course.findFirstOrThrow({ where: { feeAmountMinor: { not: null }, active: true } });
       const invoice = await createInvoice({
         division: 'education',
         personId: await aPerson(),
@@ -1491,7 +1492,7 @@ describe('the course catalogue is editable and carries its price', () => {
 
       const line = invoice.lines[0];
       expect(line.description).toContain(course.name);
-      expect(Number(line.unitPrice.toString())).toBe(Number(course.feeAmount!.toString()));
+      expect(Number(line.unitPrice.toString())).toBe(Number(formatMinor(course.feeAmountMinor!)));
       expect(Number(line.gstRate.toString())).toBe(Number(course.gstRate.toString()));
       expect(line.hsnSac).toBe(course.hsnSac);
       // A course sold over weeks is earned over weeks, and that is the course's
@@ -1794,8 +1795,8 @@ describe('one reading of what an invoice is for', () => {
     const priced = totalsOf({
       grandTotalMinor: 1_180_000n,
       lines: [{ amountMinor: 1_000_000n }],
-      receipts: [{ allocatedAmount: 5000 }],
-      creditNotes: [{ amount: 800 }],
+      receipts: [{ allocatedAmountMinor: 500_000n }],
+      creditNotes: [{ amountMinor: 80_000n }],
     });
     expect(priced.payable).toBe(11_800);
     expect(priced.allocated).toBe(5000);
@@ -1811,8 +1812,8 @@ describe('one reading of what an invoice is for', () => {
     const over = totalsOf({
       grandTotalMinor: 100_000n,
       lines: [{ amountMinor: 100_000n }],
-      receipts: [{ allocatedAmount: 1000 }],
-      creditNotes: [{ amount: 500 }],
+      receipts: [{ allocatedAmountMinor: 100_000n }],
+      creditNotes: [{ amountMinor: 50_000n }],
     });
     expect(over.outstanding).toBe(0);
   });
@@ -2197,7 +2198,7 @@ describe('the student register reads what a company already keeps', () => {
       const course = await prisma.course.findFirstOrThrow({ where: { name: `Register Course ${tag}` } });
       // Unpriced on purpose: a discounted figure from one student's row is not
       // what the course sells for.
-      expect(course.feeAmount).toBeNull();
+      expect(course.feeAmountMinor).toBeNull();
 
       const cohorts = await prisma.cohort.findMany({ where: { courseId: course.id } });
       expect(cohorts).toHaveLength(1);
@@ -2222,8 +2223,8 @@ describe('the student register reads what a company already keeps', () => {
       const { stageImport } = await import('../imports/service.js');
       const XLSX = await import('xlsx');
 
-      const priced = await prisma.course.findFirstOrThrow({ where: { feeAmount: { not: null }, active: true } });
-      const feeBefore = num(priced.feeAmount);
+      const priced = await prisma.course.findFirstOrThrow({ where: { feeAmountMinor: { not: null }, active: true } });
+      const feeBefore = minorToRupees(priced.feeAmountMinor!);
       const tag = stamp();
 
       const sheet = XLSX.utils.aoa_to_sheet(
@@ -2261,7 +2262,8 @@ describe('the student register reads what a company already keeps', () => {
       await commitImport(staged.batchId);
 
       const after = await prisma.course.findFirstOrThrow({ where: { id: priced.id } });
-      expect(num(after.feeAmount)).toBe(feeBefore);
+      expect(after.feeAmountMinor).toBe(priced.feeAmountMinor);
+      expect(feeBefore).toBe(minorToRupees(priced.feeAmountMinor!));
     });
   });
 });

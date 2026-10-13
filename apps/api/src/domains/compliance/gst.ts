@@ -30,7 +30,7 @@ import {
   toMinorHalfUp,
 } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../../platform/db.js';
-import { decimalWire, rupeesOf, rupeesToMinor, withRupeeWire } from '../../platform/wire.js';
+import { decimalWire, rupeesOf, rupeesToMinor, withDecimalMinor, withRupeeWire } from '../../platform/wire.js';
 import { minorToRupees, vendorBillWire } from '../money.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
@@ -41,6 +41,7 @@ import { governedWrite } from '../../platform/governedWrite.js';
 import { registerHook, runHooks } from '../../platform/hooks.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../../platform/documentNumber.js';
+import { lockLegacyPeriod } from '../../platform/periodLock.js';
 import { companyProfile, documentNumbering } from '../companyProfile.js';
 
 registerGovernedEntities('cmp_gst', [
@@ -112,16 +113,30 @@ async function recomputeInvoiceTotals(invoiceId: string) {
     gstRate: num(l.gstRate) ?? 0,
   }));
   const gst = computeGst(gstInput, invoice.interState);
-  return prisma.invoice.update({
-    where: { id: invoiceId },
-    data: {
-      taxableValueMinor: rupeesToMinor(gst.taxableValue),
-      cgstAmountMinor: rupeesToMinor(gst.cgst),
-      sgstAmountMinor: rupeesToMinor(gst.sgst),
-      igstAmountMinor: rupeesToMinor(gst.igst),
-      roundOffMinor: rupeesToMinor(gst.roundOff),
-      grandTotalMinor: rupeesToMinor(gst.grandTotal),
-    },
+  return governedWrite(async (tx) => {
+    const updated = await tx.invoice.update({
+      where: { id: invoiceId },
+      data: {
+        taxableValueMinor: rupeesToMinor(gst.taxableValue),
+        cgstAmountMinor: rupeesToMinor(gst.cgst),
+        sgstAmountMinor: rupeesToMinor(gst.sgst),
+        igstAmountMinor: rupeesToMinor(gst.igst),
+        roundOffMinor: rupeesToMinor(gst.roundOff),
+        grandTotalMinor: rupeesToMinor(gst.grandTotal),
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'invoice',
+      subjectId: invoiceId,
+      before: {
+        taxableValueMinor: String(invoice.taxableValueMinor),
+        grandTotalMinor: String(invoice.grandTotalMinor),
+      },
+      after: { taxableValueMinor: String(updated.taxableValueMinor), grandTotalMinor: String(updated.grandTotalMinor) },
+      tx,
+    });
+    return updated;
   });
 }
 
@@ -236,10 +251,20 @@ async function beforeIssueClassification(payload: Record<string, unknown>) {
   // A course-fee invoice is never a tax document (see the `Invoice` doc
   // comment) — it is not a bill of supply either, it is neither, so it is
   // never classified and never queued for e-invoicing.
+  // This hook runs before the issue transaction opens (invoicing.ts, runHooks calls), so
+  // the classification write and its audit row are not in one transaction. FX-24.
   if (invoice.enrollmentDate) {
     await prisma.invoice.update({
       where: { id: invoice.id },
       data: { invoiceType: 'temp', eInvoiceStatus: 'not_applicable' },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'invoice',
+      subjectId: invoice.id,
+      before: { invoiceType: invoice.invoiceType },
+      after: { invoiceType: 'temp', eInvoiceStatus: 'not_applicable' },
+      meta: { source: 'before_issue' },
     });
     return;
   }
@@ -279,6 +304,14 @@ async function beforeIssueClassification(payload: Record<string, unknown>) {
     where: { id: invoice.id },
     data: { invoiceType, eInvoiceStatus },
   });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'invoice',
+    subjectId: invoice.id,
+    before: { invoiceType: invoice.invoiceType },
+    after: { invoiceType, eInvoiceStatus },
+    meta: { source: 'before_issue' },
+  });
 }
 
 let hooksRegistered = false;
@@ -293,6 +326,8 @@ export function registerGstComplianceHooks() {
 // ---------------------------------------------------------------------------
 
 async function nextRcmNumber(at: Date): Promise<string> {
+  // Not audited: a gapless sequence counter. The document that takes the number is the
+  // audited write. Listed for an owner decision on a CLAUDE.md rule 5 exemption.
   const tenantId = currentAuth().tenantId;
   const year = recordCodeYear(at);
   const row = await prisma.recordSequence.upsert({
@@ -430,7 +465,9 @@ export async function issueDebitNote(invoiceId: string, input: DebitNoteInput) {
     );
   }
   if (!(input.amount > 0)) throw ApiError.badRequest('A debit note has to raise the invoice by a positive amount.');
-  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This debit note' });
+  // One clock read for the hook, the period lock and the number: a debit note is dated now.
+  const now = new Date();
+  await runHooks('accounting_document.before_write', { date: now, what: 'This debit note' });
 
   const invoice = await prisma.invoice.findFirst({ where: { id: invoiceId, tenantId: auth.tenantId } });
   if (!invoice) throw ApiError.notFound('Invoice');
@@ -442,11 +479,13 @@ export async function issueDebitNote(invoiceId: string, input: DebitNoteInput) {
   // The number and the row it names commit together. Taken on the global client it
   // stayed taken when this write was refused, and the series had a hole in it.
   const { recordCode, note } = await prisma.$transaction(async (tx) => {
+    // The period lock comes before the number (periodLock.ts order), as for a credit note.
+    await lockLegacyPeriod(tx, auth.tenantId, now);
     const recordCode = await nextDocumentNumber(
       tx,
       DOCUMENT_SERIES.debitNote,
       numbering.prefix,
-      new Date(),
+      now,
       numbering.yearFormat,
     );
     const note = await tx.debitNote.create({
@@ -488,7 +527,7 @@ export async function listCreditNotesWithReason() {
     where: { tenantId: auth.tenantId, creditNoteId: { in: notes.map((n) => n.id) } },
   });
   const reasonOf = new Map(reasons.map((r) => [r.creditNoteId, r.reasonCode]));
-  return notes.map((n) => ({ ...n, reasonCode: reasonOf.get(n.id) ?? null }));
+  return notes.map((n) => ({ ...withDecimalMinor(n, ['amount'] as const), reasonCode: reasonOf.get(n.id) ?? null }));
 }
 
 /** Sets or replaces the structured reason code on a credit note already issued. */
@@ -885,9 +924,9 @@ export async function gstExposure(period: string) {
     const netPayable = prepared ? rupeesOf(prepared.netPayableMinor) : 0;
     const nil = returnType === 'GSTR3B' && netPayable === 0;
     const fee = lateFee(daysLate, {
-      lateFeePerDayCgst: num(rates.lateFeePerDayCgst) ?? 0,
-      lateFeePerDaySgst: num(rates.lateFeePerDaySgst) ?? 0,
-      cap: num(rates.cap) ?? 0,
+      lateFeePerDayCgst: minorToRupees(rates.lateFeePerDayCgstMinor),
+      lateFeePerDaySgst: minorToRupees(rates.lateFeePerDaySgstMinor),
+      cap: minorToRupees(rates.capMinor),
       interestPct: num(rates.interestPct) ?? 0,
     });
     const netCash = returnType === 'GSTR3B' ? netPayable : 0;
@@ -905,7 +944,11 @@ export async function gstExposure(period: string) {
     });
   }
 
-  return { period, rateTable: rates, returns };
+  return {
+    period,
+    rateTable: withDecimalMinor(rates, ['lateFeePerDayCgst', 'lateFeePerDaySgst', 'cap'] as const),
+    returns,
+  };
 }
 
 interface ReturnExposure {

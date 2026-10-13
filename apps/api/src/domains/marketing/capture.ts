@@ -44,7 +44,7 @@ import { getAdapter } from './adapters/registry.js';
 import { onFormSubmitted } from './journeys.js';
 import { applyDeliveryEvents } from './messaging.js';
 
-registerGovernedEntities('mkt', ['marketing_form', 'marketing_form_submission']);
+registerGovernedEntities('mkt', ['marketing_form', 'marketing_form_submission', 'marketing_short_link']);
 
 function internalCode(prefix: string): string {
   return `${prefix}-${randomUUID()}`;
@@ -274,7 +274,18 @@ export async function unpublishForm(id: string) {
   const auth = currentAuth();
   const form = await prisma.marketingForm.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
   if (!form) throw ApiError.notFound('Form');
-  return prisma.marketingForm.update({ where: { id }, data: { active: false } });
+  return governedWrite(async (tx) => {
+    const updated = await tx.marketingForm.update({ where: { id }, data: { active: false } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_form',
+      subjectId: id,
+      before: { active: form.active },
+      after: { active: false },
+      tx,
+    });
+    return updated;
+  });
 }
 
 /** Kept for `domains/marketing/index.ts`'s barrel export — archiving a form is deactivating it; there is no separate archived state in the schema. */
@@ -285,7 +296,20 @@ export async function rotateToken(id: string) {
   const auth = currentAuth();
   const form = await prisma.marketingForm.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
   if (!form) throw ApiError.notFound('Form');
-  return prisma.marketingForm.update({ where: { id }, data: { publicToken: newPublicToken() } });
+  // The token is the secret in the public submit URL, so the audit row records that it
+  // rotated and not the value on either side.
+  const publicToken = newPublicToken();
+  return governedWrite(async (tx) => {
+    const updated = await tx.marketingForm.update({ where: { id }, data: { publicToken } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_form',
+      subjectId: id,
+      after: { publicTokenRotated: true },
+      tx,
+    });
+    return updated;
+  });
 }
 
 export async function formEmbedInfo(id: string): Promise<{ publicUrl: string; embedSnippet: string }> {
@@ -613,7 +637,21 @@ export async function rejectSubmission(submissionId: string, reason: string) {
     where: { id: submissionId, tenantId: auth.tenantId },
   });
   if (!submission) throw ApiError.notFound('Submission');
-  return prisma.marketingFormSubmission.update({ where: { id: submissionId }, data: { status: 'rejected' } });
+  return governedWrite(async (tx) => {
+    const updated = await tx.marketingFormSubmission.update({
+      where: { id: submissionId },
+      data: { status: 'rejected' },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_form_submission',
+      subjectId: submissionId,
+      before: { status: submission.status },
+      after: { status: 'rejected' },
+      tx,
+    });
+    return updated;
+  });
 }
 
 export async function markSpamSubmission(submissionId: string) {
@@ -623,7 +661,18 @@ export async function markSpamSubmission(submissionId: string) {
     where: { id: submissionId, tenantId: auth.tenantId },
   });
   if (!submission) throw ApiError.notFound('Submission');
-  return prisma.marketingFormSubmission.update({ where: { id: submissionId }, data: { status: 'spam' } });
+  return governedWrite(async (tx) => {
+    const updated = await tx.marketingFormSubmission.update({ where: { id: submissionId }, data: { status: 'spam' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_form_submission',
+      subjectId: submissionId,
+      before: { status: submission.status },
+      after: { status: 'spam' },
+      tx,
+    });
+    return updated;
+  });
 }
 
 export async function listFormSubmissions(formId: string, filters: { status?: string } = {}) {
@@ -709,17 +758,28 @@ export async function createShortLink(input: ShortLinkInput) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const slug = input.slug ?? randomBase62(6);
     try {
-      return await prisma.marketingShortLink.create({
-        data: {
-          tenantId: auth.tenantId,
-          recordCode,
-          slug,
-          targetUrl: input.targetUrl,
-          campaignId: input.campaignId ?? null,
-          channelKey: input.channelKey ?? null,
-          utm: (input.utm ?? {}) as never,
-          createdById: auth.partyId,
-        },
+      // A slug collision (P2002) rolls this transaction back, so the retry starts clean.
+      return await governedWrite(async (tx) => {
+        const link = await tx.marketingShortLink.create({
+          data: {
+            tenantId: auth.tenantId,
+            recordCode,
+            slug,
+            targetUrl: input.targetUrl,
+            campaignId: input.campaignId ?? null,
+            channelKey: input.channelKey ?? null,
+            utm: (input.utm ?? {}) as never,
+            createdById: auth.partyId,
+          },
+        });
+        await auditWrite({
+          action: 'create',
+          subjectType: 'marketing_short_link',
+          subjectId: link.id,
+          after: { recordCode, slug, campaignId: input.campaignId ?? null, channelKey: input.channelKey ?? null },
+          tx,
+        });
+        return link;
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002' && !input.slug) continue;

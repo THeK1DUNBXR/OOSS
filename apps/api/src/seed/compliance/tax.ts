@@ -11,7 +11,7 @@
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { fyOf } from '../../domains/compliance/tax.js';
-import { istMidnight, istYearMonth } from '@kaizen/shared';
+import { istMidnight, istYearMonth, toMinorHalfUp } from '@kaizen/shared';
 
 const RATE_EFFECTIVE_FROM = new Date(Date.UTC(2020, 3, 1));
 
@@ -118,8 +118,8 @@ export async function seedTax(): Promise<void> {
         section: row.section,
         label: row.label,
         ratePercent: row.ratePercent,
-        thresholdPerTransaction: row.thresholdPerTransaction,
-        thresholdPerFy: row.thresholdPerFy,
+        thresholdPerTransactionMinor: toMinorHalfUp(row.thresholdPerTransaction),
+        thresholdPerFyMinor: toMinorHalfUp(row.thresholdPerFy),
         panMissingRatePercent: row.panMissingRatePercent ?? 20,
         effectiveFrom: RATE_EFFECTIVE_FROM,
         note: 'Confirm against the Finance Act in force before relying on this for a live filing.',
@@ -145,9 +145,9 @@ export async function seedTax(): Promise<void> {
         fy,
         regime: 'new',
         slabs: NEW_REGIME_SLABS,
-        standardDeduction: 75_000,
-        rebate87ALimit: 1_200_000,
-        rebate87AMaxAmount: 60_000,
+        standardDeductionMinor: toMinorHalfUp(75_000),
+        rebate87ALimitMinor: toMinorHalfUp(1_200_000),
+        rebate87AMaxAmountMinor: toMinorHalfUp(60_000),
         cessPercent: 4,
         effectiveFrom,
       },
@@ -161,9 +161,9 @@ export async function seedTax(): Promise<void> {
         fy,
         regime: 'old',
         slabs: OLD_REGIME_SLABS,
-        standardDeduction: 50_000,
-        rebate87ALimit: 500_000,
-        rebate87AMaxAmount: 12_500,
+        standardDeductionMinor: toMinorHalfUp(50_000),
+        rebate87ALimitMinor: toMinorHalfUp(500_000),
+        rebate87AMaxAmountMinor: toMinorHalfUp(12_500),
         cessPercent: 4,
         effectiveFrom,
       },

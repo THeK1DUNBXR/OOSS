@@ -212,13 +212,16 @@ export function hashPayloadOf(row: {
  * of its own: a second connection would wait on the first transaction's lock
  * for the same tenant, and the domain write it is meant to record would be
  * committed or rolled back apart from it.
+ *
+ * Returns the new row's id, which the event for the same write carries as its
+ * `auditRecordId` (eventBus.ts emit).
  */
 export async function createChainedAuditRecord(
   data: Omit<Parameters<typeof prisma.auditRecord.create>[0]['data'], 'hash' | 'prevHash' | 'timestamp'>,
   callerTx?: DbTx,
-): Promise<void> {
+): Promise<string> {
   const tenantId = (data as { tenantId: string }).tenantId;
-  const run = async (tx: DbTx): Promise<void> => {
+  const run = async (tx: DbTx): Promise<string> => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
     // By sequence: two writes in one millisecond share a timestamp, so a head read
     // by timestamp can pick a row that already has a successor and fork the chain.
@@ -256,7 +259,7 @@ export async function createChainedAuditRecord(
       }),
       prevHash,
     );
-    await tx.auditRecord.create({
+    const row = await tx.auditRecord.create({
       data: {
         ...(data as object),
         diff: storedDiff as never,
@@ -266,10 +269,41 @@ export async function createChainedAuditRecord(
         retentionClass: (data as { retentionClass?: string }).retentionClass ?? 'audit_record',
       } as never,
     });
+    return row.id;
   };
 
   if (callerTx) return run(callerTx);
-  await prisma.$transaction(run);
+  return prisma.$transaction(run);
+}
+
+/**
+ * Audit rows written inside each caller transaction that no event has claimed
+ * yet. `auditWrite` with a `tx` adds its row here; `emit` with the same `tx`
+ * claims the first unclaimed row for its subject (`claimAuditRecordFor`). That
+ * pairs the two without each call site carrying an id, and the pairing lives
+ * only as long as the transaction: the WeakMap key is the transaction object.
+ */
+interface PendingAuditPair {
+  auditRecordId: string;
+  subjectType: string;
+  subjectId: string;
+  claimed: boolean;
+}
+const pendingAuditPairs = new WeakMap<object, PendingAuditPair[]>();
+
+/**
+ * The id of the audit row this transaction wrote for the subject, if no earlier
+ * event in the same transaction has claimed it. Null when the write was audited
+ * outside the transaction, or never was: the event then carries no anchor, and
+ * `verifyEventAuditAnchors` reports the gap rather than guessing a pair.
+ */
+export function claimAuditRecordFor(tx: object, subjectType: string, subjectId: string): string | null {
+  const hit = pendingAuditPairs
+    .get(tx)
+    ?.find((p) => !p.claimed && p.subjectType === subjectType && p.subjectId === subjectId);
+  if (!hit) return null;
+  hit.claimed = true;
+  return hit.auditRecordId;
 }
 
 /**
@@ -406,8 +440,10 @@ export interface AuditWriteInput {
   meta?: Record<string, unknown>;
   /**
    * The caller's transaction (see `emit`'s `tx`). A write that passes it commits
-   * or rolls back with the domain write it records; without it the audit row
-   * commits on its own, after the write, which is the gap FX-24 describes.
+   * or rolls back with the domain write it records, and the event emitted with
+   * the same `tx` for this subject is paired with it. Without it the audit row
+   * commits on its own, after the write, which is the gap FX-24 describes, and
+   * no event can be paired with it.
    */
   tx?: DbTx;
 }
@@ -426,7 +462,7 @@ export async function auditWrite(input: AuditWriteInput): Promise<void> {
   const auth = currentAuth();
   const diff = input.action === 'update' ? diffForAudit(input.before ?? null, input.after ?? null) : null;
 
-  await createChainedAuditRecord(
+  const auditRecordId = await createChainedAuditRecord(
     {
       tenantId: auth.tenantId,
       action: input.action,
@@ -441,6 +477,11 @@ export async function auditWrite(input: AuditWriteInput): Promise<void> {
     },
     input.tx,
   );
+  if (input.tx) {
+    const pending = pendingAuditPairs.get(input.tx) ?? [];
+    pending.push({ auditRecordId, subjectType: input.subjectType, subjectId: input.subjectId, claimed: false });
+    pendingAuditPairs.set(input.tx, pending);
+  }
 }
 
 /**

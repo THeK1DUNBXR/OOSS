@@ -20,8 +20,10 @@
 
 import {
   bonus as computeBonus,
+  EVENTS,
   computeEsi,
   computePf,
+  convertPpm,
   esiEligible,
   gratuity as computeGratuity,
   leaveEncashment,
@@ -31,6 +33,7 @@ import {
   type PfRates,
   type PtSlab,
 } from '@kaizen/shared';
+import { Prisma } from '@prisma/client';
 import { prisma, num } from '../../platform/db.js';
 import { rupeesToMinor, withDecimalMinor } from '../../platform/wire.js';
 import { minorToRupees, OFFBOARDING_MONEY } from '../money.js';
@@ -39,11 +42,13 @@ import { ApiError } from '../../platform/errors.js';
 import { assertCan, scopeFor } from '../../platform/permissions.js';
 import { assertEmploymentVisible } from '../../platform/recordScope.js';
 import { auditWrite, auditExport, registerGovernedEntities } from '../../platform/audit.js';
+import { emit } from '../../platform/eventBus.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { registerHook } from '../../platform/hooks.js';
 import { nextDocumentNumber, DOCUMENT_SERIES } from '../../platform/documentNumber.js';
 import { companyProfile, documentNumbering } from '../companyProfile.js';
-import { isFounder, type FounderOverride } from '../statutory.js';
+import { isFounder, ruleAt, ruleIntegerField, type FounderOverride } from '../statutory.js';
 import { encryptField, readRegulated } from './privacy.js';
 
 registerGovernedEntities('cmp_pay', [
@@ -54,6 +59,7 @@ registerGovernedEntities('cmp_pay', [
   'pt_slab_table',
   'lwf_rate_table',
   'minimum_wage_table',
+  'payroll_instruction',
   'employment_relationship',
   'offboarding',
 ]);
@@ -69,7 +75,11 @@ async function assertRateTableEdit() {
 export async function listPfRateTables() {
   const auth = currentAuth();
   await assertCan({ resource: 'rate_tables', verb: 'view' });
-  return prisma.pfRateTable.findMany({ where: { tenantId: auth.tenantId }, orderBy: { effectiveFrom: 'desc' } });
+  const rows = await prisma.pfRateTable.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { effectiveFrom: 'desc' },
+  });
+  return rows.map((row) => withDecimalMinor(row, ['wageCeiling'] as const));
 }
 
 export interface PfRateTableInput {
@@ -86,9 +96,12 @@ export interface PfRateTableInput {
 export async function createPfRateTable(input: PfRateTableInput) {
   const auth = currentAuth();
   await assertRateTableEdit();
-  const row = await prisma.pfRateTable.create({ data: { tenantId: auth.tenantId, ...input } });
+  const { wageCeiling, ...rest } = input;
+  const row = await prisma.pfRateTable.create({
+    data: { tenantId: auth.tenantId, ...rest, wageCeilingMinor: rupeesToMinor(wageCeiling) },
+  });
   await auditWrite({ action: 'create', subjectType: 'pf_rate_table', subjectId: row.id, after: row });
-  return row;
+  return withDecimalMinor(row, ['wageCeiling'] as const);
 }
 
 /** The row in force on `at`, latest-effective-first. */
@@ -108,22 +121,18 @@ export async function currentPfRateTable(at: Date): Promise<PfRates> {
     epsRate: num(row.epsRate)!,
     edliRate: num(row.edliRate)!,
     adminRate: num(row.adminRate)!,
-    wageCeiling: num(row.wageCeiling)!,
+    wageCeiling: minorToRupees(row.wageCeilingMinor),
     voluntary: row.voluntary,
   };
 }
-async function currentPfRateTableRow(at: Date) {
-  const auth = currentAuth();
-  return prisma.pfRateTable.findFirst({
-    where: { tenantId: auth.tenantId, effectiveFrom: { lte: at } },
-    orderBy: { effectiveFrom: 'desc' },
-  });
-}
-
 export async function listEsiRateTables() {
   const auth = currentAuth();
   await assertCan({ resource: 'rate_tables', verb: 'view' });
-  return prisma.esiRateTable.findMany({ where: { tenantId: auth.tenantId }, orderBy: { effectiveFrom: 'desc' } });
+  const rows = await prisma.esiRateTable.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { effectiveFrom: 'desc' },
+  });
+  return rows.map((row) => withDecimalMinor(row, ['wageCeiling'] as const));
 }
 
 export interface EsiRateTableInput {
@@ -136,9 +145,12 @@ export interface EsiRateTableInput {
 export async function createEsiRateTable(input: EsiRateTableInput) {
   const auth = currentAuth();
   await assertRateTableEdit();
-  const row = await prisma.esiRateTable.create({ data: { tenantId: auth.tenantId, ...input } });
+  const { wageCeiling, ...rest } = input;
+  const row = await prisma.esiRateTable.create({
+    data: { tenantId: auth.tenantId, ...rest, wageCeilingMinor: rupeesToMinor(wageCeiling) },
+  });
   await auditWrite({ action: 'create', subjectType: 'esi_rate_table', subjectId: row.id, after: row });
-  return row;
+  return withDecimalMinor(row, ['wageCeiling'] as const);
 }
 
 async function currentEsiRateTableRow(at: Date) {
@@ -158,7 +170,7 @@ export async function currentEsiRateTable(at: Date): Promise<EsiRates> {
   return {
     employeeRate: num(row.employeeRate)!,
     employerRate: num(row.employerRate)!,
-    wageCeiling: num(row.wageCeiling)!,
+    wageCeiling: minorToRupees(row.wageCeilingMinor),
   };
 }
 
@@ -214,7 +226,11 @@ export async function currentPtSlabs(at: Date, state = 'TN'): Promise<PtSlab[]> 
 export async function listLwfRateTables() {
   const auth = currentAuth();
   await assertCan({ resource: 'rate_tables', verb: 'view' });
-  return prisma.lwfRateTable.findMany({ where: { tenantId: auth.tenantId }, orderBy: { effectiveFrom: 'desc' } });
+  const rows = await prisma.lwfRateTable.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { effectiveFrom: 'desc' },
+  });
+  return rows.map((row) => withDecimalMinor(row, ['employeeAmount', 'employerAmount'] as const));
 }
 
 export interface LwfRateTableInput {
@@ -234,14 +250,14 @@ export async function createLwfRateTable(input: LwfRateTableInput) {
       tenantId: auth.tenantId,
       state: input.state ?? 'TN',
       effectiveFrom: input.effectiveFrom,
-      employeeAmount: input.employeeAmount,
-      employerAmount: input.employerAmount,
+      employeeAmountMinor: rupeesToMinor(input.employeeAmount),
+      employerAmountMinor: rupeesToMinor(input.employerAmount),
       dueMonth: input.dueMonth ?? 12,
       confirmNote: input.confirmNote,
     },
   });
   await auditWrite({ action: 'create', subjectType: 'lwf_rate_table', subjectId: row.id, after: row });
-  return row;
+  return withDecimalMinor(row, ['employeeAmount', 'employerAmount'] as const);
 }
 
 async function currentLwfRateTableRow(at: Date, state = 'TN') {
@@ -256,16 +272,21 @@ export async function currentLwfRateTable(at: Date, state = 'TN'): Promise<LwfRa
   const row = await currentLwfRateTableRow(at, state);
   if (!row)
     throw ApiError.unprocessable(`No LWF rate table is effective for ${state} yet. Seed one under Rate tables.`);
-  return { employeeAmount: num(row.employeeAmount)!, employerAmount: num(row.employerAmount)!, dueMonth: row.dueMonth };
+  return {
+    employeeAmount: minorToRupees(row.employeeAmountMinor),
+    employerAmount: minorToRupees(row.employerAmountMinor),
+    dueMonth: row.dueMonth,
+  };
 }
 
 export async function listMinimumWageTables() {
   const auth = currentAuth();
   await assertCan({ resource: 'rate_tables', verb: 'view' });
-  return prisma.minimumWageTable.findMany({
+  const rows = await prisma.minimumWageTable.findMany({
     where: { tenantId: auth.tenantId },
     orderBy: [{ state: 'asc' }, { category: 'asc' }],
   });
+  return rows.map((row) => withDecimalMinor(row, ['monthlyAmount'] as const));
 }
 
 export interface MinimumWageTableInput {
@@ -278,9 +299,12 @@ export interface MinimumWageTableInput {
 export async function createMinimumWageTable(input: MinimumWageTableInput) {
   const auth = currentAuth();
   await assertRateTableEdit();
-  const row = await prisma.minimumWageTable.create({ data: { tenantId: auth.tenantId, ...input } });
+  const { monthlyAmount, ...rest } = input;
+  const row = await prisma.minimumWageTable.create({
+    data: { tenantId: auth.tenantId, ...rest, monthlyAmountMinor: rupeesToMinor(monthlyAmount) },
+  });
   await auditWrite({ action: 'create', subjectType: 'minimum_wage_table', subjectId: row.id, after: row });
-  return row;
+  return withDecimalMinor(row, ['monthlyAmount'] as const);
 }
 
 /** The floor for a category, or null when none is on file for it yet. */
@@ -290,7 +314,7 @@ async function currentMinimumWage(state: string, category: string, at: Date): Pr
     where: { tenantId: auth.tenantId, state, category, effectiveFrom: { lte: at } },
     orderBy: { effectiveFrom: 'desc' },
   });
-  return row ? num(row.monthlyAmount) : null;
+  return row ? minorToRupees(row.monthlyAmountMinor) : null;
 }
 
 /**
@@ -365,16 +389,18 @@ export async function proposeSalaryStructure(input: SalaryStructureInput) {
   await assertCan({ resource: 'salary_structures', verb: 'create' });
   await assertEmploymentVisible('salary_structures', input.employmentRelationshipId);
 
-  const pf = await currentPfRateTable(input.effectiveFrom).catch(() => null);
-  const esi = await currentEsiRateTable(input.effectiveFrom).catch(() => null);
-  const employerPfMonthly = pf ? computePf(input.basic, pf).pfEmployer + computePf(input.basic, pf).epsEmployer : 0;
+  // The preview reads the approved rules, as a run does. An unapproved rule refuses the proposal,
+  // naming it, rather than storing a zero employer PF that a run would then contradict.
+  const pf = (await pfRatesOn(input.effectiveFrom)).rates;
+  const esi = await esiRatesOn(input.effectiveFrom);
+  const employerPfMonthly = computePf(input.basic, pf).pfEmployer + computePf(input.basic, pf).epsEmployer;
   const gross =
     input.basic +
     input.hra +
     (input.specialAllowance ?? 0) +
     (input.conveyance ?? 0) +
     Object.values(input.otherAllowances ?? {}).reduce((a, b) => a + b, 0);
-  const employerEsiMonthly = esi && esiEligible(gross, esi) ? computeEsi(gross, esi, true).esiEmployer : 0;
+  const employerEsiMonthly = esiEligible(gross, esi) ? computeEsi(gross, esi, true).esiEmployer : 0;
 
   const row = await prisma.salaryStructure.create({
     data: {
@@ -447,16 +473,187 @@ async function currentSalaryStructure(employmentRelationshipId: string, at: Date
 // ---------------------------------------------------------------------------
 
 /**
- * Fills every statutory line on each instruction in the run from the
- * approved salary structure in force plus the dated rate tables.
+ * The statutory rules a run is computed from. Each parameter is read through ruleAt, which
+ * returns APPROVED rows only, on the pay month. An unapproved or missing rule refuses the
+ * computation with 422 and names the rule (StatutoryRuleNotFoundError), so a payslip is never
+ * computed from a DRAFT.
  *
- * A contractor or consultant computes none of PF/ESI/PT/LWF — their
- * instruction is still marked computed, with `computedFrom.tdsSectionHint`
- * naming 194J so workstream C's TDS module has something to key off, and
- * `tdsAmount` left at whatever it already carries (CMP-PAY-004).
+ * The typed rate tables (PfRateTable, EsiRateTable, ProfessionalTaxSlabTable, LwfRateTable)
+ * are no longer read here. They have no status, so nothing could say whether their figures
+ * were approved, and a payslip must be able to name the rule it came from (S10). They stay in
+ * place as read-only legacy until the rate store is converted in full.
+ */
+interface PayrollRuleSet {
+  pf: {
+    ruleId: string;
+    rates: PfRates;
+    edliRatePpm: bigint;
+    adminRatePpm: bigint;
+    wageCeilingMinor: bigint;
+  };
+  esi: { ruleId: string; rates: EsiRates };
+  pt: { ruleId: string; slabs: PtSlab[] };
+  lwf: { ruleId: string; rates: LwfRates };
+}
+
+const PF_RULE = { domain: 'pf', key: 'pf.rates', jurisdiction: 'IN' } as const;
+const ESI_RULE = { domain: 'esi', key: 'esi.rates', jurisdiction: 'IN' } as const;
+const PT_RULE = { domain: 'pt', key: 'pt.tn_slabs', jurisdiction: 'IN-TN' } as const;
+const LWF_RULE = { domain: 'lwf', key: 'lwf.tn_contribution', jurisdiction: 'IN-TN' } as const;
+
+/** A rate held as integer parts per million, read as the fraction the arithmetic takes. */
+function rateOf(ppm: bigint): number {
+  return Number(ppm) / 1_000_000;
+}
+
+function fieldsOf(value: Prisma.JsonValue): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function ptSlabsFrom(value: Prisma.JsonValue, key: string): PtSlab[] {
+  const slabs = fieldsOf(value).slabs;
+  if (!Array.isArray(slabs)) {
+    throw ApiError.unprocessable(`Statutory rule ${key} has no slabs.`, {
+      reasonCode: 'statutory_rule_malformed',
+      key,
+      field: 'slabs',
+    });
+  }
+  return slabs.map((slab, index) => {
+    const row = fieldsOf(slab as Prisma.JsonValue);
+    const read = (field: string, nullable: boolean): bigint | null => {
+      const raw = row[field];
+      if (nullable && raw === null) return null;
+      if (typeof raw !== 'string' || !/^\d+$/.test(raw)) {
+        throw ApiError.unprocessable(`Statutory rule ${key} has no integer slabs[${index}].${field}.`, {
+          reasonCode: 'statutory_rule_malformed',
+          key,
+          field: `slabs[${index}].${field}`,
+        });
+      }
+      return BigInt(raw);
+    };
+    const min = read('minGrossMinor', false)!;
+    const max = read('maxGrossMinor', true);
+    const amount = read('halfYearlyAmountMinor', false)!;
+    return {
+      minGross: minorToRupees(min),
+      maxGross: max === null ? null : minorToRupees(max),
+      halfYearlyAmount: minorToRupees(amount),
+    };
+  });
+}
+
+/** The month the LWF is due, 1 to 12, as a JSON integer. A month is a count, not money, so it is not read through a string. */
+function lwfDueMonth(value: Prisma.JsonValue, key: string): number {
+  const dueMonth = fieldsOf(value).dueMonth;
+  if (typeof dueMonth !== 'number' || !Number.isInteger(dueMonth) || dueMonth < 1 || dueMonth > 12) {
+    throw ApiError.unprocessable(`Statutory rule ${key} has no month from 1 to 12 in dueMonth.`, {
+      reasonCode: 'statutory_rule_malformed',
+      key,
+      field: 'dueMonth',
+    });
+  }
+  return dueMonth;
+}
+
+async function resolvePayrollRules(at: Date): Promise<PayrollRuleSet> {
+  const pf = await ruleAt(PF_RULE.domain, PF_RULE.key, PF_RULE.jurisdiction, at);
+  const esi = await ruleAt(ESI_RULE.domain, ESI_RULE.key, ESI_RULE.jurisdiction, at);
+  const pt = await ruleAt(PT_RULE.domain, PT_RULE.key, PT_RULE.jurisdiction, at);
+  const lwf = await ruleAt(LWF_RULE.domain, LWF_RULE.key, LWF_RULE.jurisdiction, at);
+
+  const pfEdliRatePpm = ruleIntegerField(pf.value, 'edliRatePpm', PF_RULE.key);
+  const pfAdminRatePpm = ruleIntegerField(pf.value, 'adminRatePpm', PF_RULE.key);
+  const pfWageCeilingMinor = ruleIntegerField(pf.value, 'wageCeilingMinor', PF_RULE.key);
+  return {
+    pf: {
+      ruleId: pf.id,
+      rates: {
+        employeeRate: rateOf(ruleIntegerField(pf.value, 'employeeRatePpm', PF_RULE.key)),
+        employerRate: rateOf(ruleIntegerField(pf.value, 'employerRatePpm', PF_RULE.key)),
+        epsRate: rateOf(ruleIntegerField(pf.value, 'epsRatePpm', PF_RULE.key)),
+        edliRate: rateOf(pfEdliRatePpm),
+        adminRate: rateOf(pfAdminRatePpm),
+        wageCeiling: minorToRupees(pfWageCeilingMinor),
+        voluntary: fieldsOf(pf.value).voluntary === true,
+      },
+      edliRatePpm: pfEdliRatePpm,
+      adminRatePpm: pfAdminRatePpm,
+      wageCeilingMinor: pfWageCeilingMinor,
+    },
+    esi: {
+      ruleId: esi.id,
+      rates: {
+        employeeRate: rateOf(ruleIntegerField(esi.value, 'employeeRatePpm', ESI_RULE.key)),
+        employerRate: rateOf(ruleIntegerField(esi.value, 'employerRatePpm', ESI_RULE.key)),
+        wageCeiling: minorToRupees(ruleIntegerField(esi.value, 'wageCeilingMinor', ESI_RULE.key)),
+      },
+    },
+    pt: { ruleId: pt.id, slabs: ptSlabsFrom(pt.value, PT_RULE.key) },
+    lwf: {
+      ruleId: lwf.id,
+      rates: {
+        employeeAmount: minorToRupees(ruleIntegerField(lwf.value, 'employeeAmountMinor', LWF_RULE.key)),
+        employerAmount: minorToRupees(ruleIntegerField(lwf.value, 'employerAmountMinor', LWF_RULE.key)),
+        dueMonth: lwfDueMonth(lwf.value, LWF_RULE.key),
+      },
+    },
+  };
+}
+
+/**
+ * Reads the PF rates for an employer-cost preview on a salary structure proposal, through the
+ * same rule the run would use. An unapproved rule refuses the proposal rather than storing a
+ * zero employer PF, which is what a missing table used to produce.
+ */
+async function pfRatesOn(at: Date): Promise<{ rates: PfRates; ruleId: string }> {
+  const pf = await ruleAt(PF_RULE.domain, PF_RULE.key, PF_RULE.jurisdiction, at);
+  return {
+    ruleId: pf.id,
+    rates: {
+      employeeRate: rateOf(ruleIntegerField(pf.value, 'employeeRatePpm', PF_RULE.key)),
+      employerRate: rateOf(ruleIntegerField(pf.value, 'employerRatePpm', PF_RULE.key)),
+      epsRate: rateOf(ruleIntegerField(pf.value, 'epsRatePpm', PF_RULE.key)),
+      edliRate: rateOf(ruleIntegerField(pf.value, 'edliRatePpm', PF_RULE.key)),
+      adminRate: rateOf(ruleIntegerField(pf.value, 'adminRatePpm', PF_RULE.key)),
+      wageCeiling: minorToRupees(ruleIntegerField(pf.value, 'wageCeilingMinor', PF_RULE.key)),
+      voluntary: fieldsOf(pf.value).voluntary === true,
+    },
+  };
+}
+
+async function esiRatesOn(at: Date): Promise<EsiRates> {
+  const esi = await ruleAt(ESI_RULE.domain, ESI_RULE.key, ESI_RULE.jurisdiction, at);
+  return {
+    employeeRate: rateOf(ruleIntegerField(esi.value, 'employeeRatePpm', ESI_RULE.key)),
+    employerRate: rateOf(ruleIntegerField(esi.value, 'employerRatePpm', ESI_RULE.key)),
+    wageCeiling: minorToRupees(ruleIntegerField(esi.value, 'wageCeilingMinor', ESI_RULE.key)),
+  };
+}
+
+/** One statutory line per component, each naming the rule it was computed from. */
+interface StatutoryLineRow {
+  statute: 'EPF' | 'ESI' | 'PT' | 'LWF';
+  component: string;
+  amountMinor: bigint;
+  ruleId: string;
+}
+
+/**
+ * Fills every statutory line on each instruction in the run from the approved salary structure
+ * in force, plus the approved statutory rules on the pay month.
+ *
+ * A contractor or consultant computes none of PF/ESI/PT/LWF — their instruction is still marked
+ * computed, with `computedFrom.tdsSectionHint` naming 194J so workstream C's TDS module has
+ * something to key off, and `tdsAmount` left at whatever it already carries (CMP-PAY-004).
  *
  * An instruction with no approved structure in force is left uncomputed:
  * `computedFrom` stays null, which is exactly what blocks approval.
+ *
+ * Each employee's lines are written with the instruction's update, in one transaction, and each
+ * line records the ruleId it came from. Posting reads those ruleIds again and refuses a rule that
+ * is no longer APPROVED for the month (payrollAccrual.ts).
  */
 export async function computeInstruction(payrollRunId: string) {
   const auth = currentAuth();
@@ -473,41 +670,65 @@ export async function computeInstruction(payrollRunId: string) {
     include: { employmentRelationship: true },
   });
 
-  const pfRow = await currentPfRateTableRow(periodEnd);
-  const esiRow = await currentEsiRateTableRow(periodEnd);
-  const ptRow = await currentPtSlabRow(periodEnd);
-  const lwfRow = await currentLwfRateTableRow(periodEnd);
+  // Read only when an employee needs them. A run of contractors computes no statutory line and
+  // needs no statutory rule. An unapproved rule refuses here, with the rule named.
+  const needsRules = instructions.some((i) => i.employmentRelationship.engagementType === 'employee');
+  const rules = needsRules ? await resolvePayrollRules(periodEnd) : null;
 
   let computed = 0;
 
   for (const instruction of instructions) {
     const employment = instruction.employmentRelationship;
+    const linesWhere = { tenantId: auth.tenantId, payrollRunId, employmentRelationshipId: employment.id };
     if (employment.engagementType !== 'employee') {
-      await prisma.payrollInstruction.update({
-        where: { id: instruction.id },
-        data: {
-          basicPayMinor: 0n,
-          hraMinor: 0n,
-          otherAllowancesMinor: instruction.grossAmountMinor,
-          pfEmployeeMinor: 0n,
-          pfEmployerMinor: 0n,
-          epsEmployerMinor: 0n,
-          esiEmployeeMinor: 0n,
-          esiEmployerMinor: 0n,
-          professionalTaxMinor: 0n,
-          lwfEmployeeMinor: 0n,
-          lwfEmployerMinor: 0n,
-          deductionsMinor: 0n,
-          netAmountMinor: instruction.grossAmountMinor,
-          computedFrom: { engagementType: employment.engagementType, tdsSectionHint: '194J' } as never,
-        },
+      await prisma.$transaction(async (tx) => {
+        await tx.payrollStatutoryLine.deleteMany({ where: linesWhere });
+        await tx.payrollInstruction.update({
+          where: { id: instruction.id },
+          data: {
+            basicPayMinor: 0n,
+            hraMinor: 0n,
+            otherAllowancesMinor: instruction.grossAmountMinor,
+            pfEmployeeMinor: 0n,
+            pfEmployerMinor: 0n,
+            epsEmployerMinor: 0n,
+            esiEmployeeMinor: 0n,
+            esiEmployerMinor: 0n,
+            professionalTaxMinor: 0n,
+            lwfEmployeeMinor: 0n,
+            lwfEmployerMinor: 0n,
+            deductionsMinor: 0n,
+            netAmountMinor: instruction.grossAmountMinor,
+            computedFrom: { engagementType: employment.engagementType, tdsSectionHint: '194J' } as never,
+          },
+        });
+        // One row per instruction written, carrying the payslip figures approval is given on.
+        await auditWrite({
+          action: 'update',
+          subjectType: 'payroll_instruction',
+          subjectId: instruction.id,
+          before: {
+            grossAmountMinor: instruction.grossAmountMinor.toString(),
+            netAmountMinor: instruction.netAmountMinor.toString(),
+          },
+          after: {
+            grossAmountMinor: instruction.grossAmountMinor.toString(),
+            netAmountMinor: instruction.grossAmountMinor.toString(),
+            statutoryLines: 0,
+          },
+          tx,
+        });
       });
       computed += 1;
       continue;
     }
 
     const structure = await currentSalaryStructure(employment.id, periodEnd);
-    if (!structure || !pfRow || !esiRow || !ptRow || !lwfRow) continue; // stays uncomputed on purpose
+    if (!structure || !rules) {
+      // Stays uncomputed on purpose. Any lines from an earlier computation are cleared with it.
+      await prisma.payrollStatutoryLine.deleteMany({ where: linesWhere });
+      continue;
+    }
 
     const otherAllowancesTotal =
       minorToRupees(structure.specialAllowanceMinor) +
@@ -517,58 +738,132 @@ export async function computeInstruction(payrollRunId: string) {
     const hra = minorToRupees(structure.hraMinor);
     const gross = basic + hra + otherAllowancesTotal;
 
-    const tables = {
-      pf: {
-        employeeRate: num(pfRow.employeeRate)!,
-        employerRate: num(pfRow.employerRate)!,
-        epsRate: num(pfRow.epsRate)!,
-        edliRate: num(pfRow.edliRate)!,
-        adminRate: num(pfRow.adminRate)!,
-        wageCeiling: num(pfRow.wageCeiling)!,
-        voluntary: pfRow.voluntary,
-      },
-      esi: {
-        employeeRate: num(esiRow.employeeRate)!,
-        employerRate: num(esiRow.employerRate)!,
-        wageCeiling: num(esiRow.wageCeiling)!,
-      },
-      pt: ptRow.slabs as unknown as PtSlab[],
-      lwf: {
-        employeeAmount: num(lwfRow.employeeAmount)!,
-        employerAmount: num(lwfRow.employerAmount)!,
-        dueMonth: lwfRow.dueMonth,
-      },
-    };
+    const lines = statutoryLines(
+      gross,
+      { basicPay: basic, hra, otherAllowances: otherAllowancesTotal },
+      { pf: rules.pf.rates, esi: rules.esi.rates, pt: rules.pt.slabs, lwf: rules.lwf.rates },
+      { payPeriod: run.payPeriod },
+    );
 
-    const lines = statutoryLines(gross, { basicPay: basic, hra, otherAllowances: otherAllowancesTotal }, tables, {
-      payPeriod: run.payPeriod,
-    });
+    // EDLI and admin are PF charges on the EPS wage: the basic, capped at the wage ceiling whether or
+    // not PF is voluntary (computePf). They are computed here in paise, from the stored basic, so the
+    // figure is exact to the paisa rather than rounded through the rupee arithmetic above. They are
+    // employer costs: they are not in gross and not deducted from net.
+    const epsWageMinor =
+      structure.basicMinor < rules.pf.wageCeilingMinor ? structure.basicMinor : rules.pf.wageCeilingMinor;
+    const edliMinor = convertPpm(epsWageMinor, rules.pf.edliRatePpm);
+    const adminMinor = convertPpm(epsWageMinor, rules.pf.adminRatePpm);
 
-    await prisma.payrollInstruction.update({
-      where: { id: instruction.id },
-      data: {
-        grossAmountMinor: rupeesToMinor(gross),
-        basicPayMinor: rupeesToMinor(lines.basicPay),
-        hraMinor: rupeesToMinor(lines.hra),
-        otherAllowancesMinor: rupeesToMinor(lines.otherAllowances),
-        pfEmployeeMinor: rupeesToMinor(lines.pfEmployee),
-        pfEmployerMinor: rupeesToMinor(lines.pfEmployer),
-        epsEmployerMinor: rupeesToMinor(lines.epsEmployer),
-        esiEmployeeMinor: rupeesToMinor(lines.esiEmployee),
-        esiEmployerMinor: rupeesToMinor(lines.esiEmployer),
-        professionalTaxMinor: rupeesToMinor(lines.professionalTax),
-        lwfEmployeeMinor: rupeesToMinor(lines.lwfEmployee),
-        lwfEmployerMinor: rupeesToMinor(lines.lwfEmployer),
-        deductionsMinor: rupeesToMinor(lines.totalDeductions),
-        netAmountMinor: rupeesToMinor(lines.netAmount),
-        computedFrom: {
-          pfTableId: pfRow.id,
-          esiTableId: esiRow.id,
-          ptTableId: ptRow.id,
-          lwfTableId: lwfRow.id,
-          structureId: structure.id,
-        } as never,
+    const rows: StatutoryLineRow[] = [
+      {
+        statute: 'EPF',
+        component: 'PF_EMPLOYEE',
+        amountMinor: rupeesToMinor(lines.pfEmployee),
+        ruleId: rules.pf.ruleId,
       },
+      {
+        statute: 'EPF',
+        component: 'PF_EMPLOYER',
+        amountMinor: rupeesToMinor(lines.pfEmployer),
+        ruleId: rules.pf.ruleId,
+      },
+      {
+        statute: 'EPF',
+        component: 'EPS_EMPLOYER',
+        amountMinor: rupeesToMinor(lines.epsEmployer),
+        ruleId: rules.pf.ruleId,
+      },
+      { statute: 'EPF', component: 'EDLI_EMPLOYER', amountMinor: edliMinor, ruleId: rules.pf.ruleId },
+      { statute: 'EPF', component: 'ADMIN_EMPLOYER', amountMinor: adminMinor, ruleId: rules.pf.ruleId },
+      {
+        statute: 'ESI',
+        component: 'ESI_EMPLOYEE',
+        amountMinor: rupeesToMinor(lines.esiEmployee),
+        ruleId: rules.esi.ruleId,
+      },
+      {
+        statute: 'ESI',
+        component: 'ESI_EMPLOYER',
+        amountMinor: rupeesToMinor(lines.esiEmployer),
+        ruleId: rules.esi.ruleId,
+      },
+      {
+        statute: 'PT',
+        component: 'PT_EMPLOYEE',
+        amountMinor: rupeesToMinor(lines.professionalTax),
+        ruleId: rules.pt.ruleId,
+      },
+      {
+        statute: 'LWF',
+        component: 'LWF_EMPLOYEE',
+        amountMinor: rupeesToMinor(lines.lwfEmployee),
+        ruleId: rules.lwf.ruleId,
+      },
+      {
+        statute: 'LWF',
+        component: 'LWF_EMPLOYER',
+        amountMinor: rupeesToMinor(lines.lwfEmployer),
+        ruleId: rules.lwf.ruleId,
+      },
+    ];
+
+    await prisma.$transaction(async (tx) => {
+      await tx.payrollInstruction.update({
+        where: { id: instruction.id },
+        data: {
+          grossAmountMinor: rupeesToMinor(gross),
+          basicPayMinor: rupeesToMinor(lines.basicPay),
+          hraMinor: rupeesToMinor(lines.hra),
+          otherAllowancesMinor: rupeesToMinor(lines.otherAllowances),
+          pfEmployeeMinor: rupeesToMinor(lines.pfEmployee),
+          pfEmployerMinor: rupeesToMinor(lines.pfEmployer),
+          epsEmployerMinor: rupeesToMinor(lines.epsEmployer),
+          esiEmployeeMinor: rupeesToMinor(lines.esiEmployee),
+          esiEmployerMinor: rupeesToMinor(lines.esiEmployer),
+          professionalTaxMinor: rupeesToMinor(lines.professionalTax),
+          lwfEmployeeMinor: rupeesToMinor(lines.lwfEmployee),
+          lwfEmployerMinor: rupeesToMinor(lines.lwfEmployer),
+          deductionsMinor: rupeesToMinor(lines.totalDeductions),
+          netAmountMinor: rupeesToMinor(lines.netAmount),
+          computedFrom: {
+            pfRuleId: rules.pf.ruleId,
+            esiRuleId: rules.esi.ruleId,
+            ptRuleId: rules.pt.ruleId,
+            lwfRuleId: rules.lwf.ruleId,
+            structureId: structure.id,
+          } as never,
+        },
+      });
+      await tx.payrollStatutoryLine.deleteMany({ where: linesWhere });
+      await tx.payrollStatutoryLine.createMany({
+        data: rows.map((row) => ({
+          tenantId: auth.tenantId,
+          payrollRunId,
+          employmentRelationshipId: employment.id,
+          payPeriod: run.payPeriod,
+          statute: row.statute,
+          contributionKind: 'statutory',
+          component: row.component,
+          amountMinor: row.amountMinor,
+          ruleId: row.ruleId,
+        })),
+      });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'payroll_instruction',
+        subjectId: instruction.id,
+        before: {
+          grossAmountMinor: instruction.grossAmountMinor.toString(),
+          netAmountMinor: instruction.netAmountMinor.toString(),
+        },
+        after: {
+          grossAmountMinor: rupeesToMinor(gross).toString(),
+          netAmountMinor: rupeesToMinor(lines.netAmount).toString(),
+          statutoryLines: rows.length,
+          ruleIds: [...new Set(rows.map((r) => r.ruleId))],
+        },
+        tx,
+      });
     });
     computed += 1;
   }
@@ -1038,22 +1333,37 @@ export async function setBankDetails(employmentRelationshipId: string, input: Ba
   });
   if (!before) throw ApiError.notFound('Employment relationship');
 
-  // The account number and the name on it are regulated values: encrypted on
-  // the way in, the way the privacy backfill leaves everything already on disk.
+  // The account number, the name on it and the nominee's name are regulated
+  // values: encrypted on the way in, the way the privacy backfill leaves
+  // everything already on disk. The nominee was spread through in plaintext
+  // until FX-64; `...input` is first, so the encrypted value must come after it.
   const data = {
     ...input,
     ...(input.bankAccountNumber !== undefined ? { bankAccountNumber: encryptField(input.bankAccountNumber) } : {}),
     ...(input.bankAccountName !== undefined ? { bankAccountName: encryptField(input.bankAccountName) } : {}),
     ...(input.bankIfsc !== undefined ? { bankIfsc: encryptField(input.bankIfsc) } : {}),
     ...(input.esicNumber !== undefined ? { esicNumber: encryptField(input.esicNumber) } : {}),
+    ...(input.nomineeName !== undefined ? { nomineeName: encryptField(input.nomineeName) } : {}),
   };
-  const row = await prisma.employmentRelationship.update({ where: { id: employmentRelationshipId }, data });
-  // Regulated values themselves never enter the diff — only that the fields changed.
-  await auditWrite({
-    action: 'update',
-    subjectType: 'employment_relationship',
-    subjectId: row.id,
-    meta: { fieldsChanged: Object.keys(input) },
+
+  // The row, its audit and its event commit together (governedWrite). Before
+  // this the update ran alone: a bank-detail change with no audit row and no event.
+  return governedWrite(async (tx) => {
+    const row = await tx.employmentRelationship.update({ where: { id: employmentRelationshipId }, data });
+    // Regulated values themselves never enter the diff or the event, only that the fields changed.
+    await auditWrite({
+      action: 'update',
+      subjectType: 'employment_relationship',
+      subjectId: row.id,
+      meta: { fieldsChanged: Object.keys(input) },
+      tx,
+    });
+    await emit({
+      name: EVENTS.EMPLOYEE_PROFILE_UPDATED,
+      subject: { entityType: 'employment_relationship', entityId: row.id },
+      newState: { fieldsChanged: Object.keys(input) },
+      tx,
+    });
+    return { id: row.id, ok: true };
   });
-  return { id: row.id, ok: true };
 }

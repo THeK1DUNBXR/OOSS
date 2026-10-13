@@ -11,6 +11,7 @@ import {
   PLANES,
   RESOURCES,
   ROLE_SLUGS,
+  SCOPES,
   formatGrant,
 } from '@kaizen/shared';
 import { handler, str, bool, numeric } from '../lib/http.js';
@@ -20,13 +21,19 @@ import { ApiError } from '../platform/errors.js';
 import { assertCan, invalidateGrantCache } from '../platform/permissions.js';
 import { verifyChain } from '../platform/eventBus.js';
 import { paiseOfInput } from '../domains/allocation.js';
-import { governedEntities } from '../platform/audit.js';
+import { auditWrite, governedEntities } from '../platform/audit.js';
 import { minorString, rupeesOrNull, wireInt } from '../platform/wire.js';
 import { assertCanWriteGrant } from '../platform/roleAssignment.js';
 import { agentRoster, decideAgentAction, pauseAgent, revokeAuthority, propose } from '../agents/index.js';
 import { ALL_JOBS, runManualJobs } from '../jobs/scheduler.js';
 import { replayDeadLetter } from '../platform/outbox.js';
 import { setThreshold } from '../domains/thresholds.js';
+import {
+  STOPGAP_VERBS,
+  createStopgapGrant,
+  listStopgapGrants,
+  retireStopgapGrants,
+} from '../domains/access/stopgapGrants.js';
 
 const router = Router();
 
@@ -176,11 +183,60 @@ router.post(
       update: { verbs: input.verbs, scope: input.scope, scopeResolver: input.scopeResolver ?? null },
     });
 
+    await auditWrite({
+      action: 'permission_change',
+      subjectType: 'grant',
+      subjectId: grant.id,
+      after: {
+        roleSlug: input.roleSlug,
+        resource: input.resource,
+        verbs: input.verbs,
+        scope: input.scope,
+        scopeResolver: input.scopeResolver ?? null,
+      },
+    });
+
     // Evaluated at query time, so the change is live on the very next request.
     invalidateGrantCache();
     res.status(201).json(grant);
     return undefined;
   }),
+);
+
+// The stopgap IT owner grant (C-015). The founder creates it; the exceptions view lists it;
+// onboarding retires it. The founder check is in the domain, not here, so every caller of it
+// gets the same refusal.
+router.get(
+  '/grants/stopgap',
+  handler(async () => ({ grants: await listStopgapGrants() })),
+);
+
+router.post(
+  '/grants/stopgap',
+  handler(async (req, res) => {
+    const schema = z.object({
+      personId: z.string().min(1),
+      provenance: z.string(),
+      grants: z
+        .array(
+          z.object({
+            resource: z.enum(RESOURCES),
+            verbs: z.array(z.enum(STOPGAP_VERBS)).min(1),
+            scope: z.enum(SCOPES),
+          }),
+        )
+        .min(1),
+    });
+    const input = schema.parse(req.body);
+    const grants = await createStopgapGrant(input);
+    res.status(201).json({ grants });
+    return undefined;
+  }),
+);
+
+router.post(
+  '/grants/stopgap/retire',
+  handler(async () => ({ retired: await retireStopgapGrants() })),
 );
 
 router.get(

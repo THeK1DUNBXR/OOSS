@@ -10,7 +10,14 @@
  * Postgres through unscopedPrisma, no mocks; this writes setup rows, never journal rows.
  */
 import { randomUUID } from 'node:crypto';
-import { unscopedPrisma } from '../helpers.js';
+import { asUser, unscopedPrisma } from '../helpers.js';
+import {
+  approveStatutoryRule,
+  createStatutoryRule,
+  FOUNDER_DUTY,
+  STATUTORY_APPROVER_DUTY,
+} from '../../domains/statutory.js';
+import { PAYROLL_RULE_SEEDS } from '../../seed/compliance/statutory.js';
 
 const PAYROLL_ROLE_CLASS: Record<string, 'expense' | 'liability'> = {
   PAYROLL_SALARY_EXPENSE: 'expense',
@@ -41,10 +48,149 @@ function monthBounds(month: string) {
   };
 }
 
+/**
+ * Test-only citation, given when a seeded rule is approved. It is not a legal source: the fixture
+ * approves rules so the payroll code can run, and it never stands in for the accountant's check.
+ */
+const FIXTURE_CITATION =
+  'TEST FIXTURE: approved so a payroll suite can compute and post. Not a notification reference.';
+
+const DUTY_EPOCH = new Date('2000-01-01T00:00:00.000Z');
+
+/**
+ * The payroll suites run pay months from 2015, and the seeded rules take effect on 2024-04-01. Before
+ * FX-73 each rate was a constant that applied on every date, so these suites were written against one
+ * figure throughout. The fixture therefore approves the same values for a bounded history, from
+ * 2000-01-01 up to the seeded row's own date. The history row ends where the seeded row begins, so it
+ * never overlaps it, and the two can be approved in either order.
+ */
+const HISTORY_FROM = new Date('2000-01-01T00:00:00.000Z');
+
+/**
+ * Makes one rule APPROVED for a tenant, through the domain path: createStatutoryRule as the approver,
+ * then approveStatutoryRule as the approver (the founder, who may approve his own rule, audited as
+ * author_is_approver). Idempotent: an APPROVED row with the same series and dates is left as it is.
+ */
+async function approveFixtureRule(
+  tenantId: string,
+  approverEmail: string,
+  seed: (typeof PAYROLL_RULE_SEEDS)[number],
+  effectiveFrom: Date,
+  effectiveTo: Date | null,
+): Promise<void> {
+  const approved = await unscopedPrisma.statutoryRule.findFirst({
+    where: {
+      tenantId,
+      domain: seed.domain,
+      key: seed.key,
+      jurisdiction: seed.jurisdiction,
+      status: 'APPROVED',
+      effectiveFrom,
+      effectiveTo,
+    },
+  });
+  if (approved) return;
+  const draft = await asUser(approverEmail, () =>
+    createStatutoryRule({
+      domain: seed.domain,
+      key: seed.key,
+      jurisdiction: seed.jurisdiction,
+      effectiveFrom,
+      effectiveTo,
+      value: seed.value,
+      source: seed.source,
+    }),
+  );
+  await asUser(approverEmail, () => approveStatutoryRule(draft.id, { source: FIXTURE_CITATION }));
+}
+
+/**
+ * Makes the payroll statutory rules APPROVED for a tenant, through the domain path (approveFixtureRule).
+ *
+ * The seed rows stay DRAFT. The G10 check counts every seed-marked row and needs none APPROVED, so the
+ * fixture creates its own rows from the same values (PAYROLL_RULE_SEEDS) and approves those.
+ *
+ * A tenant with no open founder or statutory approver gets the approver written into both duties, as
+ * setup, because the domain refuses to name a person to a duty they would then exercise. A tenant that
+ * already has a holder keeps it. Idempotent: a series already APPROVED is left as it is.
+ */
+export async function approvePayrollRules(tenantId: string, approverEmail: string): Promise<void> {
+  const approverId = await asUser(approverEmail, async (p) => p.partyId);
+  for (const dutyKey of [FOUNDER_DUTY, STATUTORY_APPROVER_DUTY]) {
+    const open = await unscopedPrisma.dutyAssignment.findFirst({ where: { tenantId, dutyKey, effectiveTo: null } });
+    if (!open) {
+      await unscopedPrisma.dutyAssignment.create({
+        data: { tenantId, dutyKey, partyId: approverId, effectiveFrom: DUTY_EPOCH, assignedBy: approverId },
+      });
+    }
+  }
+  for (const seed of PAYROLL_RULE_SEEDS) {
+    await approveFixtureRule(tenantId, approverEmail, seed, HISTORY_FROM, seed.effectiveFrom);
+    await approveFixtureRule(tenantId, approverEmail, seed, seed.effectiveFrom, null);
+  }
+}
+
+const STATUTE_RULE_KEY: Record<string, string> = {
+  EPF: 'pf.rates',
+  ESI: 'esi.rates',
+  PT: 'pt.tn_slabs',
+  LWF: 'lwf.tn_contribution',
+};
+
+const STATUTORY_COMPONENTS: Array<[statute: string, component: string]> = [
+  ['EPF', 'PF_EMPLOYEE'],
+  ['EPF', 'PF_EMPLOYER'],
+  ['EPF', 'EPS_EMPLOYER'],
+  ['EPF', 'EDLI_EMPLOYER'],
+  ['EPF', 'ADMIN_EMPLOYER'],
+  ['ESI', 'ESI_EMPLOYEE'],
+  ['ESI', 'ESI_EMPLOYER'],
+  ['PT', 'PT_EMPLOYEE'],
+  ['LWF', 'LWF_EMPLOYEE'],
+  ['LWF', 'LWF_EMPLOYER'],
+];
+
+/**
+ * The statutory lines computeInstruction writes for one employee, for an instruction a test builds
+ * by hand: every component, zero where the test sets no amount, each naming the APPROVED rule it
+ * came from. Posting reads these, so a hand-built run needs them as a computed run does.
+ */
+export async function recordStatutoryLines(args: {
+  tenantId: string;
+  payrollRunId: string;
+  payPeriod: string;
+  employmentId: string;
+  amounts: Partial<Record<string, bigint>>;
+}): Promise<void> {
+  const ruleIdByStatute: Record<string, string> = {};
+  for (const [statute, key] of Object.entries(STATUTE_RULE_KEY)) {
+    const rule = await unscopedPrisma.statutoryRule.findFirst({
+      where: { tenantId: args.tenantId, key, status: 'APPROVED', effectiveTo: null },
+    });
+    if (!rule)
+      throw new Error(`recordStatutoryLines: ${key} is not APPROVED for this tenant. Call approvePayrollRules first.`);
+    ruleIdByStatute[statute] = rule.id;
+  }
+  await unscopedPrisma.payrollStatutoryLine.createMany({
+    data: STATUTORY_COMPONENTS.map(([statute, component]) => ({
+      tenantId: args.tenantId,
+      payrollRunId: args.payrollRunId,
+      employmentRelationshipId: args.employmentId,
+      payPeriod: args.payPeriod,
+      statute,
+      contributionKind: 'statutory',
+      component,
+      amountMinor: args.amounts[component] ?? 0n,
+      ruleId: ruleIdByStatute[statute]!,
+    })),
+  });
+}
+
 export async function readyPayrollPosting(
   tenantId: string,
-  opts: { months: readonly string[]; divisions: readonly string[] },
+  opts: { months: readonly string[]; divisions: readonly string[]; approverEmail: string },
 ): Promise<void> {
+  await approvePayrollRules(tenantId, opts.approverEmail);
   // The ledger entity every employee is booked to. A tenant has one in the demo seed.
   let entity = await unscopedPrisma.ledgerEntity.findFirst({ where: { tenantId }, orderBy: { code: 'asc' } });
   entity ??= await unscopedPrisma.ledgerEntity.create({

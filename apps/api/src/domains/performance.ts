@@ -38,7 +38,7 @@ import { assertEmploymentVisible, employmentVisibilityWhere } from '../platform/
 // Goals
 // ---------------------------------------------------------------------------
 
-registerGovernedEntities('performance', ['goal', 'performance_evidence', 'learning_record']);
+registerGovernedEntities('performance', ['goal', 'performance_evidence', 'learning_record', 'learning_activity']);
 
 export async function listGoals(employmentRelationshipId: string) {
   const auth = currentAuth();
@@ -290,6 +290,17 @@ export async function createLearningActivity(input: {
       isCompliance: input.isCompliance ?? false,
       costMinor: rupeesToMinor(input.cost ?? 0),
       courseId: input.courseId ?? null,
+    },
+  });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'learning_activity',
+    subjectId: activity.id,
+    after: {
+      title: activity.title,
+      isCompliance: activity.isCompliance,
+      costMinor: activity.costMinor.toString(),
+      courseId: activity.courseId,
     },
   });
   return withDecimalMinor(activity, ['cost'] as const);

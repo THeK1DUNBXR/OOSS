@@ -62,6 +62,11 @@ const DEFAULT_MARKETING_POLICY: MarketingPolicy = {
   formConvertSlaHours: 24,
 };
 
+// setMarketingPolicy writes the tenant subject. settings.ts also registers it, but a job or
+// script that imports only this module must not depend on settings.ts having loaded first
+// (auditWrite refuses an unregistered subject), so this module registers its own write.
+registerGovernedEntities('mkt', ['tenant']);
+
 export async function getMarketingPolicy(tenantId?: string): Promise<MarketingPolicy> {
   const tid = tenantId ?? currentAuth().tenantId;
   const tenant = await prisma.tenant.findFirst({ where: { id: tid }, select: { config: true } });
@@ -76,9 +81,19 @@ export async function setMarketingPolicy(patch: Partial<MarketingPolicy>): Promi
   const config = (tenant.config as Record<string, unknown>) ?? {};
   const current = { ...DEFAULT_MARKETING_POLICY, ...((config.marketing as Partial<MarketingPolicy>) ?? {}) };
   const next = { ...current, ...patch };
-  await prisma.tenant.update({
-    where: { id: auth.tenantId },
-    data: { config: { ...config, marketing: next } as never },
+  await governedWrite(async (tx) => {
+    await tx.tenant.update({
+      where: { id: auth.tenantId },
+      data: { config: { ...config, marketing: next } as never },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'tenant',
+      subjectId: auth.tenantId,
+      before: { marketing: current as never },
+      after: { marketing: next as never },
+      tx,
+    });
   });
   return next;
 }
@@ -246,6 +261,9 @@ export async function recomputeCampaignActual(
   db: DbTx = prisma as unknown as DbTx,
 ): Promise<bigint> {
   const auth = currentAuth();
+  // Not audited: budgetActual is a sum of MarketingSpend rows, written by the spend that
+  // moved it, so it is an analytics aggregate. Listed for an owner decision on a CLAUDE.md
+  // rule 5 exemption.
   const total = await campaignSpendTotal(auth.tenantId, campaignId, db);
   await db.marketingCampaign.update({ where: { id: campaignId }, data: { budgetActualMinor: total } });
   return total;
@@ -768,9 +786,17 @@ export async function cancelCampaign(id: string, reason: string): Promise<Campai
   // (MKT-CMP-008) — best-effort within this module's own tables; sends and
   // journeys are owned by messaging.ts/journeys.ts, so this only touches the
   // rows those domains will themselves read next.
-  await prisma.marketingSend.updateMany({
+  const cancelled = await prisma.marketingSend.updateMany({
     where: { tenantId: currentAuth().tenantId, campaignId: id, status: { in: ['draft', 'queued'] } },
     data: { status: 'cancelled' },
+  });
+  // The cascade gets one row on the campaign, not one per send.
+  await auditWrite({
+    action: 'update',
+    subjectType: 'marketing_campaign',
+    subjectId: id,
+    after: { cancelledSends: cancelled.count },
+    meta: { reason },
   });
 
   return result;

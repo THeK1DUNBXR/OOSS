@@ -179,7 +179,7 @@ describe('a payment at issue and a later instalment each post the receipt alloca
     expect(afterSecond - receivableStart).toBe(0n);
     // The journal carries the receipt's own figure, not a float of it.
     const receipt = await unscopedPrisma.receipt.findFirstOrThrow({ where: { id: second.body.receipt.id } });
-    expect(receipt.allocatedAmount.toFixed(2)).toBe('957.00');
+    expect(receipt.allocatedAmountMinor).toBe(95_700n);
   });
 });
 

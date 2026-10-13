@@ -245,7 +245,14 @@ export async function transitionPayrollRun(id: string, event: PayrollEvent, note
     // person to touch the figures is who the Self-Dealing Bar bars from
     // approving them.
     await computeInstruction(id);
-    await prisma.payrollRun.update({ where: { id }, data: { preparedById: auth.partyId } });
+    const preparing = await prisma.payrollRun.update({ where: { id }, data: { preparedById: auth.partyId } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'payroll_run',
+      subjectId: id,
+      before: { preparedById: run.preparedById },
+      after: { preparedById: preparing.preparedById },
+    });
   }
 
   if (event === 'APPROVE') {
@@ -288,9 +295,9 @@ export async function transitionPayrollRun(id: string, event: PayrollEvent, note
       });
     }
 
-    await tx.payrollInstruction.updateMany({ where: { payrollRunId: id }, data: { status: result.to } });
+    const moved = await tx.payrollInstruction.updateMany({ where: { payrollRunId: id }, data: { status: result.to } });
 
-    return tx.payrollRun.update({
+    const row = await tx.payrollRun.update({
       where: { id },
       data: {
         status: result.to,
@@ -298,6 +305,34 @@ export async function transitionPayrollRun(id: string, event: PayrollEvent, note
         ...(event === 'DISBURSE' ? { disbursedAt: new Date() } : {}),
       },
     });
+
+    // One row for the whole run write, not one per instruction: a payroll run
+    // can hold thousands of instructions, and the per-instruction status is
+    // the run's status here, so the count moved is what the record needs.
+    // The totals written above are in the diff, so they are audited too.
+    await auditWrite({
+      action: 'update',
+      subjectType: 'payroll_run',
+      subjectId: id,
+      before: {
+        status: run.status,
+        grossTotalMinor: run.grossTotalMinor.toString(),
+        netTotalMinor: run.netTotalMinor.toString(),
+        headcount: run.headcount,
+        approvedById: run.approvedById,
+      },
+      after: {
+        status: row.status,
+        grossTotalMinor: row.grossTotalMinor.toString(),
+        netTotalMinor: row.netTotalMinor.toString(),
+        headcount: row.headcount,
+        approvedById: row.approvedById,
+      },
+      meta: { instructionsMoved: moved.count },
+      tx,
+    });
+
+    return row;
   });
 
   if (event === 'APPROVE') {

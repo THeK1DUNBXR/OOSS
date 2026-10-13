@@ -330,15 +330,24 @@ async function loadAgreement(kind: AgreementKind, id: string) {
   return prisma.partnerAgreement.findFirst({ where: { id } });
 }
 
+// The audit row is written here, next to the update, so every status change on
+// an agreement is audited in the transaction that makes it (CLAUDE.md rule 5).
+// Callers describe the change through `audit`; they do not write their own row.
 async function updateAgreement(
   kind: AgreementKind,
   id: string,
   data: Record<string, unknown>,
-  db: DbTx = prisma as unknown as DbTx,
+  audit: { before: Record<string, unknown>; after: Record<string, unknown>; meta?: Record<string, unknown> },
+  tx: DbTx,
 ) {
-  if (kind === 'mou') return db.mou.update({ where: { id }, data: data as never });
-  if (kind === 'contract') return db.contract.update({ where: { id }, data: data as never });
-  return db.partnerAgreement.update({ where: { id }, data: data as never });
+  const row =
+    kind === 'mou'
+      ? await tx.mou.update({ where: { id }, data: data as never })
+      : kind === 'contract'
+        ? await tx.contract.update({ where: { id }, data: data as never })
+        : await tx.partnerAgreement.update({ where: { id }, data: data as never });
+  await auditWrite({ action: 'update', subjectType: kind, subjectId: id, ...audit, tx });
+  return row;
 }
 
 export interface TransitionResult {
@@ -427,17 +436,13 @@ export async function transitionAgreement(
   }
 
   const updated = await governedWrite(async (tx) => {
-    const next = (await updateAgreement(kind, id, patch, tx)) as Record<string, unknown>;
-
-    await auditWrite({
-      action: 'update',
-      subjectType: kind,
-      subjectId: id,
-      before: { status: from },
-      after: { status: toStatus },
-      meta: { note },
+    const next = (await updateAgreement(
+      kind,
+      id,
+      patch,
+      { before: { status: from }, after: { status: toStatus }, meta: { note } },
       tx,
-    });
+    )) as Record<string, unknown>;
 
     const eventName =
       kind === 'mou'
@@ -536,16 +541,13 @@ export async function runExpiryLadder(kind: 'mou' | 'contract' | 'partner_agreem
     if (daysToExpiry < 0) {
       if (row.status !== 'expired') {
         await governedWrite(async (tx) => {
-          await updateAgreement(kind, row.id as string, { status: 'expired' }, tx);
-          await auditWrite({
-            action: 'update',
-            subjectType: kind,
-            subjectId: row.id as string,
-            before: { status: row.status },
-            after: { status: 'expired' },
-            meta: { source: 'expiry_ladder' },
+          await updateAgreement(
+            kind,
+            row.id as string,
+            { status: 'expired' },
+            { before: { status: row.status }, after: { status: 'expired' }, meta: { source: 'expiry_ladder' } },
             tx,
-          });
+          );
           await emit({
             name: kind === 'mou' ? EVENTS.MOU_EXPIRED : EVENTS.CONTRACT_EXPIRED,
             subject: { entityType: kind, entityId: row.id as string, recordCode: row.recordCode as string },
@@ -600,17 +602,13 @@ export async function runExpiryLadder(kind: 'mou' | 'contract' | 'partner_agreem
           status: 'expiring',
           expiryNotifiedDays: [...new Set([...already, ...crossed])],
         },
+        {
+          before: { status: row.status },
+          after: { status: 'expiring', rung, daysToExpiry },
+          meta: { source: 'expiry_ladder' },
+        },
         tx,
       );
-      await auditWrite({
-        action: 'update',
-        subjectType: kind,
-        subjectId: row.id as string,
-        before: { status: row.status },
-        after: { status: 'expiring', rung, daysToExpiry },
-        meta: { source: 'expiry_ladder' },
-        tx,
-      });
       await emit({
         name: kind === 'mou' ? EVENTS.MOU_EXPIRY_APPROACHING : EVENTS.CONTRACT_EXPIRING,
         subject: { entityType: kind, entityId: row.id as string, recordCode: row.recordCode as string },
@@ -663,15 +661,13 @@ export async function renewAgreement(kind: AgreementKind, id: string, endDate: D
   // others open their own transactions); the predecessor's status change and
   // its event commit together here.
   await governedWrite(async (tx) => {
-    await updateAgreement(kind, id, { status: 'renewed' }, tx);
-    await auditWrite({
-      action: 'update',
-      subjectType: kind,
-      subjectId: id,
-      before: { status: existing.status },
-      after: { status: 'renewed', renewalId: renewal.id },
+    await updateAgreement(
+      kind,
+      id,
+      { status: 'renewed' },
+      { before: { status: existing.status }, after: { status: 'renewed', renewalId: renewal.id } },
       tx,
-    });
+    );
     await emit({
       name: EVENTS.MOU_RENEWED,
       subject: { entityType: kind, entityId: id, recordCode: existing.recordCode as string },

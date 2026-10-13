@@ -51,6 +51,8 @@ registerGovernedEntities('hcm_learning', [
   'training_enrollment',
   'certification',
   'individual_development_plan',
+  'training_budget',
+  'mandatory_training_rule',
 ]);
 
 function asApiError(err: unknown): never {
@@ -267,7 +269,15 @@ export async function setSessionStatus(id: string, status: 'completed' | 'cancel
   await assertCan({ resource: 'training_sessions', verb: 'edit' });
   const session = await prisma.trainingSession.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!session) throw ApiError.notFound('Training session');
-  return prisma.trainingSession.update({ where: { id }, data: { status } });
+  const updated = await prisma.trainingSession.update({ where: { id }, data: { status } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'training_session',
+    subjectId: id,
+    before: { status: session.status },
+    after: { status },
+  });
+  return updated;
 }
 
 // ---------------------------------------------------------------------------
@@ -477,7 +487,15 @@ export async function markAttendance(id: string, attended: boolean) {
   } catch (err) {
     asApiError(err);
   }
-  return prisma.trainingEnrollment.update({ where: { id }, data: { status: target } });
+  const updated = await prisma.trainingEnrollment.update({ where: { id }, data: { status: target } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'training_enrollment',
+    subjectId: id,
+    before: { status: enrollment.status },
+    after: { status: target },
+  });
+  return updated;
 }
 
 /**
@@ -862,7 +880,7 @@ export async function createMandatoryRule(input: {
   await assertCan({ resource: 'training_programs', verb: 'create' });
   const program = await prisma.trainingProgram.findFirst({ where: { id: input.programId, tenantId: auth.tenantId } });
   if (!program) throw ApiError.notFound('Training program');
-  return prisma.mandatoryTrainingRule.create({
+  const rule = await prisma.mandatoryTrainingRule.create({
     data: {
       tenantId: auth.tenantId,
       programId: input.programId,
@@ -870,6 +888,17 @@ export async function createMandatoryRule(input: {
       recurrenceMonths: input.recurrenceMonths ?? null,
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'mandatory_training_rule',
+    subjectId: rule.id,
+    after: {
+      programId: rule.programId,
+      dueWithinDaysOfJoin: rule.dueWithinDaysOfJoin,
+      recurrenceMonths: rule.recurrenceMonths,
+    },
+  });
+  return rule;
 }
 
 export interface MandatoryComplianceRow {
@@ -1158,6 +1187,12 @@ export async function createBudget(input: { fy: string; division?: string | null
       division: input.division ?? null,
       amountMinor: rupeesToMinor(input.amount),
     },
+  });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'training_budget',
+    subjectId: row.id,
+    after: { fy: row.fy, division: row.division, amountMinor: row.amountMinor.toString() },
   });
   return withDecimalMinor(row, ['amount'] as const);
 }

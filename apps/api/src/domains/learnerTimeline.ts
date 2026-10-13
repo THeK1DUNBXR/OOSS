@@ -30,7 +30,8 @@ import {
   type LearnerLogKind,
   type LearnerLogSeverity,
 } from '@kaizen/shared';
-import { prisma, num } from '../platform/db.js';
+import { prisma } from '../platform/db.js';
+import { poundsOf } from './allocation.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
@@ -541,7 +542,7 @@ export async function learnerTimeline(enrollmentId: string, options: { limit?: n
       status: inv.status,
       issuedDate: inv.issuedDate?.toISOString() ?? null,
       payable: minorToRupees(inv.grandTotalMinor) || inv.lines.reduce((s, l) => s + minorToRupees(l.amountMinor), 0),
-      allocated: inv.receipts.reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0),
+      allocated: poundsOf(inv.receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n)),
       paymentType: inv.paymentType,
       paymentMode: inv.paymentMode,
     })),

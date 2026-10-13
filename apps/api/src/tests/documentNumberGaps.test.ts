@@ -59,9 +59,10 @@ describe('a failed statutory write gives its number back', () => {
       const invoice = await anIssuedInvoice();
       const before = await nextSequenceOf(DOCUMENT_SERIES.creditNote);
 
-      // 1e16 has seventeen digits; credit_notes.amount is Decimal(18,2), so the
-      // database refuses the row after the number has been taken for it.
-      await expectReject(() => issueCreditNote(invoice.id, 1e16, 'Overflows the amount column'));
+      // credit_notes.amountMinor is BIGINT paise, so the refusal is at 1e17 rupees
+      // (1e19 paise, past the 64-bit range), after the number has been taken for it.
+      // It was 1e16 while the column was Decimal(18,2).
+      await expectReject(() => issueCreditNote(invoice.id, 1e17, 'Overflows the amount column'));
       expect(await nextSequenceOf(DOCUMENT_SERIES.creditNote)).toBe(before);
 
       const note = await issueCreditNote(invoice.id, 100, 'Valid after the failure');

@@ -27,7 +27,12 @@ const PERSON_PAYLOAD = {
 
 describe('FX-65: the personal fields that leave the gateway', () => {
   it('a Person payload reaching the model carries no email, phone, blood group, notes or external ids', () => {
-    const gateway = new ModelGateway({ ...BASE, classificationCeiling: 'regulated' });
+    // Every key is classified internal, so sanitizeForModel lets it through and
+    // only PERSONAL_DATA_FIELDS can strip it. Left unclassified, sanitize would
+    // withhold each key whatever the list said, and this test would pass on an
+    // empty list.
+    const fieldClassifications = Object.fromEntries(Object.keys(PERSON_PAYLOAD).map((k) => [k, 'internal' as const]));
+    const gateway = new ModelGateway({ ...BASE, classificationCeiling: 'regulated', fieldClassifications });
     const { redacted } = gateway.preparePayload('briefing', { ...PERSON_PAYLOAD }, 'read_only_summary');
 
     expect(JSON.stringify(redacted)).not.toContain('asha@example.com');
@@ -57,6 +62,34 @@ describe('FX-65: the personal fields that leave the gateway', () => {
     ]);
     const columns = Object.values(Prisma.PersonScalarFieldEnum) as string[];
     const unaccounted = columns.filter((c) => !nonPersonal.has(c) && !PERSONAL_DATA_FIELDS.has(c));
+    expect(unaccounted).toEqual([]);
+  });
+
+  it('every Organization column is a personal field, a structural one, or a named open decision', () => {
+    // Keys are matched by name in every payload (redactPersonalFields), so a
+    // generic name here would also strip course, cohort and location names from
+    // unrelated payloads. Organization's free text is therefore listed as an
+    // open decision, not added to PERSONAL_DATA_FIELDS. FX-65.
+    const structural = new Set([
+      'id',
+      'tenantId',
+      'recordCode',
+      'kind',
+      'roles',
+      'parentOrgId',
+      'ownerPartyId',
+      'deletedAt',
+      'createdAt',
+      'updatedAt',
+      'migratedToTenantId',
+      'spinOutBatchId',
+      'spinOutRevertedAt',
+    ]);
+    const openDecision = new Set(['name', 'website', 'tags', 'locations', 'legacyCategory']);
+    const columns = Object.values(Prisma.OrganizationScalarFieldEnum) as string[];
+    const unaccounted = columns.filter(
+      (c) => !structural.has(c) && !openDecision.has(c) && !PERSONAL_DATA_FIELDS.has(c),
+    );
     expect(unaccounted).toEqual([]);
   });
 

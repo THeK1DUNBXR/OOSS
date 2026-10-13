@@ -17,6 +17,13 @@ import {
   type TenantOnboardingState,
   type TenantTier,
 } from '@kaizen/shared';
+import { auditWrite, registerGovernedEntities } from './audit.js';
+
+// The tenant row's policy fields (tier, residency, inference region, feature gates) decide
+// what a tenant may do, so a change to them is a change somebody must be able to explain.
+// Registered here as well as in the marketing settings module, so this path does not
+// depend on which module happened to load first (auditWrite refuses an unregistered subject).
+registerGovernedEntities('platform', ['tenant']);
 
 export const DEFAULT_TENANT_TIER: TenantTier = 'starter';
 
@@ -153,12 +160,30 @@ export async function syncTenantPolicy(
     featureGates: runtime.featureGates,
   } as TenantConfig;
 
+  const current = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { config: true } });
   await prisma.tenant.update({
     where: { id: tenantId },
     data: { config: nextConfig as never },
   });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'tenant',
+    subjectId: tenantId,
+    before: policyFieldsOf(current?.config as Partial<TenantConfig> | null | undefined),
+    after: policyFieldsOf(nextConfig),
+    meta: { source: 'syncTenantPolicy' },
+  });
 
   return runtime;
+}
+
+function policyFieldsOf(config: Partial<TenantConfig> | null | undefined) {
+  return {
+    tier: config?.tier ?? null,
+    dataResidency: config?.dataResidency ?? null,
+    inferenceRegion: config?.inferenceRegion ?? null,
+    featureGates: config?.featureGates ?? null,
+  };
 }
 
 function CONFIGURED_TENANT_FEATURE_GATES(

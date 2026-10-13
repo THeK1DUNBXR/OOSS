@@ -793,9 +793,15 @@ model Grant {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  /// C-015: a stopgap IT owner grant the founder creates before onboarding names an IT admin.
+  /// `to_migrate` is the only value the database accepts (CHECK in the migration), and it is
+  /// what the exceptions view lists and what onboarding retires. Null for every other grant.
+  provenance String?
+
   @@index([tenantId, roleId, resource])
   @@index([tenantId, accessAssignmentId])
   @@index([tenantId, principalId, resource])
+  @@index([tenantId, provenance])
   @@map("grants")
 }
 
@@ -1050,6 +1056,13 @@ model EventRecord {
   /// recognisable as the same fact.
   legacyName String?
 
+  /// The AuditRecord written for the same governed write (FX-24 cross-anchor).
+  /// Deliberately outside the chain hash: `chainBodyOf` is hashed for every
+  /// row, and adding a field to it would change the hash of every row already
+  /// written. The anchor is checked against the audit row instead
+  /// (`verifyEventAuditAnchors`, eventBus.ts).
+  auditRecordId String?
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, eventId, eventName])
@@ -1073,7 +1086,25 @@ model EventRecord {
   @@index([tenantId, eventName, occurredAt])
   @@index([tenantId, subjectEntityType, subjectEntityId])
   @@index([tenantId, correlationId])
+  @@index([tenantId, auditRecordId])
   @@map("event_records")
+}
+
+/// FX-24 consumer idempotency. One row per (tenant, subscriber, event), written
+/// once the subscriber has returned without error. The dispatcher checks it
+/// before calling the subscriber, so an event the subscriber already handled is
+/// not handled again on a retry or a replayed dead letter. Append-only: the app
+/// role may insert and read, and nothing else (migration 20261013262000).
+model EventConsumerReceipt {
+  id          String   @id @default(cuid())
+  tenantId    String
+  consumerKey String
+  eventId     String
+  eventName   String
+  processedAt DateTime @default(now())
+
+  @@unique([tenantId, consumerKey, eventId])
+  @@map("event_consumer_receipts")
 }
 
 /// A handler's third failure writes here rather than only logging, so a process
@@ -3306,7 +3337,7 @@ model FeeInstalment {
 
   enrollmentId String
   feePlanId    String?
-  amount       Decimal  @db.Decimal(18, 2)
+  amountMinor  BigInt
   currency     String   @default("INR")
   dueDate      DateTime
   status       String   @default("scheduled")
@@ -3330,7 +3361,9 @@ model Payment {
   tenantId   String
   recordCode String
 
-  amount           Decimal  @db.Decimal(18, 2)
+  /// Paise. The figure was Decimal(18,2) until ORDERED-PLAN 1.6 slice S3; the API keeps
+  /// the rupee field beside this one on the wire.
+  amountMinor      BigInt
   currency         String   @default("INR")
   gatewayReference String
   /// The accounting date: the date the books record this payment in. Equal to
@@ -3398,7 +3431,8 @@ model Receipt {
   feeInstalmentId String?
   feeInstalment   FeeInstalment? @relation(fields: [feeInstalmentId], references: [id])
 
-  allocatedAmount Decimal  @db.Decimal(18, 2)
+  /// Paise. Was Decimal(18,2) until ORDERED-PLAN 1.6 slice S3.
+  allocatedAmountMinor BigInt
   allocatedAt     DateTime @default(now())
   allocatedById   String?
 
@@ -3411,8 +3445,9 @@ model Receipt {
   /// because a receipt is a receipt — the piece of paper saying "₹20,000 of
   /// ₹70,800, ₹50,800 still owed" must keep saying that after the next
   /// instalment lands.
-  subjectTotal     Decimal @default(0) @db.Decimal(18, 2)
-  balanceAfter     Decimal @default(0) @db.Decimal(18, 2)
+  /// Paise. Were Decimal(18,2) until ORDERED-PLAN 1.6 slice S3.
+  subjectTotalMinor BigInt @default(0)
+  balanceAfterMinor BigInt @default(0)
   /// How this instalment was paid. Copied from the payment so a reprint does
   /// not depend on the payment row still reading the same way.
   paymentMode      String?
@@ -3478,10 +3513,10 @@ model FinalInvoice {
   issuedById String?
 
   /// The figures as they stood when it was raised.
-  totalPayable  Decimal @default(0) @db.Decimal(18, 2)
-  totalReceived Decimal @default(0) @db.Decimal(18, 2)
-  creditNoted   Decimal @default(0) @db.Decimal(18, 2)
-  balance       Decimal @default(0) @db.Decimal(18, 2)
+  totalPayableMinor  BigInt @default(0)
+  totalReceivedMinor BigInt @default(0)
+  creditNotedMinor   BigInt @default(0)
+  balanceMinor       BigInt @default(0)
   /// True when nothing was left owing at the moment it was raised.
   settled       Boolean @default(false)
 
@@ -3525,10 +3560,10 @@ model CreditNote {
   tenantId   String
   recordCode String
 
-  invoiceId  String
-  amount     Decimal  @db.Decimal(18, 2)
-  currency   String   @default("INR")
-  reason     String
+  invoiceId   String
+  amountMinor BigInt
+  currency    String   @default("INR")
+  reason      String
   issuedAt   DateTime @default(now())
   issuedById String?
 
@@ -3618,7 +3653,8 @@ model ReceivablesProjection {
   subjectId    String
   subjectLabel String?
 
-  amountOutstanding Decimal?  @db.Decimal(18, 2)
+  /// Paise. Was Decimal(18,2) until ORDERED-PLAN 1.6 slice S3.
+  amountOutstandingMinor BigInt?
   currency          String    @default("INR")
   nextDueDate       DateTime?
   dunningStage      String?
@@ -3654,7 +3690,7 @@ model Course {
   /// This is the flat/default fee. A course sold on instalment plans instead
   /// (a 1/3/6/8-month tenure, each its own monthly rate) prices from
   /// `feePlans` rather than this single figure — see `CourseFeePlan`.
-  feeAmount Decimal? @db.Decimal(18, 2)
+  feeAmountMinor BigInt?
   /// A share/dueInDays instalment schedule for `feeAmount` (see
   /// `events/handlers.ts`'s `instalmentPlan`) — a flat course billed in parts,
   /// distinct from `feePlans`/`CourseFeePlan`, which prices a course sold on
@@ -3703,7 +3739,7 @@ model CourseFeePlan {
   /// invoice line bills this many months at `monthlyFee` each: quantity times
   /// unit price, the same arithmetic every other line already uses.
   tenureMonths Int
-  monthlyFee   Decimal @db.Decimal(18, 2)
+  monthlyFeeMinor BigInt
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3724,9 +3760,9 @@ model CourseAddon {
   courseId String
   course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
-  name    String
-  price   Decimal @db.Decimal(18, 2)
-  gstRate Decimal @default(18) @db.Decimal(5, 2)
+  name       String
+  priceMinor BigInt
+  gstRate    Decimal @default(18) @db.Decimal(5, 2)
   hsnSac  String?
   notes   String?
   active  Boolean @default(true)
@@ -3798,6 +3834,7 @@ model Enrollment {
   status           String    @default("reserved")
   enrolledAt       DateTime?
   completedAt      DateTime?
+  certificates     Certificate[]
   progressPct      Int       @default(0)
   attendancePct    Int       @default(100)
   atRisk           Boolean   @default(false)

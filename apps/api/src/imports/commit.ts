@@ -21,7 +21,7 @@ import { assertCanAssignRole } from '../platform/roleAssignment.js';
 import { ApiError } from '../platform/errors.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { emit } from '../platform/eventBus.js';
-import { auditWrite } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { lockLegacyPeriods } from '../platform/periodLock.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { writeTransactionMinor, assertPeriodPostableInTx, reverseTransactionIn } from '../domains/books.js';
@@ -37,6 +37,8 @@ import '../domains/students.js';
 import '../domains/employment.js';
 import '../domains/leave.js';
 import '../domains/compliance/books.js';
+// The import creates org units, and their subject is registered in the units module.
+import '../domains/units.js';
 import { EVENTS, DIVISION_LABELS, DIVISIONS, parseMinor, type Division } from '@kaizen/shared';
 import { matchFailure, matchPerson } from './matchName.js';
 import { classifyLedger, divisionFor, isAccountName, JOURNAL_ACCOUNT_NAME, JOURNAL_ACCOUNT_TYPE } from './classify.js';
@@ -232,6 +234,13 @@ async function commitUnderLock(id: string): Promise<CommitResult> {
   // Written outside the chunk transactions, so an interrupted commit leaves it
   // on the batch and the rerun resumes rather than starting the batch over.
   await prisma.importBatch.update({ where: { id }, data: { status: 'committing' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'import_batch',
+    subjectId: id,
+    before: { status: batch.status },
+    after: { status: 'committing' },
+  });
 
   const options = (batch.options ?? {}) as Record<string, unknown>;
   const chunked = CHUNKED_KINDS.has(batch.kind);
@@ -271,6 +280,13 @@ async function commitUnderLock(id: string): Promise<CommitResult> {
       committedAt: new Date(),
       stats: { ...(batch.stats as object), ...result.created, errors: result.errors.length } as never,
     },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'import_batch',
+    subjectId: id,
+    before: { status: 'committing' },
+    after: { status: 'committed', created: result.created, skipped: result.skipped, errors: result.errors.length },
   });
 
   await emit({
@@ -351,6 +367,30 @@ function chunkWriteDates(row: ImportRow, kind: string, options: Record<string, u
   return Number.isNaN(txnDate.getTime()) ? [] : [txnDate];
 }
 
+/**
+ * Writes one staged row's outcome and audits it. The outcome names the record each row
+ * made, and a revert reads it back, so a row's outcome is part of the import's own trail.
+ * `tx` is the chunk's transaction. The row-at-a-time path has none, and its audit row
+ * commits on its own, as the rest of that path's writes do.
+ */
+async function recordRowOutcome(
+  row: ImportRow,
+  data: { status: string; entityType?: string; entityId?: string; created?: unknown; message?: string | null },
+  tx?: DbTx,
+): Promise<void> {
+  const db = tx ?? (prisma as unknown as DbTx);
+  await db.importRow.update({ where: { id: row.id }, data: data as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'import_row',
+    subjectId: row.id,
+    before: { status: row.status },
+    after: { status: data.status, entityType: data.entityType ?? null, entityId: data.entityId ?? null },
+    meta: { batchId: row.batchId, rowNumber: row.rowNumber },
+    tx,
+  });
+}
+
 async function commitRowInChunk(
   tx: DbTx,
   row: ImportRow,
@@ -364,26 +404,27 @@ async function commitRowInChunk(
   const data = openStagedNormalised(row.normalised);
   if (!data) {
     tally.skipped += 1;
-    await tx.importRow.update({ where: { id: row.id }, data: { status: 'skipped' } });
+    await recordRowOutcome(row, { status: 'skipped' }, tx);
     return;
   }
   try {
     const outcome = await commitChunkedRow(tx, kind, data, options);
     if (outcome) {
       tally.created[outcome.entityType] = (tally.created[outcome.entityType] ?? 0) + 1;
-      await tx.importRow.update({
-        where: { id: row.id },
-        data: {
+      await recordRowOutcome(
+        row,
+        {
           status: 'committed',
           entityType: outcome.entityType,
           entityId: outcome.entityId,
-          created: [{ entityType: outcome.entityType, entityId: outcome.entityId }] as never,
+          created: [{ entityType: outcome.entityType, entityId: outcome.entityId }],
           message: null,
         },
-      });
+        tx,
+      );
     } else {
       tally.skipped += 1;
-      await tx.importRow.update({ where: { id: row.id }, data: { status: 'skipped' } });
+      await recordRowOutcome(row, { status: 'skipped' }, tx);
     }
   } catch (error) {
     if (isDatabaseFault(error)) {
@@ -395,7 +436,7 @@ async function commitRowInChunk(
     }
     const message = (error as Error).message;
     tally.errors.push({ rowNumber: row.rowNumber, message });
-    await tx.importRow.update({ where: { id: row.id }, data: { status: 'error', message } });
+    await recordRowOutcome(row, { status: 'error', message }, tx);
   }
 }
 
@@ -422,7 +463,7 @@ async function commitRowOutsideChunk(row: ImportRow, kind: string, options: Reco
   const data = openStagedNormalised(row.normalised);
   if (!data) {
     tally.skipped += 1;
-    await prisma.importRow.update({ where: { id: row.id }, data: { status: 'skipped' } });
+    await recordRowOutcome(row, { status: 'skipped' });
     return;
   }
   try {
@@ -491,36 +532,30 @@ async function commitRowOutsideChunk(row: ImportRow, kind: string, options: Reco
       // it did create (a child written for that person) is listed, and a revert
       // undoes only that list.
       tally.skipped += 1;
-      await prisma.importRow.update({
-        where: { id: row.id },
-        data: {
-          status: 'matched',
-          entityType: outcome.entityType,
-          entityId: outcome.entityId,
-          created: (outcome.created ?? []) as never,
-          message: 'Matched an existing record. This import did not create it, so a revert leaves it.',
-        },
+      await recordRowOutcome(row, {
+        status: 'matched',
+        entityType: outcome.entityType,
+        entityId: outcome.entityId,
+        created: outcome.created ?? [],
+        message: 'Matched an existing record. This import did not create it, so a revert leaves it.',
       });
     } else if (outcome) {
       tally.created[outcome.entityType] = (tally.created[outcome.entityType] ?? 0) + 1;
-      await prisma.importRow.update({
-        where: { id: row.id },
-        data: {
-          status: 'committed',
-          entityType: outcome.entityType,
-          entityId: outcome.entityId,
-          created: (outcome.created ?? [{ entityType: outcome.entityType, entityId: outcome.entityId }]) as never,
-          message: null,
-        },
+      await recordRowOutcome(row, {
+        status: 'committed',
+        entityType: outcome.entityType,
+        entityId: outcome.entityId,
+        created: outcome.created ?? [{ entityType: outcome.entityType, entityId: outcome.entityId }],
+        message: null,
       });
     } else {
       tally.skipped += 1;
-      await prisma.importRow.update({ where: { id: row.id }, data: { status: 'skipped' } });
+      await recordRowOutcome(row, { status: 'skipped' });
     }
   } catch (error) {
     const message = (error as Error).message;
     tally.errors.push({ rowNumber: row.rowNumber, message });
-    await prisma.importRow.update({ where: { id: row.id }, data: { status: 'error', message } });
+    await recordRowOutcome(row, { status: 'error', message });
   }
 }
 
@@ -737,12 +772,21 @@ const divisionCodeOf = (v: unknown): string => {
   return DIVISION_CODES[raw] ? raw : (DIVISION_NAMES[raw] ?? raw);
 };
 
+// The job master is made here on the import path, and this is where its subject is registered.
+registerGovernedEntities('hcm_employment', ['job']);
+
 async function ensureOrgUnit(name: string, division: string): Promise<string> {
   const auth = currentAuth();
   const existing = await prisma.orgUnit.findFirst({ where: { tenantId: auth.tenantId, name } });
   if (existing) return existing.id;
   const created = await prisma.orgUnit.create({
     data: { tenantId: auth.tenantId, name, unitType: 'department', division },
+  });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'unit',
+    subjectId: created.id,
+    after: { name, unitType: 'department', division },
   });
   return created.id;
 }
@@ -773,6 +817,12 @@ async function ensureJob(title: string): Promise<string> {
           : 'general';
 
   const created = await prisma.job.create({ data: { tenantId: auth.tenantId, title, jobFamily, jobLevel } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'job',
+    subjectId: created.id,
+    after: { title, jobFamily, jobLevel },
+  });
   return created.id;
 }
 
@@ -821,6 +871,12 @@ async function ensureEmployment(input: {
     },
   });
 
+  await auditWrite({
+    action: 'create',
+    subjectType: 'position',
+    subjectId: position.id,
+    after: { orgUnitId, jobId, status: 'Filled' },
+  });
   created.push({ entityType: 'position', entityId: position.id });
 
   // A year is all a staff list gives. The first of April is the start of the
@@ -847,6 +903,13 @@ async function ensureEmployment(input: {
     },
   });
 
+  await auditWrite({
+    action: 'create',
+    subjectType: 'employment_relationship',
+    subjectId: employment.id,
+    after: { personId: input.personId, hireEffectiveDate, status: 'Active' },
+  });
+
   const assignment = await prisma.assignment.create({
     data: {
       tenantId: auth.tenantId,
@@ -857,6 +920,13 @@ async function ensureEmployment(input: {
       requestStatus: 'Effective',
       rowStatus: 'Effective',
     },
+  });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'assignment',
+    subjectId: assignment.id,
+    after: { employmentRelationshipId: employment.id, positionId: position.id, effectiveFrom: hireEffectiveDate },
+    meta: { reasonCode: 'imported_baseline' },
   });
   created.push({ entityType: 'employmentRelationship', entityId: employment.id });
   created.push({ entityType: 'assignment', entityId: assignment.id });
@@ -924,7 +994,25 @@ async function commitEmployeeRow(data: Record<string, unknown>) {
           source: 'import',
         },
       });
-  if (!existing) created.push({ entityType: 'person', entityId: person.id });
+  if (existing) {
+    await auditWrite({
+      action: 'update',
+      subjectType: 'person',
+      subjectId: person.id,
+      before: { fullName: existing.fullName, primaryEmail: existing.primaryEmail },
+      after: { fullName },
+      meta: { source: 'import', fieldsSet: Object.keys(held) },
+    });
+  } else {
+    await auditWrite({
+      action: 'create',
+      subjectType: 'person',
+      subjectId: person.id,
+      after: { fullName, recordCode: person.recordCode },
+      meta: { source: 'import' },
+    });
+    created.push({ entityType: 'person', entityId: person.id });
+  }
 
   const divisionCode = divisionCodeOf(data.division);
   const mapped = DIVISION_CODES[divisionCode] ?? { division: 'shared', unit: 'Corporate' };
@@ -949,6 +1037,13 @@ async function commitEmployeeRow(data: Record<string, unknown>) {
         branch: data.branch ? String(data.branch) : null,
         statutoryRetentionFloor: true,
       },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'affiliation',
+      subjectId: madeAffiliation.id,
+      after: { partyId: person.id, affiliationType: 'employee', roleSlug: 'employee', status: 'active' },
+      meta: { source: 'import' },
     });
     created.push({ entityType: 'affiliation', entityId: madeAffiliation.id });
   }
@@ -1997,6 +2092,13 @@ async function commitCourseRow(data: Record<string, unknown>) {
       durationWeeks: data.durationWeeks == null ? null : Math.round(Number(data.durationWeeks)),
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'course',
+    subjectId: course.id,
+    after: { code, name },
+    meta: { source: 'import' },
+  });
   return { entityType: 'course', entityId: course.id };
 }
 
@@ -2037,6 +2139,13 @@ async function commitBatchRow(data: Record<string, unknown>) {
       capacity: data.capacity == null ? 30 : Math.round(Number(data.capacity)),
       institutionId,
     },
+  });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'cohort',
+    subjectId: cohort.id,
+    after: { courseId: course.id, name, startDate: cohort.startDate, institutionId },
+    meta: { source: 'import' },
   });
   return { entityType: 'cohort', entityId: cohort.id };
 }
@@ -2240,7 +2349,7 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
         code: courseCodeFor(courseName),
         // Deliberately unpriced. A discounted figure from one student's row is
         // not what this course sells for.
-        feeAmount: null,
+        feeAmountMinor: null,
         division: 'education',
       },
     });

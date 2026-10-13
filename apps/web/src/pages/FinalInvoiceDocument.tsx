@@ -16,14 +16,9 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  amountInWords,
-  PAYMENT_MODE_LABELS,
-  type FinalInvoiceDocumentView,
-  type FinalInvoiceView,
-  type PaymentMode,
-} from '@kaizen/shared';
-import { api, date, dateTime, money } from '../lib/api.js';
+import { amountInWords, PAYMENT_MODE_LABELS, type PaymentMode } from '@kaizen/shared';
+import { date, dateTime, money } from '../lib/api.js';
+import { endpoints } from '../lib/client.js';
 import { Card, EmptyState, ErrorBox, Loading, Metric, PageHeader, RecordCode, StatusChip } from '../components/ui.js';
 import { fmtDate, fmtINR } from './kaizenInvoice/calc.js';
 import {
@@ -45,7 +40,7 @@ export function FinalInvoiceDocument() {
   const [printKey, setPrintKey] = useState<number | null>(null);
   const { data, isLoading, error } = useQuery({
     queryKey: ['final-invoice-document', id],
-    queryFn: () => api.get<FinalInvoiceDocumentView>(`/finance/final-invoices/${id}/document`),
+    queryFn: () => endpoints.finance.finalInvoiceDocument(id!),
     enabled: Boolean(id),
   });
 
@@ -205,7 +200,7 @@ export function FinalInvoices() {
     error,
   } = useQuery({
     queryKey: ['final-invoices'],
-    queryFn: () => api.get<FinalInvoiceView[]>('/finance/final-invoices'),
+    queryFn: () => endpoints.finance.finalInvoices(),
   });
 
   if (error) return <ErrorBox error={error} />;

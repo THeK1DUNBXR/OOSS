@@ -42,17 +42,33 @@ export async function createReferralProgram(input: ReferralProgramInput) {
   await assertCan({ resource: 'marketing_referrals', verb: 'create' });
 
   const recordCode = await nextRecordCode('RFP');
-  const program = await prisma.marketingReferralProgram.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      name: input.name,
-      kind: input.kind,
-      rewardKind: input.rewardKind ?? 'none',
-      rewardAmountMinor: rupeesToMinorOrNull(input.rewardAmount ?? null),
-      terms: input.terms ?? null,
-      createdById: auth.partyId,
-    },
+  const program = await governedWrite(async (tx) => {
+    const created = await tx.marketingReferralProgram.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        name: input.name,
+        kind: input.kind,
+        rewardKind: input.rewardKind ?? 'none',
+        rewardAmountMinor: rupeesToMinorOrNull(input.rewardAmount ?? null),
+        terms: input.terms ?? null,
+        createdById: auth.partyId,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'marketing_referral_program',
+      subjectId: created.id,
+      after: {
+        recordCode,
+        name: input.name,
+        kind: input.kind,
+        rewardKind: input.rewardKind ?? 'none',
+        rewardAmountMinor: created.rewardAmountMinor === null ? null : String(created.rewardAmountMinor),
+      },
+      tx,
+    });
+    return created;
   });
   return withDecimalMinor(program, ['rewardAmount']);
 }
@@ -126,7 +142,18 @@ async function setProgramActive(id: string, active: boolean) {
     where: { id, tenantId: auth.tenantId, deletedAt: null },
   });
   if (!program) throw ApiError.notFound('Referral program');
-  const updated = await prisma.marketingReferralProgram.update({ where: { id }, data: { active } });
+  const updated = await governedWrite(async (tx) => {
+    const row = await tx.marketingReferralProgram.update({ where: { id }, data: { active } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_referral_program',
+      subjectId: id,
+      before: { active: program.active },
+      after: { active },
+      tx,
+    });
+    return row;
+  });
   return withDecimalMinor(updated, ['rewardAmount']);
 }
 

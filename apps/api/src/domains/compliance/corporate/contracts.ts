@@ -16,6 +16,8 @@ import { prisma } from '../../../platform/db.js';
 import { currentAuth } from '../../../platform/context.js';
 import { ApiError } from '../../../platform/errors.js';
 import { auditWrite } from '../../../platform/audit.js';
+import { withDecimalMinor } from '../../../platform/wire.js';
+import { governedWrite } from '../../../platform/governedWrite.js';
 import type { AgreementKind } from '../../agreements.js';
 
 // ---------------------------------------------------------------------------
@@ -58,10 +60,11 @@ export async function assertStampDutySatisfied(kind: AgreementKind, agreementId:
 
 export async function listStampDutyRules() {
   const auth = currentAuth();
-  return prisma.stampDutyRule.findMany({
+  const rows = await prisma.stampDutyRule.findMany({
     where: { tenantId: auth.tenantId },
     orderBy: [{ agreementKind: 'asc' }, { effectiveFrom: 'desc' }],
   });
+  return rows.map((row) => withDecimalMinor(row, ['flatAmount'] as const));
 }
 
 // ---------------------------------------------------------------------------
@@ -150,7 +153,18 @@ export async function markESigned(documentId: string): Promise<void> {
   const document = await prisma.document.findFirst({ where: { id: documentId, tenantId: auth.tenantId } });
   if (!document || !document.eSignRef)
     throw ApiError.unprocessable('No e-signature request is in progress for this document.');
-  await prisma.document.update({ where: { id: documentId }, data: { eSignedAt: new Date() } });
+  const signedAt = new Date();
+  await governedWrite(async (tx) => {
+    await tx.document.update({ where: { id: documentId }, data: { eSignedAt: signedAt } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'document',
+      subjectId: documentId,
+      before: { eSignedAt: document.eSignedAt },
+      after: { eSignedAt: signedAt.toISOString() },
+      tx,
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------

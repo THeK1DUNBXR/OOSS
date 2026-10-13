@@ -36,6 +36,7 @@ import { runHooks } from '../platform/hooks.js';
 import { ApiError } from '../platform/errors.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
+import { lockLegacyPeriod } from '../platform/periodLock.js';
 import { findOrCreatePerson } from '../domains/identity.js';
 import { companyProfile } from '../domains/companyProfile.js';
 import {
@@ -155,7 +156,7 @@ interface CarriedCourse {
   code: string;
   description: string | null;
   durationWeeks: number | null;
-  feeAmount: unknown;
+  feeAmountMinor: bigint | null;
   gstRate: unknown;
   hsnSac: string | null;
   division: string;
@@ -332,7 +333,7 @@ async function collectCandidates(holdingTenantId: string, division: Division): P
         code: c.code,
         description: c.description,
         durationWeeks: c.durationWeeks,
-        feeAmount: c.feeAmount,
+        feeAmountMinor: c.feeAmountMinor,
         gstRate: c.gstRate,
         hsnSac: c.hsnSac,
         division: c.division,
@@ -712,7 +713,7 @@ export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutC
           code: c.code,
           description: c.description,
           durationWeeks: c.durationWeeks,
-          feeAmount: c.feeAmount as never,
+          feeAmountMinor: c.feeAmountMinor,
           gstRate: c.gstRate as never,
           hsnSac: c.hsnSac,
           division: c.division,
@@ -1117,6 +1118,11 @@ export async function revertSpinOut(input: {
           where: { tenantId: subsidiaryTenantId, batchId },
         });
         if (prior) return true;
+
+        // The reversals are dated now, in the subsidiary's current month. The hook above checked
+        // that month outside this transaction, so the lock is taken here, before the first number
+        // is drawn (periodLock.ts order).
+        await lockLegacyPeriod(tx, subsidiaryTenantId, now);
 
         // A revert is only safe while the subsidiary has done nothing else. Keep the
         // guard: a row outside the batch means the subsidiary has a life of its own.

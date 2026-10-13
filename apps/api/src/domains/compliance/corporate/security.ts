@@ -21,6 +21,7 @@ import { currentAuth } from '../../../platform/context.js';
 import { ApiError } from '../../../platform/errors.js';
 import { assertCan } from '../../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../../platform/audit.js';
+import { governedWrite } from '../../../platform/governedWrite.js';
 import { raiseException } from '../../../platform/exceptions.js';
 import { istDateKey, istDayStart } from '@kaizen/shared';
 
@@ -33,9 +34,27 @@ export async function securityPolicy() {
   const auth = currentAuth();
   const existing = await prisma.securityPolicy.findFirst({ where: { tenantId: auth.tenantId } });
   if (existing) return existing;
-  return prisma.securityPolicy.create({
-    data: { tenantId: auth.tenantId, mfaRequiredForRoleSlugs: DEFAULT_MFA_ROLES },
-  });
+  try {
+    // Inside the transaction, so the losing racer's rolled-back create leaves no audit row.
+    return await governedWrite(async (tx) => {
+      const created = await tx.securityPolicy.create({
+        data: { tenantId: auth.tenantId, mfaRequiredForRoleSlugs: DEFAULT_MFA_ROLES },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'security_policy',
+        subjectId: created.id,
+        after: { mfaRequiredForRoleSlugs: DEFAULT_MFA_ROLES },
+        tx,
+      });
+      return created;
+    });
+  } catch (err) {
+    // Two first readers race to create the policy (two approvals at once, or a read and
+    // an approval). The loser's unique violation means the winner's row exists now.
+    if ((err as { code?: string }).code !== 'P2002') throw err;
+    return prisma.securityPolicy.findFirstOrThrow({ where: { tenantId: auth.tenantId } });
+  }
 }
 
 export async function updateSecurityPolicy(input: {

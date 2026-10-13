@@ -23,7 +23,7 @@ import {
 import { hire, transitionEmployment } from '../../domains/employment.js';
 import { encryptField, readRegulated } from '../../domains/compliance/privacy.js';
 import { asSystem } from '../../platform/context.js';
-import { readyPayrollPosting } from './payrollLedgerFixture.js';
+import { approvePayrollRules, readyPayrollPosting, recordStatutoryLines } from './payrollLedgerFixture.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import {
   createPayItem,
@@ -56,6 +56,8 @@ let fixtureSeq = 0;
 
 beforeAll(async () => {
   TENANT = await tenantId();
+  // The statutory rules a run is computed and posted from are approved here, in setup (S10).
+  await approvePayrollRules(TENANT, 'chairman@kaizen.co.in');
 });
 
 async function employmentFor(email: string) {
@@ -413,8 +415,21 @@ describe('payroll journal', () => {
       where: { tenantId: TENANT, payrollRunId: run.id },
       data: { pfEmployeeMinor: 600_000n },
     });
+    // Posting refuses a run whose statutory amounts have no statutory lines (payrollAccrual.ts), so the
+    // hand-built run gets the lines computeInstruction would have written for that 6,000 PF deduction.
+    await recordStatutoryLines({
+      tenantId: TENANT,
+      payrollRunId: run.id,
+      payPeriod: '2032-03',
+      employmentId: a.employment.id,
+      amounts: { PF_EMPLOYEE: 600_000n },
+    });
     // The employee above needs a ledger entity, and 2032-03 an open period.
-    await readyPayrollPosting(TENANT, { months: ['2032-03'], divisions: ['software'] });
+    await readyPayrollPosting(TENANT, {
+      months: ['2032-03'],
+      divisions: ['software'],
+      approverEmail: 'chairman@kaizen.co.in',
+    });
 
     const opsJournal = await asUser('operations@kaizen.co.in', () => generatePayrollJournal(run.id));
     const noGrant = await expectReject(() =>
@@ -527,6 +542,10 @@ describe('bank advice', () => {
     expect(csv).toContain('HDFC0000789');
     expect(csv).toContain('000777888999');
     expect(csv).not.toContain('enc:v1:');
+    // The IFSC is a column of its own, so the plain value must sit in that column
+    // and not merely appear somewhere in the file.
+    expect(csv.split('\n')[0]).toContain('IFSC');
+    expect(csv).toContain(',HDFC0000789,');
   });
 
   it('FX-35: a second generate for the same run is refused, and the first file stands', async () => {

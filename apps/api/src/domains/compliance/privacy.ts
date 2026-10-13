@@ -45,6 +45,10 @@ import { normaliseEmail, normalisePhone } from '../identity.js';
 import { registerHook } from '../../platform/hooks.js';
 
 registerGovernedEntities('cmp_privacy', ['privacy_notice', 'consent', 'data_principal_request', 'data_breach']);
+// The retention report is the evidence that retention was reviewed, and the encryption
+// backfill rewrites regulated employee fields directly. Both are registered here so their
+// audit rows do not depend on which compliance or HR module happened to load first.
+registerGovernedEntities('cmp_privacy', ['retention_report', 'encryption_backfill_run', 'employment_relationship']);
 
 // ---------------------------------------------------------------------------
 // Privacy notice
@@ -611,6 +615,7 @@ async function assembleAccessExport(tenantId: string, personId: string) {
     bankIfsc: readRegulated(e.bankIfsc),
     uanNumber: readRegulated(e.uanNumber),
     esicNumber: readRegulated(e.esicNumber),
+    nomineeName: readRegulated(e.nomineeName),
   }));
 
   return {
@@ -1332,6 +1337,12 @@ export async function runRetentionReport(): Promise<{ generatedAt: Date; snapsho
   const report = await prisma.retentionReport.create({
     data: { tenantId: auth.tenantId, generatedAt: now, snapshot: snapshot as never },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'retention_report',
+    subjectId: report.id,
+    after: { generatedAt: now.toISOString(), snapshot: snapshot as never },
+  });
   return { generatedAt: report.generatedAt, snapshot };
 }
 
@@ -1521,6 +1532,9 @@ const REGULATED_EMPLOYMENT_FIELDS = [
   'bankIfsc',
   'uanNumber',
   'esicNumber',
+  // Nominee's name: the payroll write encrypts it (setBankDetails), so the backfill
+  // must cover rows written before that, or they stay plaintext. FX-64.
+  'nomineeName',
 ] as const;
 
 export async function backfillEncryptAtRest(): Promise<{
@@ -1542,6 +1556,7 @@ export async function backfillEncryptAtRest(): Promise<{
       bankIfsc: true,
       uanNumber: true,
       esicNumber: true,
+      nomineeName: true,
     },
   });
 
@@ -1563,12 +1578,32 @@ export async function backfillEncryptAtRest(): Promise<{
       valuesEncrypted += 1;
     }
     if (Object.keys(patch).length) {
-      await unscopedPrisma.employmentRelationship.update({ where: { id: row.id }, data: patch as never });
+      // Audited per row, with the names of the fields only: the values are in the record,
+      // and copying them into the audit trail would spread them to a second store.
+      await unscopedPrisma.$transaction(async (tx) => {
+        await tx.employmentRelationship.update({ where: { id: row.id }, data: patch as never });
+        await auditWrite({
+          action: 'update',
+          subjectType: 'employment_relationship',
+          subjectId: row.id,
+          meta: { fieldsEncrypted: Object.keys(patch) },
+          tx: tx as unknown as DbTx,
+        });
+      });
     }
   }
 
-  await prisma.encryptionBackfillRun.create({
-    data: { tenantId: auth.tenantId, fieldsScanned, valuesEncrypted, alreadyEncrypted, runById: auth.partyId },
+  await prisma.$transaction(async (tx) => {
+    const run = await tx.encryptionBackfillRun.create({
+      data: { tenantId: auth.tenantId, fieldsScanned, valuesEncrypted, alreadyEncrypted, runById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'encryption_backfill_run',
+      subjectId: run.id,
+      after: { fieldsScanned, valuesEncrypted, alreadyEncrypted },
+      tx,
+    });
   });
   await auditBulkOperation('employment_relationship', 'encrypt_at_rest_backfill', {
     fieldsScanned,
@@ -1593,6 +1628,7 @@ export async function encryptionStatus() {
       bankIfsc: true,
       uanNumber: true,
       esicNumber: true,
+      nomineeName: true,
     },
   });
   let plaintext = 0;

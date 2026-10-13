@@ -20,7 +20,7 @@ function paiseSum(amounts: number[]): bigint {
 describe('FX-31: a fee split into instalments sums to the fee exactly', () => {
   it('a fee of 100000.01 on the default 40/30/30 plan sums to the fee, the leftover paisa on the first instalment', () => {
     const plan = instalmentPlan(undefined);
-    const amounts = instalmentAmounts(100000.01, plan);
+    const amounts = instalmentAmounts(parseMinor('100000.01'), plan);
 
     expect(amounts).toHaveLength(3);
     expect(paiseSum(amounts)).toBe(parseMinor('100000.01'));
@@ -33,7 +33,7 @@ describe('FX-31: a fee split into instalments sums to the fee exactly', () => {
       { share: 0.3333, dueInDays: 45 },
       { share: 0.3333, dueInDays: 90 },
     ]);
-    const amounts = instalmentAmounts(100000.01, plan);
+    const amounts = instalmentAmounts(parseMinor('100000.01'), plan);
 
     expect(paiseSum(amounts)).toBe(parseMinor('100000.01'));
     expect(amounts.map((a) => a.toFixed(2))).toEqual(['33340.01', '33330.00', '33330.00']);
