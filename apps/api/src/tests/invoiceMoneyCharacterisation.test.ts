@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../server.js';
 import { asUser, principalFor, sessionToken, tenantId, unscopedPrisma, type TestPrincipal } from './helpers.js';
 import { assertTrialBalance, journalTrialBalance } from '../platform/balances.js';
+import { balanceOf } from '../platform/ledger.js';
 
 const LATHA = 'latha@kaizen.co.in';
 let server: Server;
@@ -65,6 +66,7 @@ async function anOrganization() {
 async function createA(org: string) {
   return call('POST', '/finance/invoices', {
     organizationId: org,
+    division: 'education',
     placeOfSupply: '33',
     lines: [{ description: 'Programme', quantity: 1, unitPrice: 1234.57, gstRate: 18 }],
   });
@@ -77,6 +79,7 @@ async function createA(org: string) {
 async function createB(org: string) {
   return call('POST', '/finance/invoices', {
     organizationId: org,
+    division: 'education',
     placeOfSupply: '27',
     lines: [
       { description: 'Seat', quantity: 2, unitPrice: 99.99, gstRate: 12, discountPercent: 7.5 },
@@ -89,6 +92,7 @@ async function createB(org: string) {
 async function createC(org: string) {
   return call('POST', '/finance/invoices', {
     organizationId: org,
+    division: 'education',
     placeOfSupply: '33',
     lines: [{ description: 'Exempt fee', quantity: 1, unitPrice: 1000.49, gstRate: 0 }],
   });
@@ -99,6 +103,7 @@ async function createC(org: string) {
 async function createD(org: string) {
   return call('POST', '/finance/invoices', {
     organizationId: org,
+    division: 'education',
     placeOfSupply: '27',
     issue: false,
     lines: [{ description: 'Draft seat', quantity: 4, unitPrice: 250.25, gstRate: 18, discountAmount: 10.1 }],
@@ -280,28 +285,40 @@ describe('the summary, the document and the list carry the same figures as numbe
   });
 });
 
-// The invoice path writes no journal lines today: issue and collect move the
-// invoice's own figures and its receipt, and buildInvoiceIssueEntry (postingRules.ts)
-// has no caller outside the ledger tests. So the trial balance cannot move, and this
-// pins that: a conversion that starts posting, or posts a different amount, changes
-// the line count or the balance and fails here.
-describe('issuing D and collecting against it leaves the journal as it was', () => {
-  it('the trial balance holds and its line count does not move', async () => {
+// Pinned before invoice posting (owner decision 2026-10-13, Phase 0). This used to pin
+// that the invoice path wrote no journal lines, which recorded the gap the owner ruled on:
+// the issue and each receipt now post, in the transaction that writes the document. The
+// pin is now the posting's shape: the issue adds one entry of five lines (receivable, the
+// revenue line, CGST, SGST and round-off), the instalment adds one of two, the trial
+// balance holds at each step, and the organisation's receivable moves by the grand total
+// and then by the receipt. Absolute balances are not pinned: other tests share the tenant.
+describe('issuing D and collecting against it posts both, and the trial balance holds', () => {
+  it('the issue adds five lines and the instalment two, and the receivable moves by each', async () => {
+    const org = await anOrganization();
+    const receivable = await unscopedPrisma.ledgerPostingRole.findFirstOrThrow({
+      where: { tenantId: TENANT, role: 'TRADE_RECEIVABLE', scopeKey: '' },
+    });
     const trial = () => asUser(LATHA, async () => journalTrialBalance(new Date()));
+    const receivableOf = () =>
+      asUser(LATHA, async () => balanceOf(receivable.ledgerAccountId, new Date(), { partyId: org }));
+
     const before = await trial();
-    const draft = (await createD(await anOrganization())).body;
+    const receivableBefore = await receivableOf();
+    const draft = (await createD(org)).body;
 
     const issued = await call('POST', `/finance/invoices/${draft.id}/issue`, {});
     expect(issued.status).toBe(200);
     const afterIssue = await trial();
     expect(() => assertTrialBalance(afterIssue)).not.toThrow();
-    expect(afterIssue.lineCount).toBe(before.lineCount);
+    expect(afterIssue.lineCount - before.lineCount).toBe(5);
+    expect((await receivableOf()) - receivableBefore).toBe(116900n);
 
     const collected = await call('POST', `/finance/invoices/${draft.id}/collect`, { amount: 300, mode: 'cash' });
     expect(collected.status).toBe(200);
     const afterCollect = await trial();
     expect(() => assertTrialBalance(afterCollect)).not.toThrow();
-    expect(afterCollect.lineCount).toBe(before.lineCount);
+    expect(afterCollect.lineCount - afterIssue.lineCount).toBe(2);
+    expect((await receivableOf()) - receivableBefore).toBe(86900n);
 
     const summary = await call('GET', `/finance/invoices/${draft.id}`);
     expect(summary.body.outstanding).toBe(869);

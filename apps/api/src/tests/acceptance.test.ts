@@ -1092,6 +1092,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
       // of a funded cohort.
       const err = await expectReject(async () =>
         createInvoice({
+          division: 'education',
           personId: learner.personId,
           lines: [{ description: 'A course', unitPrice: 10_000, gstRate: 18, hsnSac: '999293' }],
         }),
@@ -1101,6 +1102,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
 
       // And the sponsor is billable in their place.
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: sponsor.id,
         placeOfSupply: '33',
         lines: [{ description: `Cohort fee — ${learner.fullName}`, unitPrice: 10_000, gstRate: 18, hsnSac: '999293' }],

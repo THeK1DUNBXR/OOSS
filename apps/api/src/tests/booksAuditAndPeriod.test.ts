@@ -188,6 +188,7 @@ describe('Audit — each books write leaves one audit row for the change it made
     const org = await unscopedPrisma.organization.findFirstOrThrow({ where: { tenantId: TENANT } });
     const draft = await asUser(FINANCE, () =>
       createInvoice({
+        division: 'education',
         organizationId: org.id,
         issue: false,
         lines: [{ description: unique('W2 priced draft'), unitPrice: 1000, gstRate: 18 }],

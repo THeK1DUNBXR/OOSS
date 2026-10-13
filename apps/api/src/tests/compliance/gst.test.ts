@@ -108,12 +108,14 @@ describe('CMP-GST-001: a nil/exempt line reports as such and drops out of taxabl
       const before1 = await computeGstr1(currentPeriod);
 
       await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         lines: [{ description: 'Taxable line', unitPrice: 10_000, gstRate: 18, hsnSac: '998314' }],
       });
 
       const exemptInvoice = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         lines: [{ courseId: course.id }],
@@ -145,6 +147,7 @@ describe('CMP-GST-001: a nil/exempt line reports as such and drops out of taxabl
   it('classify forces a non-taxable line to zero rate and zero tax, and a taxable one keeps its rate', async () => {
     await asUser('finance@kaizen.co.in', async () => {
       const draft = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         issue: false,
@@ -178,6 +181,7 @@ describe('CMP-GST-001: a nil/exempt line reports as such and drops out of taxabl
       await asUser('finance@kaizen.co.in', async () => {
         const rejected = await expectReject(async () =>
           createInvoice({
+            division: 'education',
             personId: await aPerson(),
             placeOfSupply: '33',
             lines: [{ description: 'Composition seller', unitPrice: 1000, gstRate: 18, hsnSac: '998314' }],
@@ -186,6 +190,7 @@ describe('CMP-GST-001: a nil/exempt line reports as such and drops out of taxabl
         expect(rejected.message).toMatch(/composition/i);
 
         const invoice = await createInvoice({
+          division: 'education',
           personId: await aPerson(),
           placeOfSupply: '33',
           lines: [
@@ -263,6 +268,7 @@ describe('CMP-GST-003: a debit note has its own gapless series and a mandatory r
   it('two debit notes on one invoice get consecutive numbers on the D series', async () => {
     await asUser('finance@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         lines: [{ description: 'Under-billed', unitPrice: 5000, gstRate: 18, hsnSac: '998314' }],
@@ -290,6 +296,7 @@ describe('CMP-GST-003: a debit note has its own gapless series and a mandatory r
   it('a credit note gets the C series and a structured reason, on the same invoice reason list', async () => {
     await asUser('finance@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         lines: [{ description: 'Over-billed', unitPrice: 5000, gstRate: 18, hsnSac: '998314' }],
@@ -314,6 +321,7 @@ describe('CMP-GST-003: a debit note has its own gapless series and a mandatory r
 
     await asUser('finance@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         lines: [{ description: 'Base', unitPrice: 8000, gstRate: 18, hsnSac: '998314' }],
@@ -338,6 +346,7 @@ describe('CMP-GST-004: e-invoicing is declared not-configured rather than silent
     try {
       await asUser('finance@kaizen.co.in', async () => {
         const invoice = await createInvoice({
+          division: 'education',
           personId: await aPerson(),
           placeOfSupply: '33',
           lines: [{ description: 'E-invoice candidate', unitPrice: 1000, gstRate: 18, hsnSac: '998314' }],
@@ -355,6 +364,7 @@ describe('CMP-GST-004: e-invoicing is declared not-configured rather than silent
   it('an invoice on a tenant with e-invoicing not applicable is stamped not_applicable at issue', async () => {
     await asUser('finance@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         lines: [{ description: 'No e-invoicing here', unitPrice: 1000, gstRate: 18, hsnSac: '998314' }],
@@ -376,6 +386,7 @@ describe('CMP-GST-004: e-invoicing is declared not-configured rather than silent
         await setEInvoiceConfig({ provider: 'fixture_irp' });
 
         const draft = await createInvoice({
+          division: 'education',
           personId: await aPerson(),
           placeOfSupply: '33',
           issue: false,

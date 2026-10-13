@@ -48,6 +48,7 @@ beforeAll(async () => {
   await reopenLatestFirst(FIXTURE, 'Test fixture reset at the start of the run');
   INVOICE = await asUser(FINANCE, () =>
     createInvoice({
+      division: 'education',
       organizationId: FIXTURE.organizationId,
       lines: [{ description: 'Compliance period fixture', unitPrice: 1000, gstRate: 18 }],
     }),

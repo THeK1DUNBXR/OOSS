@@ -88,6 +88,15 @@ import { companyProfile, documentNumbering, supplyingParty } from './companyProf
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../platform/documentNumber.js';
 import { runHooks } from '../platform/hooks.js';
 import { governedWrite } from '../platform/governedWrite.js';
+import { lockLegacyPeriod } from '../platform/periodLock.js';
+import {
+  issueEntryExists,
+  ledgerEntityForNewInvoice,
+  postInvoiceIssue,
+  postReceiptAllocation,
+  receiptPostsFor,
+  reverseInvoiceIssue,
+} from './invoicePosting.js';
 import {
   assertFits,
   clampZero,
@@ -181,6 +190,11 @@ export interface InvoiceInput {
   /** Override the derived reading. Almost never needed; honoured when given. */
   interState?: boolean | null;
   division?: string | null;
+  /**
+   * The ledger entity the invoice is booked to. Optional where the tenant has exactly
+   * one; required, and named here, where it has several (ledgerEntityForNewInvoice).
+   */
+  ledgerEntityId?: string | null;
   notes?: string | null;
   lines: InvoiceLineInput[];
   /** False leaves it a draft, which is the only editable state. */
@@ -807,6 +821,8 @@ export async function createInvoice(input: InvoiceInput) {
   const gst = computeGst(gstInputOf(priced), tax.interState);
 
   const issue = input.issue !== false;
+  // An issue posts to the journal, a write in its own permission domain (rule 5).
+  if (issue) await assertCan({ resource: 'transactions', verb: 'create' });
   const issuedDate = input.issuedDate ?? new Date();
   if (issue) await assertPeriodOpen(issuedDate, 'This invoice');
   if (issue) await runHooks('accounting_document.before_write', { date: issuedDate, what: 'This invoice' });
@@ -859,8 +875,14 @@ export async function createInvoice(input: InvoiceInput) {
   // which refuses inside one. The numbers are taken inside it, so a failed
   // write gives its number back (documentNumber.ts).
   const numbering = await documentNumbering();
+  // Refused before anything is written: an invoice with no entity to be booked to is
+  // not created, whether it is a draft or an issue (invoicePosting.ts).
+  const ledgerEntityId = await ledgerEntityForNewInvoice(auth.tenantId, input.ledgerEntityId);
 
   const { invoice, recordCode, draftReference } = await prisma.$transaction(async (tx) => {
+    // The period row before any number is taken: the order the period lock is held in
+    // (periodLock.ts), and a closed month is refused here as the hook refused it above.
+    if (issue) await lockLegacyPeriod(tx, auth.tenantId, issuedDate);
     const recordCode = issue
       ? await nextDocumentNumber(
           tx,
@@ -897,6 +919,7 @@ export async function createInvoice(input: InvoiceInput) {
         roundOffMinor: rupeesToMinor(gst.roundOff),
         grandTotalMinor: rupeesToMinor(gst.grandTotal),
         division: input.division ?? null,
+        ledgerEntityId,
         // The declaration, before any money is taken. `collectInvoicePayment`
         // moves it if a payment follows.
         paymentType: 'credit',
@@ -906,6 +929,9 @@ export async function createInvoice(input: InvoiceInput) {
       },
     });
     await writeLines(tx, created.id, priced);
+    // The issue's entry, in this transaction: an entry that cannot post takes the
+    // invoice, its number and its lines back with it.
+    if (issue) await postInvoiceIssue(tx, created.id, issuedDate);
     return { invoice: created, recordCode, draftReference };
   });
 
@@ -1135,11 +1161,16 @@ export async function issueInvoiceDraft(
   // as the status means the two cannot come apart. A course-fee draft draws
   // from the `temp` series instead — see `createInvoice`.
   const numbering = await documentNumbering();
+  // The issue posts to the journal (invoicePosting.ts), a write in its own permission domain.
+  await assertCan({ resource: 'transactions', verb: 'create' });
   const issued = await governedWrite(async (tx) => {
     // Re-read under the lock. Two issues of one draft can both pass the status
     // check above; without this the loser takes a number and then overwrites the
     // winner's, and the number it took is a hole in the series.
     await lockInvoice(tx, auth.tenantId, invoiceId);
+    // The period row before the number is taken (periodLock.ts order). It is created
+    // when the month has none, and a closed or closing month is refused here.
+    await lockLegacyPeriod(tx, auth.tenantId, issuedDate);
     const current = await tx.invoice.findFirst({
       where: { id: invoiceId, tenantId: auth.tenantId },
       select: { status: true, recordCode: true },
@@ -1162,6 +1193,9 @@ export async function issueInvoiceDraft(
       where: { id: invoiceId },
       data: { status: 'issued', issuedDate, recordCode },
     });
+    // The journal entry for the issue, in this transaction (invoicePosting.ts). A refusal
+    // here takes the number and the status back: nothing is issued that is not booked.
+    await postInvoiceIssue(tx, invoiceId, issuedDate);
 
     await auditWrite({
       tx,
@@ -1225,9 +1259,17 @@ export async function voidInvoice(invoiceId: string, reason: string) {
     await runHooks('accounting_document.before_write', { date: existing.issuedDate, what: 'This invoice' });
   }
 
-  const voided = await prisma.invoice.update({
-    where: { id: invoiceId },
-    data: { status: 'void', notes: existing.notes ? `${existing.notes}\n\nVoided: ${reason}` : `Voided: ${reason}` },
+  // An issued invoice has an entry in the journal, and a void reverses it in the same
+  // transaction, so the receivable does not outlive the document. An invoice with no entry
+  // (issued before posting was wired) has nothing to reverse.
+  if (await issueEntryExists(invoiceId)) await assertCan({ resource: 'transactions', verb: 'create' });
+  const voided = await governedWrite(async (tx) => {
+    const row = await tx.invoice.update({
+      where: { id: invoiceId },
+      data: { status: 'void', notes: existing.notes ? `${existing.notes}\n\nVoided: ${reason}` : `Voided: ${reason}` },
+    });
+    await reverseInvoiceIssue(tx, invoiceId, `Void of ${invoiceLabel(existing)}: ${reason}`);
+    return row;
   });
 
   await auditWrite({
@@ -1280,6 +1322,8 @@ export async function collectInvoicePayment(
   const auth = currentAuth();
   const invoice = await loadForWrite(invoiceId, 'edit');
   await assertCan({ resource: 'payments', verb: 'create' });
+  // The receipt posts to the journal (invoicePosting.ts), a write in its own permission domain.
+  await assertCan({ resource: 'transactions', verb: 'create' });
 
   if (invoice.status === 'draft') {
     throw ApiError.unprocessable(
@@ -1346,6 +1390,9 @@ export async function collectInvoicePayment(
     // The payment keeps a record code. The receipt is the document the customer
     // is handed, so it is numbered in the company's series. Both are taken here,
     // so a rollback gives both numbers back.
+    // The period row before the numbers are taken (periodLock.ts order). Created when the
+    // month has none; a closed or closing month is refused here.
+    await lockLegacyPeriod(tx, auth.tenantId, receivedAt);
     const paymentCode = await nextRecordCode('PAY', undefined, tx);
     const receiptCode = await nextDocumentNumber(
       tx,
@@ -1418,6 +1465,22 @@ export async function collectInvoicePayment(
           : {}),
       },
     });
+
+    // The allocation's entry, in this transaction. The amount is the receipt's own
+    // allocatedAmount, so the journal says what the customer was handed.
+    // Owner decision, 2026-10-13: an invoice issued before posting was wired has no issue
+    // entry, so a receipt against it posts nothing, and the receivable is never credited
+    // with no debit behind it. The receipt row is still written.
+    if (await receiptPostsFor(tx, invoice.id)) {
+      await postReceiptAllocation(tx, {
+        receiptId: receipt.id,
+        receiptCode,
+        allocatedAmount: receipt.allocatedAmount,
+        paymentMode: input.mode,
+        invoice: locked,
+        receivedAt,
+      });
+    }
 
     await auditWrite({
       tx,

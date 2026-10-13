@@ -112,6 +112,7 @@ describe('debit notes: the amount as it goes on the wire', () => {
     const period = await untouchedPeriod();
     const invoice = await asUser(FINANCE, () =>
       createInvoice({
+        division: 'education',
         organizationId: ORG,
         placeOfSupply: '33',
         issuedDate: firstDayOf(period),
@@ -245,6 +246,7 @@ describe('GST filings: the figures as they go on the wire', () => {
     const period = await untouchedPeriod();
     await asUser(LATHA, () =>
       createInvoice({
+        division: 'education',
         organizationId: ORG,
         placeOfSupply: '33',
         customerGstin: GSTIN,
@@ -299,6 +301,7 @@ describe('GST filings: the figures as they go on the wire', () => {
     const billDate = firstDayOf(period);
     await asUser(LATHA, () =>
       createInvoice({
+        division: 'education',
         organizationId: ORG,
         placeOfSupply: '33',
         customerGstin: GSTIN,

@@ -69,6 +69,7 @@ async function anAccount() {
 
 async function issueOne(unitPrice: number, gstRate: number) {
   const res = await call('POST', '/finance/invoices', {
+    division: 'education',
     organizationId: await anAccount(),
     placeOfSupply: '33',
     lines: [{ description: 'Programme', quantity: 1, unitPrice, gstRate }],

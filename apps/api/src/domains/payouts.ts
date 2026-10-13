@@ -20,7 +20,7 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
-import { assertCan } from '../platform/permissions.js';
+import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { runHooks } from '../platform/hooks.js';
 import { registerGovernedEntities, auditWrite } from '../platform/audit.js';
 import { assertStepUpForApprove } from './compliance/corporate/security.js';
@@ -189,7 +189,7 @@ export async function requestReversalOfInward(originalId: string, reason: string
  */
 export async function requestRecurringRuleApproval(ruleId: string): Promise<PayoutRequest> {
   const auth = currentAuth();
-  await assertCan({ resource: 'transactions', verb: 'create' });
+  await assertScopeAll('transactions', 'create');
   const rule = await prisma.recurringRule.findFirst({ where: { id: ruleId, tenantId: auth.tenantId } });
   if (!rule) throw ApiError.notFound('Recurring rule');
   if (rule.direction !== 'out') {

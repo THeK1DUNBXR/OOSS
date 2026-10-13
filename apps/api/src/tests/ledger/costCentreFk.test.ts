@@ -20,7 +20,7 @@ import { PrismaClient } from '@prisma/client';
 import { unscopedPrisma } from '../../platform/db.js';
 import { post, reverse } from '../../platform/ledger.js';
 import { assertTrialBalance, journalTrialBalance } from '../../platform/balances.js';
-import { asUser, tenantId } from '../helpers.js';
+import { asUser, booksTenant } from '../helpers.js';
 
 const APP_URL =
   process.env.TEST_APP_DATABASE_URL ??
@@ -29,7 +29,8 @@ const APP_URL =
     '//kaizen_app:kaizen_app@',
   );
 
-const CHAIRMAN = 'chairman@kaizen.co.in';
+// The books tenant's own chairman, set in beforeAll: a post runs as a principal of the tenant it writes to.
+let CHAIRMAN = 'chairman@kaizen.co.in';
 const app = new PrismaClient({ datasourceUrl: APP_URL });
 /** Past every posting: the trial balance is taken over the whole tenant. */
 const ALL_TIME = new Date('9999-12-31T00:00:00.000Z');
@@ -111,7 +112,12 @@ async function countEntries(key: string): Promise<number> {
 }
 
 beforeAll(async () => {
-  tid = await tenantId();
+  // Its own books tenant. The kaizen tenant is the one every invoice test issues into, and a
+  // ledger entity written there here would make kaizen several-entity for the rest of the run
+  // (invoicePosting.ts ledgerEntityForNewInvoice), with entries that cannot be taken back.
+  const books = await booksTenant('cost-centre-fk-p0', { invoicePosting: false });
+  tid = books.tenantId;
+  CHAIRMAN = books.chairman;
   const other = await unscopedPrisma.tenant.create({
     data: { name: 'Cost centre FK other tenant', slug: `ccfk-other-${randomUUID().slice(0, 8)}` },
   });

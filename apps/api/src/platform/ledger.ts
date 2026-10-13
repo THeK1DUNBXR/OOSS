@@ -10,7 +10,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { prisma, type DbTx } from './db.js';
 import { currentAuth } from './context.js';
-import { assertCan } from './permissions.js';
+import { assertCan, assertScopeAll } from './permissions.js';
 import { auditWrite } from './audit.js';
 import { emit } from './eventBus.js';
 import { ApiError } from './errors.js';
@@ -407,7 +407,11 @@ async function writeEntry(tx: DbTx, input: PostInput, tenantId: string, partyId:
  */
 export async function post(input: PostInput) {
   const auth = currentAuth();
-  await assertCan({ resource: 'transactions', verb: 'create' });
+  // A journal write carries no record to narrow against, so assertCan alone admits every
+  // holder of `transactions:create`, `@own` included. Every caller here is a company-wide
+  // write (cashbook drafts, reversals), so it needs all scope. The invoice paths use postInTx,
+  // which the invoice's own record guards (invoicing.ts loadForWrite).
+  await assertScopeAll('transactions', 'create');
   validatePostInput(input);
 
   try {
@@ -437,7 +441,7 @@ export async function post(input: PostInput) {
  * UPDATE, so it never holds a source row and waits on a posting.
  *
  * Callers, in this order:
- *   1. assertCan({ resource: 'transactions', verb: 'create' }) before they open
+ *   1. assertScopeAll('transactions', 'create') (postInTx's callers check their own record) before they open
  *      their transaction. Permission evaluation reads through the scoped client,
  *      which refuses inside a transaction (db.ts refuseOuterClientInTransaction),
  *      so this function cannot run the check.
