@@ -19,9 +19,16 @@ import {
   statutoryLines,
   type PtSlab,
   ENCRYPTED_FIELD_PREFIX,
+  decimalToMinor,
 } from '@kaizen/shared';
 import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from '../helpers.js';
-import { hire, transitionEmployment, updateEmployeeProfile } from '../../domains/employment.js';
+import {
+  hire,
+  transitionEmployment,
+  updateEmployeeProfile,
+  proposeCompensation,
+  transitionCompensation,
+} from '../../domains/employment.js';
 import { transitionPayrollRun } from '../../domains/payroll.js';
 import { minorToRupees } from '../../domains/money.js';
 import {
@@ -337,6 +344,29 @@ describe('payroll runs against the dated tables (real database)', () => {
   it('CMP-PAY-004: a contractor computes no PF/ESI/PT/LWF, and carries a 194J hint instead', async () => {
     const { employment: emp } = await makeEmployee('contractor');
     await asUser('operations@kaizen.co.in', () => setEngagementType(emp.id, 'contractor'));
+
+    // A contractor carries a fee like anyone else. Left with none, the company-wide
+    // run that hr.test opens for the same database picks them up at zero, and
+    // CMP-PAY-005 refuses that run's approval. The fee is the Tamil Nadu floor in
+    // force today, read from the seed row, so it is never below the floor.
+    const floor = await unscopedPrisma.minimumWageTable.findFirstOrThrow({
+      where: { tenantId: TENANT, state: 'Tamil Nadu', category: 'general', effectiveFrom: { lte: new Date() } },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+    const fee = await asUser('hr@kaizen.co.in', () =>
+      proposeCompensation({
+        employmentRelationshipId: emp.id,
+        revisionReason: 'annual_cycle',
+        amount: minorToRupees(decimalToMinor(floor.monthlyAmount)),
+        effectiveFrom: new Date('2020-01-01'),
+      }),
+    );
+    await asUser('hr@kaizen.co.in', () => transitionCompensation(fee.id, 'SUBMIT'));
+    await asUser('arun@kaizen.co.in', () => transitionCompensation(fee.id, 'APPROVE'));
+    // Approved is not yet in force: payroll reads only Effective pay, so the fee
+    // is scheduled and activated here.
+    await asUser('hr@kaizen.co.in', () => transitionCompensation(fee.id, 'SCHEDULE'));
+    await asUser('hr@kaizen.co.in', () => transitionCompensation(fee.id, 'ACTIVATE'));
 
     const payPeriod = period('02');
     const run = await makeSoloRun(emp.id, payPeriod);
