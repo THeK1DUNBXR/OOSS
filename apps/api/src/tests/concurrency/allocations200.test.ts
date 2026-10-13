@@ -34,7 +34,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { formatMinor, parseMinor } from '@kaizen/shared';
+import { formatMinor } from '@kaizen/shared';
 import { asUser, prisma, tenantId, unscopedPrisma } from '../helpers.js';
 import { createInvoice } from '../../domains/invoicing.js';
 import { allocatePayment, recordPayment } from '../../domains/finance.js';
@@ -153,7 +153,7 @@ async function oneRun(seed: number) {
     const acceptedSum = accepted.reduce((s, o) => s + o.paise, 0n);
 
     const receipts = await prisma.receipt.findMany({ where: { paymentId: payment.id } });
-    const persistedSum = receipts.reduce((s, r) => s + parseMinor(r.allocatedAmount.toFixed(2)), 0n);
+    const persistedSum = receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n);
     const seqOf = (code: string) => parseInt(code.split('/').pop() ?? '', 10);
     const seqs = accepted.map((o) => seqOf(o.recordCode)).sort((a, b) => a - b);
 

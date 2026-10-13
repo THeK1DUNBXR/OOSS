@@ -18,7 +18,7 @@ import { prisma } from '../platform/db.js';
 import { rupeesOrZero } from '../platform/wire.js';
 import { subscribe, wouldLoop } from '../platform/eventBus.js';
 import { createInvoice, rehydrateReceivables, issueFeeInstalments } from '../domains/finance.js';
-import { paiseOf, poundsOf } from '../domains/allocation.js';
+import { poundsOf } from '../domains/allocation.js';
 import { ensureWinLossReview } from '../domains/winLoss.js';
 import { computeSensitivity } from '../domains/interactions.js';
 import { markSnapshotDirty } from '../domains/group.js';
@@ -71,9 +71,9 @@ export function instalmentPlan(raw: unknown): FeePlanPart[] {
  * fraction, in plan order (MONEY-LEDGER-CONTRACT decision 1). A fee of 100000.01
  * on 40/30/30 is 40000.01, 30000.00, 30000.00.
  */
-export function instalmentAmounts(fee: { toFixed(digits: number): string } | number, plan: FeePlanPart[]): number[] {
+export function instalmentAmounts(feeMinor: bigint, plan: FeePlanPart[]): number[] {
   const weights = plan.map((p) => BigInt(Math.round(p.share * 10_000)));
-  return allocate(paiseOf(fee), weights).map(poundsOf);
+  return allocate(feeMinor, weights).map(poundsOf);
 }
 
 export function registerSubscribers(): void {
@@ -149,8 +149,8 @@ export function registerSubscribers(): void {
     // then ignored its price. A ₹25,000 course raised a ₹60,000 fee plan, and
     // `priceLines` two files away (`invoicing.ts:465`) had been reading the
     // right field the whole time.
-    const fee = enrollment.cohort?.course?.feeAmount;
-    if (!fee || paiseOf(fee) <= 0n) {
+    const fee = enrollment.cohort?.course?.feeAmountMinor;
+    if (!fee || fee <= 0n) {
       // No price on the course is not a reason to invent one. The enrolment
       // stands; somebody prices the course and the plan is raised then.
       return;

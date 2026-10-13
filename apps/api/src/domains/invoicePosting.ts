@@ -16,7 +16,6 @@
 import {
   buildInvoiceIssueEntry,
   buildReceiptAllocationEntry,
-  decimalToMinor,
   EVENTS,
   invoiceIssueRoles,
   istCivilDay,
@@ -180,14 +179,14 @@ export async function postInvoiceIssue(
 /**
  * Posts a receipt's allocation inside `tx`: the bank for its payment mode is debited
  * and the customer's receivable credited. The amount is the receipt row's own
- * allocatedAmount, read through decimalToMinor, so the journal is the receipt's figure.
+ * allocatedAmountMinor, so the journal is the receipt's own paise.
  */
 export async function postReceiptAllocation(
   tx: DbTx,
   input: {
     receiptId: string;
     receiptCode: string;
-    allocatedAmount: Parameters<typeof decimalToMinor>[0];
+    allocatedAmountMinor: bigint;
     paymentMode: string;
     invoice: {
       recordCode: string | null;
@@ -219,7 +218,7 @@ export async function postReceiptAllocation(
     entryLines = buildReceiptAllocationEntry(
       {
         partyId,
-        amountMinor: decimalToMinor(input.allocatedAmount),
+        amountMinor: input.allocatedAmountMinor,
         paymentMode: input.paymentMode,
       },
       accounts,

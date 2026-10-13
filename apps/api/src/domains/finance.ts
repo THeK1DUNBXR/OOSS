@@ -6,7 +6,7 @@
  *   movement     → PAYMENT, append-only, gateway-authoritative
  *   allocation   → RECEIPT, the many-to-many join
  *
- * Only the sum of a subject's RECEIPT.allocatedAmount rows determines what has
+ * Only the sum of a subject's RECEIPT.allocatedAmountMinor rows determines what has
  * actually been paid against it. This is what finally makes partial payments
  * and credit notes representable.
  *
@@ -24,8 +24,8 @@
  * pointing one way is what stops the two files becoming one.
  */
 
-import { EVENTS, decimalToMinor, toMinorHalfUp } from '@kaizen/shared';
-import { prisma, num } from '../platform/db.js';
+import { EVENTS, toMinorHalfUp } from '@kaizen/shared';
+import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -36,7 +36,7 @@ import { raiseException } from '../platform/exceptions.js';
 import { runHooks } from '../platform/hooks.js';
 import { openAccountingDate, periodRefusesEntries } from './compliance/books.js';
 import { invoiceLabel, paymentWire, receiptWire, rehydrateReceivablesFor, totalsOf } from './invoicing.js';
-import { withMinor } from '../platform/wire.js';
+import { rupeesToMinor, wireInt, withDecimalMinor } from '../platform/wire.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { lockLegacyPeriod } from '../platform/periodLock.js';
 import {
@@ -52,7 +52,6 @@ import {
   lockAndLoadInvoice,
   lockPayment,
   outstandingOfInstalment,
-  paiseOf,
   paiseOfInput,
   poundsOf,
   positionOfInvoice,
@@ -91,12 +90,13 @@ export async function issueFeeInstalments(
   const created: Array<Awaited<ReturnType<typeof prisma.feeInstalment.create>>> = [];
   for (const item of plan) {
     const recordCode = await nextRecordCode('FEE');
+    const amountMinor = toMinorHalfUp(item.amount);
     const instalment = await prisma.feeInstalment.create({
       data: {
         tenantId: auth.tenantId,
         recordCode,
         enrollmentId,
-        amount: item.amount,
+        amountMinor,
         currency,
         dueDate: item.dueDate,
         status: 'issued',
@@ -107,12 +107,12 @@ export async function issueFeeInstalments(
       name: EVENTS.FEE_INSTALMENT_ISSUED,
       subject: { entityType: 'fee_instalment', entityId: instalment.id, recordCode },
       related: [{ relation: 'bills', entityType: 'enrollment', entityId: enrollmentId }],
-      newState: { amount: item.amount, dueDate: item.dueDate },
+      newState: { amount: item.amount, amountMinor: wireInt(amountMinor), dueDate: item.dueDate },
       impact: { domains: ['fin', 'edu'] },
       confidentiality: 'confidential',
     });
   }
-  return created;
+  return created.map((row) => withDecimalMinor(row, ['amount'] as const));
 }
 
 // ---------------------------------------------------------------------------
@@ -153,13 +153,15 @@ export async function recordPayment(input: {
     await runHooks('accounting_document.before_write', { date: arrivedAt, what: 'This payment' });
   }
   const accountingDate = movedFromClosed ? await openAccountingDate(new Date()) : arrivedAt;
+  // Half away from zero, as the number the route sent always read into a two-place column.
+  const amountMinor = rupeesToMinor(input.amount);
 
   const recordCode = await nextRecordCode('PAY');
   const payment = await prisma.payment.create({
     data: {
       tenantId: auth.tenantId,
       recordCode,
-      amount: input.amount,
+      amountMinor,
       currency: input.currency ?? 'INR',
       gatewayReference: input.gatewayReference,
       receivedAt: accountingDate,
@@ -183,6 +185,7 @@ export async function recordPayment(input: {
     after: {
       recordCode,
       amount: input.amount,
+      amountMinor: wireInt(amountMinor),
       receivedAt: accountingDate,
       valueDate: movedFromClosed ? arrivedAt : null,
     },
@@ -203,7 +206,7 @@ export async function recordPayment(input: {
   await emit({
     name: EVENTS.PAYMENT_RECEIVED,
     subject: { entityType: 'payment', entityId: payment.id, recordCode },
-    newState: { amount: input.amount, currency: payment.currency },
+    newState: { amount: input.amount, amountMinor: wireInt(amountMinor), currency: payment.currency },
     impact: {
       domains: ['fin'],
       materiality: { measure: 'payment_amount', value: input.amount, currency: payment.currency },
@@ -243,7 +246,7 @@ export async function reversePayment(paymentId: string, reason: string) {
       data: {
         tenantId: auth.tenantId,
         recordCode,
-        amount: num(original.amount)! * -1,
+        amountMinor: -original.amountMinor,
         currency: original.currency,
         gatewayReference: `${original.gatewayReference}:REVERSAL`,
         receivedAt: new Date(),
@@ -261,25 +264,40 @@ export async function reversePayment(paymentId: string, reason: string) {
     action: 'create',
     subjectType: 'payment',
     subjectId: reversal.id,
-    before: { reversedPaymentId: paymentId, amount: num(original.amount) },
-    after: { recordCode, amount: num(reversal.amount), reason },
+    before: {
+      reversedPaymentId: paymentId,
+      amount: poundsOf(original.amountMinor),
+      amountMinor: wireInt(original.amountMinor),
+    },
+    after: {
+      recordCode,
+      amount: poundsOf(reversal.amountMinor),
+      amountMinor: wireInt(reversal.amountMinor),
+      reason,
+    },
   });
 
   await emit({
     name: EVENTS.PAYMENT_RECEIVED,
     subject: { entityType: 'payment', entityId: reversal.id, recordCode },
-    previousState: { paymentId, amount: num(original.amount) },
-    newState: { amount: num(reversal.amount), currency: reversal.currency, reversalOf: paymentId },
+    previousState: { paymentId, amount: poundsOf(original.amountMinor), amountMinor: wireInt(original.amountMinor) },
+    newState: {
+      amount: poundsOf(reversal.amountMinor),
+      amountMinor: wireInt(reversal.amountMinor),
+      currency: reversal.currency,
+      reversalOf: paymentId,
+    },
     reason: { reasonCode: 'payment_reversed', note: reason },
     impact: {
       domains: ['fin'],
       severity: 'S2_WARNING',
-      materiality: { measure: 'payment_amount', value: num(reversal.amount) ?? 0, currency: reversal.currency },
+      materiality: { measure: 'payment_amount', value: poundsOf(reversal.amountMinor), currency: reversal.currency },
     },
     confidentiality: 'confidential',
   });
 
-  return reversal;
+  // Returned in the shape recordPayment returns: the Decimal `amount` a caller always read, beside its paise.
+  return paymentWire(reversal);
 }
 
 // ---------------------------------------------------------------------------
@@ -323,8 +341,8 @@ export async function allocatePayment(input: {
     });
     if (!payment) throw ApiError.notFound('Payment');
 
-    const allocatedFromPayment = payment.receipts.reduce((s, r) => s + paiseOf(r.allocatedAmount), 0n);
-    assertFits(amountPaise, paiseOf(payment.amount) - allocatedFromPayment, (left) =>
+    const allocatedFromPayment = payment.receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n);
+    assertFits(amountPaise, payment.amountMinor - allocatedFromPayment, (left) =>
       ApiError.unprocessable(`Cannot allocate ${input.amount}: only ${left} of this payment is unallocated.`, {
         available: Number(left),
       }),
@@ -335,8 +353,8 @@ export async function allocatePayment(input: {
     // to keep saying what was owed when it was written, so the figures are stored
     // here rather than recomputed at print time. Read under the invoice lock, for
     // the same reason as collectInvoicePayment.
-    let subjectTotal = 0;
-    let balanceAfter = 0;
+    let subjectTotalMinor = 0n;
+    let balanceAfterMinor = 0n;
     if (input.invoiceId) {
       const invoice = await lockAndLoadInvoice(tx, { tenantId: auth.tenantId, invoiceId: input.invoiceId });
       const position = positionOfInvoice(invoice);
@@ -346,8 +364,8 @@ export async function allocatePayment(input: {
           { outstanding: Number(left), offered: input.amount },
         ),
       );
-      subjectTotal = poundsOf(position.payable);
-      balanceAfter = poundsOf(clampZero(position.outstanding - amountPaise));
+      subjectTotalMinor = position.payable;
+      balanceAfterMinor = clampZero(position.outstanding - amountPaise);
     } else if (input.feeInstalmentId) {
       // Payment, then invoice, then instalment: the one order every path takes
       // them in (allocation.ts). A fee instalment is a receivable like an invoice
@@ -363,8 +381,8 @@ export async function allocatePayment(input: {
           { outstanding: Number(left), offered: input.amount },
         ),
       );
-      subjectTotal = poundsOf(position.amount);
-      balanceAfter = poundsOf(clampZero(position.outstanding - amountPaise));
+      subjectTotalMinor = position.amount;
+      balanceAfterMinor = clampZero(position.outstanding - amountPaise);
     }
 
     // The period row before the number is taken (periodLock.ts order), for an allocation
@@ -384,10 +402,10 @@ export async function allocatePayment(input: {
         paymentId: input.paymentId,
         invoiceId: input.invoiceId ?? null,
         feeInstalmentId: input.feeInstalmentId ?? null,
-        allocatedAmount: input.amount,
+        allocatedAmountMinor: amountPaise,
         allocatedById: auth.partyId,
-        subjectTotal,
-        balanceAfter,
+        subjectTotalMinor,
+        balanceAfterMinor,
         paymentMode: payment.method,
         paymentReference: payment.gatewayReference,
       },
@@ -411,7 +429,7 @@ export async function allocatePayment(input: {
         await postReceiptAllocation(tx, {
           receiptId: receipt.id,
           receiptCode: recordCode,
-          allocatedAmount: receipt.allocatedAmount,
+          allocatedAmountMinor: receipt.allocatedAmountMinor,
           paymentMode: payment.method,
           invoice,
           receivedAt: new Date(),
@@ -424,7 +442,13 @@ export async function allocatePayment(input: {
       action: 'create',
       subjectType: 'receipt',
       subjectId: receipt.id,
-      after: { recordCode, amount: input.amount, balanceAfter },
+      after: {
+        recordCode,
+        amount: input.amount,
+        amountMinor: wireInt(amountPaise),
+        balanceAfter: poundsOf(balanceAfterMinor),
+        balanceAfterMinor: wireInt(balanceAfterMinor),
+      },
     });
     await emit({
       tx,
@@ -434,7 +458,14 @@ export async function allocatePayment(input: {
         { relation: 'from', entityType: 'payment', entityId: input.paymentId },
         ...(input.invoiceId ? [{ relation: 'against', entityType: 'invoice', entityId: input.invoiceId }] : []),
       ],
-      newState: { amount: input.amount, subjectTotal, balanceAfter },
+      newState: {
+        amount: input.amount,
+        amountMinor: wireInt(amountPaise),
+        subjectTotal: poundsOf(subjectTotalMinor),
+        subjectTotalMinor: wireInt(subjectTotalMinor),
+        balanceAfter: poundsOf(balanceAfterMinor),
+        balanceAfterMinor: wireInt(balanceAfterMinor),
+      },
       impact: { domains: ['fin'] },
       confidentiality: 'confidential',
     });
@@ -450,7 +481,7 @@ export async function allocatePayment(input: {
           ? [{ relation: 'against', entityType: 'fee_instalment', entityId: input.feeInstalmentId }]
           : []),
       ],
-      newState: { allocatedAmount: input.amount },
+      newState: { allocatedAmount: input.amount, allocatedAmountMinor: wireInt(amountPaise) },
       impact: { domains: ['fin'] },
       confidentiality: 'confidential',
     });
@@ -501,10 +532,10 @@ async function settleIfFullyPaid(invoiceId: string | null, feeInstalmentId: stri
       include: { receipts: true },
     });
     if (!fee) return;
-    // Summed in paise from each receipt's Decimal. A float sum over instalments is
+    // Summed in paise from each receipt's paise column. A float sum over instalments is
     // where the old 0.001 was absorbing noise, so the sum is no longer a float.
-    const allocated = fee.receipts.reduce((s, r) => s + decimalToMinor(r.allocatedAmount), 0n);
-    const total = decimalToMinor(fee.amount);
+    const allocated = fee.receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n);
+    const total = fee.amountMinor;
     const status = allocated >= total ? 'settled' : allocated > 0n ? 'part_paid' : fee.status;
     if (status !== fee.status) await prisma.feeInstalment.update({ where: { id: feeInstalmentId }, data: { status } });
   }
@@ -534,7 +565,9 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
   const numbering = await documentNumbering();
   // The number and the row it names commit together. Taken on the global client it
   // stayed taken when this write was refused, and the series had a hole in it.
-  const { recordCode, note } = await prisma.$transaction(async (tx) => {
+  // The paise conversion is inside the transaction, after the number is taken, so a
+  // refused amount gives the number back the same way a refused row does.
+  const { recordCode, note, amountMinor } = await prisma.$transaction(async (tx) => {
     const recordCode = await nextDocumentNumber(
       tx,
       DOCUMENT_SERIES.creditNote,
@@ -542,17 +575,18 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
       new Date(),
       numbering.yearFormat,
     );
+    const amountMinor = toMinorHalfUp(amount);
     const note = await tx.creditNote.create({
       data: {
         tenantId: auth.tenantId,
         recordCode,
         invoiceId,
-        amount,
+        amountMinor,
         reason,
         issuedById: auth.partyId,
       },
     });
-    return { recordCode, note };
+    return { recordCode, note, amountMinor };
   });
 
   if (reasonCode) {
@@ -565,18 +599,18 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
     action: 'create',
     subjectType: 'credit_note',
     subjectId: note.id,
-    after: { recordCode, invoiceId, amount, reason, reasonCode: reasonCode ?? null },
+    after: { recordCode, invoiceId, amount, amountMinor: wireInt(amountMinor), reason, reasonCode: reasonCode ?? null },
   });
 
   await emit({
     name: EVENTS.CREDIT_NOTE_ISSUED,
     subject: { entityType: 'credit_note', entityId: note.id, recordCode },
     related: [{ relation: 'reduces', entityType: 'invoice', entityId: invoiceId }],
-    newState: { amount, reason },
+    newState: { amount, amountMinor: wireInt(amountMinor), reason },
     confidentiality: 'confidential',
   });
 
-  return withMinor(note, ['amount'] as const);
+  return withDecimalMinor(note, ['amount'] as const);
 }
 
 // ---------------------------------------------------------------------------

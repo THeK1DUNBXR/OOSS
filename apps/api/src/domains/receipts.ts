@@ -27,10 +27,11 @@
  * who wants a statement of where they stand before the instalments are done.
  */
 
-import { EVENTS, decimalToMinor, round2, toMinorHalfUp, type PaymentMode } from '@kaizen/shared';
+import { EVENTS, sub, type PaymentMode } from '@kaizen/shared';
 import { raiseException } from '../platform/exceptions.js';
 import { prisma, num } from '../platform/db.js';
-import { minorOf } from '../platform/wire.js';
+import { withDecimalMinor, wireInt } from '../platform/wire.js';
+import { clampZero, poundsOf, positionOfInvoice } from './allocation.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -43,6 +44,16 @@ import { companyProfile, documentNumbering } from './companyProfile.js';
 import { openAccountingDate, periodRefusesEntries } from './compliance/books.js';
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../platform/documentNumber.js';
 import { minorToRupees } from './money.js';
+
+/**
+ * The four figures a final invoice carries in paise. The raw row has always printed
+ * them as Decimal strings, so every path that returns one passes through here and
+ * keeps that shape, with the paise string beside each.
+ */
+const FINAL_MONEY = ['totalPayable', 'totalReceived', 'creditNoted', 'balance'] as const;
+function finalWire<T extends object>(final: T) {
+  return withDecimalMinor(final, FINAL_MONEY);
+}
 
 // ---------------------------------------------------------------------------
 // Receipts
@@ -105,19 +116,19 @@ export async function listReceipts(filter: { invoiceId?: string; limit?: number 
     invoiceCode: r.invoice ? invoiceLabel(r.invoice) : null,
     feeInstalmentId: r.feeInstalmentId,
     customerName: nameOf.get(r.invoice?.organizationId ?? r.invoice?.personId ?? '') ?? null,
-    amount: num(r.allocatedAmount) ?? 0,
-    amountMinor: minorOf(r.allocatedAmount),
+    amount: poundsOf(r.allocatedAmountMinor),
+    amountMinor: wireInt(r.allocatedAmountMinor),
     currency: r.invoice?.currency ?? r.payment.currency,
-    subjectTotal: num(r.subjectTotal) ?? 0,
-    subjectTotalMinor: minorOf(r.subjectTotal),
-    balanceAfter: num(r.balanceAfter) ?? 0,
-    balanceAfterMinor: minorOf(r.balanceAfter),
+    subjectTotal: poundsOf(r.subjectTotalMinor),
+    subjectTotalMinor: wireInt(r.subjectTotalMinor),
+    balanceAfter: poundsOf(r.balanceAfterMinor),
+    balanceAfterMinor: wireInt(r.balanceAfterMinor),
     paymentMode: r.paymentMode ?? r.payment.method,
     paymentReference: r.paymentReference ?? r.payment.gatewayReference,
     paymentCode: r.payment.recordCode,
     note: r.note,
     /** True when this instalment cleared the invoice. */
-    settledIt: toMinorHalfUp(num(r.balanceAfter) ?? 0) <= 0n,
+    settledIt: r.balanceAfterMinor <= 0n,
   }));
 }
 
@@ -168,14 +179,15 @@ export async function receiptDocument(receiptId: string) {
   const siblings = await prisma.receipt.findMany({
     where: { tenantId: auth.tenantId, invoiceId: receipt.invoiceId },
     orderBy: { allocatedAt: 'asc' },
-    select: { id: true, recordCode: true, allocatedAmount: true, allocatedAt: true, paymentMode: true },
+    select: { id: true, recordCode: true, allocatedAmountMinor: true, allocatedAt: true, paymentMode: true },
   });
   const index = siblings.findIndex((r) => r.id === receipt.id);
-  const receivedToDate = round2(siblings.slice(0, index + 1).reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0));
+  const receivedToDate = poundsOf(siblings.slice(0, index + 1).reduce((s, r) => s + r.allocatedAmountMinor, 0n));
 
-  const amount = num(receipt.allocatedAmount) ?? 0;
-  const subjectTotal = num(receipt.subjectTotal) || totalsOf(invoice).payable;
-  const balanceAfter = num(receipt.balanceAfter) ?? round2(Math.max(subjectTotal - receivedToDate, 0));
+  const amount = poundsOf(receipt.allocatedAmountMinor);
+  // A receipt written before its subject total was snapshotted reads 0, and the invoice's own figure stands in.
+  const subjectTotal = poundsOf(receipt.subjectTotalMinor) || totalsOf(invoice).payable;
+  const balanceAfter = poundsOf(receipt.balanceAfterMinor);
 
   return {
     id: receipt.id,
@@ -237,7 +249,7 @@ export async function receiptDocument(receiptId: string) {
       amountReceivedNow: amount,
       receivedToDate,
       balanceAfter,
-      isPartPayment: toMinorHalfUp(balanceAfter) > 0n,
+      isPartPayment: receipt.balanceAfterMinor > 0n,
       instalmentNumber: index + 1,
       instalmentsSoFar: siblings.length,
     },
@@ -247,7 +259,7 @@ export async function receiptDocument(receiptId: string) {
       number: i + 1,
       recordCode: r.recordCode,
       issuedAt: r.allocatedAt.toISOString(),
-      amount: num(r.allocatedAmount) ?? 0,
+      amount: poundsOf(r.allocatedAmountMinor),
       mode: r.paymentMode,
       isThisOne: r.id === receipt.id,
     })),
@@ -340,21 +352,25 @@ async function issueFinalInvoice(invoiceId: string, input: { note?: string | nul
   }
 
   const creditNotes = await prisma.creditNote.findMany({ where: { invoiceId } });
-  const totals = totalsOf({ ...invoice, creditNotes });
+  const position = positionOfInvoice({ ...invoice, creditNotes });
 
   const rows = receipts.map((r, i) => ({
     number: i + 1,
     recordCode: r.recordCode,
     issuedAt: r.allocatedAt.toISOString(),
-    amount: num(r.allocatedAmount) ?? 0,
+    amount: poundsOf(r.allocatedAmountMinor),
     mode: r.paymentMode ?? r.payment.method,
     reference: r.paymentReference ?? r.payment.gatewayReference,
     paymentCode: r.payment.recordCode,
-    balanceAfter: num(r.balanceAfter) ?? 0,
+    balanceAfter: poundsOf(r.balanceAfterMinor),
   }));
 
-  const totalReceived = round2(rows.reduce((s, r) => s + r.amount, 0));
-  const balance = round2(Math.max(totals.payable - totalReceived - totals.creditNoted, 0));
+  // Summed in paise from each receipt's own paise column, the same reading the payment
+  // lock trusts, so the statement and the position it sits on cannot disagree.
+  const totalReceivedMinor = receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n);
+  const balanceMinor = clampZero(sub(sub(position.payable, totalReceivedMinor), position.creditNoted));
+  const totalReceived = minorToRupees(totalReceivedMinor);
+  const balance = minorToRupees(balanceMinor);
 
   // An earlier statement is superseded rather than replaced: both were true when
   // they were handed over, and a customer holding the first one is not wrong.
@@ -372,10 +388,10 @@ async function issueFinalInvoice(invoiceId: string, input: { note?: string | nul
   const current = previous.find(
     (p) =>
       p.receiptCount === rows.length &&
-      decimalToMinor(p.totalReceived) === toMinorHalfUp(totalReceived) &&
-      decimalToMinor(p.creditNoted) === toMinorHalfUp(totals.creditNoted),
+      p.totalReceivedMinor === totalReceivedMinor &&
+      p.creditNotedMinor === position.creditNoted,
   );
-  if (current) return current;
+  if (current) return finalWire(current);
 
   const numbering = await documentNumbering();
   // The number and the row it names commit together. Taken on the global client it
@@ -395,11 +411,11 @@ async function issueFinalInvoice(invoiceId: string, input: { note?: string | nul
         invoiceId,
         issuedById: auth.partyId,
         issuedAt: dating.issuedAt,
-        totalPayable: totals.payable,
-        totalReceived,
-        creditNoted: totals.creditNoted,
-        balance,
-        settled: toMinorHalfUp(balance) <= 0n,
+        totalPayableMinor: position.payable,
+        totalReceivedMinor,
+        creditNotedMinor: position.creditNoted,
+        balanceMinor,
+        settled: balanceMinor <= 0n,
         receiptCodes: rows.map((r) => r.recordCode),
         receiptCount: rows.length,
         snapshot: { receipts: rows, supersedes: previous.map((p) => p.recordCode) } as never,
@@ -452,17 +468,17 @@ async function issueFinalInvoice(invoiceId: string, input: { note?: string | nul
     subject: { entityType: 'final_invoice', entityId: final.id, recordCode },
     related: [{ relation: 'finalises', entityType: 'invoice', entityId: invoiceId }],
     newState: {
-      totalPayable: totals.payable,
+      totalPayable: minorToRupees(position.payable),
       totalReceived,
       balance,
-      settled: toMinorHalfUp(balance) <= 0n,
+      settled: balanceMinor <= 0n,
       receipts: rows.map((r) => r.recordCode),
     },
     impact: { domains: ['fin'] },
     confidentiality: 'confidential',
   });
 
-  return final;
+  return finalWire(final);
 }
 
 /**
@@ -517,7 +533,7 @@ export async function finalizeCourseFeeInvoice(invoiceId: string, trigger: 'sett
   }
 
   const existing = await prisma.finalInvoice.findFirst({ where: { tenantId: auth.tenantId, invoiceId } });
-  if (existing) return existing;
+  if (existing) return finalWire(existing);
 
   const receipts = await prisma.receipt.findMany({
     where: { tenantId: auth.tenantId, invoiceId },
@@ -526,21 +542,23 @@ export async function finalizeCourseFeeInvoice(invoiceId: string, trigger: 'sett
   });
 
   const creditNotes = await prisma.creditNote.findMany({ where: { invoiceId } });
-  const totals = totalsOf({ ...invoice, creditNotes });
+  const position = positionOfInvoice({ ...invoice, creditNotes });
 
   const rows = receipts.map((r, i) => ({
     number: i + 1,
     recordCode: r.recordCode,
     issuedAt: r.allocatedAt.toISOString(),
-    amount: num(r.allocatedAmount) ?? 0,
+    amount: poundsOf(r.allocatedAmountMinor),
     mode: r.paymentMode ?? r.payment.method,
     reference: r.paymentReference ?? r.payment.gatewayReference,
     paymentCode: r.payment.recordCode,
-    balanceAfter: num(r.balanceAfter) ?? 0,
+    balanceAfter: poundsOf(r.balanceAfterMinor),
   }));
 
-  const totalReceived = round2(rows.reduce((s, r) => s + r.amount, 0));
-  const balance = round2(Math.max(totals.payable - totalReceived - totals.creditNoted, 0));
+  const totalReceivedMinor = receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n);
+  const balanceMinor = clampZero(sub(sub(position.payable, totalReceivedMinor), position.creditNoted));
+  const totalReceived = minorToRupees(totalReceivedMinor);
+  const balance = minorToRupees(balanceMinor);
 
   const numbering = await documentNumbering();
   // The number and the row it names commit together. Taken on the global client it
@@ -560,11 +578,11 @@ export async function finalizeCourseFeeInvoice(invoiceId: string, trigger: 'sett
         invoiceId,
         issuedById: auth.partyId,
         issuedAt: dating.issuedAt,
-        totalPayable: totals.payable,
-        totalReceived,
-        creditNoted: totals.creditNoted,
-        balance,
-        settled: toMinorHalfUp(balance) <= 0n,
+        totalPayableMinor: position.payable,
+        totalReceivedMinor,
+        creditNotedMinor: position.creditNoted,
+        balanceMinor,
+        settled: balanceMinor <= 0n,
         receiptCodes: rows.map((r) => r.recordCode),
         receiptCount: rows.length,
         snapshot: { receipts: rows, supersedes: [] } as never,
@@ -605,17 +623,17 @@ export async function finalizeCourseFeeInvoice(invoiceId: string, trigger: 'sett
     related: [{ relation: 'finalises', entityType: 'invoice', entityId: invoiceId }],
     newState: {
       trigger,
-      totalPayable: totals.payable,
+      totalPayable: minorToRupees(position.payable),
       totalReceived,
       balance,
-      settled: toMinorHalfUp(balance) <= 0n,
+      settled: balanceMinor <= 0n,
       receipts: rows.map((r) => r.recordCode),
     },
     impact: { domains: ['fin'] },
     confidentiality: 'confidential',
   });
 
-  return final;
+  return finalWire(final);
 }
 
 export async function listFinalInvoices(filter: { invoiceId?: string; limit?: number } = {}) {
@@ -643,10 +661,14 @@ export async function listFinalInvoices(filter: { invoiceId?: string; limit?: nu
     invoiceCode: f.invoice.recordCode ?? f.invoice.draftReference ?? f.invoiceId,
     currency: f.invoice.currency,
     issuedAt: f.issuedAt.toISOString(),
-    totalPayable: num(f.totalPayable) ?? 0,
-    totalReceived: num(f.totalReceived) ?? 0,
-    creditNoted: num(f.creditNoted) ?? 0,
-    balance: num(f.balance) ?? 0,
+    totalPayable: minorToRupees(f.totalPayableMinor),
+    totalPayableMinor: wireInt(f.totalPayableMinor),
+    totalReceived: minorToRupees(f.totalReceivedMinor),
+    totalReceivedMinor: wireInt(f.totalReceivedMinor),
+    creditNoted: minorToRupees(f.creditNotedMinor),
+    creditNotedMinor: wireInt(f.creditNotedMinor),
+    balance: minorToRupees(f.balanceMinor),
+    balanceMinor: wireInt(f.balanceMinor),
     settled: f.settled,
     receiptCodes: f.receiptCodes,
     receiptCount: f.receiptCount,
@@ -780,10 +802,14 @@ export async function finalInvoiceDocument(finalInvoiceId: string) {
     receipts: snapshot.receipts,
 
     totals: {
-      totalPayable: num(final.totalPayable) ?? 0,
-      totalReceived: num(final.totalReceived) ?? 0,
-      creditNoted: num(final.creditNoted) ?? 0,
-      balance: num(final.balance) ?? 0,
+      totalPayable: minorToRupees(final.totalPayableMinor),
+      totalPayableMinor: wireInt(final.totalPayableMinor),
+      totalReceived: minorToRupees(final.totalReceivedMinor),
+      totalReceivedMinor: wireInt(final.totalReceivedMinor),
+      creditNoted: minorToRupees(final.creditNotedMinor),
+      creditNotedMinor: wireInt(final.creditNotedMinor),
+      balance: minorToRupees(final.balanceMinor),
+      balanceMinor: wireInt(final.balanceMinor),
       settled: final.settled,
       instalments: final.receiptCount,
     },

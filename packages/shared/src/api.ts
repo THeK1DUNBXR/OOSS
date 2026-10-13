@@ -1596,6 +1596,7 @@ export interface ReceivablesSummary {
   subjectId: string;
   subjectLabel: string;
   amountOutstanding: number | null;
+  amountOutstandingMinor: string | null;
   nextDueDate: string | null;
   dunningStage: string | null;
   currency: string;

@@ -60,7 +60,6 @@ import {
   amountInWords,
   computeGst,
   computePaymentSchedule,
-  invoicePayable,
   isInterState,
   istMonthKey,
   isValidGstin,
@@ -76,8 +75,15 @@ import {
 } from '@kaizen/shared';
 import { istDateKey, toMinorHalfUp } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../platform/db.js';
-import { withMinor, withRupeeWire, wireInt, rupeesToMinor, type DecimalLike } from '../platform/wire.js';
-import { minorToRupees } from './money.js';
+import {
+  withDecimalMinor,
+  withMinor,
+  withRupeeWire,
+  wireInt,
+  rupeesToMinor,
+  type DecimalLike,
+} from '../platform/wire.js';
+import { minorToRupees, minorToRupeesOrNull } from './money.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -261,17 +267,18 @@ export interface InvoiceTotals {
 export function totalsOf(invoice: {
   grandTotalMinor: bigint;
   lines: WithAmount[];
-  receipts: Array<{ allocatedAmount: unknown }>;
-  creditNotes?: Array<{ amount: unknown }>;
+  receipts: Array<{ allocatedAmountMinor: bigint }>;
+  creditNotes?: Array<{ amountMinor: bigint }>;
 }): InvoiceTotals {
-  const payable = invoicePayable(minorToRupees(invoice.grandTotalMinor), lineTotalOf(invoice.lines));
-  const allocated = round2(invoice.receipts.reduce((s, r) => s + (num(r.allocatedAmount as never) ?? 0), 0));
-  const creditNoted = round2((invoice.creditNotes ?? []).reduce((s, c) => s + (num(c.amount as never) ?? 0), 0));
+  // The same reading as positionOfInvoice, which is exact in paise. This used to
+  // sum floats and round the result; for two-place values the two agree, so the
+  // rupee figures on the wire do not move.
+  const p = positionOfInvoice(invoice);
   return {
-    payable,
-    allocated,
-    creditNoted,
-    outstanding: round2(Math.max(payable - allocated - creditNoted, 0)),
+    payable: poundsOf(p.payable),
+    allocated: poundsOf(p.allocated),
+    creditNoted: poundsOf(p.creditNoted),
+    outstanding: poundsOf(p.outstanding),
   };
 }
 
@@ -307,22 +314,24 @@ const INVOICE_MONEY = [
   'amountPayableNow',
 ] as const;
 const LINE_MONEY = ['unitPrice', 'amount', 'discountAmount', 'taxAmount'] as const;
+// The receipt and payment columns are paise now. The rupee field keeps the type it always
+// had on a raw row, a Decimal whose JSON is the two-place string with trailing zeros dropped
+// ("300.45", "1457"), so a client that reads the string still reads the string.
 const RECEIPT_MONEY = ['allocatedAmount', 'subjectTotal', 'balanceAfter'] as const;
-const PAYMENT_MONEY = ['amount', 'foreignAmount'] as const;
 
-export function paymentWire<T extends { amount: DecimalLike; foreignAmount: DecimalLike | null }>(payment: T) {
-  return withMinor(payment, PAYMENT_MONEY);
+export function paymentWire<T extends { amountMinor: bigint; foreignAmount: DecimalLike | null }>(payment: T) {
+  return withMinor(withDecimalMinor(payment, ['amount']), ['foreignAmount']);
 }
 
 interface ReceiptWireRow {
-  allocatedAmount: DecimalLike;
-  subjectTotal: DecimalLike;
-  balanceAfter: DecimalLike;
-  payment?: { amount: DecimalLike; foreignAmount: DecimalLike | null };
+  allocatedAmountMinor: bigint;
+  subjectTotalMinor: bigint;
+  balanceAfterMinor: bigint;
+  payment?: { amountMinor: bigint; foreignAmount: DecimalLike | null };
 }
 
 export function receiptWire<T extends ReceiptWireRow>(receipt: T) {
-  const out = withMinor(receipt, RECEIPT_MONEY);
+  const out = withDecimalMinor(receipt, RECEIPT_MONEY);
   return receipt.payment ? { ...out, payment: paymentWire(receipt.payment) } : out;
 }
 
@@ -688,7 +697,7 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
       }
       courseId = addon.courseId;
       description = description || addon.name;
-      if (unitPrice === null) unitPrice = num(addon.price);
+      if (unitPrice === null) unitPrice = minorToRupees(addon.priceMinor);
       if (gstRate === null) gstRate = num(addon.gstRate);
       hsnSac = hsnSac ?? addon.hsnSac;
     }
@@ -704,7 +713,7 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
         );
       }
       description = description || `${course.name} (${course.code})`;
-      if (unitPrice === null) unitPrice = num(course.feeAmount);
+      if (unitPrice === null) unitPrice = minorToRupeesOrNull(course.feeAmountMinor);
       if (gstRate === null) gstRate = num(course.gstRate);
       hsnSac = hsnSac ?? course.hsnSac;
       // A course sold over weeks is earned over weeks. That is the course's own
@@ -1412,7 +1421,7 @@ export async function collectInvoicePayment(
       data: {
         tenantId: auth.tenantId,
         recordCode: paymentCode,
-        amount,
+        amountMinor: amountPaise,
         currency: invoice.currency,
         gatewayReference,
         receivedAt,
@@ -1435,11 +1444,11 @@ export async function collectInvoicePayment(
         recordCode: receiptCode,
         paymentId: payment.id,
         invoiceId: invoice.id,
-        allocatedAmount: amount,
+        allocatedAmountMinor: amountPaise,
         allocatedAt: receivedAt,
         allocatedById: auth.partyId,
-        subjectTotal: payable,
-        balanceAfter,
+        subjectTotalMinor: position.payable,
+        balanceAfterMinor: balanceAfterPaise,
         paymentMode: input.mode,
         paymentReference: input.reference?.trim() || null,
         legacyReference: input.legacyReference?.trim() || null,
@@ -1467,7 +1476,7 @@ export async function collectInvoicePayment(
     });
 
     // The allocation's entry, in this transaction. The amount is the receipt's own
-    // allocatedAmount, so the journal says what the customer was handed.
+    // allocatedAmountMinor, so the journal says what the customer was handed.
     // Owner decision, 2026-10-13: an invoice issued before posting was wired has no issue
     // entry, so a receipt against it posts nothing, and the receivable is never credited
     // with no debit behind it. The receipt row is still written.
@@ -1475,7 +1484,7 @@ export async function collectInvoicePayment(
       await postReceiptAllocation(tx, {
         receiptId: receipt.id,
         receiptCode,
-        allocatedAmount: receipt.allocatedAmount,
+        allocatedAmountMinor: receipt.allocatedAmountMinor,
         paymentMode: input.mode,
         invoice: locked,
         receivedAt,
@@ -1487,14 +1496,27 @@ export async function collectInvoicePayment(
       action: 'create',
       subjectType: 'payment',
       subjectId: payment.id,
-      after: { recordCode: paymentCode, amount, mode: input.mode, against: invoiceLabel(invoice) },
+      after: {
+        recordCode: paymentCode,
+        amount,
+        amountMinor: wireInt(amountPaise),
+        mode: input.mode,
+        against: invoiceLabel(invoice),
+      },
     });
     await auditWrite({
       tx,
       action: 'create',
       subjectType: 'receipt',
       subjectId: receipt.id,
-      after: { recordCode: receiptCode, amount, against: invoiceLabel(invoice), balanceAfter },
+      after: {
+        recordCode: receiptCode,
+        amount,
+        amountMinor: wireInt(amountPaise),
+        against: invoiceLabel(invoice),
+        balanceAfter,
+        balanceAfterMinor: wireInt(balanceAfterPaise),
+      },
     });
 
     await emit({
@@ -1505,7 +1527,15 @@ export async function collectInvoicePayment(
         { relation: 'against', entityType: 'invoice', entityId: invoice.id },
         { relation: 'from', entityType: 'payment', entityId: payment.id },
       ],
-      newState: { amount, mode: input.mode, subjectTotal: payable, balanceAfter, settled },
+      newState: {
+        amount,
+        amountMinor: wireInt(amountPaise),
+        mode: input.mode,
+        subjectTotal: payable,
+        balanceAfter,
+        balanceAfterMinor: wireInt(balanceAfterPaise),
+        settled,
+      },
       impact: {
         domains: ['fin'],
         materiality: { measure: 'payment_amount', value: amount, currency: invoice.currency },
@@ -1523,10 +1553,13 @@ export async function collectInvoicePayment(
       ],
       newState: {
         amount,
+        amountMinor: wireInt(amountPaise),
         mode: input.mode,
         receipt: receiptCode,
         allocated,
+        allocatedMinor: wireInt(allocatedPaise),
         outstanding: balanceAfter,
+        outstandingMinor: wireInt(balanceAfterPaise),
         settled,
         // The invoice itself was not restated unless this was the payment it was
         // handed over with.
@@ -2016,10 +2049,10 @@ export async function invoiceDocument(invoiceId: string) {
       number: i + 1,
       recordCode: r.recordCode,
       issuedAt: r.allocatedAt.toISOString(),
-      amount: num(r.allocatedAmount) ?? 0,
+      amount: poundsOf(r.allocatedAmountMinor),
       mode: r.paymentMode ?? r.payment.method,
       reference: r.paymentReference ?? r.payment.gatewayReference,
-      balanceAfter: num(r.balanceAfter) ?? 0,
+      balanceAfter: poundsOf(r.balanceAfterMinor),
     })),
 
     /** Final invoices raised against it, newest first. */
@@ -2027,8 +2060,10 @@ export async function invoiceDocument(invoiceId: string) {
       id: f.id,
       recordCode: f.recordCode,
       issuedAt: f.issuedAt.toISOString(),
-      totalReceived: num(f.totalReceived) ?? 0,
-      balance: num(f.balance) ?? 0,
+      totalReceived: minorToRupees(f.totalReceivedMinor),
+      totalReceivedMinor: wireInt(f.totalReceivedMinor),
+      balance: minorToRupees(f.balanceMinor),
+      balanceMinor: wireInt(f.balanceMinor),
       settled: f.settled,
       status: f.status,
       receiptCount: f.receiptCount,
@@ -2036,7 +2071,8 @@ export async function invoiceDocument(invoiceId: string) {
 
     creditNotes: creditNotes.map((c) => ({
       recordCode: c.recordCode,
-      amount: num(c.amount) ?? 0,
+      amount: minorToRupees(c.amountMinor),
+      amountMinor: wireInt(c.amountMinor),
       reason: c.reason,
       issuedAt: c.issuedAt.toISOString(),
     })),
@@ -2073,10 +2109,11 @@ export async function rehydrateReceivablesFor(
     include: { lines: true, receipts: true },
   });
 
-  let outstanding = 0;
+  // Paise, each invoice's balance clamped at zero before it is added, as the invoice shows it.
+  let outstanding = 0n;
   let nextDue: Date | null = null;
   for (const inv of invoices) {
-    outstanding = round2(outstanding + totalsOf(inv).outstanding);
+    outstanding += positionOfInvoice(inv).outstanding;
     if (inv.dueDate && (!nextDue || inv.dueDate < nextDue)) nextDue = inv.dueDate;
   }
 
@@ -2089,23 +2126,25 @@ export async function rehydrateReceivablesFor(
       ? ((await prisma.organization.findFirst({ where: { id: subjectId }, select: { name: true } }))?.name ?? subjectId)
       : subjectId;
 
-  return prisma.receivablesProjection.upsert({
+  const projection = await prisma.receivablesProjection.upsert({
     where: { tenantId_subjectType_subjectId: { tenantId: auth.tenantId, subjectType, subjectId } },
     create: {
       tenantId: auth.tenantId,
       subjectType,
       subjectId,
       subjectLabel: label,
-      amountOutstanding: outstanding,
+      amountOutstandingMinor: outstanding,
       nextDueDate: nextDue,
       dunningStage,
     },
     update: {
       subjectLabel: label,
-      amountOutstanding: outstanding,
+      amountOutstandingMinor: outstanding,
       nextDueDate: nextDue,
       dunningStage,
       hydratedAt: new Date(),
     },
   });
+  // The rupee Decimal the projection row always returned, beside its paise sibling.
+  return withDecimalMinor(projection, ['amountOutstanding']);
 }

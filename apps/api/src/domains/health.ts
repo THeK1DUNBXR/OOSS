@@ -36,7 +36,8 @@ import {
   testOverdueRung,
   type HealthBand,
 } from '@kaizen/shared';
-import { prisma, num } from '../platform/db.js';
+import { prisma } from '../platform/db.js';
+import { poundsOf } from './allocation.js';
 import { rupeesOrZero } from '../platform/wire.js';
 import { minorToRupees } from './money.js';
 import { currentAuth } from '../platform/context.js';
@@ -258,7 +259,7 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
     let overdue = 0;
     for (const inv of invoices) {
       const total = inv.lines.reduce((s, l) => s + minorToRupees(l.amountMinor), 0);
-      const allocated = inv.receipts.reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0);
+      const allocated = poundsOf(inv.receipts.reduce((s, r) => s + r.allocatedAmountMinor, 0n));
       billed += total;
       collected += allocated;
       if (inv.dueDate && inv.dueDate < new Date() && allocated < total) overdue += total - allocated;

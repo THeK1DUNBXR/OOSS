@@ -20,7 +20,7 @@
  * pickers, and every enrolment that points at it still reads correctly.
  */
 
-import { EVENTS, isDivision, round2 } from '@kaizen/shared';
+import { EVENTS, isDivision, toMinorHalfUp } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -29,6 +29,8 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { enrolStudent } from './education.js';
+import { grownByPercent, minorToRupees, minorToRupeesOrNull } from './money.js';
+import { minorString, rupeesToMinorOrNull, withDecimalMinor, wireInt } from '../platform/wire.js';
 
 export interface CourseFeePlanInput {
   tenureMonths: number;
@@ -96,7 +98,8 @@ export async function listCourses(options: { includeRetired?: boolean } = {}) {
     code: c.code,
     description: c.description,
     durationWeeks: c.durationWeeks,
-    feeAmount: num(c.feeAmount),
+    feeAmount: minorToRupeesOrNull(c.feeAmountMinor),
+    feeAmountMinor: minorString(c.feeAmountMinor),
     gstRate: num(c.gstRate),
     hsnSac: c.hsnSac,
     hours: num(c.hours),
@@ -105,18 +108,20 @@ export async function listCourses(options: { includeRetired?: boolean } = {}) {
     // What a customer actually pays, worked out here rather than on four
     // different screens. The tax split still depends on the place of supply,
     // which is an invoice's business and not a course's.
-    feeWithTax: num(c.feeAmount) === null ? null : round2((num(c.feeAmount) ?? 0) * (1 + (num(c.gstRate) ?? 0) / 100)),
+    feeWithTax: c.feeAmountMinor === null ? null : minorToRupees(grownByPercent(c.feeAmountMinor, num(c.gstRate) ?? 0)),
     batchCount: c.cohorts.length,
     enrolledCount: c.cohorts.reduce((s, h) => s + h._count.enrollments, 0),
     feePlans: c.feePlans.map((p) => ({
       id: p.id,
       tenureMonths: p.tenureMonths,
-      monthlyFee: num(p.monthlyFee) ?? 0,
+      monthlyFee: minorToRupees(p.monthlyFeeMinor),
+      monthlyFeeMinor: wireInt(p.monthlyFeeMinor),
     })),
     addons: c.addons.map((a) => ({
       id: a.id,
       name: a.name,
-      price: num(a.price) ?? 0,
+      price: minorToRupees(a.priceMinor),
+      priceMinor: wireInt(a.priceMinor),
       gstRate: num(a.gstRate) ?? 0,
       hsnSac: a.hsnSac,
       notes: a.notes,
@@ -204,7 +209,7 @@ export async function createCourse(input: CourseInput) {
       code,
       description: input.description ?? null,
       durationWeeks: input.durationWeeks ?? null,
-      feeAmount: input.feeAmount ?? null,
+      feeAmountMinor: rupeesToMinorOrNull(input.feeAmount ?? null),
       gstRate: input.gstRate ?? 18,
       hsnSac: input.hsnSac ?? null,
       hours: input.hours ?? null,
@@ -214,7 +219,7 @@ export async function createCourse(input: CourseInput) {
             create: input.feePlans.map((p) => ({
               tenantId: auth.tenantId,
               tenureMonths: p.tenureMonths,
-              monthlyFee: p.monthlyFee,
+              monthlyFeeMinor: toMinorHalfUp(p.monthlyFee),
             })),
           }
         : undefined,
@@ -223,7 +228,7 @@ export async function createCourse(input: CourseInput) {
             create: input.addons.map((a) => ({
               tenantId: auth.tenantId,
               name: a.name.trim(),
-              price: a.price,
+              priceMinor: toMinorHalfUp(a.price),
               gstRate: a.gstRate ?? 18,
               hsnSac: a.hsnSac ?? null,
               notes: a.notes ?? null,
@@ -237,15 +242,26 @@ export async function createCourse(input: CourseInput) {
     action: 'create',
     subjectType: 'course',
     subjectId: course.id,
-    after: { code, name: course.name, feeAmount: num(course.feeAmount) },
+    after: {
+      code,
+      name: course.name,
+      feeAmount: minorToRupeesOrNull(course.feeAmountMinor),
+      feeAmountMinor: minorString(course.feeAmountMinor),
+    },
   });
   await emit({
     name: EVENTS.COURSE_CREATED,
     subject: { entityType: 'course', entityId: course.id, recordCode: course.recordCode },
-    newState: { code, name: course.name, feeAmount: num(course.feeAmount), gstRate: num(course.gstRate) },
+    newState: {
+      code,
+      name: course.name,
+      feeAmount: minorToRupeesOrNull(course.feeAmountMinor),
+      feeAmountMinor: minorString(course.feeAmountMinor),
+      gstRate: num(course.gstRate),
+    },
     impact: { domains: ['edu'] },
   });
-  return course;
+  return withDecimalMinor(course, ['feeAmount'] as const);
 }
 
 /**
@@ -286,7 +302,7 @@ export async function updateCourse(courseId: string, input: Partial<CourseInput>
       ...(input.code !== undefined ? { code } : {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.durationWeeks !== undefined ? { durationWeeks: input.durationWeeks } : {}),
-      ...(input.feeAmount !== undefined ? { feeAmount: input.feeAmount } : {}),
+      ...(input.feeAmount !== undefined ? { feeAmountMinor: rupeesToMinorOrNull(input.feeAmount) } : {}),
       ...(input.gstRate !== undefined && input.gstRate !== null ? { gstRate: input.gstRate } : {}),
       ...(input.hsnSac !== undefined ? { hsnSac: input.hsnSac } : {}),
       ...(input.hours !== undefined ? { hours: input.hours } : {}),
@@ -303,7 +319,7 @@ export async function updateCourse(courseId: string, input: Partial<CourseInput>
               create: input.feePlans.map((p) => ({
                 tenantId: auth.tenantId,
                 tenureMonths: p.tenureMonths,
-                monthlyFee: p.monthlyFee,
+                monthlyFeeMinor: toMinorHalfUp(p.monthlyFee),
               })),
             },
           }
@@ -315,7 +331,7 @@ export async function updateCourse(courseId: string, input: Partial<CourseInput>
               create: input.addons.map((a) => ({
                 tenantId: auth.tenantId,
                 name: a.name.trim(),
-                price: a.price,
+                priceMinor: toMinorHalfUp(a.price),
                 gstRate: a.gstRate ?? 18,
                 hsnSac: a.hsnSac ?? null,
                 notes: a.notes ?? null,
@@ -333,7 +349,8 @@ export async function updateCourse(courseId: string, input: Partial<CourseInput>
     before: {
       name: existing.name,
       code: existing.code,
-      feeAmount: num(existing.feeAmount),
+      feeAmount: minorToRupeesOrNull(existing.feeAmountMinor),
+      feeAmountMinor: minorString(existing.feeAmountMinor),
       gstRate: num(existing.gstRate),
       durationWeeks: existing.durationWeeks,
       active: existing.active,
@@ -341,7 +358,8 @@ export async function updateCourse(courseId: string, input: Partial<CourseInput>
     after: {
       name: updated.name,
       code: updated.code,
-      feeAmount: num(updated.feeAmount),
+      feeAmount: minorToRupeesOrNull(updated.feeAmountMinor),
+      feeAmountMinor: minorString(updated.feeAmountMinor),
       gstRate: num(updated.gstRate),
       durationWeeks: updated.durationWeeks,
       active: updated.active,
@@ -350,11 +368,20 @@ export async function updateCourse(courseId: string, input: Partial<CourseInput>
   await emit({
     name: existing.active && updated.active === false ? EVENTS.COURSE_RETIRED : EVENTS.COURSE_UPDATED,
     subject: { entityType: 'course', entityId: courseId, recordCode: updated.recordCode },
-    previousState: { name: existing.name, feeAmount: num(existing.feeAmount), active: existing.active },
-    newState: { name: updated.name, feeAmount: num(updated.feeAmount), active: updated.active },
+    previousState: {
+      name: existing.name,
+      feeAmount: minorToRupeesOrNull(existing.feeAmountMinor),
+      active: existing.active,
+    },
+    newState: {
+      name: updated.name,
+      feeAmount: minorToRupeesOrNull(updated.feeAmountMinor),
+      feeAmountMinor: minorString(updated.feeAmountMinor),
+      active: updated.active,
+    },
     impact: { domains: ['edu'] },
   });
-  return updated;
+  return withDecimalMinor(updated, ['feeAmount'] as const);
 }
 
 /**

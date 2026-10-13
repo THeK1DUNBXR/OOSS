@@ -155,7 +155,7 @@ interface CarriedCourse {
   code: string;
   description: string | null;
   durationWeeks: number | null;
-  feeAmount: unknown;
+  feeAmountMinor: bigint | null;
   gstRate: unknown;
   hsnSac: string | null;
   division: string;
@@ -332,7 +332,7 @@ async function collectCandidates(holdingTenantId: string, division: Division): P
         code: c.code,
         description: c.description,
         durationWeeks: c.durationWeeks,
-        feeAmount: c.feeAmount,
+        feeAmountMinor: c.feeAmountMinor,
         gstRate: c.gstRate,
         hsnSac: c.hsnSac,
         division: c.division,
@@ -712,7 +712,7 @@ export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutC
           code: c.code,
           description: c.description,
           durationWeeks: c.durationWeeks,
-          feeAmount: c.feeAmount as never,
+          feeAmountMinor: c.feeAmountMinor,
           gstRate: c.gstRate as never,
           hsnSac: c.hsnSac,
           division: c.division,
