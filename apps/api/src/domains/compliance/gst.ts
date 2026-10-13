@@ -27,8 +27,10 @@ import {
   type Gstr2bB2bRow,
   type Gstr2bMatchResult,
   type BookedBill,
+  toMinorHalfUp,
 } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../../platform/db.js';
+import { decimalWire, rupeesOf } from '../../platform/wire.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
@@ -341,10 +343,10 @@ export async function applyReverseCharge(billId: string, input: RcmInput) {
         billId,
         number,
         period,
-        taxableValue,
-        cgstAmount: gst.cgst,
-        sgstAmount: gst.sgst,
-        igstAmount: gst.igst,
+        taxableValueMinor: toMinorHalfUp(taxableValue),
+        cgstAmountMinor: toMinorHalfUp(gst.cgst),
+        sgstAmountMinor: toMinorHalfUp(gst.sgst),
+        igstAmountMinor: toMinorHalfUp(gst.igst),
         createdById: auth.partyId,
       },
     }),
@@ -385,15 +387,13 @@ export async function flaggedRcmBills() {
 export async function rcmLiabilityFor(period: string) {
   const auth = currentAuth();
   const rows = await prisma.rcmSelfInvoice.findMany({ where: { tenantId: auth.tenantId, period } });
-  return rows.reduce(
-    (acc, r) => ({
-      taxableValue: round2(acc.taxableValue + (num(r.taxableValue) ?? 0)),
-      cgst: round2(acc.cgst + (num(r.cgstAmount) ?? 0)),
-      sgst: round2(acc.sgst + (num(r.sgstAmount) ?? 0)),
-      igst: round2(acc.igst + (num(r.igstAmount) ?? 0)),
-    }),
-    { taxableValue: 0, cgst: 0, sgst: 0, igst: 0 },
-  );
+  const total = (pick: (r: (typeof rows)[number]) => bigint) => rupeesOf(rows.reduce((t, r) => t + pick(r), 0n));
+  return {
+    taxableValue: total((r) => r.taxableValueMinor),
+    cgst: total((r) => r.cgstAmountMinor),
+    sgst: total((r) => r.sgstAmountMinor),
+    igst: total((r) => r.igstAmountMinor),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -441,7 +441,7 @@ export async function issueDebitNote(invoiceId: string, input: DebitNoteInput) {
         tenantId: auth.tenantId,
         recordCode,
         invoiceId,
-        amount: round2(input.amount),
+        amountMinor: toMinorHalfUp(round2(input.amount)),
         reasonCode: input.reasonCode,
         note: input.note ?? null,
         issuedById: auth.partyId,
@@ -454,7 +454,7 @@ export async function issueDebitNote(invoiceId: string, input: DebitNoteInput) {
     action: 'create',
     subjectType: 'debit_note',
     subjectId: note.id,
-    after: { recordCode, invoiceId, amount: note.amount, reasonCode: input.reasonCode },
+    after: { recordCode, invoiceId, amount: decimalWire(note.amountMinor), reasonCode: input.reasonCode },
   });
 
   return note;
@@ -763,7 +763,7 @@ async function supersedeGstr2bMatches(
         importId,
         vendorBillId: r.vendorBillId,
         status: r.status,
-        difference: r.difference,
+        differenceMinor: toMinorHalfUp(r.difference),
         ctin: r.ctin,
         inum: r.inum,
       })),
@@ -867,14 +867,15 @@ export async function gstExposure(period: string) {
     const filedAt = filing?.filedAt ?? null;
     const asOf = filedAt ?? today;
     const daysLate = Math.max(0, Math.floor((asOf.getTime() - dueDate.getTime()) / 86_400_000));
-    const nil = returnType === 'GSTR3B' && (num(prepared?.netPayable) ?? 0) === 0;
+    const netPayable = prepared ? rupeesOf(prepared.netPayableMinor) : 0;
+    const nil = returnType === 'GSTR3B' && netPayable === 0;
     const fee = lateFee(daysLate, {
       lateFeePerDayCgst: num(rates.lateFeePerDayCgst) ?? 0,
       lateFeePerDaySgst: num(rates.lateFeePerDaySgst) ?? 0,
       cap: num(rates.cap) ?? 0,
       interestPct: num(rates.interestPct) ?? 0,
     });
-    const netCash = returnType === 'GSTR3B' ? (num(prepared?.netPayable) ?? 0) : 0;
+    const netCash = returnType === 'GSTR3B' ? netPayable : 0;
     const interestDue = returnType === 'GSTR3B' ? interest(netCash, daysLate, num(rates.interestPct) ?? 0) : 0;
 
     returns.push({
