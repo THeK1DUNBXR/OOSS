@@ -88,7 +88,7 @@ export const STATUTORY_APPROVER_DUTY = 'statutory.approver';
 export const FOUNDER_DUTY = 'founder';
 
 /** The checks the founder exemption waived on one write, recorded as founderOverride in the audit meta. */
-export type FounderOverride = 'author_is_approver' | 'not_duty_holder' | 'self_assignment';
+export type FounderOverride = 'author_is_approver' | 'not_duty_holder' | 'self_assignment' | 'not_resolved_approver';
 
 /** True when the caller holds the founder duty at the instant. Read from the duty, never from a name. */
 export async function isFounder(at: Date = new Date()): Promise<boolean> {

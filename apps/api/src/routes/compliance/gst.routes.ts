@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { NOTE_REASON_CODES, SUPPLY_TYPES } from '@kaizen/shared';
+import { withRupeeWire } from '../../platform/wire.js';
+
+/** The paise columns each endpoint carries, as the wire names them. */
+const RCM_MONEY = ['taxableValue', 'cgstAmount', 'sgstAmount', 'igstAmount'];
+const DEBIT_NOTE_MONEY = ['amount'];
+const GSTR2B_MONEY = ['difference'];
 import { handler, str } from '../../lib/http.js';
 import {
   classifyInvoiceLine,
@@ -72,13 +78,16 @@ router.post(
     const body = z
       .object({ ratePct: z.number().positive().max(100), taxableValue: z.number().positive().nullish() })
       .parse(req.body);
-    return applyReverseCharge(req.params.id, { ratePct: body.ratePct, taxableValue: body.taxableValue ?? undefined });
+    return withRupeeWire(
+      await applyReverseCharge(req.params.id, { ratePct: body.ratePct, taxableValue: body.taxableValue ?? undefined }),
+      RCM_MONEY,
+    );
   }),
 );
 
 router.get(
   '/rcm/self-invoices',
-  handler(async (req) => listRcmSelfInvoices(str(req.query.period))),
+  handler(async (req) => (await listRcmSelfInvoices(str(req.query.period))).map((r) => withRupeeWire(r, RCM_MONEY))),
 );
 
 router.get(
@@ -96,13 +105,15 @@ router.post(
     const body = z
       .object({ amount: z.number().positive(), reasonCode: reasonCodeEnum, note: z.string().nullish() })
       .parse(req.body);
-    return issueDebitNote(req.params.id, body as never);
+    return withRupeeWire(await issueDebitNote(req.params.id, body as never), DEBIT_NOTE_MONEY);
   }),
 );
 
 router.get(
   '/debit-notes',
-  handler(async (req) => listDebitNotes(str(req.query.invoiceId))),
+  handler(async (req) =>
+    (await listDebitNotes(str(req.query.invoiceId))).map((n) => withRupeeWire(n, DEBIT_NOTE_MONEY)),
+  ),
 );
 
 router.get(
@@ -174,7 +185,7 @@ router.post(
 
 router.get(
   '/gstr2b/:period/matches',
-  handler(async (req) => gstr2bMatches(req.params.period)),
+  handler(async (req) => (await gstr2bMatches(req.params.period)).map((m) => withRupeeWire(m, GSTR2B_MONEY))),
 );
 
 router.get(

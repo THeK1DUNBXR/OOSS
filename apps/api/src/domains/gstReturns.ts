@@ -47,6 +47,7 @@ import {
   toMinorHalfUp,
 } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
+import { rupeesOf } from '../platform/wire.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -374,7 +375,7 @@ export async function computeGstr1(period: string) {
       debitNoteRows.push({
         recordCode: note.recordCode,
         invoiceNumber: codeOf.get(note.invoiceId) ?? note.invoiceId,
-        amount: num(note.amount) ?? 0,
+        amount: rupeesOf(note.amountMinor),
         reasonCode: note.reasonCode,
         issuedAt: note.issuedAt.toISOString().slice(0, 10),
       });
@@ -900,12 +901,12 @@ export async function prepareReturn(returnType: GstReturnType, period: string, n
         gstin: computed.gstin,
         status: 'prepared',
         snapshot: computed as never,
-        taxableValue: totals.taxableValue,
-        cgstAmount: totals.cgst,
-        sgstAmount: totals.sgst,
-        igstAmount: totals.igst,
-        inputTaxCredit: totals.inputTaxCredit,
-        netPayable: totals.netPayable,
+        taxableValueMinor: toMinorHalfUp(totals.taxableValue),
+        cgstAmountMinor: toMinorHalfUp(totals.cgst),
+        sgstAmountMinor: toMinorHalfUp(totals.sgst),
+        igstAmountMinor: toMinorHalfUp(totals.igst),
+        inputTaxCreditMinor: toMinorHalfUp(totals.inputTaxCredit),
+        netPayableMinor: toMinorHalfUp(totals.netPayable),
         invoiceCount: totals.invoiceCount,
         preparedById: auth.partyId,
         note: note ?? null,
@@ -1075,12 +1076,12 @@ export async function markReturnFiled(filingId: string, input: { arn: string; fi
         returnType: filed.returnType,
         period: filed.period,
         arn,
-        netPayable: num(filed.netPayable),
+        netPayable: rupeesOf(filed.netPayableMinor),
       },
       impact: {
         domains: ['fin'],
         severity: 'S1_ATTENTION',
-        materiality: { measure: 'gst_net_payable', value: num(filed.netPayable) ?? 0, currency: 'INR' },
+        materiality: { measure: 'gst_net_payable', value: rupeesOf(filed.netPayableMinor), currency: 'INR' },
       },
       confidentiality: 'confidential',
       tx,
