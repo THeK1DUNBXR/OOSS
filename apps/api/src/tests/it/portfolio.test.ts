@@ -301,7 +301,7 @@ describe('portfolio — domain and wiring', () => {
         billDate: new Date('2026-06-15T00:00:00.000Z'),
         categoryId: category.id,
         division: 'shared',
-        total: 40_000,
+        totalMinor: 4000000n,
         status: 'open',
       },
     });
@@ -320,7 +320,7 @@ describe('portfolio — domain and wiring', () => {
         billDate: new Date('2026-11-01T00:00:00.000Z'),
         categoryId: category.id,
         division: 'shared',
-        total: 15_000,
+        totalMinor: 1500000n,
         status: 'open',
       },
     });
@@ -343,7 +343,7 @@ describe('portfolio — domain and wiring', () => {
         billDate: new Date('2026-07-01T00:00:00.000Z'),
         categoryId: category.id,
         division: 'shared',
-        total: 999_000,
+        totalMinor: 99900000n,
         status: 'draft',
       },
     });
@@ -355,7 +355,7 @@ describe('portfolio — domain and wiring', () => {
         billDate: new Date('2026-08-01T00:00:00.000Z'),
         categoryId: category.id,
         division: 'shared',
-        total: 999_000,
+        totalMinor: 99900000n,
         status: 'cancelled',
       },
     });
@@ -388,7 +388,7 @@ describe('portfolio — domain and wiring', () => {
         billDate: new Date('2026-05-01T00:00:00.000Z'),
         categoryId: category.id,
         division: 'shared',
-        total: 20_000,
+        totalMinor: 2000000n,
         status: 'open',
       },
     });
@@ -455,7 +455,7 @@ describe('portfolio — domain and wiring', () => {
         billDate: new Date('2026-04-02T00:00:00.000Z'),
         categoryId: category.id,
         division: 'shared',
-        total: 95_000,
+        totalMinor: 9500000n,
         status: 'open',
       },
     });

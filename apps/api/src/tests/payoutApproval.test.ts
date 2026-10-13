@@ -90,7 +90,7 @@ describe('a money-out request writes nothing until a second person approves it',
     expect(await outRowsFor(bill.id)).toHaveLength(0);
     const after = await unscopedPrisma.vendorBill.findUniqueOrThrow({ where: { id: bill.id } });
     expect(after.status).toBe('open');
-    expect(after.paidAmount?.toFixed(2) ?? '0.00').toBe('0.00');
+    expect(after.paidAmountMinor).toBe(0n);
   });
 
   it('approval by the second holder writes exactly one Transaction and pays the bill once', async () => {

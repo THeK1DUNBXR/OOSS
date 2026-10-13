@@ -12,8 +12,8 @@
  * once, and the audit meta says so (founderOverride payment_second_approver). An agent
  * principal may neither request nor approve (AI_PROHIBITED_ACTIONS, shared/src/ai.ts).
  */
-import type { PayoutRequest, Transaction, VendorBill } from '@prisma/client';
-import { EVENTS, decimalToMinor, formatMinor, parseMinor } from '@kaizen/shared';
+import type { PayoutRequest, Transaction } from '@prisma/client';
+import { EVENTS, formatMinor, parseMinor } from '@kaizen/shared';
 import { prisma, type DbTx } from '../platform/db.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { currentAuth } from '../platform/context.js';
@@ -26,6 +26,8 @@ import { registerGovernedEntities, auditWrite } from '../platform/audit.js';
 import { assertStepUpForApprove } from './compliance/corporate/security.js';
 import { isFounder } from './statutory.js';
 import { reverseTransactionIn, writeTransactionMinor, type TransactionInputMinor } from './books.js';
+import { vendorBillWire, type VendorBillWire } from './money.js';
+import { minorString } from '../platform/wire.js';
 
 registerGovernedEntities('fin', ['payout_request']);
 
@@ -54,7 +56,7 @@ export interface PayoutDraft {
 export interface PayoutSettlement {
   request: PayoutRequest;
   transaction: Transaction | null;
-  bill: VendorBill | null;
+  bill: VendorBillWire | null;
 }
 
 const FOUNDER_OVERRIDE = { founderOverride: ['payment_second_approver'] } as const;
@@ -370,7 +372,7 @@ async function settleInTx(
 ): Promise<PayoutSettlement> {
   const auth = currentAuth();
   let transaction: Transaction | null = null;
-  let bill: VendorBill | null = null;
+  let bill: VendorBillWire | null = null;
 
   if (row.kind === 'payment' && row.vendorBillId) {
     // The bill's row lock, then the outstanding check in paise: two requests against one
@@ -381,8 +383,8 @@ async function settleInTx(
     });
     if (!current) throw ApiError.notFound('Vendor bill');
     if (current.status === 'cancelled') throw ApiError.unprocessable('This bill was cancelled.');
-    const paidBefore = current.paidAmount ? decimalToMinor(current.paidAmount) : 0n;
-    const total = decimalToMinor(current.total);
+    const paidBefore = current.paidAmountMinor;
+    const total = current.totalMinor;
     const outstanding = total - paidBefore;
     if (row.amountMinor > outstanding) {
       throw ApiError.unprocessable(
@@ -393,22 +395,29 @@ async function settleInTx(
     transaction = await writeTransactionMinor(cashOutOf(row), tx);
     const paidAfter = paidBefore + row.amountMinor;
     const status = paidAfter >= total ? 'paid' : 'part_paid';
-    bill = await tx.vendorBill.update({
-      where: { id: current.id },
-      data: { paidAmount: formatMinor(paidAfter), status },
-    });
+    bill = vendorBillWire(
+      await tx.vendorBill.update({
+        where: { id: current.id },
+        data: { paidAmountMinor: paidAfter, status },
+      }),
+    );
     await auditWrite({
       action: 'update',
       subjectType: 'vendor_bill',
       subjectId: current.id,
-      before: { paidAmount: formatMinor(paidBefore), status: current.status },
-      after: { paidAmount: formatMinor(paidAfter), status },
+      before: { paidAmount: formatMinor(paidBefore), paidAmountMinor: minorString(paidBefore), status: current.status },
+      after: { paidAmount: formatMinor(paidAfter), paidAmountMinor: minorString(paidAfter), status },
       tx,
     });
     await emit({
       name: EVENTS.VENDOR_BILL_PAID,
       subject: { entityType: 'vendor_bill', entityId: current.id, recordCode: current.recordCode },
-      newState: { amount: formatMinor(row.amountMinor), paidAmount: formatMinor(paidAfter), status },
+      newState: {
+        amount: formatMinor(row.amountMinor),
+        paidAmount: formatMinor(paidAfter),
+        paidAmountMinor: minorString(paidAfter),
+        status,
+      },
       impact: { domains: ['fin'] },
       confidentiality: 'confidential',
       tx,

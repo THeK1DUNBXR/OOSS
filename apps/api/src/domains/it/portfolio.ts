@@ -251,7 +251,7 @@ export async function computeInitiativeSpend(initiative: { vendorBillIds: string
       status: { in: ['open', 'part_paid', 'paid'] },
     },
   });
-  return bills.reduce((sum, b) => sum + (num(b.total) ?? 0), 0);
+  return minorToRupees(bills.reduce((sum, b) => sum + b.totalMinor, 0n));
 }
 
 export async function initiativeDetail(id: string) {
@@ -749,12 +749,12 @@ export async function computeBudgetActual(line: {
         status: { in: ['open', 'part_paid', 'paid'] },
         ...(line.division ? { division: line.division } : {}),
       },
-      select: { total: true },
+      select: { totalMinor: true },
     }),
   ]);
 
   const txnTotal = txns.reduce((sum, t) => sum + (num(t.amount) ?? 0), 0);
-  const billTotal = bills.reduce((sum, b) => sum + (num(b.total) ?? 0), 0);
+  const billTotal = minorToRupees(bills.reduce((sum, b) => sum + b.totalMinor, 0n));
   return txnTotal + billTotal;
 }
 

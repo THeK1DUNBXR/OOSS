@@ -5334,10 +5334,10 @@ model VendorBill {
   categoryId  String?
   division    String?
 
-  subtotal   Decimal @default(0) @db.Decimal(18, 2)
-  taxAmount  Decimal @default(0) @db.Decimal(18, 2)
-  total      Decimal @default(0) @db.Decimal(18, 2)
-  paidAmount Decimal @default(0) @db.Decimal(18, 2)
+  subtotalMinor   BigInt @default(0)
+  taxAmountMinor  BigInt @default(0)
+  totalMinor      BigInt @default(0)
+  paidAmountMinor BigInt @default(0)
   currency   String  @default("INR")
 
   /// draft | open | part_paid | paid | cancelled
@@ -5351,11 +5351,11 @@ model VendorBill {
   vendorPan         String?
   /// Reverse charge on this inward supply: tax the company pays on the vendor's behalf.
   rcmApplicable     Boolean   @default(false)
-  rcmTaxAmount      Decimal   @default(0) @db.Decimal(18, 2)
+  rcmTaxAmountMinor BigInt    @default(0)
   /// TDS deducted at approval, from the dated section-rate table.
   tdsSection        String?
   tdsRate           Decimal?  @db.Decimal(5, 2)
-  tdsAmount         Decimal   @default(0) @db.Decimal(18, 2)
+  tdsAmountMinor    BigInt    @default(0)
   /// A lower/nil-deduction certificate (Sec 197) reference, when one overrides the table.
   tdsCertificateRef String?
   tdsChallanId      String?
