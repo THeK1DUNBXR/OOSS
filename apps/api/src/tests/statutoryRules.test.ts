@@ -19,7 +19,7 @@ import {
   STATUTORY_APPROVER_DUTY,
   StatutoryRuleNotFoundError,
 } from '../domains/statutory.js';
-import { asUser, expectReject, tenantId, withFixtureRole } from './helpers.js';
+import { asPrincipal, asUser, authFor, expectReject, tenantId, withFixtureRole } from './helpers.js';
 
 const JURISDICTION = 'TEST-W1K';
 const KEY = 'test.example_rate';
@@ -252,22 +252,29 @@ describe('StatutoryRule drafting and approval (FIXES P2, P3)', () => {
     expect([test.value, other.value]).toEqual([1, 7]);
   });
 
+  // The creator is a fixture, not the chairman: the chairman is the founder, who may approve a
+  // rule he wrote (owner ruling 2026-10-12, statutoryFounder.test.ts). A non-founder maker is refused.
   it('refuses approval by the creator, and leaves the row a DRAFT', async () => {
-    const draft = await asUser(CREATOR, () =>
-      createStatutoryRule({
-        domain: 'test',
-        key: KEY,
-        jurisdiction: FX_JURISDICTION,
-        effectiveFrom: dateOnly('2026-04-01'),
-        value: 2,
-        source: 'fixture: obviously fake, W1K',
-      }),
+    await withFixtureRole(
+      { slug: 'w1k_fx_maker', grants: [{ resource: 'rate_tables', verbs: ['view', 'edit', 'approve'] }] },
+      async (maker) => {
+        const draft = await asPrincipal(authFor(maker), () =>
+          createStatutoryRule({
+            domain: 'test',
+            key: KEY,
+            jurisdiction: FX_JURISDICTION,
+            effectiveFrom: dateOnly('2026-04-01'),
+            value: 2,
+            source: 'fixture: obviously fake, W1K',
+          }),
+        );
+        const err = await expectReject(() => asPrincipal(authFor(maker), () => approveStatutoryRule(draft.id)));
+        expect(err.status).toBe(403);
+        const after = await unscopedPrisma.statutoryRule.findUniqueOrThrow({ where: { id: draft.id } });
+        expect(after.status).toBe('DRAFT');
+        expect(after.approvedBy).toBeNull();
+      },
     );
-    const err = await expectReject(() => asUser(CREATOR, () => approveStatutoryRule(draft.id)));
-    expect(err.status).toBe(403);
-    const after = await unscopedPrisma.statutoryRule.findUniqueOrThrow({ where: { id: draft.id } });
-    expect(after.status).toBe('DRAFT');
-    expect(after.approvedBy).toBeNull();
   });
 
   it('refuses approval by a principal without the approve verb, and leaves the row a DRAFT', async () => {

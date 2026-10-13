@@ -25,7 +25,7 @@ import { computeInstruction } from './compliance/payroll.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { governedWrite } from '../platform/governedWrite.js';
 
-registerGovernedEntities('hcm_payroll', ['payroll_run']);
+registerGovernedEntities('hcm_payroll', ['payroll_run', 'payroll_instruction']);
 
 const PAY_PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -193,9 +193,26 @@ export async function setInstructionAmounts(id: string, input: { grossAmount?: n
   const gross = input.grossAmount ?? num(instruction.grossAmount) ?? 0;
   const deductions = input.deductions ?? num(instruction.deductions) ?? 0;
 
-  return prisma.payrollInstruction.update({
-    where: { id },
-    data: { grossAmount: gross, deductions, netAmount: gross - deductions },
+  return governedWrite(async (tx) => {
+    const updated = await tx.payrollInstruction.update({
+      where: { id },
+      data: { grossAmount: gross, deductions, netAmount: gross - deductions },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'payroll_instruction',
+      subjectId: id,
+      before: { grossAmount: String(instruction.grossAmount), deductions: String(instruction.deductions) },
+      after: { grossAmount: String(gross), deductions: String(deductions) },
+      tx,
+    });
+    await emit({
+      name: EVENTS.PAYROLL_INSTRUCTION_UPDATED,
+      subject: { entityType: 'payroll_instruction', entityId: id },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return updated;
   });
 }
 

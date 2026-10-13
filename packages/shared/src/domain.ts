@@ -759,7 +759,10 @@ export const RECORD_TYPE_CODES = [
   'AUD',
   'TPL',
   'SND',
+  // `JRN` is also the journal entry series (JRN-<year>-<n>, ledger.ts). A journey takes `JNY`, so a
+  // journey code and an entry number never share a prefix. Existing journey codes keep JRN.
   'JRN',
+  'JNY',
   'FRM',
   'EVT',
   'AST',

@@ -591,7 +591,25 @@ export async function removeTimesheetEntry(id: string) {
   if (timesheet.status !== 'draft' && timesheet.status !== 'rejected') {
     throw ApiError.unprocessable(`This timesheet is ${timesheet.status} — it cannot be edited further.`);
   }
-  await prisma.timesheetEntry.delete({ where: { id } });
+  await governedWrite(async (tx) => {
+    await tx.timesheetEntry.delete({ where: { id } });
+    await auditWrite({
+      action: 'delete',
+      subjectType: 'timesheet_entry',
+      subjectId: id,
+      before: entry as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.TIMESHEET_ENTRY_DELETED,
+      subject: { entityType: 'timesheet_entry', entityId: id },
+      related: [{ relation: 'for', entityType: 'timesheet', entityId: timesheet.id }],
+      impact: { domains: ['hr'] },
+      tx,
+    });
+  });
+  // Outside the transaction, as before this change: the total is read back from
+  // the committed rows, which the uncommitted delete above would not show.
   await recomputeTimesheetTotal(auth.tenantId, timesheet.id);
   return { deleted: true };
 }

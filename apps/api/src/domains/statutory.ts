@@ -71,6 +71,33 @@ export async function createStatutoryRule(input: StatutoryRuleInput) {
  */
 export const STATUTORY_APPROVER_DUTY = 'statutory.approver';
 
+/**
+ * The founder duty. Owner ruling, 2026-10-12: "the founder (unless changed during onboarding)"
+ * holds the statutory approver duty, and "the founder is end all be all, he can do whatever he
+ * wants". The owner then accepted an audited exemption: the founder may approve a rule he wrote,
+ * may approve without holding the approver duty, and may name himself to a duty. Each waived
+ * check is recorded in the audit row's meta as founderOverride.
+ *
+ * The exemption never waives the citation rule (an UNVERIFIED source is data, not authority),
+ * the audit trail, tenant scope, period close or posted-entry immutability. "Cannot be disabled"
+ * is statutory, and a correction is a reversal, not an edit.
+ *
+ * The founder is whoever holds this duty now. Onboarding may name another holder, so no person
+ * is named in code: the seed names the owner account's person once, when no founder exists.
+ */
+export const FOUNDER_DUTY = 'founder';
+
+/** The checks the founder exemption waived on one write, recorded as founderOverride in the audit meta. */
+export type FounderOverride = 'author_is_approver' | 'not_duty_holder' | 'self_assignment';
+
+/** True when the caller holds the founder duty at the instant. Read from the duty, never from a name. */
+export async function isFounder(at: Date = new Date()): Promise<boolean> {
+  const auth = currentAuth();
+  if (!auth.partyId) return false;
+  const holder = await resolveDutyHolder(FOUNDER_DUTY, at);
+  return holder?.partyId === auth.partyId;
+}
+
 const DUTY_KEY = /^[a-z][a-z0-9_.]{2,63}$/;
 
 function isExclusionViolation(err: unknown): boolean {
@@ -120,24 +147,56 @@ export async function assignDuty(input: DutyAssignmentInput) {
   }
   const assignedBy = auth.partyId;
   if (!assignedBy) throw ApiError.forbidden('Only a person can assign a duty.');
+  const at = new Date();
+  const callerIsFounder = await isFounder(at);
+  const founderOverride: FounderOverride[] = [];
+  // The founder duty is assigned and ended only by the current founder, whatever verbs the
+  // caller holds (owner ruling, 2026-10-12). With no founder yet, nothing can be assigned here:
+  // the founder is named at bootstrap, and this refusal says so.
+  if (input.dutyKey === FOUNDER_DUTY) {
+    if (!(await resolveDutyHolder(FOUNDER_DUTY, at))) {
+      throw new ApiError(
+        422,
+        'UNPROCESSABLE',
+        'No founder is named for this tenant. The founder duty is set at bootstrap, from the owner account.',
+        { reasonCode: 'founder_not_set' },
+      );
+    }
+    if (!callerIsFounder) {
+      throw new ApiError(403, 'FORBIDDEN', 'Only the current founder can assign or end the founder duty.', {
+        reasonCode: 'founder_only',
+      });
+    }
+  }
   // Granting yourself a duty is not a check. The person who grants the authority and the
   // person who exercises it would be one, which is the maker-checker failure the statutory
   // approver duty exists to prevent. Refused for every duty, because the reasoning holds for
-  // any duty that approves or releases something.
+  // any duty that approves or releases something. The founder is exempt by the owner's ruling
+  // ("the founder is end all be all"), and the exemption is audited as self_assignment.
   if (input.partyId === assignedBy) {
-    throw new ApiError(403, 'FORBIDDEN', 'A person cannot name themselves to a duty they would then exercise.', {
-      reasonCode: 'duty_self_assignment',
-    });
+    if (!callerIsFounder) {
+      throw new ApiError(403, 'FORBIDDEN', 'A person cannot name themselves to a duty they would then exercise.', {
+        reasonCode: 'duty_self_assignment',
+      });
+    }
+    founderOverride.push('self_assignment');
   }
   const person = await prisma.person.findFirst({ where: { id: input.partyId } });
   if (!person) throw ApiError.notFound('Person');
-  const effectiveFrom = input.effectiveFrom ?? new Date();
+  const effectiveFrom = input.effectiveFrom ?? at;
   try {
     return await governedWrite(async (tx) => {
       const row = await tx.dutyAssignment.create({
         data: { tenantId: auth.tenantId, dutyKey: input.dutyKey, partyId: input.partyId, effectiveFrom, assignedBy },
       });
-      await auditWrite({ action: 'create', subjectType: 'duty_assignment', subjectId: row.id, after: row, tx });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'duty_assignment',
+        subjectId: row.id,
+        after: row,
+        ...(founderOverride.length > 0 ? { meta: { founderOverride } } : {}),
+        tx,
+      });
       await emit({
         name: EVENTS.DUTY_ASSIGNED,
         subject: { entityType: 'duty_assignment', entityId: row.id },
@@ -177,6 +236,13 @@ export async function endDuty(id: string) {
   if (!endedBy) throw ApiError.forbidden('Only a person can end a duty.');
   const row = await prisma.dutyAssignment.findFirst({ where: { id } });
   if (!row) throw ApiError.notFound('Duty assignment');
+  // Checked before the row's state, so no caller learns more about the founder row than that it
+  // is refused. Only the current founder ends the founder duty.
+  if (row.dutyKey === FOUNDER_DUTY && !(await isFounder())) {
+    throw new ApiError(403, 'FORBIDDEN', 'Only the current founder can assign or end the founder duty.', {
+      reasonCode: 'founder_only',
+    });
+  }
   if (row.effectiveTo) throw ApiError.conflict('This duty assignment has already ended.');
   const at = new Date();
   if (at <= row.effectiveFrom) {
@@ -294,10 +360,12 @@ function approvalSource(current: string, replacement: string | undefined): strin
  *
  * - The approver must not be the author. One person typing a rate and
  *   accepting it is not a check. A row with no recorded author cannot be shown
- *   to pass it, so it is refused too.
+ *   to pass it, so it is refused too. The founder may approve a rule he wrote
+ *   (founderOverride author_is_approver).
  * - The approver must hold the statutory approver duty at this instant. A tenant
  *   with no holder approves nothing (422, awaiting setup); a holder who is not the
- *   caller is refused (403). The holder is resolved, never named in code.
+ *   caller is refused (403). The holder is resolved, never named in code. The
+ *   founder may approve without holding it (founderOverride not_duty_holder).
  * - A row whose citation is UNVERIFIED takes a verified replacement, or stays DRAFT.
  * - An open-ended APPROVED rule for the same series ends the day this one
  *   begins. That makes "next year's rate" a switch rather than an overlap.
@@ -319,26 +387,38 @@ export async function approveStatutoryRule(id: string, opts: { source?: string }
       'This rule has no recorded author, so maker and checker cannot be shown to differ. Re-enter it.',
     );
   }
-  if (row.createdBy === auth.partyId) throw ApiError.forbidden('The author of a statutory rule cannot approve it.');
-
   // The approver is whoever holds the statutory approver duty at this instant (round 27 c).
   // No holder means no approver exists yet, so nothing becomes APPROVED: the refusal says
   // so, and names the setup rather than a person. A holder who is not the caller is a 403.
+  //
+  // The founder is exempt from the author check and from the holder check (owner ruling,
+  // 2026-10-12: "great, audited exemption it is"). Each check waived is recorded in the audit
+  // meta as founderOverride. The citation rule below is not waived by it.
   const approvedAt = new Date();
-  const holder = await resolveDutyHolder(STATUTORY_APPROVER_DUTY, approvedAt);
-  if (!holder) {
-    throw new ApiError(
-      422,
-      'UNPROCESSABLE',
-      "No one holds the statutory approver duty for this tenant, so this rule is awaiting the accountant's setup.",
-      { reasonCode: 'statutory_approver_not_set' },
-    );
-  }
   const approverId = auth.partyId;
-  if (!approverId || holder.partyId !== approverId) {
-    throw new ApiError(403, 'FORBIDDEN', 'Only the current statutory approver can approve a statutory rule.', {
-      reasonCode: 'not_statutory_approver',
-    });
+  const founder = await isFounder(approvedAt);
+  const founderOverride: FounderOverride[] = [];
+  if (row.createdBy === approverId) {
+    if (!founder) throw ApiError.forbidden('The author of a statutory rule cannot approve it.');
+    founderOverride.push('author_is_approver');
+  }
+  const holder = await resolveDutyHolder(STATUTORY_APPROVER_DUTY, approvedAt);
+  if (founder) {
+    if (!holder || holder.partyId !== approverId) founderOverride.push('not_duty_holder');
+  } else {
+    if (!holder) {
+      throw new ApiError(
+        422,
+        'UNPROCESSABLE',
+        "No one holds the statutory approver duty for this tenant, so this rule is awaiting the accountant's setup.",
+        { reasonCode: 'statutory_approver_not_set' },
+      );
+    }
+    if (!approverId || holder.partyId !== approverId) {
+      throw new ApiError(403, 'FORBIDDEN', 'Only the current statutory approver can approve a statutory rule.', {
+        reasonCode: 'not_statutory_approver',
+      });
+    }
   }
   // A rule whose citation is UNVERIFIED (the seeds are, see seed/compliance/statutory.ts)
   // is approved only with a verified citation supplied now, which is audited beside the
@@ -389,7 +469,12 @@ export async function approveStatutoryRule(id: string, opts: { source?: string }
         before: { status: row.status, approvedBy: row.approvedBy, approvedAt: row.approvedAt, source: row.source },
         after: { status: 'APPROVED', approvedBy: approverId, approvedAt, source },
         meta: {
-          approver: { partyId: holder.partyId, dutyKey: holder.dutyKey, dutyAssignmentId: holder.id },
+          // The duty the approver held, or null when the founder approved without holding it. A
+          // holder who is someone else is not named here: the row would read as their approval.
+          approver:
+            holder && holder.partyId === approverId
+              ? { partyId: holder.partyId, dutyKey: holder.dutyKey, dutyAssignmentId: holder.id }
+              : null,
           ruleVersion: {
             id,
             domain: row.domain,
@@ -399,6 +484,7 @@ export async function approveStatutoryRule(id: string, opts: { source?: string }
             effectiveTo: row.effectiveTo,
             value: row.value,
           },
+          ...(founderOverride.length > 0 ? { founderOverride } : {}),
         },
         tx,
       });
