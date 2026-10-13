@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { DIVISIONS, PAYMENT_MODES, parseMinor, type Division, type PaymentMode } from '@kaizen/shared';
 import { handler, str, numeric, bool } from '../lib/http.js';
 import { prisma, num } from '../platform/db.js';
-import { minorOf, paiseSum, wireInt } from '../platform/wire.js';
+import { minorOf, paiseSum, withDecimalMinor, wireInt } from '../platform/wire.js';
 import { minorToRupees } from '../domains/money.js';
 import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
@@ -592,7 +592,7 @@ router.get(
   handler(async (req) => {
     await assertCan({ resource: 'payments', verb: 'view' });
     const auth = currentAuth();
-    return prisma.feeInstalment.findMany({
+    const rows = await prisma.feeInstalment.findMany({
       where: {
         tenantId: auth.tenantId,
         ...(str(req.query.enrollmentId) ? { enrollmentId: str(req.query.enrollmentId) } : {}),
@@ -602,6 +602,8 @@ router.get(
       orderBy: { dueDate: 'asc' },
       take: numeric(req.query.limit) ?? 100,
     });
+    // The raw row has always printed its amount as a Decimal string; that stays.
+    return rows.map((row) => withDecimalMinor(row, ['amount'] as const));
   }),
 );
 

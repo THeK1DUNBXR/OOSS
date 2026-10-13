@@ -121,7 +121,9 @@ describe('a course carries tenure-based fee plans and add-ons, wholesale-replace
 
       const listed = await listCourses({ includeRetired: true });
       const found = listed.find((c) => c.id === course.id)!;
-      expect(found.feePlans).toEqual([{ id: expect.any(String), tenureMonths: 6, monthlyFee: 500 }]);
+      expect(found.feePlans).toEqual([
+        { id: expect.any(String), tenureMonths: 6, monthlyFee: 500, monthlyFeeMinor: '50000' },
+      ]);
       expect(found.addons.map((a) => a.name)).toEqual(['New add-on']);
     });
   });

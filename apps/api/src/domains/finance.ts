@@ -36,7 +36,7 @@ import { raiseException } from '../platform/exceptions.js';
 import { runHooks } from '../platform/hooks.js';
 import { openAccountingDate, periodRefusesEntries } from './compliance/books.js';
 import { invoiceLabel, paymentWire, receiptWire, rehydrateReceivablesFor, totalsOf } from './invoicing.js';
-import { withMinor } from '../platform/wire.js';
+import { withDecimalMinor, wireInt } from '../platform/wire.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { lockLegacyPeriod } from '../platform/periodLock.js';
 import {
@@ -91,12 +91,13 @@ export async function issueFeeInstalments(
   const created: Array<Awaited<ReturnType<typeof prisma.feeInstalment.create>>> = [];
   for (const item of plan) {
     const recordCode = await nextRecordCode('FEE');
+    const amountMinor = toMinorHalfUp(item.amount);
     const instalment = await prisma.feeInstalment.create({
       data: {
         tenantId: auth.tenantId,
         recordCode,
         enrollmentId,
-        amount: item.amount,
+        amountMinor,
         currency,
         dueDate: item.dueDate,
         status: 'issued',
@@ -107,12 +108,12 @@ export async function issueFeeInstalments(
       name: EVENTS.FEE_INSTALMENT_ISSUED,
       subject: { entityType: 'fee_instalment', entityId: instalment.id, recordCode },
       related: [{ relation: 'bills', entityType: 'enrollment', entityId: enrollmentId }],
-      newState: { amount: item.amount, dueDate: item.dueDate },
+      newState: { amount: item.amount, amountMinor: wireInt(amountMinor), dueDate: item.dueDate },
       impact: { domains: ['fin', 'edu'] },
       confidentiality: 'confidential',
     });
   }
-  return created;
+  return created.map((row) => withDecimalMinor(row, ['amount'] as const));
 }
 
 // ---------------------------------------------------------------------------
@@ -504,7 +505,7 @@ async function settleIfFullyPaid(invoiceId: string | null, feeInstalmentId: stri
     // Summed in paise from each receipt's Decimal. A float sum over instalments is
     // where the old 0.001 was absorbing noise, so the sum is no longer a float.
     const allocated = fee.receipts.reduce((s, r) => s + decimalToMinor(r.allocatedAmount), 0n);
-    const total = decimalToMinor(fee.amount);
+    const total = fee.amountMinor;
     const status = allocated >= total ? 'settled' : allocated > 0n ? 'part_paid' : fee.status;
     if (status !== fee.status) await prisma.feeInstalment.update({ where: { id: feeInstalmentId }, data: { status } });
   }
@@ -534,7 +535,9 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
   const numbering = await documentNumbering();
   // The number and the row it names commit together. Taken on the global client it
   // stayed taken when this write was refused, and the series had a hole in it.
-  const { recordCode, note } = await prisma.$transaction(async (tx) => {
+  // The paise conversion is inside the transaction, after the number is taken, so a
+  // refused amount gives the number back the same way a refused row does.
+  const { recordCode, note, amountMinor } = await prisma.$transaction(async (tx) => {
     const recordCode = await nextDocumentNumber(
       tx,
       DOCUMENT_SERIES.creditNote,
@@ -542,17 +545,18 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
       new Date(),
       numbering.yearFormat,
     );
+    const amountMinor = toMinorHalfUp(amount);
     const note = await tx.creditNote.create({
       data: {
         tenantId: auth.tenantId,
         recordCode,
         invoiceId,
-        amount,
+        amountMinor,
         reason,
         issuedById: auth.partyId,
       },
     });
-    return { recordCode, note };
+    return { recordCode, note, amountMinor };
   });
 
   if (reasonCode) {
@@ -565,18 +569,18 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
     action: 'create',
     subjectType: 'credit_note',
     subjectId: note.id,
-    after: { recordCode, invoiceId, amount, reason, reasonCode: reasonCode ?? null },
+    after: { recordCode, invoiceId, amount, amountMinor: wireInt(amountMinor), reason, reasonCode: reasonCode ?? null },
   });
 
   await emit({
     name: EVENTS.CREDIT_NOTE_ISSUED,
     subject: { entityType: 'credit_note', entityId: note.id, recordCode },
     related: [{ relation: 'reduces', entityType: 'invoice', entityId: invoiceId }],
-    newState: { amount, reason },
+    newState: { amount, amountMinor: wireInt(amountMinor), reason },
     confidentiality: 'confidential',
   });
 
-  return withMinor(note, ['amount'] as const);
+  return withDecimalMinor(note, ['amount'] as const);
 }
 
 // ---------------------------------------------------------------------------

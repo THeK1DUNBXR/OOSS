@@ -1,4 +1,4 @@
-import { toMinorHalfUp } from '@kaizen/shared';
+import { formatMinor, toMinorHalfUp } from '@kaizen/shared';
 /**
  * The demonstration dataset — test subjects, not product data.
  *
@@ -2069,7 +2069,7 @@ async function seedEducation(people: SeededPerson[], orgs: SeededOrg[]) {
         code: c.code,
         description: `${c.weeks}-week cohort programme with placement support.`,
         durationWeeks: c.weeks,
-        feeAmount: c.fee,
+        feeAmountMinor: toMinorHalfUp(c.fee),
         gstRate: 18,
         hsnSac: TRAINING_SAC,
         division: 'education',
@@ -2234,7 +2234,7 @@ async function seedStudentBillingAndTimelines() {
 
   for (const [index, enrollment] of enrollments.entries()) {
     const course = enrollment.cohort.course;
-    const fee = Number((course.feeAmount ?? 60_000).toString());
+    const fee = Number(formatMinor(course.feeAmountMinor ?? 6_000_000n));
     const rate = Number((course.gstRate ?? 18).toString());
     // A student is an unregistered buyer in their own state: CGST and SGST, and
     // no customer GSTIN to report them under. That is the B2C case, and it is
@@ -2376,9 +2376,9 @@ async function seedStudentBillingAndTimelines() {
           recordCode: docNumber('TI', 1),
           invoiceId: invoice.id,
           issuedAt: new Date(issuedAt.getTime() + 15 * 86_400_000),
-          totalPayable: gst.grandTotal,
-          totalReceived: received,
-          balance: round2(Math.max(gst.grandTotal - received, 0)),
+          totalPayableMinor: toMinorHalfUp(gst.grandTotal),
+          totalReceivedMinor: toMinorHalfUp(received),
+          balanceMinor: toMinorHalfUp(round2(Math.max(gst.grandTotal - received, 0))),
           settled: received >= gst.grandTotal - 0.001,
           receiptCodes,
           receiptCount: receiptCodes.length,

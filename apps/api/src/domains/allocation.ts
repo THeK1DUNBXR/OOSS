@@ -124,22 +124,22 @@ export function positionOfInvoice(invoice: {
   grandTotalMinor: bigint;
   lines: Array<{ amountMinor: bigint }>;
   receipts: Array<{ allocatedAmount: { toFixed(digits: number): string } }>;
-  creditNotes?: Array<{ amount: { toFixed(digits: number): string } }>;
+  creditNotes?: Array<{ amountMinor: bigint }>;
 }) {
   const grandTotal = invoice.grandTotalMinor;
   const linesTotal = invoice.lines.reduce((s, l) => s + l.amountMinor, 0n);
   const payable = grandTotal > 0n ? grandTotal : linesTotal;
   const allocated = invoice.receipts.reduce((s, r) => s + paiseOf(r.allocatedAmount), 0n);
-  const creditNoted = (invoice.creditNotes ?? []).reduce((s, c) => s + paiseOf(c.amount), 0n);
+  const creditNoted = (invoice.creditNotes ?? []).reduce((s, c) => s + c.amountMinor, 0n);
   return { payable, allocated, creditNoted, outstanding: clampZero(sub(sub(payable, allocated), creditNoted)) };
 }
 
 /** What a fee instalment still owes, in paise, from its amount and the receipts against it. */
 export function outstandingOfInstalment(instalment: {
-  amount: { toFixed(digits: number): string };
+  amountMinor: bigint;
   receipts: Array<{ allocatedAmount: { toFixed(digits: number): string } }>;
 }) {
-  const amount = paiseOf(instalment.amount);
+  const amount = instalment.amountMinor;
   const allocated = instalment.receipts.reduce((s, r) => s + paiseOf(r.allocatedAmount), 0n);
   return { amount, allocated, outstanding: clampZero(sub(amount, allocated)) };
 }

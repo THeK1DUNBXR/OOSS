@@ -77,7 +77,7 @@ import {
 import { istDateKey, toMinorHalfUp } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../platform/db.js';
 import { withMinor, withRupeeWire, wireInt, rupeesToMinor, type DecimalLike } from '../platform/wire.js';
-import { minorToRupees } from './money.js';
+import { minorToRupees, minorToRupeesOrNull } from './money.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -261,17 +261,18 @@ export interface InvoiceTotals {
 export function totalsOf(invoice: {
   grandTotalMinor: bigint;
   lines: WithAmount[];
-  receipts: Array<{ allocatedAmount: unknown }>;
-  creditNotes?: Array<{ amount: unknown }>;
+  receipts: Array<{ allocatedAmount: { toFixed(digits: number): string } }>;
+  creditNotes?: Array<{ amountMinor: bigint }>;
 }): InvoiceTotals {
-  const payable = invoicePayable(minorToRupees(invoice.grandTotalMinor), lineTotalOf(invoice.lines));
-  const allocated = round2(invoice.receipts.reduce((s, r) => s + (num(r.allocatedAmount as never) ?? 0), 0));
-  const creditNoted = round2((invoice.creditNotes ?? []).reduce((s, c) => s + (num(c.amount as never) ?? 0), 0));
+  // The same reading as positionOfInvoice, which is exact in paise. This used to
+  // sum floats and round the result; for two-place values the two agree, so the
+  // rupee figures on the wire do not move.
+  const p = positionOfInvoice(invoice);
   return {
-    payable,
-    allocated,
-    creditNoted,
-    outstanding: round2(Math.max(payable - allocated - creditNoted, 0)),
+    payable: poundsOf(p.payable),
+    allocated: poundsOf(p.allocated),
+    creditNoted: poundsOf(p.creditNoted),
+    outstanding: poundsOf(p.outstanding),
   };
 }
 
@@ -688,7 +689,7 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
       }
       courseId = addon.courseId;
       description = description || addon.name;
-      if (unitPrice === null) unitPrice = num(addon.price);
+      if (unitPrice === null) unitPrice = minorToRupees(addon.priceMinor);
       if (gstRate === null) gstRate = num(addon.gstRate);
       hsnSac = hsnSac ?? addon.hsnSac;
     }
@@ -704,7 +705,7 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
         );
       }
       description = description || `${course.name} (${course.code})`;
-      if (unitPrice === null) unitPrice = num(course.feeAmount);
+      if (unitPrice === null) unitPrice = minorToRupeesOrNull(course.feeAmountMinor);
       if (gstRate === null) gstRate = num(course.gstRate);
       hsnSac = hsnSac ?? course.hsnSac;
       // A course sold over weeks is earned over weeks. That is the course's own
@@ -2027,8 +2028,10 @@ export async function invoiceDocument(invoiceId: string) {
       id: f.id,
       recordCode: f.recordCode,
       issuedAt: f.issuedAt.toISOString(),
-      totalReceived: num(f.totalReceived) ?? 0,
-      balance: num(f.balance) ?? 0,
+      totalReceived: minorToRupees(f.totalReceivedMinor),
+      totalReceivedMinor: wireInt(f.totalReceivedMinor),
+      balance: minorToRupees(f.balanceMinor),
+      balanceMinor: wireInt(f.balanceMinor),
       settled: f.settled,
       status: f.status,
       receiptCount: f.receiptCount,
@@ -2036,7 +2039,8 @@ export async function invoiceDocument(invoiceId: string) {
 
     creditNotes: creditNotes.map((c) => ({
       recordCode: c.recordCode,
-      amount: num(c.amount) ?? 0,
+      amount: minorToRupees(c.amountMinor),
+      amountMinor: wireInt(c.amountMinor),
       reason: c.reason,
       issuedAt: c.issuedAt.toISOString(),
     })),

@@ -347,7 +347,7 @@ export async function computeGstr1(period: string) {
       creditNoteRows.push({
         recordCode: note.recordCode,
         invoiceNumber: codeOf.get(note.invoiceId) ?? note.invoiceId,
-        amount: num(note.amount) ?? 0,
+        amount: minorToRupees(note.amountMinor),
         reason: note.reason,
         issuedAt: note.issuedAt.toISOString().slice(0, 10),
       });
@@ -414,7 +414,7 @@ export async function computeGstr1(period: string) {
       igst,
       tax: round2(cgst + sgst + igst),
       invoiceValue: round2(live.reduce((s, i) => s + minorToRupees(i.grandTotalMinor), 0)),
-      creditNoted: round2(creditNoteRows.reduce((s, c) => s + c.amount, 0)),
+      creditNoted: minorToRupees(notes.reduce((s, n) => s + n.amountMinor, 0n)),
       debitNoted: round2(debitNoteRows.reduce((s, d) => s + d.amount, 0)),
     },
 
