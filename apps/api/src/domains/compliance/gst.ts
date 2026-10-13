@@ -885,9 +885,9 @@ export async function gstExposure(period: string) {
     const netPayable = prepared ? rupeesOf(prepared.netPayableMinor) : 0;
     const nil = returnType === 'GSTR3B' && netPayable === 0;
     const fee = lateFee(daysLate, {
-      lateFeePerDayCgst: num(rates.lateFeePerDayCgst) ?? 0,
-      lateFeePerDaySgst: num(rates.lateFeePerDaySgst) ?? 0,
-      cap: num(rates.cap) ?? 0,
+      lateFeePerDayCgst: minorToRupees(rates.lateFeePerDayCgstMinor),
+      lateFeePerDaySgst: minorToRupees(rates.lateFeePerDaySgstMinor),
+      cap: minorToRupees(rates.capMinor),
       interestPct: num(rates.interestPct) ?? 0,
     });
     const netCash = returnType === 'GSTR3B' ? netPayable : 0;
@@ -905,7 +905,11 @@ export async function gstExposure(period: string) {
     });
   }
 
-  return { period, rateTable: rates, returns };
+  return {
+    period,
+    rateTable: withDecimalMinor(rates, ['lateFeePerDayCgst', 'lateFeePerDaySgst', 'cap'] as const),
+    returns,
+  };
 }
 
 interface ReturnExposure {

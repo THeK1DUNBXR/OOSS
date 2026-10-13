@@ -19,7 +19,6 @@ import {
   statutoryLines,
   type PtSlab,
   ENCRYPTED_FIELD_PREFIX,
-  decimalToMinor,
 } from '@kaizen/shared';
 import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from '../helpers.js';
 import {
@@ -357,7 +356,7 @@ describe('payroll runs against the dated tables (real database)', () => {
       proposeCompensation({
         employmentRelationshipId: emp.id,
         revisionReason: 'annual_cycle',
-        amount: minorToRupees(decimalToMinor(floor.monthlyAmount)),
+        amount: minorToRupees(floor.monthlyAmountMinor),
         effectiveFrom: new Date('2020-01-01'),
       }),
     );

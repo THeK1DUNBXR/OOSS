@@ -16,6 +16,7 @@ import { prisma } from '../../../platform/db.js';
 import { currentAuth } from '../../../platform/context.js';
 import { ApiError } from '../../../platform/errors.js';
 import { auditWrite } from '../../../platform/audit.js';
+import { withDecimalMinor } from '../../../platform/wire.js';
 import type { AgreementKind } from '../../agreements.js';
 
 // ---------------------------------------------------------------------------
@@ -58,10 +59,11 @@ export async function assertStampDutySatisfied(kind: AgreementKind, agreementId:
 
 export async function listStampDutyRules() {
   const auth = currentAuth();
-  return prisma.stampDutyRule.findMany({
+  const rows = await prisma.stampDutyRule.findMany({
     where: { tenantId: auth.tenantId },
     orderBy: [{ agreementKind: 'asc' }, { effectiveFrom: 'desc' }],
   });
+  return rows.map((row) => withDecimalMinor(row, ['flatAmount'] as const));
 }
 
 // ---------------------------------------------------------------------------

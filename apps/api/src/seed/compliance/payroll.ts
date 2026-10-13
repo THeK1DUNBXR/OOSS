@@ -1,5 +1,6 @@
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { toMinorHalfUp } from '@kaizen/shared';
 
 const EFFECTIVE_FROM = new Date('2024-04-01T00:00:00.000Z');
 
@@ -18,7 +19,7 @@ export async function seedPayroll(): Promise<void> {
         epsRate: 0.0833,
         edliRate: 0.005,
         adminRate: 0.005,
-        wageCeiling: 15_000,
+        wageCeilingMinor: toMinorHalfUp(15_000),
       },
     });
   }
@@ -31,7 +32,7 @@ export async function seedPayroll(): Promise<void> {
         effectiveFrom: EFFECTIVE_FROM,
         employeeRate: 0.0075,
         employerRate: 0.0325,
-        wageCeiling: 21_000,
+        wageCeilingMinor: toMinorHalfUp(21_000),
       },
     });
   }
@@ -67,8 +68,8 @@ export async function seedPayroll(): Promise<void> {
         tenantId,
         state: 'TN',
         effectiveFrom: EFFECTIVE_FROM,
-        employeeAmount: 20,
-        employerAmount: 40,
+        employeeAmountMinor: toMinorHalfUp(20),
+        employerAmountMinor: toMinorHalfUp(40),
         dueMonth: 12,
         confirmNote:
           'Confirm the current Tamil Nadu Labour Welfare Fund Act contribution against the latest notification.',
@@ -83,7 +84,7 @@ export async function seedPayroll(): Promise<void> {
         tenantId,
         state: 'Tamil Nadu',
         category: 'general',
-        monthlyAmount: 12_000,
+        monthlyAmountMinor: toMinorHalfUp(12_000),
         effectiveFrom: EFFECTIVE_FROM,
       },
     });

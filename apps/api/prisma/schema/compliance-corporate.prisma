@@ -168,7 +168,7 @@ model StampDutyRule {
   agreementKind  String // mou | contract | partner_agreement
   effectiveFrom  DateTime
   percentOfValue Decimal? @db.Decimal(6, 3)
-  flatAmount     Decimal? @db.Decimal(12, 2)
+  flatAmountMinor BigInt?
   note           String?
 
   createdAt DateTime @default(now())

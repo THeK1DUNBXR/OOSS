@@ -205,8 +205,8 @@ export async function computeVendorTds(billId: string, input: ComputeVendorTdsIn
     section: input.section,
     ratePercent: num(rate.ratePercent) ?? 0,
     thresholds: {
-      perTransaction: num(rate.thresholdPerTransaction) ?? 0,
-      perFy: num(rate.thresholdPerFy) ?? 0,
+      perTransaction: minorToRupees(rate.thresholdPerTransactionMinor),
+      perFy: minorToRupees(rate.thresholdPerFyMinor),
     },
     panPresent: Boolean(bill.vendorPan),
     panMissingRatePercent: num(rate.panMissingRatePercent) ?? 20,
@@ -363,10 +363,11 @@ export async function listVendorBillsForTds(filter: { status?: string } = {}) {
 export async function tdsSectionRates() {
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'view' });
-  return prisma.tdsSectionRate.findMany({
+  const rows = await prisma.tdsSectionRate.findMany({
     where: { tenantId: auth.tenantId },
     orderBy: [{ section: 'asc' }, { effectiveFrom: 'desc' }],
   });
+  return rows.map((row) => withDecimalMinor(row, ['thresholdPerTransaction', 'thresholdPerFy'] as const));
 }
 
 export async function listApplicabilityRules() {
@@ -748,16 +749,17 @@ export async function runTdsDepositDueJob(today: Date = new Date()): Promise<num
 // Salary TDS (Sec 192)
 // ---------------------------------------------------------------------------
 
-async function slabTableFor(fy: string, regime: TaxRegime): Promise<SlabTable> {
+/** Exported so the paise-to-rupee read of the slab row can be pinned directly; nothing else calls it from outside this module. */
+export async function slabTableFor(fy: string, regime: TaxRegime): Promise<SlabTable> {
   const auth = currentAuth();
   const row = await prisma.incomeTaxSlabTable.findFirst({ where: { tenantId: auth.tenantId, fy, regime } });
   if (!row) throw ApiError.unprocessable(`No income-tax slab table is on file for ${regime} regime, FY${fy}.`);
   return {
     regime,
     slabs: row.slabs as unknown as SlabTable['slabs'],
-    standardDeduction: num(row.standardDeduction) ?? 0,
-    rebate87ALimit: num(row.rebate87ALimit) ?? 0,
-    rebate87AMaxAmount: num(row.rebate87AMaxAmount) ?? 0,
+    standardDeduction: minorToRupees(row.standardDeductionMinor),
+    rebate87ALimit: minorToRupees(row.rebate87ALimitMinor),
+    rebate87AMaxAmount: minorToRupees(row.rebate87AMaxAmountMinor),
     cessPercent: num(row.cessPercent) ?? 4,
   };
 }

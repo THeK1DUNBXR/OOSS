@@ -1,5 +1,6 @@
 import { currentAuth } from '../../platform/context.js';
 import { prisma } from '../../platform/db.js';
+import { toMinorHalfUp } from '@kaizen/shared';
 
 /**
  * Compliance — gst. Rate tables and other structure the tenant needs before
@@ -20,9 +21,9 @@ export async function seedGst(): Promise<void> {
       data: {
         tenantId: auth.tenantId,
         effectiveFrom: new Date('2021-01-01T00:00:00.000Z'),
-        lateFeePerDayCgst: 25,
-        lateFeePerDaySgst: 25,
-        cap: 5000,
+        lateFeePerDayCgstMinor: toMinorHalfUp(25),
+        lateFeePerDaySgstMinor: toMinorHalfUp(25),
+        capMinor: toMinorHalfUp(5000),
         interestPct: 18,
         gstr1DueDay: 11,
         gstr3bDueDay: 20,

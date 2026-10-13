@@ -59,7 +59,7 @@
     {
       "file": "apps/api/src/domains/compliance/gst.ts",
       "rule": "num(",
-      "count": 10,
+      "count": 7,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -77,7 +77,7 @@
     {
       "file": "apps/api/src/domains/compliance/payroll.ts",
       "rule": "num(",
-      "count": 25,
+      "count": 16,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
