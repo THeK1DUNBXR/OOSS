@@ -14,6 +14,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   isLikelyMatch,
+  toMinorHalfUp,
   journalTotals,
   matchGstr2b,
   parseMinor,
@@ -81,10 +82,10 @@ describe('shared paise comparisons (no database)', () => {
       txnDirection: 'in' as const,
       txnReference: null,
     };
-    expect(isLikelyMatch({ ...base, bankAmount: 100, txnAmount: 100 })).toBe(true);
-    expect(isLikelyMatch({ ...base, bankAmount: 100, txnAmount: 100.01 })).toBe(false);
+    expect(isLikelyMatch({ ...base, bankAmountMinor: 10000n, txnAmountMinor: 10000n })).toBe(true);
+    expect(isLikelyMatch({ ...base, bankAmountMinor: 10000n, txnAmountMinor: 10001n })).toBe(false);
     // 0.1 + 0.2 is 0.30000000000000004 as a double; it is the paise 0.30.
-    expect(isLikelyMatch({ ...base, bankAmount: 0.3, txnAmount: 0.1 + 0.2 })).toBe(true);
+    expect(isLikelyMatch({ ...base, bankAmountMinor: 30n, txnAmountMinor: toMinorHalfUp(0.1 + 0.2) })).toBe(true);
   });
 
   it('GSTR-2B: book tax equal to the portal tax to the paisa is matched, one paisa either way is not', () => {

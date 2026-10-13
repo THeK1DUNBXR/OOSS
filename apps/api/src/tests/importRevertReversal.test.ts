@@ -17,7 +17,7 @@
 import { Prisma } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
-import { EVENTS, istMonthKey, parseMinor } from '@kaizen/shared';
+import { EVENTS, decimalToMinor, istMonthKey, parseMinor } from '@kaizen/shared';
 import {
   asUser,
   booksTenant,
@@ -268,7 +268,7 @@ describe('T71-4: a bank line matched to a reversed entry is unmatched, audited, 
         tenantId: TENANT,
         accountId: BANK_ACCOUNT_ID,
         date: new Date('2013-08-13T00:00:00.000Z'),
-        amount: original.amount,
+        amountMinor: decimalToMinor(original.amount),
         direction: 'out',
         narration: tag,
         matchedTransactionId: original.id,

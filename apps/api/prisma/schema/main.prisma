@@ -5153,7 +5153,7 @@ model LedgerAccount {
   accountType        String            @default("bank") // bank | cash | card | loan | wallet
   /// Last four digits at most. The full number is never held here.
   displayReference   String?
-  openingBalance     Decimal           @default(0) @db.Decimal(18, 2)
+  openingBalanceMinor BigInt           @default(0)
   openingDate        DateTime?
   currency           String            @default("INR")
   active             Boolean           @default(true)

@@ -2751,7 +2751,7 @@ describe('The finance import templates', () => {
       const account = await prisma.ledgerAccount.findFirstOrThrow({ where: { name: accountName } });
       expect(account.accountType).toBe('bank');
       expect(account.displayReference).toBe('9021');
-      expect(Number(account.openingBalance)).toBe(150000);
+      expect(account.openingBalanceMinor).toBe(15000000n);
       expect(account.ledgerGroup).toBe('asset');
 
       // Re-uploading the same file is safe: the row is caught as a duplicate
