@@ -14,9 +14,9 @@
  */
 
 import { ATTRIBUTION_MODELS, type AttributionModel } from '@kaizen/shared';
-import { prisma, num } from '../../platform/db.js';
+import { prisma } from '../../platform/db.js';
 import { minorToRupees } from '../money.js';
-import { minorString } from '../../platform/wire.js';
+import { minorString, rupeesOf, rupeesOrZero } from '../../platform/wire.js';
 import { currentAuth } from '../../platform/context.js';
 import { assertCan } from '../../platform/permissions.js';
 
@@ -153,10 +153,10 @@ export async function overview(): Promise<MarketingOverviewView> {
   const wonOpps = attributedLeadIds.length
     ? await prisma.opportunity.findMany({
         where: { tenantId: auth.tenantId, deletedAt: null, leadId: { in: attributedLeadIds }, outcome: null },
-        select: { expectedValue: true },
+        select: { expectedValueMinor: true },
       })
     : [];
-  const pipelineValue = wonOpps.reduce((s, o) => s + (num(o.expectedValue) ?? 0), 0);
+  const pipelineValue = wonOpps.reduce((s, o) => s + rupeesOrZero(o.expectedValueMinor), 0);
 
   const funnelView = await funnel({ from, to });
 
@@ -373,7 +373,7 @@ export async function channels(params: { from?: Date; to?: Date } = {}): Promise
   const opps = allLeadIds.length
     ? await prisma.opportunity.findMany({
         where: { tenantId: auth.tenantId, deletedAt: null, leadId: { in: allLeadIds } },
-        select: { leadId: true, outcome: true, expectedValue: true },
+        select: { leadId: true, outcome: true, expectedValueMinor: true },
       })
     : [];
   const leadToChannel = new Map(leads.map((l) => [l.id, l.channelKey as string]));
@@ -391,7 +391,7 @@ export async function channels(params: { from?: Date; to?: Date } = {}): Promise
     const channelOpps = opps.filter((o) => o.leadId && leadToChannel.get(o.leadId) === key);
     const wonOpps = channelOpps.filter((o) => o.outcome === 'won');
     const spend = minorToRupees(spends.filter((s) => s.channelKey === key).reduce((s, r) => s + r.amountMinor, 0n));
-    const revenue = wonOpps.reduce((s, o) => s + (num(o.expectedValue) ?? 0), 0);
+    const revenue = wonOpps.reduce((s, o) => s + rupeesOrZero(o.expectedValueMinor), 0);
 
     result.push({
       channelKey: key,
@@ -459,7 +459,7 @@ export async function campaigns(params: { from?: Date; to?: Date } = {}): Promis
     const opps = leadIds.length
       ? await prisma.opportunity.findMany({
           where: { tenantId: auth.tenantId, deletedAt: null, leadId: { in: leadIds } },
-          select: { id: true, outcome: true, expectedValue: true },
+          select: { id: true, outcome: true, expectedValueMinor: true },
         })
       : [];
     const won = opps.filter((o) => o.outcome === 'won');
@@ -467,7 +467,9 @@ export async function campaigns(params: { from?: Date; to?: Date } = {}): Promis
     const enrolments = oppIds.length
       ? await prisma.enrollment.count({ where: { tenantId: auth.tenantId, opportunityId: { in: oppIds } } })
       : 0;
-    const pipelineValue = opps.filter((o) => o.outcome === null).reduce((s, o) => s + (num(o.expectedValue) ?? 0), 0);
+    const pipelineValue = opps
+      .filter((o) => o.outcome === null)
+      .reduce((s, o) => s + rupeesOrZero(o.expectedValueMinor), 0);
     const spend = minorToRupees(spendAgg._sum.amountMinor ?? 0n);
 
     result.push({
@@ -541,7 +543,7 @@ export async function attributionSummary(
     }),
     prisma.opportunity.findMany({
       where: { tenantId: auth.tenantId, deletedAt: null, leadId: { in: leadIds } },
-      select: { leadId: true, outcome: true, expectedValue: true },
+      select: { leadId: true, outcome: true, expectedValueMinor: true },
     }),
   ]);
 
@@ -550,7 +552,7 @@ export async function attributionSummary(
     if (!o.leadId) continue;
     oppsByLead.set(o.leadId, [
       ...(oppsByLead.get(o.leadId) ?? []),
-      { outcome: o.outcome, expectedValue: num(o.expectedValue) },
+      { outcome: o.outcome, expectedValue: o.expectedValueMinor === null ? null : rupeesOf(o.expectedValueMinor) },
     ]);
   }
 

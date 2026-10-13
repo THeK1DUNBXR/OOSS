@@ -10,6 +10,7 @@ import {
 } from '@kaizen/shared';
 import { handler, str, bool, numeric } from '../lib/http.js';
 import { prisma, num } from '../platform/db.js';
+import { minorString, rupeesOrNull, withDecimalMinor } from '../platform/wire.js';
 import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney } from '../platform/permissions.js';
@@ -175,7 +176,11 @@ router.get(
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
-    return rows.map((p) => ({ ...p, totalValue: money ? num(p.totalValue) : null }));
+    return rows.map((p) => ({
+      ...p,
+      totalValue: money ? rupeesOrNull(p.totalValueMinor) : null,
+      totalValueMinor: money ? minorString(p.totalValueMinor) : null,
+    }));
   }),
 );
 
@@ -194,7 +199,7 @@ router.post(
       ...input,
       validUntil: input.validUntil ? new Date(input.validUntil) : null,
     });
-    res.status(201).json(proposal);
+    res.status(201).json(withDecimalMinor(proposal, ['totalValue']));
     return undefined;
   }),
 );
@@ -366,7 +371,8 @@ async function listAgreements(kind: AgreementKind, filters: { status?: string })
       scope: (r.scope as string | null) ?? null,
       vertical: (r.vertical as string | null) ?? null,
       agreementType: (r.agreementType as string | null) ?? null,
-      commercialValue: money ? num(r.commercialValue as never) : null,
+      commercialValue: money ? rupeesOrNull(r.commercialValueMinor as bigint | null) : null,
+      commercialValueMinor: money ? minorString(r.commercialValueMinor as bigint | null) : null,
       currency: (r.currency as string) ?? 'INR',
       strategicValue: (r.strategicValue as string | null) ?? null,
       startDate: (r.startDate as Date | null)?.toISOString() ?? null,
@@ -397,7 +403,8 @@ for (const [segment, kind] of Object.entries(KIND_MAP)) {
     handler(async (req) => {
       const schema = z.object({ toStatus: z.string(), note: z.string().optional() });
       const input = schema.parse(req.body);
-      return transitionAgreement(kind, req.params.id, input.toStatus, input.note ?? '');
+      const result = await transitionAgreement(kind, req.params.id, input.toStatus, input.note ?? '');
+      return { ...result, agreement: withDecimalMinor(result.agreement, ['commercialValue']) };
     }),
   );
 
@@ -405,7 +412,9 @@ for (const [segment, kind] of Object.entries(KIND_MAP)) {
     `/${segment}/:id/renew`,
     handler(async (req) => {
       const schema = z.object({ endDate: z.string() });
-      return renewAgreement(kind, req.params.id, new Date(schema.parse(req.body).endDate));
+      return withDecimalMinor(await renewAgreement(kind, req.params.id, new Date(schema.parse(req.body).endDate)), [
+        'commercialValue',
+      ]);
     }),
   );
 }
@@ -432,7 +441,7 @@ router.post(
       startDate: input.startDate ? new Date(input.startDate) : null,
       endDate: input.endDate ? new Date(input.endDate) : null,
     });
-    res.status(201).json(mou);
+    res.status(201).json(withDecimalMinor(mou, ['commercialValue']));
     return undefined;
   }),
 );
@@ -458,7 +467,7 @@ router.post(
       startDate: input.startDate ? new Date(input.startDate) : null,
       endDate: input.endDate ? new Date(input.endDate) : null,
     });
-    res.status(201).json(contract);
+    res.status(201).json(withDecimalMinor(contract, ['commercialValue']));
     return undefined;
   }),
 );
@@ -484,7 +493,7 @@ router.post(
       startDate: input.startDate ? new Date(input.startDate) : null,
       endDate: input.endDate ? new Date(input.endDate) : null,
     });
-    res.status(201).json(agreement);
+    res.status(201).json(withDecimalMinor(agreement, ['commercialValue']));
     return undefined;
   }),
 );
@@ -509,7 +518,8 @@ router.get(
     });
     return rows.map((s) => ({
       ...s,
-      requestedValue: money ? num(s.requestedValue) : null,
+      requestedValue: money ? rupeesOrNull(s.requestedValueMinor) : null,
+      requestedValueMinor: money ? minorString(s.requestedValueMinor) : null,
       slaBreached: Boolean(s.slaDueAt && s.slaDueAt < new Date()),
     }));
   }),
@@ -520,7 +530,7 @@ router.post(
   handler(async (req) => {
     const schema = z.object({ approve: z.boolean(), note: z.string().min(1) });
     const input = schema.parse(req.body);
-    return decideApprovalStep(req.params.id, input.approve, input.note);
+    return withDecimalMinor(await decideApprovalStep(req.params.id, input.approve, input.note), ['requestedValue']);
   }),
 );
 
@@ -561,8 +571,10 @@ router.get(
       mandatory: r.mandatory,
       mandatoryBasis: r.mandatoryBasis,
       strategicValueSnapshot: r.strategicValueSnapshot,
-      commercialValueSnapshot: money ? num(r.commercialValueSnapshot) : null,
-      thresholdUsedSnapshot: money ? num(r.thresholdUsedSnapshot) : null,
+      commercialValueSnapshot: money ? rupeesOrNull(r.commercialValueSnapshotMinor) : null,
+      commercialValueSnapshotMinor: money ? minorString(r.commercialValueSnapshotMinor) : null,
+      thresholdUsedSnapshot: money ? rupeesOrNull(r.thresholdUsedSnapshotMinor) : null,
+      thresholdUsedSnapshotMinor: money ? minorString(r.thresholdUsedSnapshotMinor) : null,
       completedById: r.completedById,
       completedByName: null,
       completedAt: r.completedAt?.toISOString() ?? null,
@@ -577,7 +589,10 @@ router.post(
   handler(async (req) => {
     const schema = z.object({ subjectType: z.enum(['opportunity', 'mou']), subjectId: z.string() });
     const input = schema.parse(req.body);
-    return ensureWinLossReview(input.subjectType, input.subjectId);
+    return withDecimalMinor(await ensureWinLossReview(input.subjectType, input.subjectId), [
+      'commercialValueSnapshot',
+      'thresholdUsedSnapshot',
+    ]);
   }),
 );
 
@@ -592,7 +607,10 @@ router.post(
       lostReasonOtherText: z.string().nullish(),
       lesson: z.string().nullish(),
     });
-    return completeWinLossReview(req.params.id, schema.parse(req.body));
+    return withDecimalMinor(await completeWinLossReview(req.params.id, schema.parse(req.body)), [
+      'commercialValueSnapshot',
+      'thresholdUsedSnapshot',
+    ]);
   }),
 );
 

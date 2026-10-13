@@ -12,8 +12,8 @@ import {
   ORGANIZATION_ROLES,
 } from '@kaizen/shared';
 import { handler, parsePaging, str, bool, date, numeric } from '../lib/http.js';
-import { prisma, num } from '../platform/db.js';
-import { withDecimalMinor } from '../platform/wire.js';
+import { prisma } from '../platform/db.js';
+import { minorString, rupeesOrNull, withDecimalMinor } from '../platform/wire.js';
 import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, can, canSeeMoney, applyFieldVisibility } from '../platform/permissions.js';
@@ -777,7 +777,8 @@ router.get(
           score: l.score,
           scoreReasons: l.scoreReasons,
           source: l.source,
-          estimatedValue: money ? num(l.estimatedValue) : null,
+          estimatedValue: money ? rupeesOrNull(l.estimatedValueMinor) : null,
+          estimatedValueMinor: money ? minorString(l.estimatedValueMinor) : null,
           currency: l.currency,
           stageEnteredAt: l.stageEnteredAt.toISOString(),
           stageAgeDays: ageDays,
@@ -809,8 +810,11 @@ router.get(
       timelineFor('lead', lead.id, { limit: 30 }),
       routingAuditFor(lead.id),
     ]);
+    const leadWire = withDecimalMinor(lead, ['estimatedValue']);
     return {
-      lead: lead.pipeline ? { ...lead, pipeline: withDecimalMinor(lead.pipeline, ['commitApprovalThreshold']) } : lead,
+      lead: lead.pipeline
+        ? { ...leadWire, pipeline: withDecimalMinor(lead.pipeline, ['commitApprovalThreshold']) }
+        : leadWire,
       timeline: timeline.items,
       routingAudit: routing,
     };
@@ -835,7 +839,7 @@ router.post(
       district: z.string().nullish(),
     });
     const lead = await createLead(schema.parse(req.body) as never);
-    res.status(201).json(lead);
+    res.status(201).json(withDecimalMinor(lead, ['estimatedValue']));
     return undefined;
   }),
 );
@@ -844,13 +848,17 @@ router.post(
   '/leads/:id/stage',
   handler(async (req) => {
     const schema = z.object({ toStageKey: z.string() });
-    return advanceLeadStage(req.params.id, schema.parse(req.body).toStageKey);
+    return withDecimalMinor(await advanceLeadStage(req.params.id, schema.parse(req.body).toStageKey), [
+      'estimatedValue',
+    ]);
   }),
 );
 
 router.post(
   '/leads/:id/reroute',
-  handler(async (req) => applyRouting(req.params.id, str(req.body?.district) ?? null)),
+  handler(async (req) =>
+    withDecimalMinor(await applyRouting(req.params.id, str(req.body?.district) ?? null), ['estimatedValue']),
+  ),
 );
 
 router.post(
@@ -858,7 +866,7 @@ router.post(
   handler(async (req) => {
     const schema = z.object({ ownerPartyId: z.string(), reason: z.string().min(1) });
     const input = schema.parse(req.body);
-    return reassignLead(req.params.id, input.ownerPartyId, input.reason);
+    return withDecimalMinor(await reassignLead(req.params.id, input.ownerPartyId, input.reason), ['estimatedValue']);
   }),
 );
 
@@ -871,7 +879,7 @@ router.post(
       expectedValue: input.expectedValue ?? null,
       expectedCloseDate: input.expectedCloseDate ? new Date(input.expectedCloseDate) : null,
     });
-    res.status(201).json(opp);
+    res.status(201).json(withDecimalMinor(opp, ['expectedValue']));
     return undefined;
   }),
 );
@@ -911,7 +919,7 @@ router.get(
       items: result.items.map((o) => {
         const stage = stageMap.get(`${o.pipelineId}:${o.stageKey}`);
         const ageDays = Math.floor((Date.now() - o.stageEnteredAt.getTime()) / 86_400_000);
-        const value = num(o.expectedValue);
+        const value = rupeesOrNull(o.expectedValueMinor);
         return {
           id: o.id,
           recordCode: o.recordCode,
@@ -937,6 +945,7 @@ router.get(
           // Masked (present but nulled) rather than absent, for a viewer
           // without financial visibility.
           expectedValue: money ? value : null,
+          expectedValueMinor: money ? minorString(o.expectedValueMinor) : null,
           weightedValue:
             money && value !== null ? Number((value * ((stage?.defaultProbability ?? 0) / 100)).toFixed(2)) : null,
           currency: o.currency,
@@ -996,11 +1005,14 @@ router.get(
     const money = await canSeeMoney('opportunities');
     const filtered = applyFieldVisibility(
       {
-        opportunity: { ...opportunity, pipeline: withDecimalMinor(opportunity.pipeline, ['commitApprovalThreshold']) },
-        proposal,
+        opportunity: {
+          ...withDecimalMinor(opportunity, ['expectedValue'], { canSee: money }),
+          pipeline: withDecimalMinor(opportunity.pipeline, ['commitApprovalThreshold']),
+        },
+        proposal: proposal ? withDecimalMinor(proposal, ['totalValue'], { canSee: money }) : proposal,
         quote,
-        contract,
-        mou,
+        contract: contract ? withDecimalMinor(contract, ['commercialValue'], { canSee: money }) : contract,
+        mou: mou ? withDecimalMinor(mou, ['commercialValue'], { canSee: money }) : mou,
       } as unknown as Record<string, unknown>,
       { canSeeMoney: money, ceiling: currentAuth().classificationCeiling },
     );
@@ -1008,7 +1020,9 @@ router.get(
     return {
       ...filtered.data,
       timeline: timeline.items,
-      winLossReview: winLoss,
+      winLossReview: winLoss
+        ? withDecimalMinor(winLoss, ['commercialValueSnapshot', 'thresholdUsedSnapshot'])
+        : winLoss,
       receivables,
       withheld: filtered.withheld,
       wonGateSatisfied: Boolean(opportunity.contractId || opportunity.mouId),
@@ -1035,7 +1049,7 @@ router.post(
       ...input,
       expectedCloseDate: input.expectedCloseDate ? new Date(input.expectedCloseDate) : null,
     } as never);
-    res.status(201).json(opp);
+    res.status(201).json(withDecimalMinor(opp, ['expectedValue']));
     return undefined;
   }),
 );
@@ -1045,7 +1059,11 @@ router.post(
   handler(async (req) => {
     const schema = z.object({ toStageKey: z.string(), reasonCode: z.string().optional(), note: z.string().optional() });
     const input = schema.parse(req.body);
-    return advanceStage(req.params.id, input.toStageKey, { reasonCode: input.reasonCode, note: input.note });
+    const result = await advanceStage(req.params.id, input.toStageKey, {
+      reasonCode: input.reasonCode,
+      note: input.note,
+    });
+    return { ...result, opportunity: withDecimalMinor(result.opportunity, ['expectedValue']) };
   }),
 );
 
@@ -1054,13 +1072,16 @@ router.post(
   handler(async (req) => {
     const schema = z.object({ to: z.enum(['pipeline', 'best_case', 'commit']), reason: z.string().optional() });
     const input = schema.parse(req.body);
-    return changeForecastCategory({ opportunityId: req.params.id, to: input.to, reason: input.reason });
+    return withDecimalMinor(
+      await changeForecastCategory({ opportunityId: req.params.id, to: input.to, reason: input.reason }),
+      ['expectedValue'],
+    );
   }),
 );
 
 router.patch(
   '/opportunities/:id',
-  handler(async (req) => updateOpportunity(req.params.id, req.body)),
+  handler(async (req) => withDecimalMinor(await updateOpportunity(req.params.id, req.body), ['expectedValue'])),
 );
 
 router.post(
@@ -1068,7 +1089,7 @@ router.post(
   handler(async (req) => {
     const opportunity = await prisma.opportunity.findFirst({ where: { id: req.params.id } });
     if (!opportunity?.contractId) throw ApiError.unprocessable('This opportunity has no contract to renew.');
-    return openRenewalOpportunity(opportunity.contractId);
+    return withDecimalMinor(await openRenewalOpportunity(opportunity.contractId), ['expectedValue']);
   }),
 );
 

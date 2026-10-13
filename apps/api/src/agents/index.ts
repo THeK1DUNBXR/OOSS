@@ -22,6 +22,7 @@ import {
   type AiTierCode,
 } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
+import { rupeesOrNull } from '../platform/wire.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
@@ -421,7 +422,7 @@ export async function agentRoster() {
         status: a.status,
         authorityGrants: grants.map((g) => ({
           authorityClass: g.authorityClass,
-          ceilingValue: num(g.ceilingValue),
+          ceilingValue: rupeesOrNull(g.ceilingValueMinor),
           currency: g.currency,
           countCeiling: g.countCeiling,
           countWindow: g.countWindow,
@@ -473,7 +474,7 @@ export async function revokeAuthority(grantId: string, reason: string) {
     await emit({
       name: EVENTS.GRANT_CHANGED,
       subject: { entityType: 'authority_grant', entityId: grantId },
-      previousState: { status: grant.status, ceilingValue: num(grant.ceilingValue) },
+      previousState: { status: grant.status, ceilingValue: rupeesOrNull(grant.ceilingValueMinor) },
       newState: { status: 'revoked' },
       reason: { reasonCode: 'authority_revoked', note: reason },
       impact: { domains: ['gov', 'agt'], severity: 'S2_WARNING' },
