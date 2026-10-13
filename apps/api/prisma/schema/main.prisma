@@ -793,9 +793,15 @@ model Grant {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  /// C-015: a stopgap IT owner grant the founder creates before onboarding names an IT admin.
+  /// `to_migrate` is the only value the database accepts (CHECK in the migration), and it is
+  /// what the exceptions view lists and what onboarding retires. Null for every other grant.
+  provenance String?
+
   @@index([tenantId, roleId, resource])
   @@index([tenantId, accessAssignmentId])
   @@index([tenantId, principalId, resource])
+  @@index([tenantId, provenance])
   @@map("grants")
 }
 

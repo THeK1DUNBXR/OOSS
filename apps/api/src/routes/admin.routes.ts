@@ -11,6 +11,7 @@ import {
   PLANES,
   RESOURCES,
   ROLE_SLUGS,
+  SCOPES,
   formatGrant,
 } from '@kaizen/shared';
 import { handler, str, bool, numeric } from '../lib/http.js';
@@ -27,6 +28,12 @@ import { agentRoster, decideAgentAction, pauseAgent, revokeAuthority, propose } 
 import { ALL_JOBS, runManualJobs } from '../jobs/scheduler.js';
 import { replayDeadLetter } from '../platform/outbox.js';
 import { setThreshold } from '../domains/thresholds.js';
+import {
+  STOPGAP_VERBS,
+  createStopgapGrant,
+  listStopgapGrants,
+  retireStopgapGrants,
+} from '../domains/access/stopgapGrants.js';
 
 const router = Router();
 
@@ -194,6 +201,42 @@ router.post(
     res.status(201).json(grant);
     return undefined;
   }),
+);
+
+// The stopgap IT owner grant (C-015). The founder creates it; the exceptions view lists it;
+// onboarding retires it. The founder check is in the domain, not here, so every caller of it
+// gets the same refusal.
+router.get(
+  '/grants/stopgap',
+  handler(async () => ({ grants: await listStopgapGrants() })),
+);
+
+router.post(
+  '/grants/stopgap',
+  handler(async (req, res) => {
+    const schema = z.object({
+      personId: z.string().min(1),
+      provenance: z.string(),
+      grants: z
+        .array(
+          z.object({
+            resource: z.enum(RESOURCES),
+            verbs: z.array(z.enum(STOPGAP_VERBS)).min(1),
+            scope: z.enum(SCOPES),
+          }),
+        )
+        .min(1),
+    });
+    const input = schema.parse(req.body);
+    const grants = await createStopgapGrant(input);
+    res.status(201).json({ grants });
+    return undefined;
+  }),
+);
+
+router.post(
+  '/grants/stopgap/retire',
+  handler(async () => ({ retired: await retireStopgapGrants() })),
 );
 
 router.get(
