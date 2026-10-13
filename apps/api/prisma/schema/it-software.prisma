@@ -96,7 +96,8 @@ model ItLicence {
   /// Typed in by whoever manages the licence — never metered.
   seatsInUse     Int @default(0)
 
-  costPerPeriod Decimal @db.Decimal(18, 2)
+  /// Paise. Was Decimal(18,2) until 20261013222000_it_money_minor.
+  costPerPeriodMinor BigInt
   currency      String  @default("INR")
   /// monthly | quarterly | annual | one_off
   billingCycle  String
@@ -136,7 +137,8 @@ model ItLicence {
   pendingRenewalProposedById   String?
   pendingRenewalApprovalStepId String?
   pendingRenewalTermEnd        DateTime?
-  pendingRenewalCostPerPeriod  Decimal?  @db.Decimal(18, 2)
+  /// Paise. Was Decimal(18,2) until 20261013222000_it_money_minor.
+  pendingRenewalCostPerPeriodMinor BigInt?
   pendingRenewalNote           String?
 
   cancelledAt     DateTime?

@@ -36,7 +36,9 @@ import {
   type VendorRiskRating,
   type VendorStatus,
 } from '@kaizen/shared';
-import { prisma, num, dec } from '../../platform/db.js';
+import { prisma } from '../../platform/db.js';
+import { rupeesToMinor } from '../../platform/wire.js';
+import { minorToRupees, withNumberMinor } from './money.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
@@ -180,7 +182,7 @@ export async function vendorDetail(id: string) {
     ...vendor,
     availableTransitions: machineAvailableTransitions(vendorStatusMachine, vendor.status as VendorStatus),
     riskAssessments: assessments,
-    contracts: contracts.map((c) => ({ ...c, value: num(c.value) })),
+    contracts: contracts.map((c) => withNumberMinor(c, ['value'])),
   };
 }
 
@@ -354,7 +356,7 @@ export async function createVendorContract(input: CreateContractInput) {
         recordCode,
         vendorId: input.vendorId,
         title: input.title.trim(),
-        value: dec(input.value)!,
+        valueMinor: rupeesToMinor(input.value),
         currency: input.currency ?? 'INR',
         termMonths: input.termMonths ?? null,
         startDate: input.startDate ?? null,
@@ -393,7 +395,7 @@ export async function createVendorContract(input: CreateContractInput) {
   });
 
   const seesMoney = await canSeeMoney('it_vendor_contracts');
-  return maskContractMoney({ ...contract, value: num(contract.value) }, seesMoney, auth.classificationCeiling);
+  return maskContractMoney(withNumberMinor(contract, ['value']), seesMoney, auth.classificationCeiling);
 }
 
 export interface ContractFilter {
@@ -416,7 +418,11 @@ function maskContractMoney<T extends Record<string, unknown>>(
 ): T {
   if (seesMoney) return row;
   const { data } = applyFieldVisibility(row, { canSeeMoney: false, ceiling });
-  return { ...data, currency: null } as T;
+  // `valueMinor` is not in the platform's MONEY_FIELDS list (its key is not
+  // `value`), so applyFieldVisibility passes it through: it is withheld here.
+  const masked: Record<string, unknown> = { ...data, currency: null };
+  if ('valueMinor' in masked) masked.valueMinor = null;
+  return masked as T;
 }
 
 async function decorateContract(
@@ -424,15 +430,13 @@ async function decorateContract(
   seesMoney: boolean,
   ceiling: Parameters<typeof applyFieldVisibility>[1]['ceiling'],
 ) {
-  const value = num(row.value)!;
   let daysToNotice: number | null = null;
   if (row.endDate) {
     const nd = noticeDate(row.endDate, row.noticeDays);
     daysToNotice = Math.ceil((nd.getTime() - Date.now()) / 86_400_000);
   }
   const shaped = {
-    ...row,
-    value,
+    ...withNumberMinor(row, ['value']),
     vendorName: row.vendor?.name ?? null,
     daysToNotice,
     availableTransitions: VENDOR_CONTRACT_USER_TRANSITIONS[row.status as VendorContractStatus] ?? [],
@@ -513,7 +517,7 @@ export async function transitionVendorContract(
         type: 'it_vendor_contract',
         label: `${contract.recordCode} — ${contract.title}`,
         ownerPartyId: contract.ownerPartyId,
-        commercialValue: num(contract.value),
+        commercialValue: minorToRupees(contract.valueMinor),
         currency: contract.currency,
         strategicValue: null,
         termMonths: contract.termMonths,
@@ -525,7 +529,7 @@ export async function transitionVendorContract(
       const seesMoney = await canSeeMoney('it_vendor_contracts');
       return {
         applied: false,
-        contract: maskContractMoney({ ...contract, value: num(contract.value) }, seesMoney, auth.classificationCeiling),
+        contract: maskContractMoney(withNumberMinor(contract, ['value']), seesMoney, auth.classificationCeiling),
         approvalStepId: gate.approvalStepId,
         resolvedApproverRole: gate.resolvedApproverRole,
         resolutionTier: gate.resolutionTier,
@@ -577,7 +581,7 @@ export async function transitionVendorContract(
   const seesMoney = await canSeeMoney('it_vendor_contracts');
   return {
     applied: true,
-    contract: maskContractMoney({ ...updated, value: num(updated.value) }, seesMoney, auth.classificationCeiling),
+    contract: maskContractMoney(withNumberMinor(updated, ['value']), seesMoney, auth.classificationCeiling),
     approvalStepId: null,
     resolvedApproverRole: null,
     resolutionTier: 0,
@@ -616,7 +620,7 @@ export async function renewVendorContract(id: string, input: RenewContractInput)
   const renewal = await createVendorContract({
     vendorId: existing.vendorId,
     title: `${existing.title} (renewed)`,
-    value: input.value ?? num(existing.value)!,
+    value: input.value ?? minorToRupees(existing.valueMinor),
     currency: existing.currency,
     termMonths: existing.termMonths,
     startDate: input.startDate ?? new Date(),
@@ -709,7 +713,7 @@ export async function summaryContracts() {
 
   const rawValueUnderManagement = rows.reduce((sum, r) => {
     const inForce = r.status === 'approved' || r.status === 'active' || r.status === 'expiring';
-    return inForce ? sum + (num(r.value) ?? 0) : sum;
+    return inForce ? sum + minorToRupees(r.valueMinor) : sum;
   }, 0);
   // Present-but-withheld, the same rule a single contract's own `value` field
   // follows (`maskContractMoney`) — a caller without `it_vendor_contracts:F`
