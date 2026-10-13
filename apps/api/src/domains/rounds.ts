@@ -618,7 +618,7 @@ export async function buybackTests(): Promise<BuybackTests> {
     loans.reduce((sum, l) => {
       const outstanding = loanBalanceAt(
         {
-          principal: num(l.principal) ?? 0,
+          principal: minorToRupees(l.principalMinor),
           annualRate: num(l.annualRate) ?? 0,
           tenureMonths: l.tenureMonths,
           startDate: l.startDate,

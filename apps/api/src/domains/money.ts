@@ -42,6 +42,14 @@ export function withNumberMinor<T extends object, N extends string>(
 }
 
 /**
+ * A `<name>Minor` wire string (what `withDecimalMinor` leaves on a row) as the
+ * rupee number a screen reads. Null stays null, so a withheld field is never 0.
+ */
+export function rupeesOfMinorString(minor: string | null | undefined): number | null {
+  return minor === null || minor === undefined ? null : minorToRupees(BigInt(minor));
+}
+
+/**
  * Withholds money from a viewer who cannot see it: each named field and its
  * `<name>Minor` sibling become null together. A masked row that still carried
  * the paise string would leak the figure the mask exists to hide.
@@ -83,3 +91,17 @@ export function grownByPercent(amount: bigint, percent: number): bigint {
   const pct = fractionOf(percent);
   return amount + mulRatio(amount, pct.num, pct.den * 100n);
 }
+
+/**
+ * The paise columns of an Offboarding. Every path that returns an offboarding
+ * (the settlement, the transition, the employee record and the exit view) passes
+ * it through withDecimalMinor, so the rupee fields do not disappear from the
+ * wire when a raw row is returned.
+ */
+export const OFFBOARDING_MONEY = [
+  'settlementAmount',
+  'gratuityAmount',
+  'leaveEncashmentAmount',
+  'bonusAmount',
+  'noticeRecoveryAmount',
+] as const;

@@ -129,8 +129,8 @@ async function makeRun(
         recordCode,
         payPeriod,
         status: 'Approved',
-        grossTotal: rows.reduce((s, r) => s + r.gross, 0),
-        netTotal: rows.reduce((s, r) => s + r.net, 0),
+        grossTotalMinor: BigInt(rows.reduce((s, r) => s + r.gross, 0)) * 100n,
+        netTotalMinor: BigInt(rows.reduce((s, r) => s + r.net, 0)) * 100n,
         headcount: rows.length,
         preparedById: await partyFor('operations@kaizen.co.in'),
         approvedById: await partyFor('finance@kaizen.co.in'),
@@ -144,8 +144,8 @@ async function makeRun(
           payrollRunId: run.id,
           payPeriod,
           division: row.division,
-          grossAmount: row.gross,
-          netAmount: row.net,
+          grossAmountMinor: BigInt(row.gross) * 100n,
+          netAmountMinor: BigInt(row.net) * 100n,
           status: 'Approved',
         },
       });
@@ -411,7 +411,7 @@ describe('payroll journal', () => {
     // component, as computeInstruction stores it: a lump deduction does not reconcile to a liability.
     await unscopedPrisma.payrollInstruction.updateMany({
       where: { tenantId: TENANT, payrollRunId: run.id },
-      data: { pfEmployee: 6000 },
+      data: { pfEmployeeMinor: 600_000n },
     });
     // The employee above needs a ledger entity, and 2032-03 an open period.
     await readyPayrollPosting(TENANT, { months: ['2032-03'], divisions: ['software'] });
@@ -565,7 +565,7 @@ describe('bank advice', () => {
           fileText: 'duplicate',
           rows: [] as never,
           count: 0,
-          total: 0,
+          totalMinor: 0n,
         },
       }),
     ).rejects.toThrow(/Unique constraint|unique/i);
@@ -679,7 +679,7 @@ describe('bank advice', () => {
           },
         ] as never,
         count: 1,
-        total: 100,
+        totalMinor: 10_000n,
       },
     });
 

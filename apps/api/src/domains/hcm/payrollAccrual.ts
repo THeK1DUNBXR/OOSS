@@ -29,7 +29,6 @@ import { currentAuth } from '../../platform/context.js';
 import { postInTx } from '../../platform/ledger.js';
 import { resolvePostingAccounts } from '../../platform/postingRoles.js';
 import { ApiError } from '../../platform/errors.js';
-import { paiseSum } from '../../platform/wire.js';
 
 /**
  * The entry date for a pay month: the last IST day of it, as the UTC midnight the
@@ -53,17 +52,17 @@ export async function accrueRunLiabilities(tx: DbTx, run: { id: string; payPerio
     where: { tenantId: auth.tenantId, payrollRunId: run.id },
     select: {
       division: true,
-      grossAmount: true,
-      netAmount: true,
-      pfEmployee: true,
-      pfEmployer: true,
-      epsEmployer: true,
-      esiEmployee: true,
-      esiEmployer: true,
-      professionalTax: true,
-      lwfEmployee: true,
-      lwfEmployer: true,
-      tdsAmount: true,
+      grossAmountMinor: true,
+      netAmountMinor: true,
+      pfEmployeeMinor: true,
+      pfEmployerMinor: true,
+      epsEmployerMinor: true,
+      esiEmployeeMinor: true,
+      esiEmployerMinor: true,
+      professionalTaxMinor: true,
+      lwfEmployeeMinor: true,
+      lwfEmployerMinor: true,
+      tdsAmountMinor: true,
       employmentRelationship: { select: { ledgerEntityId: true } },
     },
   });
@@ -104,9 +103,9 @@ export async function accrueRunLiabilities(tx: DbTx, run: { id: string; payPerio
   let residualTotal = 0n;
   for (const i of instructions) {
     const residual =
-      paiseSum([i.grossAmount]) -
-      paiseSum([i.netAmount]) -
-      paiseSum([i.pfEmployee, i.esiEmployee, i.professionalTax, i.lwfEmployee, i.tdsAmount]);
+      i.grossAmountMinor -
+      i.netAmountMinor -
+      (i.pfEmployeeMinor + i.esiEmployeeMinor + i.professionalTaxMinor + i.lwfEmployeeMinor + i.tdsAmountMinor);
     if (residual !== 0n) {
       residualCount += 1;
       residualTotal += residual;
@@ -146,14 +145,14 @@ export async function accrueRunLiabilities(tx: DbTx, run: { id: string; payPerio
     groups.set(entityId, g);
     const share = g.byLine.get(lineId) ?? { lineId, grossMinor: 0n, employerMinor: 0n };
     g.byLine.set(lineId, share);
-    share.grossMinor += paiseSum([i.grossAmount]);
-    share.employerMinor += paiseSum([i.pfEmployer, i.epsEmployer, i.esiEmployer, i.lwfEmployer]);
-    g.netPayMinor += paiseSum([i.netAmount]);
-    g.pfPayableMinor += paiseSum([i.pfEmployee, i.pfEmployer, i.epsEmployer]);
-    g.esiPayableMinor += paiseSum([i.esiEmployee, i.esiEmployer]);
-    g.ptMinor += paiseSum([i.professionalTax]);
-    g.lwfPayableMinor += paiseSum([i.lwfEmployee, i.lwfEmployer]);
-    g.tdsMinor += paiseSum([i.tdsAmount]);
+    share.grossMinor += i.grossAmountMinor;
+    share.employerMinor += i.pfEmployerMinor + i.epsEmployerMinor + i.esiEmployerMinor + i.lwfEmployerMinor;
+    g.netPayMinor += i.netAmountMinor;
+    g.pfPayableMinor += i.pfEmployeeMinor + i.pfEmployerMinor + i.epsEmployerMinor;
+    g.esiPayableMinor += i.esiEmployeeMinor + i.esiEmployerMinor;
+    g.ptMinor += i.professionalTaxMinor;
+    g.lwfPayableMinor += i.lwfEmployeeMinor + i.lwfEmployerMinor;
+    g.tdsMinor += i.tdsAmountMinor;
   }
 
   const entityIds = [...groups.keys()].sort();

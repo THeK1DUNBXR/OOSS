@@ -8,6 +8,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { financialYearOf, isoWeekLabel, isoWeekRange } from '@kaizen/shared';
 import { asUser, prisma, tenantId, unscopedPrisma } from '../helpers.js';
+import { minorToRupees } from '../../domains/money.js';
 import { hire, transitionEmployment } from '../../domains/employment.js';
 import { createLeaveRequest, accrueEntitlement } from '../../domains/leave.js';
 import {
@@ -321,7 +322,7 @@ describe('CMP-LAB-002 — weekly hours exceeding the cap raise an exception rath
       });
       expect(accrual).toBeTruthy();
       expect(Number(accrual?.hours)).toBe(6); // six OT hours logged
-      expect(Number(accrual?.amount)).toBe(6 * 100 * 2); // hours x hourly rate x 2x multiplier
+      expect(minorToRupees(accrual!.amountMinor)).toBe(6 * 100 * 2); // hours x hourly rate x 2x multiplier
     });
   });
 });

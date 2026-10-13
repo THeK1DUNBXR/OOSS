@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { setInstructionAmounts } from '../domains/payroll.js';
 import { asUser, tenantId, unscopedPrisma } from './helpers.js';
+import { minorToDecimal } from '../platform/wire.js';
 
 describe('setInstructionAmounts — audit', () => {
   it('changing an instruction amount writes an update audit row against the instruction', async () => {
@@ -22,7 +23,7 @@ describe('setInstructionAmounts — audit', () => {
     );
 
     const after = await unscopedPrisma.payrollInstruction.findFirstOrThrow({ where: { id: instruction.id } });
-    expect(after.grossAmount.toString()).toBe('50000');
+    expect(minorToDecimal(after.grossAmountMinor).toString()).toBe('50000');
 
     const audit = await unscopedPrisma.auditRecord.findMany({
       where: { tenantId: tid, subjectType: 'payroll_instruction', subjectId: instruction.id },

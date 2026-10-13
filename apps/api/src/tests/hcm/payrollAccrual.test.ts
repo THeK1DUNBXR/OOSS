@@ -9,7 +9,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { parseMinor, formatMinor, type PostingRole } from '@kaizen/shared';
+import { parseMinor, type PostingRole } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from '../../platform/db.js';
 import { assertTrialBalance, journalTrialBalance } from '../../platform/balances.js';
 import { asUser, booksTenant, expectReject, type BooksTenant } from '../helpers.js';
@@ -161,7 +161,6 @@ interface Row {
 }
 
 const zero = (v: string | undefined) => parseMinor(v ?? '0.00');
-const dec = (p: bigint) => formatMinor(p);
 
 /** A run for `payPeriod` with one instruction per row, the way computeInstruction stores them. */
 async function makeRun(tid: string, payPeriod: string, rows: Row[], status = 'Approved') {
@@ -181,8 +180,8 @@ async function makeRun(tid: string, payPeriod: string, rows: Row[], status = 'Ap
       payPeriod,
       status,
       headcount: rows.length,
-      grossTotal: dec(grossTotal),
-      netTotal: dec(netTotal),
+      grossTotalMinor: grossTotal,
+      netTotalMinor: netTotal,
       disbursedAt: status === 'Disbursed' ? new Date(`${payPeriod}-28T10:00:00.000Z`) : null,
     },
   });
@@ -197,18 +196,18 @@ async function makeRun(tid: string, payPeriod: string, rows: Row[], status = 'Ap
         payPeriod,
         division: r.division,
         status,
-        grossAmount: r.gross,
-        deductions: dec(deductions),
-        netAmount: dec(net),
-        pfEmployee: r.pfEe ?? '0',
-        pfEmployer: r.pfEr ?? '0',
-        epsEmployer: r.eps ?? '0',
-        esiEmployee: r.esiEe ?? '0',
-        esiEmployer: r.esiEr ?? '0',
-        professionalTax: r.pt ?? '0',
-        lwfEmployee: r.lwfEe ?? '0',
-        lwfEmployer: r.lwfEr ?? '0',
-        tdsAmount: r.tds ?? '0',
+        grossAmountMinor: zero(r.gross),
+        deductionsMinor: deductions,
+        netAmountMinor: net,
+        pfEmployeeMinor: zero(r.pfEe),
+        pfEmployerMinor: zero(r.pfEr),
+        epsEmployerMinor: zero(r.eps),
+        esiEmployeeMinor: zero(r.esiEe),
+        esiEmployerMinor: zero(r.esiEr),
+        professionalTaxMinor: zero(r.pt),
+        lwfEmployeeMinor: zero(r.lwfEe),
+        lwfEmployerMinor: zero(r.lwfEr),
+        tdsAmountMinor: zero(r.tds),
       },
     });
   }
@@ -223,8 +222,8 @@ async function preparedJournal(tid: string, runId: string, payPeriod: string) {
       payrollRunId: runId,
       payPeriod,
       lines: [] as never,
-      totalDebit: 0,
-      totalCredit: 0,
+      totalDebitMinor: 0n,
+      totalCreditMinor: 0n,
       status: 'Prepared',
     },
   });
