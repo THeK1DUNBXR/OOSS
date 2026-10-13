@@ -29,6 +29,8 @@ import {
   type PromoterCheck,
 } from '@kaizen/shared';
 import { prisma, dec, num } from '../platform/db.js';
+import { rupeesToMinor, rupeesToMinorOrNull } from '../platform/wire.js';
+import { minorToRupees, minorToRupeesOrNull } from './money.js';
 import { currentAuth } from '../platform/context.js';
 import { assertCan, assertScopeAll, scopeFor } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
@@ -87,7 +89,7 @@ export async function createPlan(input: EsopPlanInput) {
       poolShareClassId: input.poolShareClassId,
       targetShareClassId: input.targetShareClassId,
       isDpiitRecognised: Boolean(profile.dpiitRecognisedOn),
-      exercisePriceDefault: input.exercisePriceDefault == null ? null : dec(input.exercisePriceDefault),
+      exercisePriceDefaultMinor: input.exercisePriceDefault == null ? null : rupeesToMinor(input.exercisePriceDefault),
       vestingDefault: input.vestingDefault as never,
       exerciseWindowMonthsAfterExit: input.exerciseWindowMonthsAfterExit ?? 3,
       status: 'draft',
@@ -176,7 +178,7 @@ function planView(row: {
   resolutionRef: string | null;
   mgt14Srn: string | null;
   isDpiitRecognised: boolean;
-  exercisePriceDefault: unknown;
+  exercisePriceDefaultMinor: bigint | null;
   vestingDefault: unknown;
   exerciseWindowMonthsAfterExit: number;
   status: string;
@@ -191,7 +193,7 @@ function planView(row: {
     resolutionRef: row.resolutionRef,
     mgt14Srn: row.mgt14Srn,
     isDpiitRecognised: row.isDpiitRecognised,
-    exercisePriceDefault: num(row.exercisePriceDefault as never),
+    exercisePriceDefault: minorToRupeesOrNull(row.exercisePriceDefaultMinor),
     vestingDefault: row.vestingDefault as VestingScheduleInput,
     exerciseWindowMonthsAfterExit: row.exerciseWindowMonthsAfterExit,
     status: row.status as 'draft' | 'active' | 'closed',
@@ -350,7 +352,7 @@ export async function proposeGrant(input: ProposeGrantInput) {
     );
   }
 
-  const exercisePrice = input.exercisePrice ?? num(planRow.exercisePriceDefault as never);
+  const exercisePrice = input.exercisePrice ?? minorToRupeesOrNull(planRow.exercisePriceDefaultMinor);
   if (exercisePrice == null)
     throw ApiError.badRequest('An exercise price is required — either on this grant or as the plan default.');
 
@@ -365,7 +367,7 @@ export async function proposeGrant(input: ProposeGrantInput) {
       personId: employment.personId,
       grantedOn: new Date(input.grantedOn),
       count: dec(input.count)!,
-      exercisePrice: dec(exercisePrice)!,
+      exercisePriceMinor: rupeesToMinor(exercisePrice),
       vesting: { cliffMonths: schedule.cliffMonths, schedule: tranches } as never,
       grantLetterRef: input.grantLetterRef ?? null,
       status: 'proposed',
@@ -435,7 +437,7 @@ export async function approveGrant(id: string) {
     throw ApiError.forbidden('The Self-Dealing Bar is unconditional: the proposer of a grant may never approve it.');
   }
 
-  const value = (num(grant.exercisePrice) ?? 0) * (num(grant.count) ?? 0);
+  const value = minorToRupees(grant.exercisePriceMinor) * (num(grant.count) ?? 0);
   const result = await evaluateApprovalGate(
     'POL-EQT-OPTION-GRANT-APPROVAL',
     {
@@ -560,7 +562,7 @@ function grantView(
     personId: string;
     grantedOn: Date;
     count: unknown;
-    exercisePrice: unknown;
+    exercisePriceMinor: bigint;
     vesting: unknown;
     grantLetterRef: string | null;
     status: string;
@@ -586,7 +588,7 @@ function grantView(
     personId: row.personId,
     grantedOn: row.grantedOn.toISOString(),
     count: num(row.count as never)!,
-    exercisePrice: num(row.exercisePrice as never)!,
+    exercisePrice: minorToRupees(row.exercisePriceMinor),
     vesting: { cliffMonths: vesting.cliffMonths, schedule: tranchesOverride ?? vesting.schedule },
     grantLetterRef: row.grantLetterRef,
     status: row.status,
@@ -991,7 +993,7 @@ export async function requestExercise(input: RequestExerciseInput) {
     if (fmvPerShare != null) {
       fmvBasis = 'merchant_banker';
       fmvValuationId = valuation.id;
-      perquisite = (fmvPerShare - (num(g.exercisePrice) ?? 0)) * input.count;
+      perquisite = (fmvPerShare - minorToRupees(g.exercisePriceMinor)) * input.count;
       perquisiteNote = null;
       const profile = await companyProfile();
       taxDeferred = Boolean(planRow.isDpiitRecognised && profile.iac80CertificateRef);
@@ -1004,11 +1006,11 @@ export async function requestExercise(input: RequestExerciseInput) {
       grantId: g.id,
       requestedOn,
       count: dec(input.count)!,
-      exercisePrice: g.exercisePrice,
-      fmvPerShare: fmvPerShare == null ? null : dec(fmvPerShare),
+      exercisePriceMinor: g.exercisePriceMinor,
+      fmvPerShareMinor: fmvPerShare == null ? null : rupeesToMinor(fmvPerShare),
       fmvBasis,
       fmvValuationId,
-      perquisite: perquisite == null ? null : dec(perquisite),
+      perquisiteMinor: perquisite == null ? null : rupeesToMinor(perquisite),
       perquisiteNote,
       taxDeferred,
       status: 'requested',
@@ -1081,7 +1083,7 @@ export async function approveExercise(id: string) {
       resource: 'option_grants',
       label: g.recordCode,
       ownerPartyId: g.personId,
-      commercialValue: (num(exercise.exercisePrice) ?? 0) * (num(exercise.count) ?? 0),
+      commercialValue: minorToRupees(exercise.exercisePriceMinor) * (num(exercise.count) ?? 0),
       currency: 'INR',
       strategicValue: null,
       termMonths: null,
@@ -1104,7 +1106,7 @@ export async function approveExercise(id: string) {
     shareClassId: planRow.targetShareClassId,
     toHolderId: holder.id,
     count: num(exercise.count)!,
-    pricePerShare: num(exercise.exercisePrice)!,
+    pricePerShare: minorToRupees(exercise.exercisePriceMinor),
     effectiveOn: new Date().toISOString(),
   });
   const effective = await makeEffective(proposed.id);
@@ -1146,11 +1148,11 @@ function exerciseView(row: {
   grantId: string;
   requestedOn: Date;
   count: unknown;
-  exercisePrice: unknown;
-  fmvPerShare: unknown;
+  exercisePriceMinor: bigint;
+  fmvPerShareMinor: bigint | null;
   fmvBasis: string;
   fmvValuationId: string | null;
-  perquisite: unknown;
+  perquisiteMinor: bigint | null;
   perquisiteNote: string | null;
   taxDeferred: boolean;
   status: string;
@@ -1162,11 +1164,11 @@ function exerciseView(row: {
     grantId: row.grantId,
     requestedOn: row.requestedOn.toISOString(),
     count: num(row.count as never)!,
-    exercisePrice: num(row.exercisePrice as never)!,
-    fmvPerShare: num(row.fmvPerShare as never),
+    exercisePrice: minorToRupees(row.exercisePriceMinor),
+    fmvPerShare: minorToRupeesOrNull(row.fmvPerShareMinor),
     fmvBasis: row.fmvBasis as 'merchant_banker' | 'none',
     fmvValuationId: row.fmvValuationId,
-    perquisite: num(row.perquisite as never),
+    perquisite: minorToRupeesOrNull(row.perquisiteMinor),
     perquisiteNote: row.perquisiteNote,
     taxDeferred: row.taxDeferred,
     status: row.status,
@@ -1243,7 +1245,7 @@ export async function sh6Register() {
       grantedOn: g.grantedOn.toISOString(),
       optionsGranted: num(g.count)!,
       vestingDates: vesting.schedule.map((t) => t.on),
-      exercisePrice: num(g.exercisePrice)!,
+      exercisePrice: minorToRupees(g.exercisePriceMinor),
       optionsVested: num(g.vested) ?? 0,
       optionsExercised: num(g.exercised) ?? 0,
       sharesAllotted: num(g.exercised) ?? 0,

@@ -17,7 +17,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
-import type { Document } from '@prisma/client';
+import type { Document, Prisma } from '@prisma/client';
 import type { SensitivityClass } from '@kaizen/shared';
 import { prisma, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
@@ -28,6 +28,17 @@ import { emit } from '../platform/eventBus.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { activeObjectStorage, tenantKeyPrefix } from '../platform/objectStorage.js';
+import { withDecimalMinor, type WithMinorPair } from '../platform/wire.js';
+
+/**
+ * A Document as the API sends it (MONEY-S7). `stampDutyAmount` is the two-place figure it
+ * has always been, and `stampDutyAmountMinor` its paise string beside it.
+ */
+export type DocumentWire = WithMinorPair<Document, 'stampDutyAmount', Prisma.Decimal | null>;
+
+function wireDocument(row: Document): DocumentWire {
+  return withDecimalMinor(row, ['stampDutyAmount'] as const);
+}
 
 registerGovernedEntities('doc', ['document']);
 
@@ -169,7 +180,7 @@ async function insertVersion(
   bytes: Buffer,
   eventName: string,
   note: string | null,
-): Promise<Document> {
+): Promise<DocumentWire> {
   const auth = currentAuth();
   const storage = activeObjectStorage();
   let wrote = false;
@@ -208,7 +219,7 @@ async function insertVersion(
         reason: note ? { note } : null,
         tx,
       });
-      return created;
+      return wireDocument(created);
     });
   } catch (err) {
     if (wrote) await storage.discard(auth.tenantId, row.storageKey).catch(() => undefined);
@@ -236,7 +247,7 @@ export interface RegisterUploadInput {
 }
 
 /** A first version. It starts as a draft: nothing is in force until it is activated. */
-export async function registerUpload(input: RegisterUploadInput): Promise<Document> {
+export async function registerUpload(input: RegisterUploadInput): Promise<DocumentWire> {
   const auth = currentAuth();
   const owner = input.ownerPartyId ?? auth.partyId ?? null;
   if (!owner) throw ApiError.unprocessable('A document needs an owner: name the person it belongs to.');
@@ -291,7 +302,7 @@ export interface AddVersionInput {
  * the head: a version with a successor already has one, and a second would be
  * a fork. The new version carries the prior one's identity and starts as a draft.
  */
-export async function addVersion(input: AddVersionInput): Promise<Document> {
+export async function addVersion(input: AddVersionInput): Promise<DocumentWire> {
   const auth = currentAuth();
   const prior = await loadDocument(input.documentId);
   await guard('create', prior);
@@ -339,7 +350,7 @@ async function moveStatus(
   to: DocumentLifecycleStatus,
   note: string,
   eventName: string,
-): Promise<Document> {
+): Promise<DocumentWire> {
   const tenantId = currentAuth().tenantId;
   const from = doc.lifecycleStatus;
   const { count } = await tx.document.updateMany({
@@ -365,7 +376,7 @@ async function moveStatus(
     reason: { note },
     tx,
   });
-  return after;
+  return wireDocument(after);
 }
 
 export interface ChangeLifecycleInput {
@@ -380,7 +391,7 @@ export interface ChangeLifecycleInput {
  * version per group, so the order is what keeps the index from refusing the
  * activation.
  */
-export async function changeLifecycleStatus(input: ChangeLifecycleInput): Promise<Document> {
+export async function changeLifecycleStatus(input: ChangeLifecycleInput): Promise<DocumentWire> {
   const note = reasonOf(input.reason);
   const doc = await loadDocument(input.documentId);
   await guard('edit', doc);
@@ -429,7 +440,7 @@ export interface SetRetentionInput {
  * already in force: the years live in that rule, so a class with no rule would
  * be a retention period nobody had written down (CLAUDE.md rule 4).
  */
-export async function setRetentionClass(input: SetRetentionInput): Promise<Document> {
+export async function setRetentionClass(input: SetRetentionInput): Promise<DocumentWire> {
   const note = reasonOf(input.reason);
   const doc = await loadDocument(input.documentId);
   await guard('edit', doc);
@@ -449,7 +460,7 @@ export async function setRetentionClass(input: SetRetentionInput): Promise<Docum
       );
     }
   }
-  if (next === doc.retentionClass) return doc;
+  if (next === doc.retentionClass) return wireDocument(doc);
   return governedWrite(async (tx: DbTx) => {
     const { count } = await tx.document.updateMany({
       where: { id: doc.id, tenantId, retentionClass: doc.retentionClass },
@@ -474,7 +485,7 @@ export async function setRetentionClass(input: SetRetentionInput): Promise<Docum
       reason: { note },
       tx,
     });
-    return after;
+    return wireDocument(after);
   });
 }
 
@@ -482,10 +493,10 @@ export async function setRetentionClass(input: SetRetentionInput): Promise<Docum
 // Reads
 // ---------------------------------------------------------------------------
 
-export async function getDocument(id: string): Promise<Document> {
+export async function getDocument(id: string): Promise<DocumentWire> {
   const doc = await loadDocument(id);
   await guard('view', doc);
-  return doc;
+  return wireDocument(doc);
 }
 
 export interface DocumentFilter {
@@ -499,12 +510,12 @@ export interface DocumentFilter {
  * The documents the caller may see. Narrowed by the caller's scope on the owner,
  * the way every owned list is, and fail-closed when no grant resolves.
  */
-export async function listDocuments(filter: DocumentFilter = {}): Promise<Document[]> {
+export async function listDocuments(filter: DocumentFilter = {}): Promise<DocumentWire[]> {
   const auth = currentAuth();
   await assertCan({ resource: 'documents', verb: 'view' });
   const scope = await scopeFor('documents', 'view');
   const scoped = scope ? scopeWhere(scope, auth, 'ownerPartyId') : matchNothing('ownerPartyId');
-  return prisma.document.findMany({
+  const rows = await prisma.document.findMany({
     where: {
       tenantId: auth.tenantId,
       ...scoped,
@@ -515,6 +526,7 @@ export async function listDocuments(filter: DocumentFilter = {}): Promise<Docume
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: Math.min(filter.limit ?? 100, 200),
   });
+  return rows.map(wireDocument);
 }
 
 /**
