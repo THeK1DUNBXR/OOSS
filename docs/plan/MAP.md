@@ -92,7 +92,7 @@
 
 **`apps/api/src/domains/compliance/corporate/totp.ts`** (118 lines) — base32Encode:14 · base32Decode:30 · generateTotpSecret:49 · hotpRaw:58 · totpRaw:72 · totp:77 · verifyTotp:86 · otpauthUri:107
 
-**`apps/api/src/domains/compliance/gst.ts`** (965 lines) — courseGstExemptionFor:59 · setCourseGstExemption:67 · ClassifyLineInput:127 · classifyInvoiceLine:140 · unclassifiedLines:193 · registerGstComplianceHooks:280 · RcmInput:303 · applyReverseCharge:314 · listRcmSelfInvoices:365 · flaggedRcmBills:373 · rcmLiabilityFor:387 · DebitNoteInput:403 · issueDebitNote:410 · listDebitNotes:463 · listCreditNotesWithReason:471 · setCreditNoteReason:482 · EInvoiceRegistration:504 · EInvoiceProvider:512 · NotConfiguredProvider:518 · registerEInvoiceProvider:528 · setEInvoiceConfig:539 · eInvoiceConfig:556 · requestEInvoice:566 · eInvoiceStatusList:647 · Gstr2bImportInput:669 · importGstr2b:684 · gstr2bMatches:793 · gstr2bSummary:802 · gstExposure:845 · detectLateGstFilings:929
+**`apps/api/src/domains/compliance/gst.ts`** (972 lines) — courseGstExemptionFor:60 · setCourseGstExemption:68 · ClassifyLineInput:128 · classifyInvoiceLine:141 · unclassifiedLines:194 · registerGstComplianceHooks:285 · RcmInput:308 · applyReverseCharge:319 · listRcmSelfInvoices:370 · flaggedRcmBills:378 · rcmLiabilityFor:392 · DebitNoteInput:408 · issueDebitNote:415 · listDebitNotes:468 · listCreditNotesWithReason:476 · setCreditNoteReason:487 · EInvoiceRegistration:509 · EInvoiceProvider:517 · NotConfiguredProvider:523 · registerEInvoiceProvider:533 · setEInvoiceConfig:544 · eInvoiceConfig:561 · requestEInvoice:571 · eInvoiceStatusList:652 · Gstr2bImportInput:676 · importGstr2b:691 · gstr2bMatches:800 · gstr2bSummary:809 · gstExposure:852 · detectLateGstFilings:936
 
 **`apps/api/src/domains/compliance/labour.ts`** (1292 lines) — listHolidays:79 · createHoliday:89 · deleteHoliday:115 · holidayDatesInRange:126 · leaveWorkingDayCount:136 · runLeaveYearClose:184 · encashLeave:274 · listWorkingHoursRules:354 · createWorkingHoursRule:360 · runWeeklyHoursCheck:393 · overtimeAccruals:472 · RegisterExport:486 · registerWages:491 · registerLeave:529 · registerMusterRoll:549 · registerEmployees:574 · listIccMembers:605 · appointIccMember:614 · endIccMemberTerm:645 · validateCommittee:662 · listPoshComplaints:691 · createPoshComplaint:699 · transitionPoshComplaint:743 · runPoshOverdueCheck:775 · createPoshWorkshop:807 · listPoshWorkshops:826 · poshAnnualReport:833 · markPoshAnnualReportFiled:884 · listDisciplinaryCases:907 · openDisciplinaryCase:927 · advanceDisciplinaryCase:984 · issueLetter:1097 · listLetters:1149 · letterDocument:1163 · recordBgvConsent:1175 · recordCodeOfConductAck:1195 · handleOffboardingCompleted:1226
 
@@ -124,7 +124,7 @@
 
 **`apps/api/src/domains/group.ts`** (1499 lines) — lastCompleteMonthKey:116 · buildEntitySnapshot:246 · publishEntitySnapshot:389 · publishNow:503 · refreshGroup:516 · groupStructure:536 · groupHolders:624 · groupFinancials:759 · groupCompliance:854 · entitySnapshotView:906 · aoc1:963 · aoc1Export:1067 · groupBenCandidates:1360 · benCandidatesExport:1419 · publishDirtySnapshots:1472 · publishNightlySnapshot:1482 · markSnapshotDirty:1489
 
-**`apps/api/src/domains/gstReturns.ts`** (1318 lines) — FilingCheck:74 · Gstr1B2bInvoice:101 · Gstr1RateLine:117 · Gstr1HsnLine:125 · computeGstr1:145 · computeGstr3b:577 · computeReturn:827 · prepareReturn:838 · filingBlockers:980 · markReturnFiled:994 · listFilings:1094 · filingDetail:1109 · periodStatus:1124 · exportFilingJson:1159
+**`apps/api/src/domains/gstReturns.ts`** (1324 lines) — FilingCheck:75 · Gstr1B2bInvoice:102 · Gstr1RateLine:118 · Gstr1HsnLine:126 · computeGstr1:146 · computeGstr3b:583 · computeReturn:833 · prepareReturn:844 · filingBlockers:986 · markReturnFiled:1000 · listFilings:1100 · filingDetail:1115 · periodStatus:1130 · exportFilingJson:1165
 
 **`apps/api/src/domains/handover.ts`** (394 lines) — HANDOVER_KINDS:33 · HandoverKind:34 · HandoverRowRef:37 · HandoverWithheld:47 · HandoverRowInput:53 · HandoverInput:60 · HandoverOverrideInput:66 · OVERRIDE_REASON_MIN_CHARS:71 · HandoverPlan:79 · authoriseHandover:91 · viewableHandoverKinds:123 · blockersFor:140 · planHandover:167 · executeHandover:247 · recordHandoverOverride:269
 
@@ -166,7 +166,7 @@
 
 **`apps/api/src/domains/interactions.ts`** (481 lines) — RelatedReference:34 · classificationFor:56 · computeSensitivity:73 · InteractionInput:94 · logInteraction:109 · VisibleInteraction:288 · timelineFor:318 · recentInteractions:441
 
-**`apps/api/src/domains/invoicing.ts`** (2038 lines) — InvoiceLineInput:105 · CollectedPaymentInput:144 · InvoiceInput:158 · invoiceLabel:199 · isCourseFeeInvoice:213 · lineTotalOf:225 · InvoiceTotals:229 · totalsOf:246 · totalsMinorOf:271 · paymentWire:298 · receiptWire:309 · invoiceWire:319 · filingPeriodOf:342 · filedReturnFor:353 · assertPeriodOpen:373 · CUSTOMER_KINDS:395 · CustomerKind:396 · createInvoice:794 · updateInvoice:1007 · issueInvoiceDraft:1108 · voidInvoice:1203 · collectInvoicePayment:1265 · declarePaymentTerms:1552 · loadInvoiceForRead:1626 · invoiceSummary:1642 · invoiceDocument:1668 · rehydrateReceivablesFor:1983
+**`apps/api/src/domains/invoicing.ts`** (2049 lines) — InvoiceLineInput:106 · CollectedPaymentInput:145 · InvoiceInput:159 · invoiceLabel:200 · isCourseFeeInvoice:214 · lineTotalOf:226 · InvoiceTotals:230 · totalsOf:247 · totalsMinorOf:272 · paymentWire:299 · receiptWire:310 · InvoiceWire:324 · invoiceWire:328 · filingPeriodOf:348 · filedReturnFor:359 · assertPeriodOpen:379 · CUSTOMER_KINDS:401 · CustomerKind:402 · createInvoice:800 · updateInvoice:1013 · issueInvoiceDraft:1114 · voidInvoice:1213 · collectInvoicePayment:1275 · declarePaymentTerms:1562 · loadInvoiceForRead:1636 · invoiceSummary:1652 · invoiceDocument:1678 · rehydrateReceivablesFor:1994
 
 **`apps/api/src/domains/it/assets.ts`** (913 lines) — AssetThresholds:72 · currentThresholds:80 · CreateAssetInput:94 · createAsset:112 · UpdateAssetInput:170 · updateAsset:188 · AssetFilter:225 · listAssets:244 · myAssets:281 · assetDetail:292 · AssignAssetInput:381 · assignAsset:394 · ReturnAssetInput:456 · returnAsset:468 · transitionAsset:550 · AddAssetEventInput:616 · addAssetEvent:621 · listAssetEvents:642 · resolveDeskOwnerPartyId:660 · WarrantyLadderResult:669 · runWarrantyLadder:675 · RepairDetectorResult:735 · runInRepairTooLongDetector:740 · OrphanedAssetResult:771 · runOrphanedAssetDetector:779 · summary:823
 
@@ -196,7 +196,7 @@
 
 **`apps/api/src/domains/leads.ts`** (565 lines) — LeadInput:27 · scoreLead:47 · createLead:94 · applyRouting:185 · reassignLead:256 · authoriseLeadHandover:266 · handOverLeadInTx:271 · advanceLeadStage:318 · convertLead:364 · LeadListFilters:448 · listLeads:460 · leadIsUnrouted:502 · detectUntouchedLeads:510
 
-**`apps/api/src/domains/learnerTimeline.ts`** (607 lines) — LearnerLogInput:77 · recordLearnerLog:86 · resolveLearnerLog:182 · recordDailyProgress:236 · TimelineEntry:331 · learnerTimeline:357 · openLearnerItems:564
+**`apps/api/src/domains/learnerTimeline.ts`** (608 lines) — LearnerLogInput:78 · recordLearnerLog:87 · resolveLearnerLog:183 · recordDailyProgress:237 · TimelineEntry:332 · learnerTimeline:358 · openLearnerItems:565
 
 **`apps/api/src/domains/leave.ts`** (657 lines) — listLeaveTypes:45 · createLeaveType:51 · postLeaveTransaction:96 · accrueEntitlement:149 · leaveBalances:187 · leaveLedger:197 · listLeaveRequests:229 · createLeaveRequest:250 · transitionLeaveRequest:343 · recordAttendance:492 · transitionAttendance:576 · attendanceForPeriod:601 · lockAttendancePeriod:619
 
@@ -266,7 +266,7 @@
 
 **`apps/api/src/domains/pipelines.ts`** (496 lines) — StageInput:27 · PipelineInput:40 · createPipeline:52 · addStage:111 · addTransition:160 · updateStage:192 · deleteTransition:222 · assertPipelineUsable:254 · assertGraphReachable:273 · TransitionCheck:317 · validateTransition:330 · retireStage:406 · pipelineForVertical:451 · entryStage:470 · loadPipelineWithStages:479 · stageFor:491
 
-**`apps/api/src/domains/receipts.ts`** (791 lines) — listReceipts:57 · receiptDocument:131 · raiseFinalInvoice:291 · raiseFinalInvoiceOnSettlement:301 · finalizeCourseFeeInvoice:500 · listFinalInvoices:620 · finalInvoiceDocument:664
+**`apps/api/src/domains/receipts.ts`** (792 lines) — listReceipts:58 · receiptDocument:132 · raiseFinalInvoice:292 · raiseFinalInvoiceOnSettlement:302 · finalizeCourseFeeInvoice:501 · listFinalInvoices:621 · finalInvoiceDocument:665
 
 **`apps/api/src/domains/relationships.ts`** (271 lines) — RelationshipInput:26 · createRelationship:44 · supersedeRelationship:90 · refineRelationship:132 · traverse:184 · resolveEdge:208 · relationshipStrengthScore:239
 

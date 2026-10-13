@@ -48,6 +48,7 @@ import {
 } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
 import { rupeesOf } from '../platform/wire.js';
+import { minorToRupees } from './money.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -208,15 +209,16 @@ export async function computeGstr1(period: string) {
   let igst = 0;
 
   for (const inv of live) {
-    const invTaxable = num(inv.taxableValue) ?? 0;
-    const invCgst = num(inv.cgstAmount) ?? 0;
-    const invSgst = num(inv.sgstAmount) ?? 0;
-    const invIgst = num(inv.igstAmount) ?? 0;
+    const invTaxable = minorToRupees(inv.taxableValueMinor);
+    const invCgst = minorToRupees(inv.cgstAmountMinor);
+    const invSgst = minorToRupees(inv.sgstAmountMinor);
+    const invIgst = minorToRupees(inv.igstAmountMinor);
 
     // Turnover (CMP-GST-001) counts only taxable lines; nil/exempt/non-GST
     // lines are reported in `nil` below, not folded into this figure.
     taxableValue = round2(
-      taxableValue + inv.lines.reduce((s, l) => s + (isNonTaxableSupply(l.supplyType) ? 0 : (num(l.amount) ?? 0)), 0),
+      taxableValue +
+        inv.lines.reduce((s, l) => s + (isNonTaxableSupply(l.supplyType) ? 0 : minorToRupees(l.amountMinor)), 0),
     );
     cgst = round2(cgst + invCgst);
     sgst = round2(sgst + invSgst);
@@ -234,14 +236,14 @@ export async function computeGstr1(period: string) {
         customerName: nameOf.get(inv.organizationId ?? inv.personId ?? '') ?? '—',
         placeOfSupply: placeOfSupplyLabel(inv.placeOfSupply),
         reverseCharge: 'N',
-        invoiceValue: num(inv.grandTotal) ?? 0,
+        invoiceValue: minorToRupees(inv.grandTotalMinor),
         taxableValue: invTaxable,
         cgst: invCgst,
         sgst: invSgst,
         igst: invIgst,
         rates: [...new Set(inv.lines.map((l) => num(l.gstRate) ?? 0))].sort((a, b) => a - b),
       });
-    } else if (inv.interState && (num(inv.grandTotal) ?? 0) > B2CL_THRESHOLD) {
+    } else if (inv.interState && minorToRupees(inv.grandTotalMinor) > B2CL_THRESHOLD) {
       // Large, inter-state and unregistered: its own table, invoice by invoice,
       // with the place of supply on the face of it.
       b2cl.push({
@@ -252,7 +254,7 @@ export async function computeGstr1(period: string) {
         customerName: nameOf.get(inv.organizationId ?? inv.personId ?? '') ?? '—',
         placeOfSupply: placeOfSupplyLabel(inv.placeOfSupply),
         reverseCharge: 'N',
-        invoiceValue: num(inv.grandTotal) ?? 0,
+        invoiceValue: minorToRupees(inv.grandTotalMinor),
         taxableValue: invTaxable,
         cgst: invCgst,
         sgst: invSgst,
@@ -266,7 +268,7 @@ export async function computeGstr1(period: string) {
       // not as a taxable 0% bucket here.
       for (const line of inv.lines.filter((l) => !isNonTaxableSupply(l.supplyType))) {
         const rate = num(line.gstRate) ?? 0;
-        const value = num(line.amount) ?? 0;
+        const value = minorToRupees(line.amountMinor);
         const tax = round2((value * rate) / 100);
         const key = `${inv.placeOfSupply ?? '-'}:${rate}`;
         const bucket = b2cRates.get(key) ?? {
@@ -293,7 +295,7 @@ export async function computeGstr1(period: string) {
     // folded into the taxable total is a figure that does not reconcile with
     // 3.1 of the 3B.
     for (const line of inv.lines) {
-      const value = num(line.amount) ?? 0;
+      const value = minorToRupees(line.amountMinor);
       if (line.supplyType === 'nil') nilRatedValue = round2(nilRatedValue + value);
       else if (line.supplyType === 'exempt') exemptedValue = round2(exemptedValue + value);
       else if (line.supplyType === 'non_gst') nonGstValue = round2(nonGstValue + value);
@@ -304,7 +306,7 @@ export async function computeGstr1(period: string) {
     for (const line of inv.lines) {
       const code = line.hsnSac?.trim() || 'UNCLASSIFIED';
       const rate = num(line.gstRate) ?? 0;
-      const value = num(line.amount) ?? 0;
+      const value = minorToRupees(line.amountMinor);
       const tax = round2((value * rate) / 100);
       const key = `${code}:${rate}`;
       const row = hsn.get(key) ?? {
@@ -411,7 +413,7 @@ export async function computeGstr1(period: string) {
       sgst,
       igst,
       tax: round2(cgst + sgst + igst),
-      invoiceValue: round2(live.reduce((s, i) => s + (num(i.grandTotal) ?? 0), 0)),
+      invoiceValue: round2(live.reduce((s, i) => s + minorToRupees(i.grandTotalMinor), 0)),
       creditNoted: round2(creditNoteRows.reduce((s, c) => s + c.amount, 0)),
       debitNoted: round2(debitNoteRows.reduce((s, d) => s + d.amount, 0)),
     },
@@ -497,8 +499,12 @@ export async function computeGstr1(period: string) {
 
     // Tax that does not follow from the taxable value and the rate on the lines.
     const inconsistent = live.filter((i) => {
-      const lineTax = round2(i.lines.reduce((sum, l) => sum + ((num(l.amount) ?? 0) * (num(l.gstRate) ?? 0)) / 100, 0));
-      const stored = round2((num(i.cgstAmount) ?? 0) + (num(i.sgstAmount) ?? 0) + (num(i.igstAmount) ?? 0));
+      const lineTax = round2(
+        i.lines.reduce((sum, l) => sum + (minorToRupees(l.amountMinor) * (num(l.gstRate) ?? 0)) / 100, 0),
+      );
+      const stored = round2(
+        minorToRupees(i.cgstAmountMinor) + minorToRupees(i.sgstAmountMinor) + minorToRupees(i.igstAmountMinor),
+      );
       // The owner kept the ₹1 tolerance (2026-10-12), held as exactly 100 paise.
       // The old float test flagged a difference of exactly ₹1.00, because
       // 2.14 - 1.14 is 1.0000000000000002 as doubles.
@@ -516,8 +522,8 @@ export async function computeGstr1(period: string) {
 
     // Both taxes at once, or neither where there should be one.
     const splitWrong = live.filter((i) => {
-      const intra = (num(i.cgstAmount) ?? 0) + (num(i.sgstAmount) ?? 0) > 0;
-      const inter = (num(i.igstAmount) ?? 0) > 0;
+      const intra = minorToRupees(i.cgstAmountMinor) + minorToRupees(i.sgstAmountMinor) > 0;
+      const inter = minorToRupees(i.igstAmountMinor) > 0;
       return (intra && inter) || (i.interState && intra) || (!i.interState && inter);
     });
     if (splitWrong.length) {
@@ -589,15 +595,15 @@ export async function computeGstr3b(period: string) {
       status: { notIn: ['draft', 'void'] },
     },
     select: {
-      taxableValue: true,
-      cgstAmount: true,
-      sgstAmount: true,
-      igstAmount: true,
+      taxableValueMinor: true,
+      cgstAmountMinor: true,
+      sgstAmountMinor: true,
+      igstAmountMinor: true,
       interState: true,
       customerGstin: true,
       placeOfSupply: true,
-      grandTotal: true,
-      lines: { select: { amount: true, gstRate: true, supplyType: true } },
+      grandTotalMinor: true,
+      lines: { select: { amountMinor: true, gstRate: true, supplyType: true } },
     },
   });
 
@@ -608,11 +614,11 @@ export async function computeGstr3b(period: string) {
       // what looks like ordinary taxable supply.
       taxableValue: round2(
         acc.taxableValue +
-          i.lines.reduce((s, l) => s + (isNonTaxableSupply(l.supplyType) ? 0 : (num(l.amount) ?? 0)), 0),
+          i.lines.reduce((s, l) => s + (isNonTaxableSupply(l.supplyType) ? 0 : minorToRupees(l.amountMinor)), 0),
       ),
-      cgst: round2(acc.cgst + (num(i.cgstAmount) ?? 0)),
-      sgst: round2(acc.sgst + (num(i.sgstAmount) ?? 0)),
-      igst: round2(acc.igst + (num(i.igstAmount) ?? 0)),
+      cgst: round2(acc.cgst + minorToRupees(i.cgstAmountMinor)),
+      sgst: round2(acc.sgst + minorToRupees(i.sgstAmountMinor)),
+      igst: round2(acc.igst + minorToRupees(i.igstAmountMinor)),
     }),
     { taxableValue: 0, cgst: 0, sgst: 0, igst: 0 },
   );
@@ -630,12 +636,12 @@ export async function computeGstr3b(period: string) {
   for (const inv of invoices) {
     if (inv.interState && supplyTypeOf(inv.customerGstin) === 'b2c' && inv.placeOfSupply) {
       const row = interState.get(inv.placeOfSupply) ?? { taxableValue: 0, igst: 0 };
-      row.taxableValue = round2(row.taxableValue + (num(inv.taxableValue) ?? 0));
-      row.igst = round2(row.igst + (num(inv.igstAmount) ?? 0));
+      row.taxableValue = round2(row.taxableValue + minorToRupees(inv.taxableValueMinor));
+      row.igst = round2(row.igst + minorToRupees(inv.igstAmountMinor));
       interState.set(inv.placeOfSupply, row);
     }
     for (const line of inv.lines) {
-      const value = num(line.amount) ?? 0;
+      const value = minorToRupees(line.amountMinor);
       if (line.supplyType === 'nil') nilRatedTotal = round2(nilRatedTotal + value);
       else if (line.supplyType === 'exempt') exemptTotal = round2(exemptTotal + value);
       else if (line.supplyType === 'non_gst') nonGstTotal = round2(nonGstTotal + value);
@@ -703,7 +709,7 @@ export async function computeGstr3b(period: string) {
       igst: output.igst,
       tax: round2(output.cgst + output.sgst + output.igst),
       invoiceCount: invoices.length,
-      invoiceValue: round2(invoices.reduce((s, i) => s + (num(i.grandTotal) ?? 0), 0)),
+      invoiceValue: round2(invoices.reduce((s, i) => s + minorToRupees(i.grandTotalMinor), 0)),
       b2bCount: invoices.filter((i) => supplyTypeOf(i.customerGstin) === 'b2b').length,
     },
 
