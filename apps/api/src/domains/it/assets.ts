@@ -318,28 +318,35 @@ export async function assetDetail(id: string) {
   const names = await holderNames(partyIds);
   const nameOf = (partyId: string) => names.find((n) => n.id === partyId)?.fullName ?? null;
 
+  // The detail carries money in four places — purchaseCost, bookValue, the
+  // books' cost on a capitalised asset — and each is withheld from a viewer
+  // without it_assets:financial, exactly as assetRowsWire withholds the list.
+  // Detail was the one read that handed the raw figure to Operations.
+  const seesMoney = await canSeeMoney(RESOURCE);
   const fixedAsset = fixedAssetRow
     ? {
         id: fixedAssetRow.id,
         recordCode: fixedAssetRow.recordCode,
         name: fixedAssetRow.name,
-        cost: minorToRupees(fixedAssetRow.costMinor),
-        costMinor: minorString(fixedAssetRow.costMinor),
+        cost: seesMoney ? minorToRupees(fixedAssetRow.costMinor) : null,
+        costMinor: seesMoney ? minorString(fixedAssetRow.costMinor) : null,
         disposedAt: fixedAssetRow.disposedAt,
       }
     : null;
 
   return {
-    ...withTransitions(asset),
+    ...maskMoney(withTransitions(asset), seesMoney, ['purchaseCost']),
     holderName: holderName?.fullName ?? null,
     // The books' figure when the asset is capitalised, otherwise what was
     // typed in here — never both added together (Principle 8: money stays
     // in the books).
-    bookValue: fixedAsset
-      ? fixedAsset.cost
-      : asset.purchaseCostMinor !== null
-        ? minorToRupees(asset.purchaseCostMinor)
-        : null,
+    bookValue: seesMoney
+      ? fixedAsset
+        ? fixedAsset.cost
+        : asset.purchaseCostMinor !== null
+          ? minorToRupees(asset.purchaseCostMinor)
+          : null
+      : null,
     fixedAsset,
     assignments: assignments.map((a) => ({ ...a, holderName: nameOf(a.partyId) })),
     events,

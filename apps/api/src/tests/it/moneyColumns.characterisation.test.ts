@@ -167,15 +167,23 @@ describe('IT money columns — wire characterisation (pre-conversion)', () => {
     const asset = await asUser(OPS, () => createAsset({ tag, kind: 'laptop', purchaseCost: 1500.25 }));
     expect(wire(asset).purchaseCost).toBeNull();
 
+    // Operations holds no it_assets:financial, so the detail withholds the cost and
+    // the book value as the list does. The figures are read back as Finance, which holds it.
     const detail = wire(await asUser(OPS, () => assetDetail(asset.id)));
-    expect(detail.purchaseCost).toBe('1500.25');
-    expect(detail.bookValue).toBe(1500.25);
+    expect(detail.purchaseCost).toBeNull();
+    expect(detail.bookValue).toBeNull();
+    const detailAsFinance = wire(await asUser(FINANCE, () => assetDetail(asset.id)));
+    expect(detailAsFinance.purchaseCost).toBe('1500.25');
+    expect(detailAsFinance.bookValue).toBe(1500.25);
 
     const zeroTag = `AST-CHAR0-${stamp()}`;
     const zero = await asUser(OPS, () => createAsset({ tag: zeroTag, kind: 'phone', purchaseCost: 0 }));
     const zeroDetail = wire(await asUser(OPS, () => assetDetail(zero.id)));
-    expect(zeroDetail.purchaseCost).toBe('0');
-    expect(zeroDetail.bookValue).toBe(0);
+    expect(zeroDetail.purchaseCost).toBeNull();
+    expect(zeroDetail.bookValue).toBeNull();
+    const zeroAsFinance = wire(await asUser(FINANCE, () => assetDetail(zero.id)));
+    expect(zeroAsFinance.purchaseCost).toBe('0');
+    expect(zeroAsFinance.bookValue).toBe(0);
 
     const rows = wire(await asUser(OPS, () => listAssets({})));
     const row = rows.find((r: { id: string }) => r.id === asset.id);
@@ -255,5 +263,48 @@ describe('IT money columns — wire characterisation (pre-conversion)', () => {
     const after = wire(await asUser(FINANCE, () => summaryContracts())).valueUnderManagement;
     expect(typeof after).toBe('number');
     expect(typeof before).toBe('number');
+  });
+
+  it('licence history: the renewal prices in the event detail are withheld from operations, and kept for finance', async () => {
+    const app = await asUser(OPS, () =>
+      createApplication({ name: `Char history app ${stamp()}`, category: 'productivity', hosting: 'saas' }),
+    );
+    const licence = await asUser(OPS, () =>
+      createLicence({
+        applicationId: app.id,
+        kind: 'per_seat',
+        seatsPurchased: 10,
+        seatsInUse: 4,
+        costPerPeriod: 50000,
+        billingCycle: 'monthly',
+      }),
+    );
+    const newTermEnd = new Date(Date.UTC(2031, 2, 31));
+    const proposed = await asUser(OPS, () => proposeRenewal(licence.id, { newTermEnd, newCostPerPeriod: 61000.5 }));
+    expect(proposed.applied).toBe(false);
+    await asUser(FINANCE, () => approveRenewal(licence.id, true, 'Within budget.'));
+
+    // The history rows hold the proposed and the approved cost in their detail JSON.
+    const opsEvents = wire(await asUser(OPS, () => licenceDetail(licence.id))).events as Array<{
+      kind: string;
+      detail: Record<string, unknown> | null;
+    }>;
+    const opsProposed = opsEvents.find((e) => e.kind === 'renewal_proposed');
+    const opsApproved = opsEvents.find((e) => e.kind === 'renewal_approved');
+    expect(opsProposed!.detail!.newCostPerPeriod).toBeNull();
+    expect(opsProposed!.detail!.annualisedCost).toBeNull();
+    expect(opsApproved!.detail!.costPerPeriod).toBeNull();
+    // Keys that are not money stay as they were written.
+    expect(opsProposed!.detail!.approvalStepId).toBeTruthy();
+
+    const financeEvents = wire(await asUser(FINANCE, () => licenceDetail(licence.id))).events as Array<{
+      kind: string;
+      detail: Record<string, unknown> | null;
+    }>;
+    const finProposed = financeEvents.find((e) => e.kind === 'renewal_proposed');
+    const finApproved = financeEvents.find((e) => e.kind === 'renewal_approved');
+    expect(finProposed!.detail!.newCostPerPeriod).not.toBeNull();
+    expect(finProposed!.detail!.annualisedCost).not.toBeNull();
+    expect(finApproved!.detail!.costPerPeriod).not.toBeNull();
   });
 });
