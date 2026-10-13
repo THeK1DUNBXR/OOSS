@@ -290,6 +290,7 @@ export function redactRegulatedEmploymentFields<
     bankAccountNumber?: unknown;
     bankIfsc?: unknown;
     bankAccountName?: unknown;
+    nomineeName?: unknown;
     person: { bloodGroup?: unknown };
   },
 >(
@@ -326,6 +327,10 @@ export function redactRegulatedEmploymentFields<
     bankAccountNumber: undefined,
     bankIfsc: undefined,
     bankAccountName: undefined,
+    // The nominee's name is encrypted at rest (FX-64). Left in the spread it
+    // would reach the response as ciphertext, which is no use to anyone and
+    // still says a nominee exists.
+    nomineeName: undefined,
     hasPan,
     hasUan,
     hasEsicNumber,

@@ -527,6 +527,10 @@ describe('bank advice', () => {
     expect(csv).toContain('HDFC0000789');
     expect(csv).toContain('000777888999');
     expect(csv).not.toContain('enc:v1:');
+    // The IFSC is a column of its own, so the plain value must sit in that column
+    // and not merely appear somewhere in the file.
+    expect(csv.split('\n')[0]).toContain('IFSC');
+    expect(csv).toContain(',HDFC0000789,');
   });
 
   it('FX-35: a second generate for the same run is refused, and the first file stands', async () => {

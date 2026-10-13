@@ -611,6 +611,7 @@ async function assembleAccessExport(tenantId: string, personId: string) {
     bankIfsc: readRegulated(e.bankIfsc),
     uanNumber: readRegulated(e.uanNumber),
     esicNumber: readRegulated(e.esicNumber),
+    nomineeName: readRegulated(e.nomineeName),
   }));
 
   return {
@@ -1521,6 +1522,9 @@ const REGULATED_EMPLOYMENT_FIELDS = [
   'bankIfsc',
   'uanNumber',
   'esicNumber',
+  // Nominee's name: the payroll write encrypts it (setBankDetails), so the backfill
+  // must cover rows written before that, or they stay plaintext. FX-64.
+  'nomineeName',
 ] as const;
 
 export async function backfillEncryptAtRest(): Promise<{
@@ -1542,6 +1546,7 @@ export async function backfillEncryptAtRest(): Promise<{
       bankIfsc: true,
       uanNumber: true,
       esicNumber: true,
+      nomineeName: true,
     },
   });
 
@@ -1593,6 +1598,7 @@ export async function encryptionStatus() {
       bankIfsc: true,
       uanNumber: true,
       esicNumber: true,
+      nomineeName: true,
     },
   });
   let plaintext = 0;

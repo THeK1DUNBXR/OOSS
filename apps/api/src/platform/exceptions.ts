@@ -22,6 +22,7 @@ import { prisma, type DbTx } from './db.js';
 import { currentAuth } from './context.js';
 import { emit } from './eventBus.js';
 import { nextRecordCode } from './recordCode.js';
+import { governedWrite } from './governedWrite.js';
 import { ApiError } from './errors.js';
 import { assertCan } from './permissions.js';
 import { auditWrite, registerGovernedEntities } from './audit.js';
@@ -254,29 +255,36 @@ async function transitionException(
   if (!existing) throw ApiError.notFound('Exception');
   await assertCan({ resource: 'exceptions', verb: 'edit', record: { ownerPartyId: existing.ownerPartyId } });
 
-  const { count } = await prisma.exceptionRecord.updateMany({
-    where: { id, state: { in: [...from] } },
-    data: apply.data,
-  });
-  if (count !== 1) {
-    throw ApiError.conflict(`Exception is ${existing.state}; it cannot move to ${apply.state} from there`);
-  }
-  const record = await prisma.exceptionRecord.findFirstOrThrow({ where: { id } });
+  // The state change, its audit row and its event commit together. Written as
+  // three separate statements on the scoped client, a failed audit or emit left
+  // the exception closed with nobody on record as having closed it.
+  return governedWrite(async (tx) => {
+    const { count } = await tx.exceptionRecord.updateMany({
+      where: { id, state: { in: [...from] } },
+      data: apply.data,
+    });
+    if (count !== 1) {
+      throw ApiError.conflict(`Exception is ${existing.state}; it cannot move to ${apply.state} from there`);
+    }
+    const record = await tx.exceptionRecord.findFirstOrThrow({ where: { id } });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'exception',
-    subjectId: id,
-    before: { state: existing.state, ...audit.before },
-    after: { state: apply.state, ...audit.after },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'exception',
+      subjectId: id,
+      before: { state: existing.state, ...audit.before },
+      after: { state: apply.state, ...audit.after },
+      tx,
+    });
 
-  await emit({
-    name: event.name,
-    subject: { entityType: 'exception', entityId: id, recordCode: record.recordCode },
-    newState: event.newState,
+    await emit({
+      name: event.name,
+      subject: { entityType: 'exception', entityId: id, recordCode: record.recordCode },
+      newState: event.newState,
+      tx,
+    });
+    return record;
   });
-  return record;
 }
 
 export async function acknowledgeException(id: string, note?: string) {

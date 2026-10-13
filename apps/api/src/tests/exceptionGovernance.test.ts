@@ -8,6 +8,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { EVENTS } from '@kaizen/shared';
 import { afterAll, describe, expect, it } from 'vitest';
 import { acknowledgeException, resolveException } from '../platform/exceptions.js';
 import { unscopedPrisma } from '../platform/db.js';
@@ -95,6 +96,14 @@ describe('FX-06 exception acknowledge / resolve', () => {
           where: { tenantId: tid, subjectType: 'exception', subjectId: rec.id },
         });
         expect(audit.length).toBe(2);
+
+        // The event for each move is on the record, not only the audit row: an
+        // exception closed without its event is invisible to every subscriber.
+        const events = await unscopedPrisma.eventRecord.findMany({
+          where: { tenantId: tid, subjectEntityId: rec.id },
+          orderBy: { seq: 'asc' },
+        });
+        expect(events.map((e) => e.eventName)).toEqual([EVENTS.EXCEPTION_ACKNOWLEDGED, EVENTS.EXCEPTION_RESOLVED]);
       },
     );
   });
