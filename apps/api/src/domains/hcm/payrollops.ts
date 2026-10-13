@@ -40,7 +40,8 @@ import { assertCan, canSeeMoney, scopeFor } from '../../platform/permissions.js'
 import { assertEmploymentVisible } from '../../platform/recordScope.js';
 import { auditWrite, auditExport, auditBulkOperation, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
-import { paiseSum } from '../../platform/wire.js';
+import { minorString, rupeesToMinor, withDecimalMinor } from '../../platform/wire.js';
+import { maskMoney, minorToRupees, withNumberMinor } from '../money.js';
 import { payrollCostByDivision } from '../payroll.js';
 import { checkTransactionAllowed, lockPayrollRunForPosting, writeTransactionMinor } from '../books.js';
 import { encryptField, readRegulated } from '../compliance/privacy.js';
@@ -50,6 +51,23 @@ import { lockLegacyPeriods } from '../../platform/periodLock.js';
 /** Withholds a money field for a caller who cannot see it — null, never zero, with a reason. Same shape as `hcm/compensation.ts`'s `money()`. */
 function money(value: unknown, visible: boolean): number | null {
   return visible ? (num(value as never) ?? null) : null;
+}
+
+/**
+ * A paise column as the two fields a screen reads: the rupee number and the
+ * paise string beside it. Withheld from a viewer who cannot see money, both
+ * are null, so the paise string cannot carry the figure the mask hides.
+ */
+function paiseFields<N extends string>(
+  name: N,
+  minor: bigint | null | undefined,
+  visible: boolean,
+): { [K in N]: number | null } & { [K in `${N}Minor`]: string | null } {
+  const withheld = !visible || minor === null || minor === undefined;
+  return {
+    [name]: withheld ? null : minorToRupees(minor),
+    [`${name}Minor`]: withheld ? null : minorString(minor),
+  } as { [K in N]: number | null } & { [K in `${N}Minor`]: string | null };
 }
 
 /** The account-types a net-pay disbursement may actually be posted from — a costing or equity account is never a cash movement. */
@@ -170,11 +188,11 @@ export async function listAdHocPayLines(
   }
   const visible = await canSeeMoney('adhoc_pay');
   const rows = await prisma.adHocPayLine.findMany({ where, orderBy: { createdAt: 'desc' }, take: 200 });
-  return rows.map((r) => ({
-    ...r,
-    amount: money(r.amount, visible),
-    moneyWithheldReason: visible ? null : 'no_permission',
-  }));
+  return rows.map((r) =>
+    Object.assign(maskMoney(withNumberMinor(r, ['amount']), visible, ['amount']), {
+      moneyWithheldReason: visible ? null : ('no_permission' as const),
+    }),
+  );
 }
 
 export async function createAdHocPayLine(input: AdHocPayLineInput) {
@@ -198,14 +216,14 @@ export async function createAdHocPayLine(input: AdHocPayLineInput) {
       employmentRelationshipId: input.employmentRelationshipId,
       payItemId: input.payItemId,
       payPeriod: input.payPeriod,
-      amount: input.amount,
+      amountMinor: rupeesToMinor(input.amount),
       reason: input.reason,
       status: 'Proposed',
       proposedById: auth.partyId,
     },
   });
   await auditWrite({ action: 'create', subjectType: 'adhoc_pay_line', subjectId: row.id, after: row as never });
-  return row;
+  return withDecimalMinor(row, ['amount']);
 }
 
 async function decideAdHocPayLine(id: string, approve: boolean, note?: string) {
@@ -237,13 +255,13 @@ async function decideAdHocPayLine(id: string, approve: boolean, note?: string) {
       await emit({
         name: EVENTS.ADHOC_PAY_APPROVED,
         subject: { entityType: 'adhoc_pay_line', entityId: row.id },
-        newState: { payPeriod: row.payPeriod, amount: num(row.amount), reason: note ?? row.reason },
+        newState: { payPeriod: row.payPeriod, amount: minorToRupees(row.amountMinor), reason: note ?? row.reason },
         confidentiality: 'confidential',
         impact: { domains: ['hr', 'fin'] },
         tx,
       });
     }
-    return row;
+    return withDecimalMinor(row, ['amount']);
   });
 }
 
@@ -274,11 +292,11 @@ export async function listArrears(filter: { employmentRelationshipId?: string; s
   }
   const visible = await canSeeMoney('arrears');
   const rows = await prisma.arrear.findMany({ where, orderBy: { createdAt: 'desc' }, take: 200 });
-  return rows.map((r) => ({
-    ...r,
-    amount: money(r.amount, visible),
-    moneyWithheldReason: visible ? null : 'no_permission',
-  }));
+  return rows.map((r) =>
+    Object.assign(maskMoney(withNumberMinor(r, ['amount']), visible, ['amount']), {
+      moneyWithheldReason: visible ? null : ('no_permission' as const),
+    }),
+  );
 }
 
 export async function createArrear(input: ArrearInput) {
@@ -293,14 +311,14 @@ export async function createArrear(input: ArrearInput) {
       tenantId: auth.tenantId,
       employmentRelationshipId: input.employmentRelationshipId,
       fromPeriod: input.fromPeriod,
-      amount: input.amount,
+      amountMinor: rupeesToMinor(input.amount),
       reason: input.reason,
       status: 'Proposed',
       proposedById: auth.partyId,
     },
   });
   await auditWrite({ action: 'create', subjectType: 'arrear', subjectId: row.id, after: row as never });
-  return row;
+  return withDecimalMinor(row, ['amount']);
 }
 
 async function decideArrear(id: string, approve: boolean) {
@@ -332,13 +350,13 @@ async function decideArrear(id: string, approve: boolean) {
       await emit({
         name: EVENTS.ARREAR_APPROVED,
         subject: { entityType: 'arrear', entityId: row.id },
-        newState: { fromPeriod: row.fromPeriod, amount: num(row.amount) },
+        newState: { fromPeriod: row.fromPeriod, amount: minorToRupees(row.amountMinor) },
         confidentiality: 'confidential',
         impact: { domains: ['hr', 'fin'] },
         tx,
       });
     }
-    return row;
+    return withDecimalMinor(row, ['amount']);
   });
 }
 
@@ -364,7 +382,7 @@ export async function markArrearPaid(id: string, payPeriod: string) {
     before: before as never,
     after: row as never,
   });
-  return row;
+  return withDecimalMinor(row, ['amount']);
 }
 
 // ---------------------------------------------------------------------------
@@ -378,7 +396,7 @@ export async function markArrearPaid(id: string, payPeriod: string) {
  * a figure, so it stays `0` rather than becoming indistinguishable from a
  * withheld amount.
  */
-function maskJournal<T extends { totalDebit: unknown; totalCredit: unknown; lines: unknown }>(
+function maskJournal<T extends { totalDebitMinor: bigint; totalCreditMinor: bigint; lines: unknown }>(
   row: T,
   visible: boolean,
 ) {
@@ -391,13 +409,13 @@ function maskJournal<T extends { totalDebit: unknown; totalCredit: unknown; line
     debit: maskSide(l.debit),
     credit: maskSide(l.credit),
   }));
-  return {
-    ...row,
-    totalDebit: money(row.totalDebit, visible),
-    totalCredit: money(row.totalCredit, visible),
-    lines,
-    moneyWithheldReason: visible ? null : 'no_permission',
-  };
+  return Object.assign(
+    maskMoney(withNumberMinor(row, ['totalDebit', 'totalCredit']), visible, ['totalDebit', 'totalCredit']),
+    {
+      lines,
+      moneyWithheldReason: visible ? null : ('no_permission' as const),
+    },
+  );
 }
 
 export async function listPayrollJournals() {
@@ -461,8 +479,8 @@ export async function generatePayrollJournal(payrollRunId: string) {
     payrollRunId,
     payPeriod: run.payPeriod,
     lines: lines as never,
-    totalDebit: totals.totalDebit,
-    totalCredit: totals.totalCredit,
+    totalDebitMinor: rupeesToMinor(totals.totalDebit),
+    totalCreditMinor: rupeesToMinor(totals.totalCredit),
     status: 'Prepared',
     preparedById: auth.partyId,
   };
@@ -477,7 +495,7 @@ export async function generatePayrollJournal(payrollRunId: string) {
     subjectId: row.id,
     after: row as never,
   });
-  return row;
+  return withDecimalMinor(row, ['totalDebit', 'totalCredit']);
 }
 
 /**
@@ -520,7 +538,7 @@ export async function postPayrollJournal(id: string, accountId: string) {
   // that total also carries the statutory/other deductions payable, which
   // moves the company's money to a different payee on a different day, not
   // straight to employees now. Read as paise, so no float touches the figure.
-  const netPaise = paiseSum([run.netTotal]);
+  const netPaise = run.netTotalMinor;
   const txnDate = new Date();
 
   // The permission check and the period veto run before the transaction opens,
@@ -575,12 +593,16 @@ export async function postPayrollJournal(id: string, accountId: string) {
       name: EVENTS.PAYROLL_JOURNAL_POSTED,
       subject: { entityType: 'payroll_journal', entityId: row.id },
       related: [{ relation: 'posts_as', entityType: 'transaction', entityId: txn.id }],
-      newState: { payPeriod: row.payPeriod, totalDebit: num(row.totalDebit), totalCredit: num(row.totalCredit) },
+      newState: {
+        payPeriod: row.payPeriod,
+        totalDebit: minorToRupees(row.totalDebitMinor),
+        totalCredit: minorToRupees(row.totalCreditMinor),
+      },
       confidentiality: 'confidential',
       impact: { domains: ['hr', 'fin'] },
       tx,
     });
-    return row;
+    return withDecimalMinor(row, ['totalDebit', 'totalCredit']);
   });
 }
 
@@ -627,15 +649,15 @@ export async function listBankAdvices() {
       payPeriod: true,
       format: true,
       count: true,
-      total: true,
+      totalMinor: true,
       generatedAt: true,
     },
   });
-  return rows.map((r) => ({
-    ...r,
-    total: money(r.total, visible),
-    moneyWithheldReason: visible ? null : 'no_permission',
-  }));
+  return rows.map((r) =>
+    Object.assign(maskMoney(withNumberMinor(r, ['total']), visible, ['total']), {
+      moneyWithheldReason: visible ? null : ('no_permission' as const),
+    }),
+  );
 }
 
 /**
@@ -659,17 +681,19 @@ export async function getBankAdvice(id: string) {
     ifsc: maskLast4(r.ifsc),
     amount: money(r.amount, visible),
   }));
-  return {
-    id: row.id,
-    payrollRunId: row.payrollRunId,
-    payPeriod: row.payPeriod,
-    format: row.format,
-    count: row.count,
-    total: money(row.total, visible),
-    generatedAt: row.generatedAt,
-    rows,
-    moneyWithheldReason: visible ? null : 'no_permission',
-  };
+  return Object.assign(
+    {
+      id: row.id,
+      payrollRunId: row.payrollRunId,
+      payPeriod: row.payPeriod,
+      format: row.format,
+      count: row.count,
+      generatedAt: row.generatedAt,
+      rows,
+      moneyWithheldReason: visible ? null : ('no_permission' as const),
+    },
+    paiseFields('total', row.totalMinor, visible),
+  );
 }
 
 /**
@@ -724,7 +748,7 @@ export async function generateBankAdvice(payrollRunId: string) {
   const instructions = await prisma.payrollInstruction.findMany({ where: { tenantId: auth.tenantId, payrollRunId } });
   const rows: NeftBeneficiary[] = [];
   for (const instr of instructions) {
-    const net = num(instr.netAmount) ?? 0;
+    const net = minorToRupees(instr.netAmountMinor);
     if (net <= 0) continue;
     const employment = await prisma.employmentRelationship.findFirst({
       where: { id: instr.employmentRelationshipId },
@@ -775,7 +799,7 @@ export async function generateBankAdvice(payrollRunId: string) {
         fileText: encryptField(fileText),
         rows: sealBeneficiaries(rows) as never,
         count: rows.length,
-        total,
+        totalMinor: rupeesToMinor(total),
         generatedById: auth.partyId,
       },
     })
@@ -789,7 +813,7 @@ export async function generateBankAdvice(payrollRunId: string) {
     action: 'create',
     subjectType: 'bank_advice',
     subjectId: row.id,
-    after: { payPeriod: row.payPeriod, count: row.count, total: num(row.total) },
+    after: { payPeriod: row.payPeriod, count: row.count, total: minorToRupees(row.totalMinor) },
   });
   await auditExport('bank_advice', 'generated', rows.length);
   await emit({
@@ -928,8 +952,14 @@ export async function generatePayrollReconciliation(payrollRunId: string, previo
   ]);
 
   const deltas = reconciliationDiff(
-    previousInstr.map((i) => ({ employmentRelationshipId: i.employmentRelationshipId, net: num(i.netAmount) ?? 0 })),
-    currentInstr.map((i) => ({ employmentRelationshipId: i.employmentRelationshipId, net: num(i.netAmount) ?? 0 })),
+    previousInstr.map((i) => ({
+      employmentRelationshipId: i.employmentRelationshipId,
+      net: minorToRupees(i.netAmountMinor),
+    })),
+    currentInstr.map((i) => ({
+      employmentRelationshipId: i.employmentRelationshipId,
+      net: minorToRupees(i.netAmountMinor),
+    })),
   );
   const flagged = unexplainedCount(deltas);
 

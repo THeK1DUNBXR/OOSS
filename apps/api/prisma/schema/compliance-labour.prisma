@@ -56,7 +56,7 @@ model LeaveEncashment {
   leaveTransactionId       String?
 
   days   Decimal @db.Decimal(6, 2)
-  amount Decimal @db.Decimal(14, 2)
+  amountMinor BigInt
 
   computedAt  DateTime @default(now())
   createdById String?
@@ -105,8 +105,8 @@ model OvertimeAccrual {
   isoWeek                  String
 
   hours  Decimal @db.Decimal(6, 2)
-  rate   Decimal @db.Decimal(10, 2)
-  amount Decimal @db.Decimal(14, 2)
+  rateMinor   BigInt
+  amountMinor BigInt
 
   computedAt DateTime @default(now())
 

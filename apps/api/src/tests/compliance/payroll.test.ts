@@ -19,10 +19,18 @@ import {
   statutoryLines,
   type PtSlab,
   ENCRYPTED_FIELD_PREFIX,
+  decimalToMinor,
 } from '@kaizen/shared';
 import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from '../helpers.js';
-import { hire, transitionEmployment, updateEmployeeProfile } from '../../domains/employment.js';
+import {
+  hire,
+  transitionEmployment,
+  updateEmployeeProfile,
+  proposeCompensation,
+  transitionCompensation,
+} from '../../domains/employment.js';
 import { transitionPayrollRun } from '../../domains/payroll.js';
+import { minorToRupees } from '../../domains/money.js';
 import {
   proposeSalaryStructure,
   approveSalaryStructure,
@@ -107,8 +115,8 @@ async function makeSoloRun(employmentRelationshipId: string, payPeriod: string) 
         employmentRelationshipId,
         payrollRunId: run.id,
         payPeriod,
-        grossAmount: 0,
-        netAmount: 0,
+        grossAmountMinor: 0n,
+        netAmountMinor: 0n,
       },
     });
     return run;
@@ -282,8 +290,8 @@ describe('payroll runs against the dated tables (real database)', () => {
       prisma.payrollInstruction.findFirstOrThrow({ where: { payrollRunId: run.id, employmentRelationshipId: emp.id } }),
     );
     expect(instruction.computedFrom).not.toBeNull();
-    expect(Number(instruction.pfEmployee)).toBeGreaterThan(0);
-    expect(Number(instruction.esiEmployee)).toBeGreaterThanOrEqual(0);
+    expect(minorToRupees(instruction.pfEmployeeMinor)).toBeGreaterThan(0);
+    expect(minorToRupees(instruction.esiEmployeeMinor)).toBeGreaterThanOrEqual(0);
 
     await asUser('finance@kaizen.co.in', () => transitionPayrollRun(run.id, 'SUBMIT_REVIEW'));
 
@@ -337,6 +345,29 @@ describe('payroll runs against the dated tables (real database)', () => {
     const { employment: emp } = await makeEmployee('contractor');
     await asUser('operations@kaizen.co.in', () => setEngagementType(emp.id, 'contractor'));
 
+    // A contractor carries a fee like anyone else. Left with none, the company-wide
+    // run that hr.test opens for the same database picks them up at zero, and
+    // CMP-PAY-005 refuses that run's approval. The fee is the Tamil Nadu floor in
+    // force today, read from the seed row, so it is never below the floor.
+    const floor = await unscopedPrisma.minimumWageTable.findFirstOrThrow({
+      where: { tenantId: TENANT, state: 'Tamil Nadu', category: 'general', effectiveFrom: { lte: new Date() } },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+    const fee = await asUser('hr@kaizen.co.in', () =>
+      proposeCompensation({
+        employmentRelationshipId: emp.id,
+        revisionReason: 'annual_cycle',
+        amount: minorToRupees(decimalToMinor(floor.monthlyAmount)),
+        effectiveFrom: new Date('2020-01-01'),
+      }),
+    );
+    await asUser('hr@kaizen.co.in', () => transitionCompensation(fee.id, 'SUBMIT'));
+    await asUser('arun@kaizen.co.in', () => transitionCompensation(fee.id, 'APPROVE'));
+    // Approved is not yet in force: payroll reads only Effective pay, so the fee
+    // is scheduled and activated here.
+    await asUser('hr@kaizen.co.in', () => transitionCompensation(fee.id, 'SCHEDULE'));
+    await asUser('hr@kaizen.co.in', () => transitionCompensation(fee.id, 'ACTIVATE'));
+
     const payPeriod = period('02');
     const run = await makeSoloRun(emp.id, payPeriod);
     await asUser('operations@kaizen.co.in', () => computeInstruction(run.id));
@@ -344,10 +375,10 @@ describe('payroll runs against the dated tables (real database)', () => {
     const instruction = await asUser('chairman@kaizen.co.in', () =>
       prisma.payrollInstruction.findFirstOrThrow({ where: { payrollRunId: run.id, employmentRelationshipId: emp.id } }),
     );
-    expect(Number(instruction.pfEmployee)).toBe(0);
-    expect(Number(instruction.esiEmployee)).toBe(0);
-    expect(Number(instruction.professionalTax)).toBe(0);
-    expect(Number(instruction.lwfEmployee)).toBe(0);
+    expect(minorToRupees(instruction.pfEmployeeMinor)).toBe(0);
+    expect(minorToRupees(instruction.esiEmployeeMinor)).toBe(0);
+    expect(minorToRupees(instruction.professionalTaxMinor)).toBe(0);
+    expect(minorToRupees(instruction.lwfEmployeeMinor)).toBe(0);
     expect(instruction.computedFrom).not.toBeNull();
     expect((instruction.computedFrom as { tdsSectionHint?: string })?.tdsSectionHint).toBe('194J');
   });
@@ -376,7 +407,7 @@ describe('payroll runs against the dated tables (real database)', () => {
             {
               id: 'synthetic-instr',
               computedFrom: { structureId: 'x' },
-              grossAmount: 9_000,
+              grossAmountMinor: 900_000n,
               employmentRelationshipId: emp.id,
             },
           ],

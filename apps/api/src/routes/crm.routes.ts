@@ -13,6 +13,7 @@ import {
 } from '@kaizen/shared';
 import { handler, parsePaging, str, bool, date, numeric } from '../lib/http.js';
 import { prisma, num } from '../platform/db.js';
+import { withDecimalMinor } from '../platform/wire.js';
 import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, can, canSeeMoney, applyFieldVisibility } from '../platform/permissions.js';
@@ -808,7 +809,11 @@ router.get(
       timelineFor('lead', lead.id, { limit: 30 }),
       routingAuditFor(lead.id),
     ]);
-    return { lead, timeline: timeline.items, routingAudit: routing };
+    return {
+      lead: lead.pipeline ? { ...lead, pipeline: withDecimalMinor(lead.pipeline, ['commitApprovalThreshold']) } : lead,
+      timeline: timeline.items,
+      routingAudit: routing,
+    };
   }),
 );
 
@@ -990,7 +995,13 @@ router.get(
 
     const money = await canSeeMoney('opportunities');
     const filtered = applyFieldVisibility(
-      { opportunity, proposal, quote, contract, mou } as unknown as Record<string, unknown>,
+      {
+        opportunity: { ...opportunity, pipeline: withDecimalMinor(opportunity.pipeline, ['commitApprovalThreshold']) },
+        proposal,
+        quote,
+        contract,
+        mou,
+      } as unknown as Record<string, unknown>,
       { canSeeMoney: money, ceiling: currentAuth().classificationCeiling },
     );
 
