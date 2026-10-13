@@ -47,6 +47,7 @@ registerGovernedEntities('hcm_leave_policy', [
   'accrual_run',
   'leave_approval_chain',
   'leave_request_approval',
+  'restricted_holiday_election',
 ]);
 
 const ACCRUAL_FREQUENCIES = ['monthly', 'quarterly', 'yearly', 'none'] as const;
@@ -799,7 +800,23 @@ export async function deleteApprovalChain(id: string) {
   await assertCan({ resource: 'leave_approval_chains', verb: 'delete' });
   const chain = await prisma.leaveApprovalChain.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!chain) throw ApiError.notFound('Leave approval chain');
-  await prisma.leaveApprovalChain.delete({ where: { id } });
+  await governedWrite(async (tx) => {
+    await tx.leaveApprovalChain.delete({ where: { id } });
+    await auditWrite({
+      action: 'delete',
+      subjectType: 'leave_approval_chain',
+      subjectId: id,
+      before: chain as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.LEAVE_APPROVAL_CHAIN_DELETED,
+      subject: { entityType: 'leave_approval_chain', entityId: id },
+      previousState: { name: chain.name },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+  });
   return { deleted: true };
 }
 
@@ -1046,7 +1063,23 @@ export async function withdrawRestrictedHolidayElection(id: string) {
   const row = await prisma.restrictedHolidayElection.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Restricted holiday election');
   await assertEmploymentVisible('leave', row.employmentRelationshipId, 'edit');
-  await prisma.restrictedHolidayElection.delete({ where: { id } });
+  await governedWrite(async (tx) => {
+    await tx.restrictedHolidayElection.delete({ where: { id } });
+    await auditWrite({
+      action: 'delete',
+      subjectType: 'restricted_holiday_election',
+      subjectId: id,
+      before: row as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.RESTRICTED_HOLIDAY_ELECTION_WITHDRAWN,
+      subject: { entityType: 'restricted_holiday_election', entityId: id },
+      previousState: { holidayId: row.holidayId, fy: row.fy },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+  });
   return { deleted: true };
 }
 

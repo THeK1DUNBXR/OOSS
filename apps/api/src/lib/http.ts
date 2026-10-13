@@ -11,6 +11,7 @@ import { TenantScopeError } from '../platform/db.js';
 import { liveSessionFor, toAuthContext, verifyToken } from './auth.js';
 import { grantedConsentCodes, resolvePurpose } from '../domains/compliance/privacy.js';
 import { logger } from '../platform/logger.js';
+import { config } from '../platform/config.js';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -141,18 +142,145 @@ export function handler(fn: (req: Request, res: Response) => Promise<unknown>): 
   };
 }
 
-export function errorMiddleware(err: unknown, req: Request, res: Response, _next: NextFunction) {
-  if (err instanceof ApiError) {
-    const details = err.details as { candidates?: unknown[]; axes?: unknown[] } | undefined;
-    res.status(err.status).json({
+/**
+ * The keys of an ApiError's `details` that a client may read. An allowlist, for
+ * the reason the log has one (platform/logger.ts SAFE_FIELDS): a key nobody has
+ * named here is one nobody has argued should leave the server, and the next
+ * `details` someone adds with a `stack`, a `sql` or a `cause` in it stays inside.
+ *
+ * Derived from every ApiError call that passes details (the AST scan of
+ * `ApiError.*(…, {…})` and `new ApiError(…, …, {…})`, Phase 0.3): reason codes
+ * and counts, ids of records in the caller's own tenant, the ranked candidates
+ * of a duplicate, the five-axis outcomes of a denial, and the zod `flatten()`
+ * field errors. Left out on purpose: `subsidiaryTenantId`
+ * (seed/spinOutEngine.ts:1473), another tenant's id; and `row` and `ref`, which
+ * echo the caller's own input back and are not a value the client needs.
+ */
+const CLIENT_DETAIL_KEYS: ReadonlySet<string> = new Set([
+  // Reason and state.
+  'reasonCode',
+  'reason',
+  'state',
+  'status',
+  'from',
+  'to',
+  'period',
+  'allowed',
+  'event',
+  'current',
+  'resumed',
+  'unreachable',
+  'thresholdKey',
+  'pointOfNoReturn',
+  'staleCloseDate',
+  'returnType',
+  'filing',
+  'existing',
+  'pairCodes',
+  'runningBatches',
+  // Counts and amounts the client shows beside a refusal.
+  'count',
+  'blockingCount',
+  'blocking',
+  'blockingPeriods',
+  'outstanding',
+  'offered',
+  'available',
+  'payable',
+  // What is missing, and where.
+  'missing',
+  'missingRequiredFields',
+  'requiredField',
+  'requiredOneOf',
+  'blockers',
+  'leads',
+  'opportunities',
+  'linkType',
+  'ruleId',
+  // Ids of records in the caller's own tenant.
+  'id',
+  'kind',
+  'linkId',
+  'existingId',
+  'exceptionRecordId',
+  'reversalId',
+  'transactionId',
+  'employmentRelationshipId',
+  'leavePolicyRuleId',
+  'resignationId',
+  'applicationId',
+  'leaveRequestId',
+  'payrollRunId',
+  // Structured answers the client reads whole.
+  'candidates',
+  'axes',
+  'formErrors',
+  'fieldErrors',
+]);
+
+/**
+ * The `details` a client may see: only CLIENT_DETAIL_KEYS, and only when the
+ * details are an object. A string or an Error passed as details is dropped, not
+ * sent through, because its text is not written for a client.
+ */
+export function clientDetails(details: unknown): Record<string, unknown> | undefined {
+  if (typeof details !== 'object' || details === null || Array.isArray(details)) return undefined;
+  const kept: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(details)) {
+    if (CLIENT_DETAIL_KEYS.has(key)) kept[key] = value;
+  }
+  return Object.keys(kept).length > 0 ? kept : undefined;
+}
+
+export interface ApiErrorBody {
+  error: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+    requestId?: string;
+    candidates?: unknown[];
+    axes?: unknown[];
+  };
+}
+
+/**
+ * The body an ApiError is answered with. A 5xx in production names no message:
+ * an internal message can quote a constraint, a host or a row, and the on-call
+ * person finds the full error in the log under the request id given here.
+ * Below 500 the message is written for the user, so it is sent.
+ */
+export function apiErrorBody(err: ApiError, opts: { production: boolean; requestId?: string }): ApiErrorBody {
+  if (err.status >= 500 && opts.production) {
+    return {
       error: {
         code: err.code,
-        message: err.message,
-        details: err.details,
-        ...(details?.candidates ? { candidates: details.candidates } : {}),
-        ...(details?.axes ? { axes: details.axes } : {}),
+        message: 'The server could not complete this request.',
+        requestId: opts.requestId,
       },
-    });
+    };
+  }
+  const details = clientDetails(err.details);
+  return {
+    error: {
+      code: err.code,
+      message: err.message,
+      details,
+      ...(details?.candidates ? { candidates: details.candidates as unknown[] } : {}),
+      ...(details?.axes ? { axes: details.axes as unknown[] } : {}),
+    },
+  };
+}
+
+export function errorMiddleware(err: unknown, req: Request, res: Response, _next: NextFunction) {
+  if (err instanceof ApiError) {
+    const requestId = getContext()?.requestId ?? req.ctx?.requestId;
+    // A 5xx ApiError is a failure of ours, so it is logged like any other. It
+    // used to return here unlogged, and on-call never saw the message the body
+    // now withholds in production.
+    if (err.status >= 500) {
+      logger.error({ requestId, tenantId: req.ctx?.auth?.tenantId ?? null, err }, 'api error');
+    }
+    res.status(err.status).json(apiErrorBody(err, { production: config.NODE_ENV === 'production', requestId }));
     return;
   }
 

@@ -1,4 +1,5 @@
 import { toCsv } from './books.js';
+import { round2 } from '../finance.js';
 /**
  * Compliance — F. Labour law and conduct (docs/plan/compliance.md).
  *
@@ -94,10 +95,6 @@ export function isoWeekRange(label: string): { start: Date; end: Date } {
 export function overtimeAmount(basicPay: number, otHours: number, multiplier = 2): number {
   const hourlyRate = basicPay / (26 * 8);
   return round2(hourlyRate * multiplier * otHours);
-}
-
-function round2(v: number): number {
-  return Math.round(v * 100) / 100;
 }
 
 // ---------------------------------------------------------------------------

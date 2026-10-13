@@ -23,6 +23,7 @@ import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { assertCan } from '../../platform/permissions.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { eligibleForChannel } from './preferences.js';
@@ -192,7 +193,8 @@ export async function createJourney(data: JourneyInput): Promise<JourneyView> {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_journeys', verb: 'create' });
   const parsed = JourneyInputSchema.parse(data);
-  const recordCode = await nextRecordCode('JRN');
+  // JNY, not JRN: JRN is the journal entry series (ledger.ts), and the two must not share a prefix.
+  const recordCode = await nextRecordCode('JNY');
 
   const journey = await prisma.marketingJourney.create({
     data: {
@@ -245,14 +247,32 @@ export async function updateJourney(id: string, data: Partial<JourneyInput>): Pr
     throw ApiError.unprocessable(`Cannot edit a journey while it is '${journey.status}'.`);
   }
   const steps = data.steps ? z.array(JourneyStepSchema).min(1).parse(data.steps) : undefined;
-  const updated = await prisma.marketingJourney.update({
-    where: { id },
-    data: {
-      name: data.name ?? journey.name,
-      triggerKind: data.triggerKind ?? journey.triggerKind,
-      steps: (steps as never) ?? journey.steps,
-      updatedById: auth.partyId,
-    },
+  const updated = await governedWrite(async (tx) => {
+    const row = await tx.marketingJourney.update({
+      where: { id },
+      data: {
+        name: data.name ?? journey.name,
+        triggerKind: data.triggerKind ?? journey.triggerKind,
+        steps: (steps as never) ?? journey.steps,
+        updatedById: auth.partyId,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_journey',
+      subjectId: id,
+      before: { name: journey.name, triggerKind: journey.triggerKind },
+      after: { name: row.name, triggerKind: row.triggerKind },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_JOURNEY_UPDATED,
+      subject: { entityType: 'marketing_journey', entityId: id, recordCode: journey.recordCode },
+      previousState: { name: journey.name },
+      newState: { name: row.name },
+      tx,
+    });
+    return row;
   });
   return toJourneyView(updated);
 }
@@ -339,7 +359,7 @@ export async function enrolPerson(journeyId: string, personId: string): Promise<
   const step0 = steps[0];
   const nextAt = step0 ? new Date(Date.now() + step0.delayDays * 86_400_000) : null;
   const run = await prisma.$transaction(async (tx) => {
-    const recordCode = await nextRecordCode('JRN', new Date(), tx);
+    const recordCode = await nextRecordCode('JNY', new Date(), tx);
     const created = await tx.marketingJourneyRun.create({
       data: {
         tenantId: auth.tenantId,

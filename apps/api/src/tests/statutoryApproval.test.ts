@@ -202,12 +202,20 @@ describe('statutory approval is held as a duty (round 27 c)', () => {
     });
   });
 
-  it('a person cannot name themselves the statutory approver, even holding the grant to assign duties', async () => {
-    const err = await asUser(CHAIRMAN, (chairman) =>
-      errorOf(() => assignDuty({ dutyKey: STATUTORY_APPROVER_DUTY, partyId: chairman.partyId })),
+  // The principal is a fixture, not the chairman: the chairman is the founder, and the founder
+  // may name himself (owner ruling 2026-10-12, statutoryFounder.test.ts). The refusal for a
+  // person who is not the founder is the assertion kept here.
+  it('a person who is not the founder cannot name themselves the statutory approver, even holding the grant to assign duties', async () => {
+    await withFixtureRole(
+      { slug: 'w1k_self_namer', grants: [{ resource: 'access_assignments', verbs: ['approve'] }] },
+      async (self) => {
+        const err = await errorOf(() =>
+          asPrincipal(authFor(self), () => assignDuty({ dutyKey: STATUTORY_APPROVER_DUTY, partyId: self.partyId })),
+        );
+        expect(err.status).toBe(403);
+        expect(err.details?.reasonCode).toBe('duty_self_assignment');
+      },
     );
-    expect(err.status).toBe(403);
-    expect(err.details?.reasonCode).toBe('duty_self_assignment');
     const holders = await unscopedPrisma.dutyAssignment.count({
       where: { tenantId: tid, dutyKey: STATUTORY_APPROVER_DUTY },
     });

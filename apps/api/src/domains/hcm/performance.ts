@@ -495,7 +495,26 @@ export async function updateCalibrationDecisions(id: string, decisions: Calibrat
     }
   }
 
-  return prisma.calibrationSession.update({ where: { id }, data: { decisions: decisions as never } });
+  return governedWrite(async (tx) => {
+    const updated = await tx.calibrationSession.update({ where: { id }, data: { decisions: decisions as never } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'calibration_session',
+      subjectId: id,
+      before: { decisionCount: ((session.decisions as unknown[] | null) ?? []).length },
+      after: { decisionCount: decisions.length },
+      tx,
+    });
+    await emit({
+      name: EVENTS.CALIBRATION_DECISIONS_UPDATED,
+      subject: { entityType: 'calibration_session', entityId: id },
+      related: [{ relation: 'for', entityType: 'review_cycle', entityId: session.cycleId }],
+      newState: { decisionCount: decisions.length },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return updated;
+  });
 }
 
 /**
@@ -855,13 +874,33 @@ export async function updateOneOnOne(
 
   await assertCan({ resource: 'hcm_one_on_ones', verb: 'edit', record: { ownerPartyId: row.reportPartyId } });
 
-  return prisma.oneOnOne.update({
-    where: { id },
-    data: {
-      notes: patch.notes === undefined ? undefined : (patch.notes as never),
-      actions: patch.actions === undefined ? undefined : (patch.actions as never),
-      status: patch.status,
-    },
+  return governedWrite(async (tx) => {
+    const updated = await tx.oneOnOne.update({
+      where: { id },
+      data: {
+        notes: patch.notes === undefined ? undefined : (patch.notes as never),
+        actions: patch.actions === undefined ? undefined : (patch.actions as never),
+        status: patch.status,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'one_on_one',
+      subjectId: id,
+      before: { status: row.status },
+      after: { status: updated.status },
+      tx,
+    });
+    await emit({
+      name: EVENTS.ONE_ON_ONE_UPDATED,
+      subject: { entityType: 'one_on_one', entityId: id },
+      previousState: { status: row.status },
+      newState: { status: updated.status },
+      owner: { partyId: row.reportPartyId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return updated;
   });
 }
 

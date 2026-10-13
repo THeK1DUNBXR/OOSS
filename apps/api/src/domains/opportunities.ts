@@ -15,6 +15,7 @@
  * reopens through a bulk-import or API back door.
  */
 
+import { z } from 'zod';
 import { EVENTS, FORECAST_TRANSITIONS, parseMinor, type ForecastCategory, type SeverityCode } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../platform/db.js';
 import { governedWrite } from '../platform/governedWrite.js';
@@ -26,6 +27,7 @@ import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { assertCan, scopeFor } from '../platform/permissions.js';
 import { notify, raiseException } from '../platform/exceptions.js';
 import { entryStage, loadPipelineWithStages, stageFor, validateTransition } from './pipelines.js';
+import { round2 } from '@kaizen/shared';
 
 export interface OpportunityInput {
   title: string;
@@ -479,6 +481,64 @@ export async function changeForecastCategory(input: ForecastChangeInput) {
   return updated;
 }
 
+/**
+ * The PATCH edit of an opportunity's own fields. It was written inline in the
+ * route, with no audit row and no event, so a change to an opportunity's value,
+ * close date or title left nothing in the audit log. `economicBuyer` and
+ * `decisionCriteria` are accepted but dropped: the Opportunity model has no
+ * column for either (prisma/schema), so they are not written here.
+ */
+const OPPORTUNITY_EDIT = z.object({
+  title: z.string().optional(),
+  expectedValue: z.number().nullish(),
+  expectedCloseDate: z.string().nullish(),
+  strategicValue: z.enum(['high', 'medium', 'low']).nullish(),
+  lostReason: z.string().nullish(),
+  economicBuyer: z.string().nullish(),
+  decisionCriteria: z.string().nullish(),
+});
+
+export async function updateOpportunity(id: string, body: unknown) {
+  const opportunity = await prisma.opportunity.findFirst({ where: { id } });
+  if (!opportunity) throw ApiError.notFound('Opportunity');
+  await assertCan({ resource: 'opportunities', verb: 'edit', record: { ownerPartyId: opportunity.ownerPartyId } });
+
+  const input = OPPORTUNITY_EDIT.parse(body);
+  const data = {
+    ...(input.title ? { title: input.title } : {}),
+    ...(input.expectedValue !== undefined ? { expectedValue: input.expectedValue ?? undefined } : {}),
+    ...(input.expectedCloseDate !== undefined
+      ? { expectedCloseDate: input.expectedCloseDate ? new Date(input.expectedCloseDate) : null }
+      : {}),
+    ...(input.strategicValue !== undefined ? { strategicValue: input.strategicValue } : {}),
+    ...(input.lostReason !== undefined ? { lostReason: input.lostReason } : {}),
+  };
+
+  return governedWrite(async (tx) => {
+    const updated = await tx.opportunity.update({ where: { id }, data });
+
+    await auditWrite({
+      action: 'update',
+      subjectType: 'opportunity',
+      subjectId: id,
+      before: opportunity as never,
+      after: updated as never,
+      tx,
+    });
+
+    await emit({
+      name: EVENTS.OPPORTUNITY_UPDATED,
+      subject: { entityType: 'opportunity', entityId: id, recordCode: opportunity.recordCode },
+      previousState: { title: opportunity.title },
+      newState: { title: updated.title },
+      owner: { partyId: opportunity.ownerPartyId },
+      tx,
+    });
+
+    return updated;
+  });
+}
+
 function rank(c: ForecastCategory): number {
   return { pipeline: 0, best_case: 1, commit: 2, closed_won: 3, closed_lost: 3 }[c];
 }
@@ -577,10 +637,6 @@ export async function forecastRollup(opts: { blended?: boolean } = {}): Promise<
       ? 'Blended total requested explicitly. Weighted values across motions with different forecast methods are not directly comparable.'
       : 'Per-pipeline totals shown side by side. Blending across incompatible motions is available only on explicit request.',
   };
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
 }
 
 /**

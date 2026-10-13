@@ -20,6 +20,7 @@ import { EVENTS, ATTRIBUTION_MODELS, type AttributionModel, type ChannelKey } fr
 import { prisma, num, type DbTx } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
@@ -33,6 +34,7 @@ import { scoreLead } from '../leads.js';
 // unregistered subjectType (platform/audit.ts isGoverned), and the bulk record
 // written at the end of computeAttribution names this subject.
 registerGovernedEntities('mkt', ['marketing_attribution']);
+registerGovernedEntities('mkt', ['marketing_score_rule']);
 
 /** Sub-log tables never carry a human-facing record code (see RECORD_TYPE_CODES comment) — a short random one only needs to be unique per tenant. */
 function internalCode(prefix: string): string {
@@ -435,15 +437,33 @@ export async function updateScoreRule(id: string, patch: Partial<ScoreRuleInput>
   await assertCan({ resource: 'marketing_forms', verb: 'edit' });
   const existing = await prisma.marketingLeadScoreRule.findFirst({ where: { id } });
   if (!existing) throw ApiError.notFound('Score rule');
-  return prisma.marketingLeadScoreRule.update({
-    where: { id },
-    data: {
-      ...(patch.name !== undefined ? { name: patch.name } : {}),
-      ...(patch.condition !== undefined ? { condition: patch.condition as never } : {}),
-      ...(patch.points !== undefined ? { points: patch.points } : {}),
-      ...(patch.active !== undefined ? { active: patch.active } : {}),
-      ...(patch.order !== undefined ? { order: patch.order } : {}),
-    },
+  return governedWrite(async (tx) => {
+    const updated = await tx.marketingLeadScoreRule.update({
+      where: { id },
+      data: {
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.condition !== undefined ? { condition: patch.condition as never } : {}),
+        ...(patch.points !== undefined ? { points: patch.points } : {}),
+        ...(patch.active !== undefined ? { active: patch.active } : {}),
+        ...(patch.order !== undefined ? { order: patch.order } : {}),
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_score_rule',
+      subjectId: id,
+      before: { points: existing.points, active: existing.active },
+      after: { points: updated.points, active: updated.active },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_SCORE_RULE_UPDATED,
+      subject: { entityType: 'marketing_score_rule', entityId: id, recordCode: existing.recordCode },
+      previousState: { points: existing.points, active: existing.active },
+      newState: { points: updated.points, active: updated.active },
+      tx,
+    });
+    return updated;
   });
 }
 
@@ -451,7 +471,23 @@ export async function deleteScoreRule(id: string) {
   await assertCan({ resource: 'marketing_forms', verb: 'delete' });
   const existing = await prisma.marketingLeadScoreRule.findFirst({ where: { id } });
   if (!existing) throw ApiError.notFound('Score rule');
-  return prisma.marketingLeadScoreRule.update({ where: { id }, data: { deletedAt: new Date() } });
+  return governedWrite(async (tx) => {
+    const updated = await tx.marketingLeadScoreRule.update({ where: { id }, data: { deletedAt: new Date() } });
+    await auditWrite({
+      action: 'delete',
+      subjectType: 'marketing_score_rule',
+      subjectId: id,
+      before: { points: existing.points, active: existing.active },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_SCORE_RULE_DELETED,
+      subject: { entityType: 'marketing_score_rule', entityId: id, recordCode: existing.recordCode },
+      previousState: { active: existing.active },
+      tx,
+    });
+    return updated;
+  });
 }
 
 const PAID_CHANNEL_FALLBACK = new Set(['google_ads', 'social_meta', 'social_linkedin', 'social_youtube']);

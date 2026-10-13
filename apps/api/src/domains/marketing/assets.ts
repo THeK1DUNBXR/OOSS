@@ -19,6 +19,7 @@ import {
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
@@ -437,16 +438,34 @@ export async function updateSocialPost(id: string, patch: Partial<SocialPostInpu
 
   if (patch.assetIds) await assertAssetsApproved(patch.assetIds, auth.tenantId);
 
-  return prisma.marketingSocialPost.update({
-    where: { id },
-    data: {
-      ...(patch.channelKey !== undefined ? { channelKey: patch.channelKey } : {}),
-      ...(patch.campaignId !== undefined ? { campaignId: patch.campaignId } : {}),
-      ...(patch.body !== undefined ? { body: patch.body } : {}),
-      ...(patch.assetIds !== undefined ? { assetIds: patch.assetIds } : {}),
-      ...(patch.scheduledAt !== undefined ? { scheduledAt: patch.scheduledAt } : {}),
-      updatedById: auth.partyId,
-    },
+  return governedWrite(async (tx) => {
+    const updated = await tx.marketingSocialPost.update({
+      where: { id },
+      data: {
+        ...(patch.channelKey !== undefined ? { channelKey: patch.channelKey } : {}),
+        ...(patch.campaignId !== undefined ? { campaignId: patch.campaignId } : {}),
+        ...(patch.body !== undefined ? { body: patch.body } : {}),
+        ...(patch.assetIds !== undefined ? { assetIds: patch.assetIds } : {}),
+        ...(patch.scheduledAt !== undefined ? { scheduledAt: patch.scheduledAt } : {}),
+        updatedById: auth.partyId,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'social_post',
+      subjectId: id,
+      before: { status: post.status, channelKey: post.channelKey },
+      after: { status: updated.status, channelKey: updated.channelKey },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_SOCIAL_POST_UPDATED,
+      subject: { entityType: 'social_post', entityId: id },
+      previousState: { status: post.status },
+      newState: { status: updated.status },
+      tx,
+    });
+    return updated;
   });
 }
 

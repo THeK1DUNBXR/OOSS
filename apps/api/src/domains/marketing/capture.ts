@@ -33,6 +33,7 @@ import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { verifyWebhookSignature } from '../../lib/webhookSignature.js';
 import { decryptField, encryptField } from '../compliance/privacy.js';
@@ -205,17 +206,35 @@ export async function updateForm(id: string, patch: Partial<FormInput>) {
   const slug = patch.slug ? slugify(patch.slug) : undefined;
 
   try {
-    return await prisma.marketingForm.update({
-      where: { id },
-      data: {
-        ...(patch.name !== undefined ? { name: patch.name } : {}),
-        ...(slug !== undefined ? { slug } : {}),
-        ...(patch.fields !== undefined ? { fields: validateFields(patch.fields) as never } : {}),
-        ...(patch.vertical !== undefined ? { vertical: patch.vertical } : {}),
-        ...(patch.defaultCampaignId !== undefined ? { defaultCampaignId: patch.defaultCampaignId } : {}),
-        ...(patch.thankYouMessage !== undefined ? { thankYouMessage: patch.thankYouMessage } : {}),
-        updatedById: auth.partyId,
-      },
+    return await governedWrite(async (tx) => {
+      const updated = await tx.marketingForm.update({
+        where: { id },
+        data: {
+          ...(patch.name !== undefined ? { name: patch.name } : {}),
+          ...(slug !== undefined ? { slug } : {}),
+          ...(patch.fields !== undefined ? { fields: validateFields(patch.fields) as never } : {}),
+          ...(patch.vertical !== undefined ? { vertical: patch.vertical } : {}),
+          ...(patch.defaultCampaignId !== undefined ? { defaultCampaignId: patch.defaultCampaignId } : {}),
+          ...(patch.thankYouMessage !== undefined ? { thankYouMessage: patch.thankYouMessage } : {}),
+          updatedById: auth.partyId,
+        },
+      });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'marketing_form',
+        subjectId: id,
+        before: { name: existing.name, slug: existing.slug },
+        after: { name: updated.name, slug: updated.slug },
+        tx,
+      });
+      await emit({
+        name: EVENTS.MKT_FORM_UPDATED,
+        subject: { entityType: 'marketing_form', entityId: id, recordCode: existing.recordCode },
+        previousState: { slug: existing.slug },
+        newState: { slug: updated.slug },
+        tx,
+      });
+      return updated;
     });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {

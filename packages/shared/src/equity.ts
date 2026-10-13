@@ -14,6 +14,8 @@
  * percentaged, which is what this function does).
  */
 
+import { round2 } from './finance.js';
+
 // ---------------------------------------------------------------------------
 // Vocabulary
 // ---------------------------------------------------------------------------
@@ -451,10 +453,6 @@ export function waterfall(
   });
 
   return { exitValue: round2(exitValue), rows, unallocated: round2(remaining) };
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
 }
 
 // ---------------------------------------------------------------------------
