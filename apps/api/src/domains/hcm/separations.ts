@@ -508,7 +508,7 @@ export async function initiateClearance(offboardingId: string) {
   const have = new Set(existing.map((e) => e.department));
   const toCreate = CLEARANCE_DEPARTMENTS.filter((d) => !have.has(d));
   for (const department of toCreate) {
-    await prisma.exitClearance.create({
+    const clearance = await prisma.exitClearance.create({
       data: {
         tenantId: auth.tenantId,
         offboardingId,
@@ -516,6 +516,12 @@ export async function initiateClearance(offboardingId: string) {
         department,
         status: 'pending',
       },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'exit_clearance',
+      subjectId: clearance.id,
+      after: { offboardingId, department, status: clearance.status },
     });
   }
   return listExitClearances(offboardingId);

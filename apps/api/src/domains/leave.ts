@@ -40,7 +40,7 @@ import { governedWrite } from '../platform/governedWrite.js';
 // Leave types and balances
 // ---------------------------------------------------------------------------
 
-registerGovernedEntities('hcm_leave', ['leave_request', 'work_attendance']);
+registerGovernedEntities('hcm_leave', ['leave_request', 'work_attendance', 'leave_type', 'leave_transaction']);
 
 export async function listLeaveTypes() {
   const auth = currentAuth();
@@ -57,7 +57,7 @@ export async function createLeaveType(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'leave', verb: 'create' });
-  return prisma.leaveType.create({
+  const leaveType = await prisma.leaveType.create({
     data: {
       tenantId: auth.tenantId,
       code: input.code,
@@ -67,6 +67,18 @@ export async function createLeaveType(input: {
       annualEntitlementDays: input.annualEntitlementDays ?? 0,
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'leave_type',
+    subjectId: leaveType.id,
+    after: {
+      code: leaveType.code,
+      name: leaveType.name,
+      statutory: leaveType.statutory,
+      annualEntitlementDays: leaveType.annualEntitlementDays,
+    },
+  });
+  return leaveType;
 }
 
 /**
@@ -107,7 +119,7 @@ export async function postLeaveTransaction(
     createdById?: string | null;
   },
 ) {
-  await tx.leaveTransaction.create({
+  const entry = await tx.leaveTransaction.create({
     data: {
       tenantId: input.tenantId,
       leaveBalanceId: input.leaveBalanceId,
@@ -117,6 +129,13 @@ export async function postLeaveTransaction(
       note: input.note ?? null,
       createdById: input.createdById ?? null,
     },
+  });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'leave_transaction',
+    subjectId: entry.id,
+    after: { leaveBalanceId: entry.leaveBalanceId, txnType: entry.txnType, amountDays: input.amountDays },
+    tx,
   });
 
   const ledger = await tx.leaveTransaction.aggregate({
@@ -136,6 +155,9 @@ export async function postLeaveTransaction(
     _sum: { days: true },
   });
 
+  // Not audited: the balance columns are a cache recomputed from the ledger,
+  // and the ledger row just written above is the audited movement. A second
+  // record here would show the balance changing with no movement behind it.
   return tx.leaveBalance.update({
     where: { id: input.leaveBalanceId },
     data: {
@@ -156,6 +178,8 @@ export async function accrueEntitlement(input: {
   await assertCan({ resource: 'leave', verb: 'edit' });
 
   return prisma.$transaction(async (tx) => {
+    // Not audited: the balance row is the container the ledger hangs from. The
+    // grant is the accrual posted below, and that write is audited.
     const balance = await tx.leaveBalance.upsert({
       where: {
         employmentRelationshipId_leaveTypeId: {

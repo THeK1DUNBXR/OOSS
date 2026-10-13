@@ -43,6 +43,7 @@ registerGovernedEntities('hcm_time', [
   'overtime_request',
   'comp_off',
   'attendance_regularisation',
+  'work_attendance',
 ]);
 
 /**
@@ -455,7 +456,7 @@ export async function deriveAttendanceFromClockEvents(forDate: Date = yesterdayI
       if (existing?.voidedAt) continue; // A day an import revert voided is taken back by a person, not by the deriver.
       if (existing?.voidedAt) continue; // A day an import revert voided is taken back by a person, not by the deriver.
 
-      await prisma.workAttendance.upsert({
+      const derived = await prisma.workAttendance.upsert({
         where: { employmentRelationshipId_workDate: { employmentRelationshipId, workDate: day } },
         create: {
           tenantId: auth.tenantId,
@@ -472,6 +473,16 @@ export async function deriveAttendanceFromClockEvents(forDate: Date = yesterdayI
           missingPunch: result.status === 'absent',
           note: `Derived from clock events: ${result.status}.`,
         },
+      });
+      // The row is derived, but payroll reads it, so each recompute is recorded,
+      // including a rerun that leaves the values as they were. The before-values
+      // are the row as read above, before this upsert.
+      await auditWrite({
+        action: existing ? 'update' : 'create',
+        subjectType: 'work_attendance',
+        subjectId: derived.id,
+        before: existing ? { workedMinutes: existing.workedMinutes, overtimeMinutes: existing.overtimeMinutes } : null,
+        after: { workedMinutes: derived.workedMinutes, overtimeMinutes: derived.overtimeMinutes, workDate: day },
       });
       processed += 1;
     } catch (err) {
@@ -501,9 +512,16 @@ async function getOrCreateTimesheet(employmentRelationshipId: string, weekStart:
   if (existing) return existing;
 
   const recordCode = await nextRecordCode('TSH');
-  return prisma.timesheet.create({
+  const created = await prisma.timesheet.create({
     data: { tenantId: auth.tenantId, employmentRelationshipId, weekStart: monday, recordCode, status: 'draft' },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'timesheet',
+    subjectId: created.id,
+    after: { recordCode, weekStart: monday, status: 'draft' },
+  });
+  return created;
 }
 
 export async function listTimesheets(employmentRelationshipId?: string) {
@@ -536,6 +554,9 @@ export async function getTimesheet(id: string) {
 async function recomputeTimesheetTotal(tenantId: string, timesheetId: string) {
   const entries = await prisma.timesheetEntry.findMany({ where: { tenantId, timesheetId }, select: { hours: true } });
   const total = weeklyHoursTotal(entries.map((e) => num(e.hours) ?? 0));
+  // Not audited: totalHours is a sum of the timesheet entries, each of which is
+  // audited when it is created. Auditing the sum as well would log the same
+  // hours twice.
   await prisma.timesheet.update({ where: { id: timesheetId }, data: { totalHours: total } });
   return total;
 }
@@ -571,6 +592,12 @@ export async function addTimesheetEntry(input: {
       billable: input.billable ?? false,
       note: input.note ?? null,
     },
+  });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'timesheet_entry',
+    subjectId: entry.id,
+    after: { timesheetId: timesheet.id, date: entry.date, hours: input.hours, billable: entry.billable },
   });
   await recomputeTimesheetTotal(auth.tenantId, timesheet.id);
   return entry;

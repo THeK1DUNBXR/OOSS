@@ -403,6 +403,13 @@ export async function proposeCycle(id: string) {
   const lineCount = await prisma.salaryRevisionLine.count({ where: { tenantId: auth.tenantId, cycleId: id } });
   if (lineCount === 0) throw ApiError.unprocessable('A cycle with no lines has nothing to propose.');
   const row = await prisma.salaryRevisionCycle.update({ where: { id }, data: { status: 'proposed' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'salary_revision_cycle',
+    subjectId: id,
+    before: { status: cycle.status },
+    after: { status: row.status },
+  });
   return row;
 }
 
@@ -472,6 +479,13 @@ export async function rejectRevisionLine(lineId: string, note: string) {
   const row = await prisma.salaryRevisionLine.update({
     where: { id: lineId },
     data: { status: 'rejected', approvedById: auth.partyId, decidedAt: new Date(), note },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'salary_revision_line',
+    subjectId: lineId,
+    before: { status: line.status },
+    after: { status: row.status, approvedById: row.approvedById },
   });
   return withDecimalMinor(row, ['currentCtc', 'proposedCtc', 'approvedCtc'] as const);
 }
@@ -688,6 +702,12 @@ export async function createVariablePayPlan(input: VariablePayPlanInput) {
       formula: input.formula as never,
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'variable_pay_plan',
+    subjectId: row.id,
+    after: { name: row.name, kind: row.kind, period: row.period },
+  });
   return row;
 }
 
@@ -702,15 +722,17 @@ export async function computePayout(planId: string, employmentRelationshipId: st
   const plan = await prisma.variablePayPlan.findFirst({ where: { id: planId, tenantId: auth.tenantId } });
   if (!plan) throw ApiError.notFound('Variable pay plan');
   const computedAmountMinor = rupeesToMinor(computeVariablePayout(base, plan.formula as unknown as VariablePayFormula));
-  const row = await prisma.variablePayout.upsert({
-    where: {
-      tenantId_planId_employmentRelationshipId_period: {
-        tenantId: auth.tenantId,
-        planId,
-        employmentRelationshipId,
-        period,
-      },
+  const key = {
+    tenantId_planId_employmentRelationshipId_period: {
+      tenantId: auth.tenantId,
+      planId,
+      employmentRelationshipId,
+      period,
     },
+  };
+  const existing = await prisma.variablePayout.findUnique({ where: key });
+  const row = await prisma.variablePayout.upsert({
+    where: key,
     create: {
       tenantId: auth.tenantId,
       planId,
@@ -727,6 +749,15 @@ export async function computePayout(planId: string, employmentRelationshipId: st
       approvedById: null,
       computedById: auth.partyId,
     },
+  });
+  // A recompute of an approved payout clears the approval (the update branch
+  // above), so the before-state is the row as it was read, not as it is now.
+  await auditWrite({
+    action: existing ? 'update' : 'create',
+    subjectType: 'variable_payout',
+    subjectId: row.id,
+    before: existing ? { status: existing.status, computedAmountMinor: existing.computedAmountMinor.toString() } : null,
+    after: { status: row.status, computedAmountMinor: row.computedAmountMinor.toString(), period },
   });
   return withDecimalMinor(row, ['computedAmount', 'approvedAmount'] as const);
 }
@@ -876,6 +907,17 @@ export async function createBenefitPlan(input: BenefitPlanInput) {
       enrolmentClosesOn: input.enrolmentClosesOn ?? null,
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'benefit_plan',
+    subjectId: row.id,
+    after: {
+      name: row.name,
+      kind: row.kind,
+      employerContributionMinor: row.employerContributionMinor.toString(),
+      employeeContributionMinor: row.employeeContributionMinor.toString(),
+    },
+  });
   return withDecimalMinor(row, ['employerContribution', 'employeeContribution'] as const);
 }
 
@@ -927,7 +969,18 @@ export async function cancelBenefitEnrollment(id: string) {
   const row = await prisma.benefitEnrollment.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Benefit enrollment');
   await assertEmploymentVisible('benefit_enrollments', row.employmentRelationshipId, 'edit');
-  return prisma.benefitEnrollment.update({ where: { id }, data: { status: 'cancelled', cancelledAt: new Date() } });
+  const updated = await prisma.benefitEnrollment.update({
+    where: { id },
+    data: { status: 'cancelled', cancelledAt: new Date() },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'benefit_enrollment',
+    subjectId: id,
+    before: { status: row.status },
+    after: { status: updated.status, cancelledAt: updated.cancelledAt },
+  });
+  return updated;
 }
 
 /** Every enrolment in a plan — what the admin-side Benefits tab lists. */
@@ -1104,6 +1157,13 @@ export async function rejectLoan(id: string, note: string) {
   const row = await prisma.employeeLoan.update({
     where: { id },
     data: { status: 'rejected', approvedById: auth.partyId, decidedAt: new Date(), note },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'employee_loan',
+    subjectId: id,
+    before: { status: loan.status },
+    after: { status: row.status, approvedById: row.approvedById },
   });
   return withDecimalMinor(row, LOAN_MONEY);
 }

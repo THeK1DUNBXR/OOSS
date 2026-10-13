@@ -86,6 +86,8 @@ registerGovernedEntities('hcm_employment', [
   'onboarding',
   'offboarding',
   'employment_relationship',
+  'org_unit',
+  'job',
 ]);
 
 export async function listOrgUnits() {
@@ -105,7 +107,7 @@ export async function createOrgUnit(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'positions', verb: 'create' });
-  return prisma.orgUnit.create({
+  const unit = await prisma.orgUnit.create({
     data: {
       tenantId: auth.tenantId,
       name: input.name,
@@ -114,6 +116,13 @@ export async function createOrgUnit(input: {
       parentId: input.parentId ?? null,
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'org_unit',
+    subjectId: unit.id,
+    after: { name: unit.name, unitType: unit.unitType, division: unit.division, parentId: unit.parentId },
+  });
+  return unit;
 }
 
 export async function listJobs() {
@@ -125,7 +134,14 @@ export async function listJobs() {
 export async function createJob(input: { title: string; jobFamily: string; jobLevel: string }) {
   const auth = currentAuth();
   await assertCan({ resource: 'positions', verb: 'create' });
-  return prisma.job.create({ data: { tenantId: auth.tenantId, ...input } });
+  const job = await prisma.job.create({ data: { tenantId: auth.tenantId, ...input } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'job',
+    subjectId: job.id,
+    after: { title: job.title, jobFamily: job.jobFamily, jobLevel: job.jobLevel },
+  });
+  return job;
 }
 
 export async function listPositions(filter: { status?: string; orgUnitId?: string } = {}) {
@@ -1002,6 +1018,15 @@ export async function transitionAssignment(id: string, event: AssignmentRequestE
 
   return prisma.$transaction(async (tx) => {
     if (event === 'ACTIVATE') {
+      const prior = await tx.assignment.findMany({
+        where: {
+          tenantId: auth.tenantId,
+          employmentRelationshipId: assignment.employmentRelationshipId,
+          rowStatus: 'Effective',
+          id: { not: id },
+        },
+        select: { id: true, rowStatus: true, effectiveTo: true },
+      });
       await tx.assignment.updateMany({
         where: {
           tenantId: auth.tenantId,
@@ -1011,10 +1036,42 @@ export async function transitionAssignment(id: string, event: AssignmentRequestE
         },
         data: { rowStatus: 'Superseded', effectiveTo: assignment.effectiveFrom },
       });
+      for (const old of prior) {
+        await auditWrite({
+          action: 'update',
+          subjectType: 'assignment',
+          subjectId: old.id,
+          before: { rowStatus: old.rowStatus, effectiveTo: old.effectiveTo },
+          after: { rowStatus: 'Superseded', effectiveTo: assignment.effectiveFrom },
+          tx,
+        });
+      }
+
+      const seatBefore = await tx.position.findUnique({
+        where: { id: assignment.positionId },
+        select: { status: true },
+      });
       await tx.position.update({ where: { id: assignment.positionId }, data: { status: 'Filled' } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'position',
+        subjectId: assignment.positionId,
+        before: { status: seatBefore?.status ?? null },
+        after: { status: 'Filled' },
+        tx,
+      });
     }
 
-    return tx.assignment.update({ where: { id }, data: { requestStatus: result.to } });
+    const row = await tx.assignment.update({ where: { id }, data: { requestStatus: result.to } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'assignment',
+      subjectId: id,
+      before: { requestStatus: assignment.requestStatus },
+      after: { requestStatus: row.requestStatus },
+      tx,
+    });
+    return row;
   });
 }
 
@@ -1175,6 +1232,16 @@ export async function transitionCompensation(id: string, event: CompensationEven
 
   return prisma.$transaction(async (tx) => {
     if (event === 'ACTIVATE') {
+      const prior = await tx.compensationRecord.findMany({
+        where: {
+          tenantId: auth.tenantId,
+          employmentRelationshipId: record.employmentRelationshipId,
+          status: 'Effective',
+          voidedAt: null,
+          id: { not: id },
+        },
+        select: { id: true, status: true, effectiveTo: true },
+      });
       await tx.compensationRecord.updateMany({
         where: {
           tenantId: auth.tenantId,
@@ -1185,11 +1252,29 @@ export async function transitionCompensation(id: string, event: CompensationEven
         },
         data: { status: 'Superseded', effectiveTo: record.effectiveFrom },
       });
+      // The superseded rows are pay history: each one that stops being in force
+      // is recorded, not only the record that replaces it.
+      for (const old of prior) {
+        await auditWrite({
+          action: 'update',
+          subjectType: 'compensation_record',
+          subjectId: old.id,
+          before: { status: old.status, effectiveTo: old.effectiveTo },
+          after: { status: 'Superseded', effectiveTo: record.effectiveFrom },
+          tx,
+        });
+      }
     }
-    return withDecimalMinor(
-      await tx.compensationRecord.update({ where: { id }, data: { status: result.to } }),
-      COMPENSATION_MONEY,
-    );
+    const row = await tx.compensationRecord.update({ where: { id }, data: { status: result.to } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'compensation_record',
+      subjectId: id,
+      before: { status: record.status },
+      after: { status: row.status },
+      tx,
+    });
+    return withDecimalMinor(row, COMPENSATION_MONEY);
   });
 }
 
