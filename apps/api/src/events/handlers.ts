@@ -15,6 +15,7 @@
 
 import { EVENTS, allocate, type EventEnvelope } from '@kaizen/shared';
 import { prisma } from '../platform/db.js';
+import { auditWrite } from '../platform/audit.js';
 import { rupeesOrZero } from '../platform/wire.js';
 import { subscribe, wouldLoop } from '../platform/eventBus.js';
 import { createInvoice, rehydrateReceivables, issueFeeInstalments } from '../domains/finance.js';
@@ -206,6 +207,16 @@ export function registerSubscribers(): void {
     const { sensitivityClass } = await computeSensitivity(refs);
     if (sensitivityClass !== interaction.sensitivityClass) {
       await prisma.interaction.update({ where: { id: interaction.id }, data: { sensitivityClass } });
+      // The column is derived, but it is what the interaction is filtered and shown by,
+      // so a change to it is a change to a governed record and is audited like one.
+      await auditWrite({
+        action: 'update',
+        subjectType: 'interaction',
+        subjectId: interaction.id,
+        before: { sensitivityClass: interaction.sensitivityClass },
+        after: { sensitivityClass },
+        meta: { source: 'crm.interaction_index' },
+      });
     }
   });
 

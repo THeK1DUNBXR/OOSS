@@ -98,7 +98,7 @@
 
 **`apps/api/src/domains/compliance/payroll.ts`** (1060 lines) — listPfRateTables:69 · PfRateTableInput:75 · createPfRateTable:86 · currentPfRateTable:95 · listEsiRateTables:123 · EsiRateTableInput:129 · createEsiRateTable:136 · currentEsiRateTable:152 · listPtSlabTables:165 · PtSlabTableInput:174 · createPtSlabTable:181 · currentPtSlabs:205 · listLwfRateTables:214 · LwfRateTableInput:220 · createLwfRateTable:229 · currentLwfRateTable:255 · listMinimumWageTables:262 · MinimumWageTableInput:271 · createMinimumWageTable:278 · PAYROLL_RUN_MONEY:316 · PAYROLL_INSTRUCTION_MONEY:317 · listSalaryStructures:339 · SalaryStructureInput:351 · proposeSalaryStructure:363 · approveSalaryStructure:401 · computeInstruction:461 · listPayslips:765 · getPayslip:806 · payslipDocument:824 · exportEcr:833 · exportEsic:869 · settleOffboarding:909 · setEngagementType:999 · BankDetailsInput:1024 · setBankDetails:1033
 
-**`apps/api/src/domains/compliance/privacy.ts`** (1618 lines) — NoticePurpose:55 · getCurrentNotice:63 · publishNotice:77 · acknowledgeNotice:136 · currentNoticePurposeCodes:166 · resolvePurpose:186 · grantConsent:196 · withdrawConsent:274 · listConsentsForPerson:330 · grantedConsentCodes:352 · MinorGateInput:370 · parseStatedDateOfBirth:391 · assertMinorHasGuardian:404 · requireGuardianConsentForMinor:430 · flagMajorityTransitions:486 · raiseDataRequest:519 · listDataRequests:560 · ErasureBlocker:661 · fulfilDataRequest:847 · refuseDataRequest:1104 · detectOverdueDataRequests:1124 · raiseBreach:1153 · transitionBreach:1206 · listBreaches:1246 · runBreachLadder:1261 · runRetentionReport:1296 · getRetention:1338 · runAccessReview:1385 · encryptField:1484 · decryptField:1493 · readRegulated:1506 · backfillEncryptAtRest:1526 · encryptionStatus:1582
+**`apps/api/src/domains/compliance/privacy.ts`** (1648 lines) — NoticePurpose:59 · getCurrentNotice:67 · publishNotice:81 · acknowledgeNotice:140 · currentNoticePurposeCodes:170 · resolvePurpose:190 · grantConsent:200 · withdrawConsent:278 · listConsentsForPerson:334 · grantedConsentCodes:356 · MinorGateInput:374 · parseStatedDateOfBirth:395 · assertMinorHasGuardian:408 · requireGuardianConsentForMinor:434 · flagMajorityTransitions:490 · raiseDataRequest:523 · listDataRequests:564 · ErasureBlocker:665 · fulfilDataRequest:851 · refuseDataRequest:1108 · detectOverdueDataRequests:1128 · raiseBreach:1157 · transitionBreach:1210 · listBreaches:1250 · runBreachLadder:1265 · runRetentionReport:1300 · getRetention:1348 · runAccessReview:1395 · encryptField:1494 · decryptField:1503 · readRegulated:1516 · backfillEncryptAtRest:1536 · encryptionStatus:1612
 
 **`apps/api/src/domains/compliance/tax.ts`** (1378 lines) — fyOf:77 · fyStartYear:81 · fyRange:85 · fyMonths:91 · Quarter:102 · quarterOf:104 · periodsOfQuarter:112 · depositDueDate:117 · ComputeVendorTdsInput:172 · computeVendorTds:183 · waiveVendorTds:273 · listVendorBillsForTds:348 · tdsSectionRates:363 · listApplicabilityRules:372 · setApplicabilityRule:378 · setMsmeTerms:403 · msmeExposure:432 · runMsmeLadder:453 · pendingTdsLiability:494 · listChallans:528 · CreateChallanInput:547 · createChallan:556 · MarkChallanPaidInput:586 · markChallanPaid:597 · runTdsDepositDueJob:693 · upsertDeclaration:763 · SalaryProjection:806 · salaryProjection:828 · applySalaryTds:877 · advanceTaxRate:927 · AdvanceTaxEstimate:937 · advanceTaxEstimateFor:946 · recordAdvanceTaxPayment:994 · TdsReturnRow:1043 · prepareTdsReturn:1099 · fileTdsReturn:1155 · listTdsReturns:1194 · tdsReturnDetail:1207 · exportTdsReturnCsv:1216 · IssueCertificateInput:1237 · issueCertificate:1251 · listCertificates:1347 · certificateDocument:1361
 
@@ -162,7 +162,7 @@
 
 **`apps/api/src/domains/hiring.ts`** (421 lines) — listRequisitions:45 · createRequisition:63 · transitionRequisition:111 · listApplications:138 · createApplication:161 · ApplicationTransitionInput:231 · PreparedApplicationTransition:241 · prepareApplicationTransition:252 · applyApplicationTransition:304 · transitionApplication:344 · joinFromApplication:362 · hiringFunnel:404
 
-**`apps/api/src/domains/identity.ts`** (687 lines) — normalisePhone:32 · normaliseEmail:40 · maskPhone:46 · maskEmail:51 · ResolutionScope:65 · crmResolutionScope:72 · PersonInput:76 · findDedupCandidates:91 · ResolveResult:168 · findOrCreatePerson:179 · sanctionedCreatePerson:318 · mergePersons:349 · personIdChain:397 · resolveMergeCandidate:411 · sweepStaleMergeCandidates:561 · AffiliationInput:592 · createAffiliation:606 · endAffiliation:663
+**`apps/api/src/domains/identity.ts`** (690 lines) — normalisePhone:32 · normaliseEmail:40 · maskPhone:46 · maskEmail:51 · ResolutionScope:65 · crmResolutionScope:72 · PersonInput:76 · findDedupCandidates:91 · ResolveResult:168 · findOrCreatePerson:179 · sanctionedCreatePerson:318 · mergePersons:349 · personIdChain:397 · resolveMergeCandidate:411 · sweepStaleMergeCandidates:564 · AffiliationInput:595 · createAffiliation:609 · endAffiliation:666
 
 **`apps/api/src/domains/interactions.ts`** (481 lines) — RelatedReference:34 · classificationFor:56 · computeSensitivity:73 · InteractionInput:94 · logInteraction:109 · VisibleInteraction:288 · timelineFor:318 · recentInteractions:441
 
@@ -314,7 +314,7 @@
 
 **`apps/api/src/platform/db.ts`** (309 lines) — TenantScopeError:75 · prisma:237 · Db:265 · DbTx:281 · unscopedPrisma:292 · num:300 · dec:305
 
-**`apps/api/src/platform/documentNumber.ts`** (242 lines) — DOCUMENT_SERIES:36 · DocumentSeries:60 · SERIES_LABELS:62 · YearFormat:75 · financialYearLabel:85 · MAX_INVOICE_NUMBER_LENGTH:91 · financialYearStart:98 · prefixFrom:109 · nextDocumentNumber:146 · peekNextNumbers:177 · setNextNumber:217
+**`apps/api/src/platform/documentNumber.ts`** (257 lines) — DOCUMENT_SERIES:42 · DocumentSeries:66 · SERIES_LABELS:68 · YearFormat:81 · financialYearLabel:91 · MAX_INVOICE_NUMBER_LENGTH:97 · financialYearStart:104 · prefixFrom:115 · nextDocumentNumber:152 · peekNextNumbers:183 · setNextNumber:223
 
 **`apps/api/src/platform/errors.ts`** (61 lines) — ApiError:3
 
@@ -324,7 +324,7 @@
 
 **`apps/api/src/platform/governedWrite.ts`** (29 lines) — governedWrite:26
 
-**`apps/api/src/platform/grantSync.ts`** (127 lines) — GrantAddition:41 · addMissingGrants:56 · addMissingGrantsForAllTenants:118
+**`apps/api/src/platform/grantSync.ts`** (135 lines) — GrantAddition:42 · addMissingGrants:57 · addMissingGrantsForAllTenants:126
 
 **`apps/api/src/platform/hooks.ts`** (60 lines) — HookName:29 · HookFn:39 · registerHook:44 · runHooks:53 · hookCount:57
 
@@ -342,7 +342,7 @@
 
 **`apps/api/src/platform/objectStorage.ts`** (107 lines) — ObjectStorage:25 · tenantKeyPrefix:39 · assertTenantKey:47 · LocalObjectStorage:62 · activeObjectStorage:100
 
-**`apps/api/src/platform/outbox.ts`** (340 lines) — OUTBOX_MAX_ATTEMPTS:33 · DrainOptions:46 · DrainResult:55 · drainOutbox:82 · backoffMs:105 · dispatchDueOutbox:227 · replayDeadLetter:259 · startOutboxDispatcher:318 · stopOutboxDispatcher:336
+**`apps/api/src/platform/outbox.ts`** (348 lines) — OUTBOX_MAX_ATTEMPTS:33 · DrainOptions:46 · DrainResult:55 · drainOutbox:82 · backoffMs:105 · dispatchDueOutbox:235 · replayDeadLetter:267 · startOutboxDispatcher:326 · stopOutboxDispatcher:344
 
 **`apps/api/src/platform/periodLock.ts`** (215 lines) — lockPeriodRows:82 · lockLegacyPeriod:166 · lockLegacyPeriods:191
 
@@ -362,7 +362,7 @@
 
 **`apps/api/src/platform/tenantKind.ts`** (105 lines) — TenantKindChange:25 · reconcileTenantKinds:39
 
-**`apps/api/src/platform/tenantPolicy.ts`** (177 lines) — DEFAULT_TENANT_TIER:21 · resolveTenantTier:70 · getTenantFeatureGate:75 · assertAllowedInferenceRegion:84 · TenantRuntimePolicy:106 · resolveTenantRuntimePolicy:120 · syncTenantPolicy:141
+**`apps/api/src/platform/tenantPolicy.ts`** (202 lines) — DEFAULT_TENANT_TIER:28 · resolveTenantTier:77 · getTenantFeatureGate:82 · assertAllowedInferenceRegion:91 · TenantRuntimePolicy:113 · resolveTenantRuntimePolicy:127 · syncTenantPolicy:148
 
 **`apps/api/src/platform/wire.ts`** (175 lines) — wireInt:14 · bigintReplacer:23 · minorOf:33 · minorOf:34 · minorOf:35 · MinorFields:41 · withMinor:48 · paiseSum:63 · minorToDecimal:72 · minorToDecimal:73 · minorToDecimal:74 · minorString:80 · WithMinorPair:85 · withDecimalMinor:95 · rupeesToMinor:115 · rupeesToMinorOrNull:120 · decimalWire:131 · rupeesOf:146 · rupeesOrNull:151 · rupeesOrZero:156 · withRupeeWire:165
 
@@ -372,7 +372,7 @@
 
 **`apps/api/src/imports/classify.ts`** (113 lines) — LedgerClass:15 · classifyLedger:18 · isAccountName:81 · divisionFor:92 · JOURNAL_ACCOUNT_NAME:111 · JOURNAL_ACCOUNT_TYPE:112
 
-**`apps/api/src/imports/commit.ts`** (2829 lines) — CommitResult:56 · commitImport:202 · revertImport:1192
+**`apps/api/src/imports/commit.ts`** (2938 lines) — CommitResult:58 · commitImport:204 · revertImport:1287
 
 **`apps/api/src/imports/detect.ts`** (320 lines) — ImportKind:18 · Detection:47 · findHeaderRow:73 · detectGrid:106 · detectWorkbook:236 · isTallyLedgerSheet:286 · countLedgers:290 · detectSourceFormat:303
 
@@ -382,9 +382,9 @@
 
 **`apps/api/src/imports/parse.ts`** (263 lines) — Grid:13 · parseCsv:27 · SheetGrid:83 · readWorkbook:97 · toAmount:124 · toDate:179 · inferDayFirst:237 · nonEmpty:256 · isBlank:260
 
-**`apps/api/src/imports/sealing.ts`** (225 lines) — MASKED:39 · isRegulatedCell:81 · isRegulatedField:88 · sealRawCells:93 · sealNormalised:103 · openStagedNormalised:120 · viewStagedObject:145 · purgeStagedRaw:173
+**`apps/api/src/imports/sealing.ts`** (234 lines) — MASKED:43 · isRegulatedCell:85 · isRegulatedField:92 · sealRawCells:97 · sealNormalised:107 · openStagedNormalised:124 · viewStagedObject:149 · purgeStagedRaw:177
 
-**`apps/api/src/imports/service.ts`** (380 lines) — MAX_UPLOAD_BYTES:45 · StageResult:47 · stageImport:69 · listImports:298 · getImport:308 · importRows:316 · setImportOptions:355 · setRowStatus:370
+**`apps/api/src/imports/service.ts`** (411 lines) — MAX_UPLOAD_BYTES:45 · StageResult:47 · stageImport:69 · listImports:312 · getImport:322 · importRows:330 · setImportOptions:369 · setRowStatus:392
 
 **`apps/api/src/imports/tallyXml.ts`** (166 lines) — extractTallyXml:55 · looksLikeTallyXml:162
 
@@ -394,7 +394,7 @@
 
 **`apps/api/src/agents/index.ts`** (531 lines) — ProposeInput:50 · ProposeResult:64 · propose:82 · decideAgentAction:329 · agentRoster:396 · revokeAuthority:443 · pauseAgent:496
 
-**`apps/api/src/events/handlers.ts`** (294 lines) — instalmentPlan:56 · instalmentAmounts:74 · registerSubscribers:79
+**`apps/api/src/events/handlers.ts`** (305 lines) — instalmentPlan:57 · instalmentAmounts:75 · registerSubscribers:80
 
 **`apps/api/src/jobs/cases.ts`** (52 lines) — runCaseOverdueJob:18 · JOBS:41
 

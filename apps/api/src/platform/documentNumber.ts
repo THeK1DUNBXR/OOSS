@@ -31,6 +31,12 @@ import { randomUUID } from 'node:crypto';
 import { prisma, type DbTx } from './db.js';
 import { currentTenantId } from './context.js';
 import { ApiError } from './errors.js';
+import { auditWrite, registerGovernedEntities } from './audit.js';
+
+// The series' next number is a document-numbering setting a company changes by hand,
+// and the change has to be explainable at an audit. The per-document counter increments
+// (recordSequence) are not registered: each document they number is audited itself.
+registerGovernedEntities('fin', ['document_series']);
 
 /** The series a customer-facing document belongs to. */
 export const DOCUMENT_SERIES = {
@@ -233,9 +239,18 @@ export async function setNextNumber(series: DocumentSeries, nextNumber: number, 
     );
   }
 
-  return prisma.recordSequence.upsert({
+  const row = await prisma.recordSequence.upsert({
     where: { tenantId_entityType_year: { tenantId, entityType: sequenceKey(series), year } },
     create: { tenantId, entityType: sequenceKey(series), year, nextSequence: nextNumber },
     update: { nextSequence: nextNumber },
   });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'document_series',
+    subjectId: row.id,
+    before: { nextSequence: existing?.nextSequence ?? null },
+    after: { nextSequence: nextNumber },
+    meta: { series, year },
+  });
+  return row;
 }

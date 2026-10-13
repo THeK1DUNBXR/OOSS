@@ -501,6 +501,7 @@ async function confirmMergeCandidate(
       subjectId: incoming.id,
       after: { fullName: incoming.fullName, recordCode },
       meta: { mergeCandidateId: mc.id },
+      tx,
     });
     await auditWrite({
       action: 'merge',
@@ -509,6 +510,7 @@ async function confirmMergeCandidate(
       before: { dedupeStatus: source.dedupeStatus },
       after: { dedupeStatus: 'merged', mergedIntoId: target.id },
       meta: { note, targetRecordCode: target.recordCode, mergeCandidateId: mc.id },
+      tx,
     });
     await auditWrite({
       action: 'update',
@@ -517,6 +519,7 @@ async function confirmMergeCandidate(
       before: { state: 'open' },
       after: { state: 'confirmed' },
       meta: { note },
+      tx,
     });
 
     // Every audit row above precedes these events (governedWrite.ts), so the

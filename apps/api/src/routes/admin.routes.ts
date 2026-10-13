@@ -20,7 +20,7 @@ import { ApiError } from '../platform/errors.js';
 import { assertCan, invalidateGrantCache } from '../platform/permissions.js';
 import { verifyChain } from '../platform/eventBus.js';
 import { paiseOfInput } from '../domains/allocation.js';
-import { governedEntities } from '../platform/audit.js';
+import { auditWrite, governedEntities } from '../platform/audit.js';
 import { minorString, rupeesOrNull, wireInt } from '../platform/wire.js';
 import { assertCanWriteGrant } from '../platform/roleAssignment.js';
 import { agentRoster, decideAgentAction, pauseAgent, revokeAuthority, propose } from '../agents/index.js';
@@ -174,6 +174,19 @@ router.post(
         policyVersionId: policyVersion?.id,
       },
       update: { verbs: input.verbs, scope: input.scope, scopeResolver: input.scopeResolver ?? null },
+    });
+
+    await auditWrite({
+      action: 'permission_change',
+      subjectType: 'grant',
+      subjectId: grant.id,
+      after: {
+        roleSlug: input.roleSlug,
+        resource: input.resource,
+        verbs: input.verbs,
+        scope: input.scope,
+        scopeResolver: input.scopeResolver ?? null,
+      },
     });
 
     // Evaluated at query time, so the change is live on the very next request.
