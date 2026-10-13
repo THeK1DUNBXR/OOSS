@@ -27,6 +27,8 @@ import {
   type VendorView,
 } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
+import { minorToRupees } from '../money.js';
+import { minorString, minorToDecimal, rupeesToMinor } from '../../platform/wire.js';
 import { currentAuth } from '../../platform/context.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { governedWrite } from '../../platform/governedWrite.js';
@@ -104,7 +106,7 @@ async function isBudgetApproved(
 async function budgetSpendTotal(
   tenantId: string,
   budget: { division: string; period: string; channelKey: string | null; campaignId: string | null },
-): Promise<number> {
+): Promise<bigint> {
   const [yearStr, rest] = budget.period.split('-');
   const year = Number(yearStr);
   let spendDateFilter: Record<string, unknown> = {};
@@ -126,9 +128,9 @@ async function budgetSpendTotal(
       ...(budget.channelKey ? { channelKey: budget.channelKey } : {}),
       ...(budget.campaignId ? { campaignId: budget.campaignId } : {}),
     },
-    _sum: { amount: true },
+    _sum: { amountMinor: true },
   });
-  return num(agg._sum.amount) ?? 0;
+  return agg._sum.amountMinor ?? 0n;
 }
 
 async function toBudgetView(row: {
@@ -138,12 +140,12 @@ async function toBudgetView(row: {
   division: string;
   channelKey: string | null;
   campaignId: string | null;
-  planned: Prisma.Decimal | number;
-  committed: Prisma.Decimal | number;
+  plannedMinor: bigint;
+  committedMinor: bigint;
   note: string | null;
 }): Promise<BudgetView> {
   const auth = currentAuth();
-  const [{ approved, approvedById }, spent, campaignNames] = await Promise.all([
+  const [{ approved, approvedById }, spentMinor, campaignNames] = await Promise.all([
     isBudgetApproved(auth.tenantId, row.id),
     budgetSpendTotal(auth.tenantId, {
       division: row.division,
@@ -153,7 +155,8 @@ async function toBudgetView(row: {
     }),
     campaignNamesFor([row.campaignId]),
   ]);
-  const planned = num(row.planned) ?? 0;
+  // Remaining is taken in paise: a float subtraction of two rupee figures leaves
+  // noise (0.30 - 0.10 is 0.19999999999999998) that the screen would show.
   return {
     id: row.id,
     recordCode: row.recordCode,
@@ -162,10 +165,12 @@ async function toBudgetView(row: {
     channelKey: row.channelKey as ChannelKey | null,
     campaignId: row.campaignId,
     campaignName: row.campaignId ? (campaignNames.get(row.campaignId) ?? null) : null,
-    planned,
-    committed: num(row.committed) ?? 0,
-    spent,
-    remaining: planned - spent,
+    planned: minorToRupees(row.plannedMinor),
+    plannedMinor: minorString(row.plannedMinor),
+    committed: minorToRupees(row.committedMinor),
+    committedMinor: minorString(row.committedMinor),
+    spent: minorToRupees(spentMinor),
+    remaining: minorToRupees(row.plannedMinor - spentMinor),
     note: row.note,
     approved,
     approvedById,
@@ -187,7 +192,7 @@ export async function createBudget(input: BudgetInput): Promise<BudgetView> {
         division: input.division,
         channelKey: input.channelKey ?? null,
         campaignId: input.campaignId ?? null,
-        planned: input.planned,
+        plannedMinor: rupeesToMinor(input.planned),
         note: input.note ?? null,
         createdById: auth.partyId,
       },
@@ -227,7 +232,7 @@ export async function updateBudget(id: string, patch: Partial<BudgetInput>): Pro
         ...(patch.division !== undefined ? { division: patch.division } : {}),
         ...(patch.channelKey !== undefined ? { channelKey: patch.channelKey } : {}),
         ...(patch.campaignId !== undefined ? { campaignId: patch.campaignId } : {}),
-        ...(patch.planned !== undefined ? { planned: patch.planned } : {}),
+        ...(patch.planned !== undefined ? { plannedMinor: rupeesToMinor(patch.planned) } : {}),
         ...(patch.note !== undefined ? { note: patch.note } : {}),
         updatedById: auth.partyId,
       },
@@ -238,8 +243,16 @@ export async function updateBudget(id: string, patch: Partial<BudgetInput>): Pro
       subjectType: 'marketing_budget',
       subjectId: id,
       // Decimal, not num(): the audit diff stays exact, as the stored column is.
-      before: { period: existing.period, division: existing.division, planned: String(existing.planned) },
-      after: { period: updated.period, division: updated.division, planned: String(updated.planned) },
+      before: {
+        period: existing.period,
+        division: existing.division,
+        planned: String(minorToDecimal(existing.plannedMinor)),
+      },
+      after: {
+        period: updated.period,
+        division: updated.division,
+        planned: String(minorToDecimal(updated.plannedMinor)),
+      },
       tx,
     });
     // An edit invalidates a standing approval (see isBudgetApproved) — recorded
@@ -247,7 +260,7 @@ export async function updateBudget(id: string, patch: Partial<BudgetInput>): Pro
     await emit({
       name: EVENTS.MKT_BUDGET_SET,
       subject: { entityType: 'marketing_budget', entityId: updated.id, recordCode: updated.recordCode },
-      newState: { period: updated.period, division: updated.division, planned: num(updated.planned) },
+      newState: { period: updated.period, division: updated.division, planned: minorToRupees(updated.plannedMinor) },
       impact: { domains: ['mkt'] },
       tx,
     });
@@ -300,7 +313,7 @@ export async function approveBudget(id: string): Promise<BudgetView> {
   await emit({
     name: EVENTS.MKT_BUDGET_APPROVED,
     subject: { entityType: 'marketing_budget', entityId: row.id, recordCode: row.recordCode },
-    newState: { period: row.period, division: row.division, planned: num(row.planned) },
+    newState: { period: row.period, division: row.division, planned: minorToRupees(row.plannedMinor) },
     impact: { domains: ['mkt'] },
   });
 
@@ -333,7 +346,7 @@ async function toSpendView(row: {
   campaignId: string | null;
   channelKey: string;
   division: string;
-  amount: Prisma.Decimal | number;
+  amountMinor: bigint;
   spendDate: Date;
   vendorOrganizationId: string | null;
   description: string | null;
@@ -354,7 +367,8 @@ async function toSpendView(row: {
     campaignName: row.campaignId ? (campaignNames.get(row.campaignId) ?? null) : null,
     channelKey: row.channelKey as ChannelKey,
     division: row.division,
-    amount: num(row.amount) ?? 0,
+    amount: minorToRupees(row.amountMinor),
+    amountMinor: minorString(row.amountMinor),
     spendDate: row.spendDate.toISOString(),
     vendorOrganizationId: row.vendorOrganizationId,
     vendorName: vendorNames?.name ?? null,
@@ -393,7 +407,7 @@ export async function recordSpend(input: SpendInput): Promise<SpendView> {
         campaignId: input.campaignId ?? null,
         channelKey: input.channelKey,
         division: input.division,
-        amount: input.amount,
+        amountMinor: rupeesToMinor(input.amount),
         spendDate: input.spendDate,
         vendorOrganizationId: input.vendorOrganizationId ?? null,
         description: input.description,
@@ -531,7 +545,7 @@ export async function budgetVariance(
 
   const rows: BudgetVarianceRow[] = [];
   for (const b of budgets) {
-    const [{ approved }, actual] = await Promise.all([
+    const [{ approved }, actualMinor] = await Promise.all([
       isBudgetApproved(auth.tenantId, b.id),
       budgetSpendTotal(auth.tenantId, {
         division: b.division,
@@ -540,15 +554,14 @@ export async function budgetVariance(
         campaignId: b.campaignId,
       }),
     ]);
-    const planned = num(b.planned) ?? 0;
     rows.push({
       division: b.division,
       channelKey: b.channelKey as ChannelKey | null,
       campaignId: b.campaignId,
-      planned,
-      committed: num(b.committed) ?? 0,
-      actual,
-      variance: planned - actual,
+      planned: minorToRupees(b.plannedMinor),
+      committed: minorToRupees(b.committedMinor),
+      actual: minorToRupees(actualMinor),
+      variance: minorToRupees(b.plannedMinor - actualMinor),
       measured: approved,
     });
   }
@@ -560,14 +573,14 @@ export async function detectOverBudget(): Promise<number> {
   const auth = currentAuth();
   const campaigns = await prisma.marketingCampaign.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, status: { in: ['live', 'paused', 'scheduled', 'completed'] } },
-    select: { id: true, recordCode: true, name: true, budgetPlanned: true, ownerPartyId: true },
+    select: { id: true, recordCode: true, name: true, budgetPlannedMinor: true, ownerPartyId: true },
   });
 
   let count = 0;
   for (const c of campaigns) {
-    const spent = await recomputeCampaignActual(c.id);
-    const planned = num(c.budgetPlanned) ?? 0;
-    if (spent > planned) {
+    const spentMinor = await recomputeCampaignActual(c.id);
+    const plannedMinor = c.budgetPlannedMinor;
+    if (spentMinor > plannedMinor) {
       count += 1;
       await raiseException({
         code: 'EX-MKT-002',
@@ -577,7 +590,7 @@ export async function detectOverBudget(): Promise<number> {
         subjectId: c.id,
         subjectLabel: `${c.recordCode} — ${c.name}`,
         domain: 'mkt',
-        detail: `Spend ${spent} exceeds planned budget ${planned}.`,
+        detail: `Spend ${minorToRupees(spentMinor)} exceeds planned budget ${minorToRupees(plannedMinor)}.`,
         ownerPartyId: c.ownerPartyId,
         triggerFingerprint: `mkt_over_budget:${c.id}`,
         ladderRung: 0,
@@ -627,7 +640,7 @@ export async function detectSpendWithoutBudget(): Promise<number> {
         subjectId: s.id,
         subjectLabel: `${s.recordCode} — ${period} ${s.division}`,
         domain: 'mkt',
-        detail: `Spend of ${num(s.amount)} recorded against ${period}/${s.division} with no approved budget.`,
+        detail: `Spend of ${minorToRupees(s.amountMinor)} recorded against ${period}/${s.division} with no approved budget.`,
         ownerPartyId: s.createdById,
         triggerFingerprint: `mkt_spend_no_budget:${s.id}`,
         ladderRung: 0,

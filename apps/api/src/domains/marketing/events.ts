@@ -22,7 +22,9 @@ import {
   type RegistrationStatus,
   type Vertical,
 } from '@kaizen/shared';
-import { prisma, num, type DbTx } from '../../platform/db.js';
+import { prisma, type DbTx } from '../../platform/db.js';
+import { minorToRupees, withNumberMinor } from '../money.js';
+import { rupeesToMinor, rupeesToMinorOrNull, withDecimalMinor } from '../../platform/wire.js';
 import { currentAuth } from '../../platform/context.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { governedWrite } from '../../platform/governedWrite.js';
@@ -102,7 +104,7 @@ export async function createEvent(input: EventInput) {
         startAt: input.startAt,
         endAt: input.endAt ?? null,
         capacity: input.capacity ?? null,
-        costPlanned: input.costPlanned ?? 0,
+        costPlannedMinor: rupeesToMinor(input.costPlanned ?? 0),
         division: input.division ?? 'education',
         createdById: auth.partyId,
       },
@@ -122,7 +124,7 @@ export async function createEvent(input: EventInput) {
       tx,
     });
 
-    return event;
+    return withDecimalMinor(event, ['costPlanned', 'costActual']);
   });
 }
 
@@ -166,7 +168,7 @@ export async function listEvents(filters: EventListFilters = {}) {
     prisma.marketingEvent.count({ where: where as never }),
   ]);
 
-  return { items, total, page, pageSize };
+  return { items: items.map((e) => withDecimalMinor(e, ['costPlanned', 'costActual'])), total, page, pageSize };
 }
 
 async function registrationCounts(eventId: string) {
@@ -200,12 +202,11 @@ export async function loadEvent(id: string) {
 
   // Not measured while nobody has attended — a per-head cost with a zero
   // denominator is not a number, it is a false zero.
-  const costActual = num(event.costActual) ?? 0;
+  const costActual = minorToRupees(event.costActualMinor);
   const costPerAttendee = attended > 0 ? costActual / attended : null;
 
   return {
-    ...event,
-    costPlanned: num(event.costPlanned),
+    ...withNumberMinor(event, ['costPlanned', 'costActual']),
     costActual,
     registrations: {
       registered,
@@ -245,7 +246,7 @@ export async function updateEvent(id: string, patch: Partial<EventInput>) {
         ...(patch.startAt !== undefined ? { startAt: patch.startAt } : {}),
         ...(patch.endAt !== undefined ? { endAt: patch.endAt } : {}),
         ...(patch.capacity !== undefined ? { capacity: patch.capacity } : {}),
-        ...(patch.costPlanned !== undefined ? { costPlanned: patch.costPlanned } : {}),
+        ...(patch.costPlanned !== undefined ? { costPlannedMinor: rupeesToMinorOrNull(patch.costPlanned) } : {}),
         ...(patch.division !== undefined ? { division: patch.division } : {}),
         updatedById: auth.partyId,
       } as never,
@@ -268,7 +269,7 @@ export async function updateEvent(id: string, patch: Partial<EventInput>) {
     return row;
   });
 
-  return updated;
+  return withDecimalMinor(updated, ['costPlanned', 'costActual']);
 }
 
 // ---------------------------------------------------------------------------

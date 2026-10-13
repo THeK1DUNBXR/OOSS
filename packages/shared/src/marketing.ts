@@ -650,8 +650,11 @@ export interface CampaignView {
   endAt: string;
   status: CampaignStatus;
   budgetPlanned: number;
+  budgetPlannedMinor?: string | null;
   budgetCommitted: number;
+  budgetCommittedMinor?: string | null;
   budgetActual: number;
+  budgetActualMinor?: string | null;
   currency: string;
   ownerPartyId: string;
   ownerName: string;
@@ -663,6 +666,7 @@ export interface CampaignView {
   targetLeads: number | null;
   targetEnrolments: number | null;
   targetPipelineValue: number | null;
+  targetPipelineValueMinor?: string | null;
   offeringId: string | null;
   offeringName: string | null;
   courseId: string | null;
@@ -683,6 +687,7 @@ export interface CampaignApprovalView {
   decision: 'pending' | 'approved' | 'rejected';
   reason: string | null;
   thresholdAmount: number | null;
+  thresholdAmountMinor?: string | null;
   createdAt: string;
 }
 
@@ -958,7 +963,9 @@ export interface BudgetView {
   campaignId: string | null;
   campaignName: string | null;
   planned: number;
+  plannedMinor?: string | null;
   committed: number;
+  committedMinor?: string | null;
   spent: number;
   remaining: number;
   note: string | null;
@@ -999,6 +1006,7 @@ export interface SpendView {
   channelKey: ChannelKey;
   division: string;
   amount: number;
+  amountMinor?: string | null;
   spendDate: string;
   vendorOrganizationId: string | null;
   vendorName: string | null;

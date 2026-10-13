@@ -17,6 +17,11 @@ export function minorToRupees(minor: bigint): number {
   return poundsOf(minor);
 }
 
+/** As minorToRupees, with a nullable column: null stays null, it is not read as zero. */
+export function minorToRupeesOrNull(minor: bigint | null | undefined): number | null {
+  return minor === null || minor === undefined ? null : minorToRupees(minor);
+}
+
 /**
  * A row with paise columns, shaped for a path that already sent the rupee
  * number: each `<name>` is a JavaScript number, and `<name>Minor` is the paise

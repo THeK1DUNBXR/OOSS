@@ -15,6 +15,7 @@
 
 import { ATTRIBUTION_MODELS, type AttributionModel } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
+import { minorToRupees } from '../money.js';
 import { currentAuth } from '../../platform/context.js';
 import { assertCan } from '../../platform/permissions.js';
 
@@ -109,7 +110,7 @@ export async function overview(): Promise<MarketingOverviewView> {
     }),
     prisma.marketingSpend.aggregate({
       where: { tenantId: auth.tenantId, deletedAt: null, spendDate: { gte: from, lte: to } },
-      _sum: { amount: true },
+      _sum: { amountMinor: true },
     }),
     prisma.marketingSend.findMany({
       where: { tenantId: auth.tenantId, deletedAt: null, status: 'sent', sentAt: { gte: from, lte: to } },
@@ -123,7 +124,7 @@ export async function overview(): Promise<MarketingOverviewView> {
     }),
     prisma.marketingCampaign.findMany({
       where: { tenantId: auth.tenantId, deletedAt: null },
-      select: { budgetPlanned: true, budgetActual: true },
+      select: { budgetPlannedMinor: true, budgetActualMinor: true },
     }),
     prisma.marketingCampaign.findMany({
       where: { tenantId: auth.tenantId, deletedAt: null, status: 'live' },
@@ -131,10 +132,10 @@ export async function overview(): Promise<MarketingOverviewView> {
     }),
   ]);
 
-  const overBudgetCount = budgetCheck.filter((c) => (num(c.budgetActual) ?? 0) > (num(c.budgetPlanned) ?? 0)).length;
+  const overBudgetCount = budgetCheck.filter((c) => c.budgetActualMinor > c.budgetPlannedMinor).length;
   const staleCampaignCount = staleCampaigns.filter((c) => c.touchpoints.length === 0).length;
 
-  const spend = num(spendThisMonth._sum.amount) ?? 0;
+  const spend = minorToRupees(spendThisMonth._sum.amountMinor ?? 0n);
   const leadCount = leadsThisMonth.length;
   const costPerLead = leadCount > 0 ? spend / leadCount : null;
 
@@ -357,7 +358,7 @@ export async function channels(params: { from?: Date; to?: Date } = {}): Promise
     }),
     prisma.marketingSpend.findMany({
       where: { tenantId: auth.tenantId, deletedAt: null, spendDate: { gte: from, lte: to } },
-      select: { channelKey: true, amount: true },
+      select: { channelKey: true, amountMinor: true },
     }),
   ]);
 
@@ -388,7 +389,7 @@ export async function channels(params: { from?: Date; to?: Date } = {}): Promise
     const leadIds = leadIdsByChannel.get(key) ?? [];
     const channelOpps = opps.filter((o) => o.leadId && leadToChannel.get(o.leadId) === key);
     const wonOpps = channelOpps.filter((o) => o.outcome === 'won');
-    const spend = spends.filter((s) => s.channelKey === key).reduce((s, r) => s + (num(r.amount) ?? 0), 0);
+    const spend = minorToRupees(spends.filter((s) => s.channelKey === key).reduce((s, r) => s + r.amountMinor, 0n));
     const revenue = wonOpps.reduce((s, o) => s + (num(o.expectedValue) ?? 0), 0);
 
     result.push({
@@ -449,7 +450,7 @@ export async function campaigns(params: { from?: Date; to?: Date } = {}): Promis
       }),
       prisma.marketingSpend.aggregate({
         where: { tenantId: auth.tenantId, deletedAt: null, campaignId: c.id },
-        _sum: { amount: true },
+        _sum: { amountMinor: true },
       }),
     ]);
     const leadIds = leads.map((l) => l.id);
@@ -465,7 +466,7 @@ export async function campaigns(params: { from?: Date; to?: Date } = {}): Promis
       ? await prisma.enrollment.count({ where: { tenantId: auth.tenantId, opportunityId: { in: oppIds } } })
       : 0;
     const pipelineValue = opps.filter((o) => o.outcome === null).reduce((s, o) => s + (num(o.expectedValue) ?? 0), 0);
-    const spend = num(spendAgg._sum.amount) ?? 0;
+    const spend = minorToRupees(spendAgg._sum.amountMinor ?? 0n);
 
     result.push({
       campaignId: c.id,
@@ -479,7 +480,7 @@ export async function campaigns(params: { from?: Date; to?: Date } = {}): Promis
       enrolments,
       pipelineValue,
       spend,
-      budgetPlanned: num(c.budgetPlanned) ?? 0,
+      budgetPlanned: minorToRupees(c.budgetPlannedMinor),
       costPerLead: leadIds.length > 0 ? Number((spend / leadIds.length).toFixed(2)) : null,
       romi: spend > 0 ? Number((pipelineValue / spend).toFixed(4)) : null,
     });
