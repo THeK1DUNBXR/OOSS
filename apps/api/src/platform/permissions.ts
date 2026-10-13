@@ -673,6 +673,11 @@ export function applyFieldVisibility<T extends Record<string, unknown>>(
   return { data: out, withheld };
 }
 
+function isMoneyKey(key: string): boolean {
+  if (MONEY_FIELDS.includes(key)) return true;
+  return key.endsWith('Minor') && MONEY_FIELDS.includes(key.slice(0, -'Minor'.length));
+}
+
 function walk(
   value: unknown,
   path: string,
@@ -701,8 +706,11 @@ function walk(
       continue;
     }
 
-    // Money masking: present but nulled.
-    if (!options.canSeeMoney && MONEY_FIELDS.includes(key) && typeof v !== 'object') {
+    // Money masking: present but nulled. Not `typeof v !== 'object'`: a Prisma
+    // Decimal is an object, so that test let it through, and the walk then copied
+    // its internal digits (d, e, s) onto the wire for a viewer with no money grant
+    // (MONEY-VISIBILITY). A `<name>Minor` sibling is money by its stem.
+    if (!options.canSeeMoney && isMoneyKey(key) && v !== null && !Array.isArray(v)) {
       withheld.push({ path: childPath, reason: 'no_permission' });
       out[key] = null;
       continue;

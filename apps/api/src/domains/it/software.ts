@@ -94,6 +94,25 @@ function maskLicenceMoney<T extends Record<string, unknown>>(row: T, seesMoney: 
   return masked as T;
 }
 
+/**
+ * The licence's event history carries the same figures in its `detail` JSON
+ * (renewal_proposed holds the proposed cost and annualised cost, renewal_approved
+ * the cost it took effect at). licenceDetail returned those rows raw, so a viewer
+ * without it_licences:financial read the renewal price through the history even
+ * though the licence itself was masked. Only the money keys are nulled; every
+ * other key and every event is left as it was.
+ */
+const EVENT_MONEY_KEYS = ['costPerPeriod', 'newCostPerPeriod', 'annualisedCost'] as const;
+function maskEventDetail<T>(detail: T, seesMoney: boolean): T {
+  if (seesMoney || detail === null || typeof detail !== 'object' || Array.isArray(detail)) return detail;
+  const masked: Record<string, unknown> = { ...(detail as Record<string, unknown>) };
+  for (const key of EVENT_MONEY_KEYS) {
+    if (key in masked) masked[key] = null;
+    if (`${key}Minor` in masked) masked[`${key}Minor`] = null;
+  }
+  return masked as T;
+}
+
 // ---------------------------------------------------------------------------
 // Thresholds (dated table — Principle 4)
 // ---------------------------------------------------------------------------
@@ -427,7 +446,9 @@ export async function createLicence(input: CreateLicenceInput) {
     return licence;
   });
 
-  return licenceWire(licence);
+  // The creator is Operations, who can create a licence but not see its cost (see
+  // maskLicenceMoney). Returning the raw cost here handed it to them on create.
+  return maskLicenceMoney(licenceWire(licence), await canSeeMoney('it_licences'));
 }
 
 export interface LicenceFilter {
@@ -479,7 +500,9 @@ export async function licenceDetail(id: string) {
   await assertCan({ resource: 'it_licences', verb: 'view' });
   const licence = await loadLicence(id);
   const seesMoney = await canSeeMoney('it_licences');
-  const events = await prisma.itLicenceEvent.findMany({ where: { licenceId: id }, orderBy: { createdAt: 'desc' } });
+  const events = (
+    await prisma.itLicenceEvent.findMany({ where: { licenceId: id }, orderBy: { createdAt: 'desc' } })
+  ).map((event) => ({ ...event, detail: maskEventDetail(event.detail, seesMoney) }));
   const shaped = {
     ...licenceWire(licence),
     annualisedCost: annualisedCost(minorToRupees(licence.costPerPeriodMinor), licence.billingCycle as ItBillingCycle),
@@ -529,7 +552,7 @@ export async function updateSeats(id: string, seatsInUse: number, note?: string)
     after: { seatsInUse },
   });
 
-  return licenceWire(updated);
+  return maskLicenceMoney(licenceWire(updated), await canSeeMoney('it_licences'));
 }
 
 /**
@@ -714,7 +737,7 @@ export async function proposeRenewal(id: string, input: ProposeRenewalInput): Pr
 
   return {
     applied: false,
-    licence: licenceWire(updated),
+    licence: maskLicenceMoney(licenceWire(updated), await canSeeMoney('it_licences')),
     approvalStepId: step.id,
     resolvedApproverRole: approver?.roleSlug ?? 'finance_head',
     reason: 'Awaiting approval — a licence renewal is never applied by the person who proposed it.',
@@ -731,6 +754,7 @@ export async function approveRenewal(id: string, approve: boolean, note = ''): P
   const auth = currentAuth();
   const licence = await loadLicence(id);
   await assertCan({ resource: 'it_licences', verb: 'approve' });
+  const seesMoney = await canSeeMoney('it_licences');
 
   if (!licence.pendingRenewalApprovalStepId) {
     throw ApiError.conflict(`${licence.recordCode ?? id} has no renewal proposal awaiting a decision.`);
@@ -771,7 +795,7 @@ export async function approveRenewal(id: string, approve: boolean, note = ''): P
     });
     return {
       applied: false,
-      licence: licenceWire(cleared),
+      licence: maskLicenceMoney(licenceWire(cleared), seesMoney),
       approvalStepId: decided.id,
       resolvedApproverRole: decided.resolvedApproverRole,
       reason: 'Declined.',
@@ -827,7 +851,7 @@ export async function approveRenewal(id: string, approve: boolean, note = ''): P
 
   return {
     applied: true,
-    licence: licenceWire(updated),
+    licence: maskLicenceMoney(licenceWire(updated), seesMoney),
     approvalStepId: decided.id,
     resolvedApproverRole: decided.resolvedApproverRole,
     reason: 'Renewed.',
@@ -885,7 +909,7 @@ export async function cancelLicence(id: string, reason: string) {
     return updated;
   });
 
-  return licenceWire(updated);
+  return maskLicenceMoney(licenceWire(updated), await canSeeMoney('it_licences'));
 }
 
 // ---------------------------------------------------------------------------
