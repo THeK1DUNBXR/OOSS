@@ -1050,6 +1050,13 @@ model EventRecord {
   /// recognisable as the same fact.
   legacyName String?
 
+  /// The AuditRecord written for the same governed write (FX-24 cross-anchor).
+  /// Deliberately outside the chain hash: `chainBodyOf` is hashed for every
+  /// row, and adding a field to it would change the hash of every row already
+  /// written. The anchor is checked against the audit row instead
+  /// (`verifyEventAuditAnchors`, eventBus.ts).
+  auditRecordId String?
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, eventId, eventName])
@@ -1073,7 +1080,25 @@ model EventRecord {
   @@index([tenantId, eventName, occurredAt])
   @@index([tenantId, subjectEntityType, subjectEntityId])
   @@index([tenantId, correlationId])
+  @@index([tenantId, auditRecordId])
   @@map("event_records")
+}
+
+/// FX-24 consumer idempotency. One row per (tenant, subscriber, event), written
+/// once the subscriber has returned without error. The dispatcher checks it
+/// before calling the subscriber, so an event the subscriber already handled is
+/// not handled again on a retry or a replayed dead letter. Append-only: the app
+/// role may insert and read, and nothing else (migration 20261013262000).
+model EventConsumerReceipt {
+  id          String   @id @default(cuid())
+  tenantId    String
+  consumerKey String
+  eventId     String
+  eventName   String
+  processedAt DateTime @default(now())
+
+  @@unique([tenantId, consumerKey, eventId])
+  @@map("event_consumer_receipts")
 }
 
 /// A handler's third failure writes here rather than only logging, so a process
