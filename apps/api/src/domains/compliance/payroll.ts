@@ -20,6 +20,7 @@
 
 import {
   bonus as computeBonus,
+  EVENTS,
   computeEsi,
   computePf,
   esiEligible,
@@ -39,6 +40,8 @@ import { ApiError } from '../../platform/errors.js';
 import { assertCan, scopeFor } from '../../platform/permissions.js';
 import { assertEmploymentVisible } from '../../platform/recordScope.js';
 import { auditWrite, auditExport, registerGovernedEntities } from '../../platform/audit.js';
+import { emit } from '../../platform/eventBus.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { registerHook } from '../../platform/hooks.js';
 import { nextDocumentNumber, DOCUMENT_SERIES } from '../../platform/documentNumber.js';
@@ -1084,22 +1087,37 @@ export async function setBankDetails(employmentRelationshipId: string, input: Ba
   });
   if (!before) throw ApiError.notFound('Employment relationship');
 
-  // The account number and the name on it are regulated values: encrypted on
-  // the way in, the way the privacy backfill leaves everything already on disk.
+  // The account number, the name on it and the nominee's name are regulated
+  // values: encrypted on the way in, the way the privacy backfill leaves
+  // everything already on disk. The nominee was spread through in plaintext
+  // until FX-64; `...input` is first, so the encrypted value must come after it.
   const data = {
     ...input,
     ...(input.bankAccountNumber !== undefined ? { bankAccountNumber: encryptField(input.bankAccountNumber) } : {}),
     ...(input.bankAccountName !== undefined ? { bankAccountName: encryptField(input.bankAccountName) } : {}),
     ...(input.bankIfsc !== undefined ? { bankIfsc: encryptField(input.bankIfsc) } : {}),
     ...(input.esicNumber !== undefined ? { esicNumber: encryptField(input.esicNumber) } : {}),
+    ...(input.nomineeName !== undefined ? { nomineeName: encryptField(input.nomineeName) } : {}),
   };
-  const row = await prisma.employmentRelationship.update({ where: { id: employmentRelationshipId }, data });
-  // Regulated values themselves never enter the diff — only that the fields changed.
-  await auditWrite({
-    action: 'update',
-    subjectType: 'employment_relationship',
-    subjectId: row.id,
-    meta: { fieldsChanged: Object.keys(input) },
+
+  // The row, its audit and its event commit together (governedWrite). Before
+  // this the update ran alone: a bank-detail change with no audit row and no event.
+  return governedWrite(async (tx) => {
+    const row = await tx.employmentRelationship.update({ where: { id: employmentRelationshipId }, data });
+    // Regulated values themselves never enter the diff or the event, only that the fields changed.
+    await auditWrite({
+      action: 'update',
+      subjectType: 'employment_relationship',
+      subjectId: row.id,
+      meta: { fieldsChanged: Object.keys(input) },
+      tx,
+    });
+    await emit({
+      name: EVENTS.EMPLOYEE_PROFILE_UPDATED,
+      subject: { entityType: 'employment_relationship', entityId: row.id },
+      newState: { fieldsChanged: Object.keys(input) },
+      tx,
+    });
+    return { id: row.id, ok: true };
   });
-  return { id: row.id, ok: true };
 }

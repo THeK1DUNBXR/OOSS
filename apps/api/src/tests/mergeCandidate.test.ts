@@ -9,7 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
-import { resolveMergeCandidate } from '../domains/identity.js';
+import { mergePersons, resolveMergeCandidate } from '../domains/identity.js';
 import { unscopedPrisma } from '../platform/db.js';
 import { expectReject, tenantId, withFixtureRole } from './helpers.js';
 
@@ -103,6 +103,33 @@ describe('FX-07 resolveMergeCandidate', () => {
         createdPersonIds.push(incoming.id);
         expect(incoming.dedupeStatus).toBe('merged');
         expect(incoming.mergedIntoId).toBe(existing.id);
+      },
+    );
+  });
+
+  it('a direct merge moves the active affiliations to the survivor and names them in its audit row', async () => {
+    const tid = await tenantId();
+    await withFixtureRole(
+      { slug: 'fx07_direct_merger', grants: [{ resource: 'people', verbs: ['view', 'merge'], scope: 'all' }] },
+      async () => {
+        const survivor = await fixturePerson(tid, 'direct-survivor');
+        const source = await fixturePerson(tid, 'direct-source');
+        const affiliation = await unscopedPrisma.affiliation.create({
+          data: { tenantId: tid, partyId: source.id, affiliationType: 'customer_contact', status: 'active' },
+        });
+
+        await mergePersons(source.id, survivor.id, 'duplicate of the survivor');
+
+        // The move is not undoable from the merged row alone, so the audit row
+        // has to say which affiliations left the source. Before this fix the
+        // meta carried only the note and the target code.
+        const moved = await unscopedPrisma.affiliation.findUniqueOrThrow({ where: { id: affiliation.id } });
+        expect(moved.partyId).toBe(survivor.id);
+
+        const audit = await unscopedPrisma.auditRecord.findFirstOrThrow({
+          where: { tenantId: tid, subjectType: 'person', subjectId: source.id, action: 'merge' },
+        });
+        expect((audit.meta as { movedAffiliationIds?: string[] }).movedAffiliationIds).toEqual([affiliation.id]);
       },
     );
   });
