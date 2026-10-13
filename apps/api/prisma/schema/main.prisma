@@ -3803,6 +3803,7 @@ model Enrollment {
   status           String    @default("reserved")
   enrolledAt       DateTime?
   completedAt      DateTime?
+  certificates     Certificate[]
   progressPct      Int       @default(0)
   attendancePct    Int       @default(100)
   atRisk           Boolean   @default(false)

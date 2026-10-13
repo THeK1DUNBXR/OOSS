@@ -17,6 +17,7 @@ import equityRoutes from './equity.routes.js';
 import groupRoutes from './group.routes.js';
 import esopRoutes from './esop.routes.js';
 import complianceRoutes from './compliance/index.js';
+import compliancePublicRoutes from './compliance/publicCertificates.routes.js';
 import itRoutes from './it/index.js';
 import ceoRoutes from './ceo/index.js';
 import { marketingRouter, marketingPublicRouter } from './marketing/index.js';
@@ -52,6 +53,9 @@ router.use('/equity', requireAuth, equityRoutes);
 router.use('/group', requireAuth, groupRoutes);
 router.use('/esop', requireAuth, esopRoutes);
 router.use('/board', requireAuth, boardRoutes);
+// The public certificate check (FX-80). Mounted ahead of the authenticated
+// compliance router, the same way marketing's public surface is at `/marketing`.
+router.use('/compliance/public', compliancePublicRoutes);
 router.use('/compliance', requireAuth, complianceRoutes);
 router.use('/it', requireAuth, itRoutes);
 router.use('/ceo', requireAuth, ceoRoutes);

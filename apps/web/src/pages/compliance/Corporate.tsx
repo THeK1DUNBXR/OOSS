@@ -741,8 +741,12 @@ function CertificatesTab() {
   });
 
   const verify = useMutation({
-    mutationFn: () => api.get(`/compliance/corporate/certificates/verify/${encodeURIComponent(code)}`),
-    onSuccess: () => setResult('Valid — issued by this platform.'),
+    mutationFn: () =>
+      api.get<{ valid: boolean; status: string }>(
+        `/compliance/corporate/certificates/verify/${encodeURIComponent(code)}`,
+      ),
+    onSuccess: (r) =>
+      setResult(r.valid ? 'Valid — issued by this platform.' : `Not valid: this certificate is ${r.status}.`),
     onError: (e) => setResult(messageOf(e)),
   });
 
@@ -778,7 +782,7 @@ function CertificatesTab() {
       </Card>
       <Card
         title="Verify a certificate"
-        subtitle="This check runs behind sign-in like every other screen here — it is not a public verification page."
+        subtitle="The staff check, behind sign-in. A verifier outside the company uses the public page, which shows only the holder, the course, the issue date and the status."
       >
         <TextInput label="Verification code" value={code} onChange={setCode} />
         <button className="btn-primary mt-2" onClick={() => verify.mutate()} disabled={!code}>

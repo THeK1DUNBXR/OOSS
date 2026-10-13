@@ -2,19 +2,21 @@
  * Certificates — final once issued, like every document in this platform. A
  * correction is a new certificate, never an edit to one already handed out.
  *
- * `GET .../verify/:code` is written to read the way a public verification
- * page would — no PII beyond what the certificate itself already carries —
- * but it sits behind `requireAuth` like everything else under
- * `/api/compliance`, so it is not actually reachable without a session. That
- * is stated here rather than left to be discovered: a genuinely public
- * verification page needs its own unauthenticated route, which is outside
- * this router's mount.
+ * Two ways in to a certificate's status. `GET .../verify/:code` is the staff
+ * check, behind sign-in like every route under `/api/compliance`. The public
+ * page is `publicCertificateStatus`, mounted outside `requireAuth` in
+ * `routes/compliance/publicCertificates.routes.ts`; it answers with four fields
+ * and nothing else (see that function's note on how it finds the tenant).
+ *
+ * Nothing that leaves this file carries `snapshot`. The snapshot is whatever the
+ * issuer typed in, unvalidated, so it is not something a reader should be given
+ * back as if it were the record.
  */
 
 import { randomBytes } from 'node:crypto';
 import type { CertificateKind } from '@kaizen/shared';
-import { prisma } from '../../../platform/db.js';
-import { currentAuth } from '../../../platform/context.js';
+import { prisma, unscopedPrisma } from '../../../platform/db.js';
+import { asSystem, currentAuth } from '../../../platform/context.js';
 import { ApiError } from '../../../platform/errors.js';
 import { assertCan } from '../../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../../platform/audit.js';
@@ -32,13 +34,55 @@ function verificationCode(): string {
   return randomBytes(9).toString('base64url');
 }
 
-export async function listCertificates(enrollmentId?: string) {
+/**
+ * The row as a staff screen reads it. Every authenticated read and write returns
+ * this, never the Prisma row, so the snapshot and the tenant and issuer ids stay
+ * inside the domain. Adding a field here is a decision about what a screen shows.
+ */
+interface CertificateReadModel {
+  id: string;
+  number: string;
+  enrollmentId: string;
+  kind: string;
+  status: string;
+  issuedAt: Date;
+  verificationCode: string;
+  revokedAt: Date | null;
+  revokedReason: string | null;
+}
+
+function toCertificateReadModel(row: {
+  id: string;
+  number: string;
+  enrollmentId: string;
+  kind: string;
+  status: string;
+  issuedAt: Date;
+  verificationCode: string;
+  revokedAt: Date | null;
+  revokedReason: string | null;
+}): CertificateReadModel {
+  return {
+    id: row.id,
+    number: row.number,
+    enrollmentId: row.enrollmentId,
+    kind: row.kind,
+    status: row.status,
+    issuedAt: row.issuedAt,
+    verificationCode: row.verificationCode,
+    revokedAt: row.revokedAt,
+    revokedReason: row.revokedReason,
+  };
+}
+
+export async function listCertificates(enrollmentId?: string): Promise<CertificateReadModel[]> {
   await assertCan({ resource: 'certificates', verb: 'view' });
   const auth = currentAuth();
-  return prisma.certificate.findMany({
+  const rows = await prisma.certificate.findMany({
     where: { tenantId: auth.tenantId, ...(enrollmentId ? { enrollmentId } : {}) },
     orderBy: { issuedAt: 'desc' },
   });
+  return rows.map(toCertificateReadModel);
 }
 
 export async function issueCertificate(input: {
@@ -87,17 +131,14 @@ export async function issueCertificate(input: {
     subjectId: certificate.id,
     after: { number, enrollmentId: input.enrollmentId },
   });
-  return certificate;
+  return toCertificateReadModel(certificate);
 }
 
 /**
- * What a verifier sees: enough to confirm authenticity, nothing that was not
- * already on the certificate face.
- *
- * `valid` is true only while the certificate is unrevoked AND the enrolment it
- * was issued for is still completed. The second check is there because an
- * enrolment can be reversed after issue; a certificate for one that is no
- * longer completed must not keep verifying as genuine.
+ * The staff check. `valid` is true only while the certificate is unrevoked AND
+ * the enrolment it was issued for is still completed. The second check is there
+ * because an enrolment can be reversed after issue; a certificate for one that is
+ * no longer completed must not keep verifying as genuine.
  */
 export async function verifyCertificate(code: string) {
   await assertCan({ resource: 'certificates', verb: 'view' });
@@ -118,9 +159,67 @@ export async function verifyCertificate(code: string) {
     status: certificate.status,
     revokedAt: certificate.revokedAt,
     revokedReason: certificate.revokedReason,
-    snapshot: certificate.snapshot,
     valid,
   };
+}
+
+/** What a verifier outside the company is shown. Nothing else leaves the public route. */
+export interface PublicCertificateStatus {
+  holderName: string | null;
+  courseName: string | null;
+  issuedAt: Date;
+  /**
+   * `valid`, `revoked`, or `invalid`. `invalid` is the enrolment-reversed case:
+   * the certificate was not revoked, but the completion it certifies has been
+   * undone. `expired` is not produced: no expiry is recorded on a certificate.
+   */
+  status: 'valid' | 'revoked' | 'invalid';
+}
+
+/**
+ * The public verification lookup. Unauthenticated, so there is no session to
+ * take a tenant from, and the tenant is not taken from the caller either. The
+ * verification code is random and globally unique, so it names exactly one
+ * certificate and that row names its tenant. The certificate number cannot do
+ * this job: it is unique only within a tenant, and sequential. Everything after
+ * the first lookup runs inside `asSystem(tenantId)`, the pattern marketing's
+ * public form submission uses (domains/marketing/capture.ts:376).
+ *
+ * The names come from the enrolment, not the snapshot. The snapshot is free-form
+ * and issuer-supplied; the enrolment is the record the certificate says was
+ * completed. An enrolment with no person or course on it yields null, not a guess.
+ */
+export async function publicCertificateStatus(code: string): Promise<PublicCertificateStatus> {
+  const located = await unscopedPrisma.certificate.findUnique({
+    where: { verificationCode: code },
+    select: { tenantId: true, enrollmentId: true, status: true, issuedAt: true },
+  });
+  if (!located) throw ApiError.notFound('Certificate');
+
+  return asSystem(located.tenantId, async () => {
+    const enrollment = await prisma.enrollment.findFirst({
+      where: { id: located.enrollmentId, tenantId: located.tenantId },
+      select: { status: true, personId: true, cohort: { select: { course: { select: { name: true } } } } },
+    });
+    const person = enrollment
+      ? await prisma.person.findFirst({
+          where: { id: enrollment.personId, tenantId: located.tenantId },
+          select: { fullName: true },
+        })
+      : null;
+
+    let status: PublicCertificateStatus['status'];
+    if (located.status === 'revoked') status = 'revoked';
+    else if (enrollment?.status === 'completed') status = 'valid';
+    else status = 'invalid';
+
+    return {
+      holderName: person?.fullName ?? null,
+      courseName: enrollment?.cohort.course.name ?? null,
+      issuedAt: located.issuedAt,
+      status,
+    };
+  });
 }
 
 /**
@@ -150,5 +249,5 @@ export async function revokeCertificate(id: string, reason: string) {
     after: { status: 'revoked', revokedReason: reason },
   });
 
-  return prisma.certificate.findFirstOrThrow({ where: { id, tenantId: auth.tenantId } });
+  return toCertificateReadModel(await prisma.certificate.findFirstOrThrow({ where: { id, tenantId: auth.tenantId } }));
 }
