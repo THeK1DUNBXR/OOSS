@@ -206,9 +206,9 @@ describe('Audit — each books write leaves one audit row for the change it made
         recordCode: unique('W2-RET'),
         vendorName: unique('W2 retention vendor'),
         billDate: new Date('1990-01-15T06:00:00Z'),
-        subtotal: 0,
-        taxAmount: 0,
-        total: 0,
+        subtotalMinor: 0n,
+        taxAmountMinor: 0n,
+        totalMinor: 0n,
         status: 'cancelled',
       },
     });
@@ -321,7 +321,7 @@ describe('Closed period — a dated write inside it is refused and writes nothin
     expect(err.status).toBe(422);
     const after = await unscopedPrisma.vendorBill.findUniqueOrThrow({ where: { id: payBill.id } });
     expect(after.status).toBe('open');
-    expect(Number(after.paidAmount)).toBe(0);
+    expect(after.paidAmountMinor).toBe(0n);
   });
 
   it('generating recurring entries for a closed period writes no entry and marks no rule as generated', async () => {

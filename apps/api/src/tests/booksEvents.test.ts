@@ -253,9 +253,9 @@ describe('Books writes emit their event', () => {
         recordCode: unique('W2-EVT-RET'),
         vendorName: unique('W2 event retention'),
         billDate: new Date('1990-01-15T06:00:00Z'),
-        subtotal: 0,
-        taxAmount: 0,
-        total: 0,
+        subtotalMinor: 0n,
+        taxAmountMinor: 0n,
+        totalMinor: 0n,
         status: 'cancelled',
       },
     });

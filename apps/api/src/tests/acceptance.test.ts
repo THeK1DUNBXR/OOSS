@@ -2818,10 +2818,10 @@ describe('The finance import templates', () => {
       const bill = await prisma.vendorBill.findFirstOrThrow({ where: { vendorName, billNumber } });
       expect(bill.categoryId).toBe(child.id);
       expect(bill.division).toBe('shared');
-      expect(Number(bill.subtotal)).toBe(42000);
-      expect(Number(bill.taxAmount)).toBe(7560);
-      expect(Number(bill.total)).toBe(49560);
-      expect(Number(bill.paidAmount)).toBe(0);
+      expect(bill.subtotalMinor).toBe(4200000n);
+      expect(bill.taxAmountMinor).toBe(756000n);
+      expect(bill.totalMinor).toBe(4956000n);
+      expect(bill.paidAmountMinor).toBe(0n);
       expect(bill.status).toBe('open');
 
       // Re-uploading the same file is safe: caught as a duplicate at staging.

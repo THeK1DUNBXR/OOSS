@@ -31,7 +31,7 @@ import {
 } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../../platform/db.js';
 import { decimalWire, rupeesOf, rupeesToMinor, withRupeeWire } from '../../platform/wire.js';
-import { minorToRupees } from '../money.js';
+import { minorToRupees, vendorBillWire } from '../money.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
@@ -328,7 +328,7 @@ export async function applyReverseCharge(billId: string, input: RcmInput) {
   if (!bill) throw ApiError.notFound('Vendor bill');
   await runHooks('accounting_document.before_write', { date: bill.billDate, what: 'This bill' });
 
-  const taxableValue = round2(input.taxableValue ?? num(bill.subtotal) ?? 0);
+  const taxableValue = round2(input.taxableValue ?? minorToRupees(bill.subtotalMinor));
   const profile = await companyProfile();
   const supplierState = bill.vendorGstin?.slice(0, 2) ?? null;
   const interState = Boolean(profile.stateCode && supplierState && supplierState !== profile.stateCode);
@@ -337,10 +337,17 @@ export async function applyReverseCharge(billId: string, input: RcmInput) {
   const period = istMonthKey(bill.billDate);
   const number = await nextRcmNumber(bill.billDate);
 
+  // The bill's RCM tax is the sum of the three heads in paise, the same heads the self-invoice
+  // carries, so the bill and its self-invoice cannot disagree by a paisa.
+  const cgstAmountMinor = toMinorHalfUp(gst.cgst);
+  const sgstAmountMinor = toMinorHalfUp(gst.sgst);
+  const igstAmountMinor = toMinorHalfUp(gst.igst);
+  const rcmTaxAmountMinor = cgstAmountMinor + sgstAmountMinor + igstAmountMinor;
+
   const [, selfInvoice] = await prisma.$transaction([
     prisma.vendorBill.update({
       where: { id: billId },
-      data: { rcmApplicable: true, rcmTaxAmount: gst.tax },
+      data: { rcmApplicable: true, rcmTaxAmountMinor },
     }),
     prisma.rcmSelfInvoice.create({
       data: {
@@ -349,9 +356,9 @@ export async function applyReverseCharge(billId: string, input: RcmInput) {
         number,
         period,
         taxableValueMinor: toMinorHalfUp(taxableValue),
-        cgstAmountMinor: toMinorHalfUp(gst.cgst),
-        sgstAmountMinor: toMinorHalfUp(gst.sgst),
-        igstAmountMinor: toMinorHalfUp(gst.igst),
+        cgstAmountMinor,
+        sgstAmountMinor,
+        igstAmountMinor,
         createdById: auth.partyId,
       },
     }),
@@ -377,10 +384,11 @@ export async function listRcmSelfInvoices(period?: string) {
 
 export async function flaggedRcmBills() {
   const auth = currentAuth();
-  return prisma.vendorBill.findMany({
+  const bills = await prisma.vendorBill.findMany({
     where: { tenantId: auth.tenantId, rcmApplicable: true, deletedAt: null },
     orderBy: { billDate: 'desc' },
   });
+  return bills.map(vendorBillWire);
 }
 
 /**
@@ -733,14 +741,14 @@ async function billsForPeriod(period: string): Promise<BookedBill[]> {
   const to = istMidnight(year, month + 1, 1);
   const bills = await prisma.vendorBill.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, billDate: { gte: from, lt: to } },
-    select: { id: true, vendorGstin: true, billNumber: true, subtotal: true, taxAmount: true },
+    select: { id: true, vendorGstin: true, billNumber: true, subtotalMinor: true, taxAmountMinor: true },
   });
   return bills.map((b) => ({
     vendorBillId: b.id,
     vendorGstin: b.vendorGstin,
     billNumber: b.billNumber,
-    taxableValue: num(b.subtotal) ?? 0,
-    taxAmount: num(b.taxAmount) ?? 0,
+    taxableValue: minorToRupees(b.subtotalMinor),
+    taxAmount: minorToRupees(b.taxAmountMinor),
   }));
 }
 

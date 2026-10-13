@@ -11,7 +11,9 @@
 
 import { poundsOf } from './allocation.js';
 import { minorString, type WithMinorPair } from '../platform/wire.js';
+import type { Prisma, VendorBill } from '@prisma/client';
 import { mulRatio } from '@kaizen/shared';
+import { withDecimalMinor } from '../platform/wire.js';
 
 /** A paise column as the rupee number a legacy field carries. */
 export function minorToRupees(minor: bigint): number {
@@ -105,3 +107,17 @@ export const OFFBOARDING_MONEY = [
   'bonusAmount',
   'noticeRecoveryAmount',
 ] as const;
+
+/**
+ * The VendorBill money columns (ORDERED-PLAN 1.6, slice S5). tdsRate is a rate, not money, and
+ * is not here. Each name's rupee field keeps its Decimal on the raw-row paths, and its
+ * `<name>Minor` sibling carries the paise.
+ */
+export const VENDOR_BILL_MONEY = ['subtotal', 'taxAmount', 'total', 'paidAmount', 'rcmTaxAmount', 'tdsAmount'] as const;
+export type VendorBillMoney = (typeof VENDOR_BILL_MONEY)[number];
+export type VendorBillWire = WithMinorPair<VendorBill, VendorBillMoney, Prisma.Decimal | null>;
+
+/** A raw VendorBill row, with the wire pair for each money column. */
+export function vendorBillWire(bill: VendorBill): VendorBillWire {
+  return withDecimalMinor(bill, VENDOR_BILL_MONEY);
+}
