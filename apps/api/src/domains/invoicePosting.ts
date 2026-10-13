@@ -14,8 +14,11 @@
  * rather than guessed at. Those are finance's decisions, made in the mapping tables.
  */
 import {
+  buildCreditNoteEntry,
   buildInvoiceIssueEntry,
   buildReceiptAllocationEntry,
+  creditNoteRoles,
+  type CreditNoteSource,
   EVENTS,
   invoiceIssueRoles,
   istCivilDay,
@@ -72,6 +75,29 @@ function partyOf(invoice: { organizationId: string | null; personId: string | nu
 }
 
 /**
+ * The business line a division's revenue is booked under on `day`: the mapping in force
+ * that day. The issue and a later credit note both read it, so the credit reverses the line
+ * the issue used even if the mapping has changed since (the credit reads the issue's day).
+ */
+async function businessLineOn(
+  tx: DbTx,
+  tenantId: string,
+  division: string,
+  day: Date,
+): Promise<{ lineId: string } | null> {
+  return tx.invoiceDivisionLine.findFirst({
+    where: {
+      tenantId,
+      division,
+      effectiveFrom: { lte: day },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: day } }],
+    },
+    orderBy: { effectiveFrom: 'desc' },
+    select: { lineId: true },
+  });
+}
+
+/**
  * Posts an invoice's issue entry inside `tx`. The caller has taken the invoice's lock
  * and the period lock (lockLegacyPeriod) before its first number is issued, and writes
  * the invoice's status and number before this call. Refusals roll the caller's
@@ -124,16 +150,7 @@ export async function postInvoiceIssue(
   }
 
   const entryDate = istCivilDay(issuedDate);
-  const mapping = await tx.invoiceDivisionLine.findFirst({
-    where: {
-      tenantId: auth.tenantId,
-      division: invoice.division,
-      effectiveFrom: { lte: entryDate },
-      OR: [{ effectiveTo: null }, { effectiveTo: { gt: entryDate } }],
-    },
-    orderBy: { effectiveFrom: 'desc' },
-    select: { lineId: true },
-  });
+  const mapping = await businessLineOn(tx, auth.tenantId, invoice.division, entryDate);
   if (!mapping) {
     throw ApiError.unprocessable(
       `Division "${invoice.division}" has no business line on ${istDateKey(entryDate)}. Map it under invoice division lines, then issue again. Nothing was issued.`,
@@ -235,6 +252,101 @@ export async function postReceiptAllocation(
     sourceType: 'receipt',
     sourceId: input.receiptId,
     idempotencyKey: postingKeys.receiptAllocated(input.receiptId),
+    lines: entryLines as JournalLineInput[],
+  });
+  return { id: entry.id, entryNumber: entry.entryNumber };
+}
+
+/**
+ * Posts a credit note's entry inside `tx`, in the transaction that writes the note
+ * (finance.ts issueCreditNote). The receivable is credited the note's amount, and revenue
+ * and each output tax are debited the share of the invoice that the note takes back, in the
+ * invoice's own proportion (buildCreditNoteEntry).
+ *
+ * The gates are a receipt's, through receiptPostsFor. Owner decision, 2026-10-13: a
+ * course-fee invoice posts nothing, and an invoice issued before posting was wired has no
+ * issue entry to reverse, so a note against it posts nothing either. The note row is still
+ * written in both cases; only its journal entry is withheld.
+ */
+export async function postCreditNote(
+  tx: DbTx,
+  creditNote: { id: string; recordCode: string; invoiceId: string; amountMinor: bigint; issuedAt: Date },
+  invoice: {
+    recordCode: string | null;
+    draftReference: string | null;
+    organizationId: string | null;
+    personId: string | null;
+    division: string | null;
+    grandTotalMinor: bigint;
+    cgstAmountMinor: bigint;
+    sgstAmountMinor: bigint;
+    igstAmountMinor: bigint;
+    roundOffMinor: bigint;
+  },
+): Promise<{ id: string; entryNumber: string } | null> {
+  if (!(await receiptPostsFor(tx, creditNote.invoiceId))) return null;
+  const auth = currentAuth();
+  const label = invoice.recordCode ?? invoice.draftReference ?? creditNote.invoiceId;
+  const partyId = partyOf(invoice);
+  if (!partyId) {
+    throw ApiError.unprocessable(
+      `${label} names no customer, so the credit note has no receivable party. Nothing was credited.`,
+    );
+  }
+  const division = invoice.division;
+  if (!division) {
+    throw ApiError.unprocessable(
+      `${label} has no division, so its revenue has no business line. Nothing was credited.`,
+    );
+  }
+
+  // The issue's own entry sets the entity and the day. The mapping in force on that day is the
+  // line the issue booked its revenue under (businessLineOn), not whichever line is mapped today.
+  const issue = await tx.journalEntry.findFirst({
+    where: { tenantId: auth.tenantId, idempotencyKey: postingKeys.invoiceIssue(creditNote.invoiceId) },
+    select: { entityId: true, entryDate: true },
+  });
+  if (!issue) return null;
+  const mapping = await businessLineOn(tx, auth.tenantId, division, issue.entryDate);
+  if (!mapping) {
+    throw ApiError.unprocessable(
+      `Division "${division}" had no business line on ${istDateKey(issue.entryDate)}, when the invoice was issued. Nothing was credited.`,
+    );
+  }
+
+  const invoiceLines = await tx.invoiceLine.findMany({
+    where: { tenantId: auth.tenantId, invoiceId: creditNote.invoiceId },
+    select: { amountMinor: true },
+  });
+  const source: CreditNoteSource = {
+    partyId,
+    amountMinor: creditNote.amountMinor,
+    taxableMinor: invoiceLines.reduce((sum, line) => sum + line.amountMinor, 0n),
+    lineId: mapping.lineId,
+    grandTotalMinor: invoice.grandTotalMinor,
+    cgstMinor: invoice.cgstAmountMinor,
+    sgstMinor: invoice.sgstAmountMinor,
+    igstMinor: invoice.igstAmountMinor,
+    roundOffMinor: invoice.roundOffMinor,
+  };
+  // The credit is dated the day the note is issued, as the receipt is dated the day it is received.
+  const entryDate = istCivilDay(creditNote.issuedAt);
+  const accounts = await resolvePostingAccounts(tx, creditNoteRoles(source), entryDate);
+  let entryLines: PostingLine[];
+  try {
+    entryLines = buildCreditNoteEntry(source, accounts);
+  } catch (err) {
+    if (err instanceof PostingRuleError) throw ApiError.unprocessable(`${err.message} Nothing was credited.`);
+    throw err;
+  }
+
+  const entry = await postInTx(tx, {
+    entityId: issue.entityId,
+    entryDate,
+    narration: `Credit note ${creditNote.recordCode} against ${label}`,
+    sourceType: 'credit_note',
+    sourceId: creditNote.id,
+    idempotencyKey: postingKeys.creditNote(creditNote.id),
     lines: entryLines as JournalLineInput[],
   });
   return { id: entry.id, entryNumber: entry.entryNumber };

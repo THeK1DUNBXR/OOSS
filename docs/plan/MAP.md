@@ -118,7 +118,7 @@
 
 **`apps/api/src/domains/filings.ts`** (1026 lines) — assertDematCompliant:62 · assertFemaPricingFloor:101 · handleAllotmentEffectiveForFema:158 · handleTransferEffectiveForFema:184 · runFlaReturn:227 · checkDematRequirements:323 · latestHalfYearEnd:384 · runPas6HalfYearly:393 · pas6:428 · mgt1Register:536 · mgt2Register:558 · mgt1Export:627 · mgt2Export:646 · pas3AllotteeList:668 · pas3Export:748 · sh4Data:812 · RecordFilingInput:897 · recordFiling:909 · listFilings:985
 
-**`apps/api/src/domains/finance.ts`** (676 lines) — issueFeeInstalments:84 · recordPayment:122 · reversePayment:229 · allocatePayment:307 · issueCreditNote:555 · rehydrateReceivables:621 · detectOverduePayments:629
+**`apps/api/src/domains/finance.ts`** (752 lines) — issueFeeInstalments:87 · recordPayment:125 · reversePayment:232 · allocatePayment:310 · issueCreditNote:558 · rehydrateReceivables:697 · detectOverduePayments:705
 
 **`apps/api/src/domains/founderView.ts`** (307 lines) — FounderSource:41 · FOUNDER_SOURCES:247 · founderView:293
 
@@ -166,7 +166,7 @@
 
 **`apps/api/src/domains/interactions.ts`** (481 lines) — RelatedReference:34 · classificationFor:56 · computeSensitivity:73 · InteractionInput:94 · logInteraction:109 · VisibleInteraction:288 · timelineFor:318 · recentInteractions:441
 
-**`apps/api/src/domains/invoicePosting.ts`** (470 lines) — ledgerEntityForNewInvoice:45 · postInvoiceIssue:80 · postReceiptAllocation:184 · issueEntryExists:244 · issueEntryIn:257 · receiptPostsFor:274 · reverseEntryIn:289 · reverseInvoiceIssue:323 · paymentHasReceiptEntries:333 · reverseReceiptEntries:356 · listInvoiceDivisionLines:380 · InvoiceDivisionLineInput:389 · setInvoiceDivisionLine:401
+**`apps/api/src/domains/invoicePosting.ts`** (582 lines) — ledgerEntityForNewInvoice:48 · postInvoiceIssue:106 · postReceiptAllocation:201 · postCreditNote:271 · issueEntryExists:356 · issueEntryIn:369 · receiptPostsFor:386 · reverseEntryIn:401 · reverseInvoiceIssue:435 · paymentHasReceiptEntries:445 · reverseReceiptEntries:468 · listInvoiceDivisionLines:492 · InvoiceDivisionLineInput:501 · setInvoiceDivisionLine:513
 
 **`apps/api/src/domains/invoicing.ts`** (2151 lines) — InvoiceLineInput:121 · CollectedPaymentInput:160 · InvoiceInput:174 · invoiceLabel:220 · isCourseFeeInvoice:234 · lineTotalOf:246 · InvoiceTotals:250 · totalsOf:267 · totalsMinorOf:293 · paymentWire:322 · receiptWire:333 · InvoiceWire:347 · invoiceWire:351 · filingPeriodOf:371 · filedReturnFor:382 · assertPeriodOpen:402 · CUSTOMER_KINDS:424 · CustomerKind:425 · createInvoice:823 · updateInvoice:1048 · issueInvoiceDraft:1149 · voidInvoice:1256 · collectInvoicePayment:1326 · declarePaymentTerms:1658 · loadInvoiceForRead:1732 · invoiceSummary:1748 · invoiceDocument:1774 · rehydrateReceivablesFor:2093
 
@@ -554,7 +554,7 @@
 
 **`packages/shared/src/planes.ts`** (390 lines) — PLANES:8 · PlaneCode:71 · BOUNDED_CONTEXTS:78 · BoundedContext:103 · ModuleRegisterEntry:110 · MODULE_REGISTER:119
 
-**`packages/shared/src/postingRules.ts`** (419 lines) — POSTING_ROLES:18 · PostingRole:41 · UNSCOPED:48 · JOURNAL_SOURCE_TYPES:54 · PostingRuleError:72 · ResolvedPostingAccounts:87 · postingAccountKey:89 · accountFor:94 · PostingLine:110 · postingKeys:123 · requireBigints:134 · assertBalancedLines:143 · InvoiceIssueSource:151 · buildInvoiceIssueEntry:184 · invoiceIssueRoles:262 · receiptAllocationRoles:279 · ReceiptAllocationSource:283 · buildReceiptAllocationEntry:295 · PayrollAccrualLine:316 · PayrollAccrualSource:331 · buildPayrollAccrualEntry:351 · payrollAccrualRoles:404
+**`packages/shared/src/postingRules.ts`** (528 lines) — POSTING_ROLES:20 · PostingRole:43 · UNSCOPED:50 · JOURNAL_SOURCE_TYPES:56 · PostingRuleError:74 · ResolvedPostingAccounts:89 · postingAccountKey:91 · accountFor:96 · PostingLine:112 · postingKeys:125 · requireBigints:136 · assertBalancedLines:145 · InvoiceIssueSource:153 · buildInvoiceIssueEntry:186 · invoiceIssueRoles:264 · CreditNoteSource:280 · buildCreditNoteEntry:312 · creditNoteRoles:375 · receiptAllocationRoles:388 · ReceiptAllocationSource:392 · buildReceiptAllocationEntry:404 · PayrollAccrualLine:425 · PayrollAccrualSource:440 · buildPayrollAccrualEntry:460 · payrollAccrualRoles:513
 
 **`packages/shared/src/sod.ts`** (66 lines) — SodSide:17 · SodPair:23 · BUILT_IN_SOD_PAIRS:30
 
