@@ -105,7 +105,9 @@ describe('decideApprovalStep: the founder exemption on the Self-Dealing Bar and 
         });
         const err = await expectReject(() => asPrincipal(authFor(p), () => decideApprovalStep(stepId, true, 'Self.')));
         expect(err.status).toBe(403);
-        expect(err.message).toBe('The Self-Dealing Bar is unconditional: a requester may never approve their own step.');
+        expect(err.message).toBe(
+          'The Self-Dealing Bar is unconditional: a requester may never approve their own step.',
+        );
 
         const step = await unscopedPrisma.approvalStep.findFirstOrThrow({ where: { id: stepId } });
         expect(step.state).toBe('open');
@@ -142,7 +144,9 @@ describe('decideApprovalStep: the founder exemption on the Self-Dealing Bar and 
     await withFixtureRole(
       { slug: 'fa_not_routed', grants: [{ resource: 'it_licences', verbs: ['view', 'approve'] }] },
       async (p) => {
-        const err = await expectReject(() => asPrincipal(authFor(p), () => decideApprovalStep(stepId, true, 'Not mine.')));
+        const err = await expectReject(() =>
+          asPrincipal(authFor(p), () => decideApprovalStep(stepId, true, 'Not mine.')),
+        );
         expect(err.status).toBe(403);
         expect(err.message).toMatch(/only that approver of record may decide it/);
       },
@@ -211,15 +215,18 @@ describe('approveRefund: the founder exemption on requester-is-approver', () => 
   });
 
   it('(b) a non-founder approving his own refund is still refused with the same error', async () => {
-    await withFixtureRole({ slug: 'fa_refund_self', grants: [{ resource: 'refunds', verbs: ['view', 'approve'] }] }, async (p) => {
-      const refund = await requestedRefund(p.partyId);
-      const err = await expectReject(() => asPrincipal(authFor(p), () => approveRefund(refund.id)));
-      expect(err.status).toBe(403);
-      expect(err.message).toBe('The person who requested a refund cannot also approve it.');
+    await withFixtureRole(
+      { slug: 'fa_refund_self', grants: [{ resource: 'refunds', verbs: ['view', 'approve'] }] },
+      async (p) => {
+        const refund = await requestedRefund(p.partyId);
+        const err = await expectReject(() => asPrincipal(authFor(p), () => approveRefund(refund.id)));
+        expect(err.status).toBe(403);
+        expect(err.message).toBe('The person who requested a refund cannot also approve it.');
 
-      const after = await unscopedPrisma.refund.findFirstOrThrow({ where: { id: refund.id } });
-      expect(after.status).toBe('requested');
-    });
+        const after = await unscopedPrisma.refund.findFirstOrThrow({ where: { id: refund.id } });
+        expect(after.status).toBe('requested');
+      },
+    );
   });
 });
 
