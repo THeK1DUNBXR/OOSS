@@ -15,6 +15,7 @@ import { amortisationSchedule, depreciationSchedule, monthKey } from '@kaizen/sh
 import { asSystem } from '../platform/context.js';
 import { assertTrialBalance, journalTrialBalance } from '../platform/balances.js';
 import {
+  approveRecurringRuleSettled,
   asUser,
   principalFor,
   sessionToken,
@@ -162,6 +163,9 @@ describe('S5 books money columns: budget line, asset, loan and recurring rule', 
       },
     });
 
+    // An outward rule posts only against its approved snapshot (payments:approve),
+    // so the rule is approved once, as an owner would, before the month is generated.
+    await asUser(FINANCE, () => approveRecurringRuleSettled(rule.id));
     const period = '2031-03';
     await asUser(FINANCE, () => generateRecurring(period));
 

@@ -1,0 +1,63 @@
+/// A request to move money out (payments:approve, owner ruling 2026-10-13). Money in is
+/// recorded at once and has no row here. A request writes no Transaction and moves no
+/// vendor bill until a second person with payments:approve approves it; the Transaction
+/// is written in the same database transaction as that approval (domains/payouts.ts).
+///
+/// Amounts are bigint paise. The Refund shape (compliance-corporate.prisma) was chosen
+/// over the ApprovalStep engine, which has no payload and no amount column.
+model PayoutRequest {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// PO series. Not the TXN series: a request number must not read as a cashbook entry.
+  recordCode String
+  /// payment: a Transaction on approval. reversal: a reversal of an inward row, which
+  /// writes an outward one on approval. recurring_rule: approves a recurring out-rule's
+  /// current amount, direction and account; approval writes no Transaction.
+  kind       String
+  /// vendor_bill | manual | asset | recurring | reversal | recurring_rule
+  source     String
+  /// requested | approved | declined | withdrawn. A decided request never changes again.
+  state      String @default("requested")
+
+  direction    String   @default("out")
+  txnDate      DateTime
+  /// Paise, positive. For a reversal, the original's amount at the time of the request.
+  amountMinor  BigInt
+  accountId    String
+  categoryId   String?
+  division     String?
+  counterparty String?
+  method       String?
+  reference    String?
+  note         String?
+
+  vendorBillId          String?
+  fixedAssetId          String?
+  recurringRuleId       String?
+  reversesTransactionId String?
+  /// Carried to the Transaction on approval, so an inter-company cash-out stays linked.
+  intercompanyTenantId  String?
+
+  requestedById String
+  requestedAt   DateTime  @default(now())
+  decidedById   String?
+  decidedAt     DateTime?
+  decisionNote  String?
+
+  /// Set on approval (or at once, for a founder request): the cashbook row it produced.
+  transactionId String?
+  /// True when the founder exemption let the request count without a second approver.
+  /// The audit meta carries founderOverride payment_second_approver.
+  founderWaived Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, state])
+  @@index([tenantId, vendorBillId])
+  @@index([tenantId, recurringRuleId, state])
+  @@index([tenantId, reversesTransactionId])
+  @@map("payout_requests")
+}

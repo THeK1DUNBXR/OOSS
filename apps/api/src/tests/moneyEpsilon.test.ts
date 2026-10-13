@@ -21,7 +21,7 @@ import {
   type Gstr2bB2bRow,
   type JournalLine,
 } from '@kaizen/shared';
-import { asUser, expectReject, tenantId, unscopedPrisma } from './helpers.js';
+import { asUser, expectReject, tenantId, unscopedPrisma, payBillSettled } from './helpers.js';
 import {
   collectInvoicePayment,
   createInvoice,
@@ -31,7 +31,7 @@ import {
 } from '../domains/invoicing.js';
 import { listReceipts, raiseFinalInvoice, receiptDocument } from '../domains/receipts.js';
 import { allocatePayment, issueFeeInstalments, recordPayment } from '../domains/finance.js';
-import { payVendorBill, recordVendorBill } from '../domains/books.js';
+import { recordVendorBill } from '../domains/books.js';
 import { trialBalance } from '../domains/compliance/books.js';
 import { computeGstr1 } from '../domains/gstReturns.js';
 
@@ -139,7 +139,7 @@ describe('vendor bill payments (books.ts payVendorBill)', () => {
       recordVendorBill({ vendorName: `Paise ${stamp()}`, billDate: new Date(), subtotal: 99.99, taxAmount: 0 }),
     );
     const pay = (amount: number) =>
-      asUser(ACTOR, () => payVendorBill(bill.id, { amount, accountId: account.id, paidOn: new Date() }));
+      asUser(ACTOR, () => payBillSettled(bill.id, { amount, accountId: account.id, paidOn: new Date() }));
 
     expect((await pay(33.33)).bill.status).toBe('part_paid');
     expect((await pay(33.33)).bill.status).toBe('part_paid');
@@ -153,7 +153,7 @@ describe('vendor bill payments (books.ts payVendorBill)', () => {
       recordVendorBill({ vendorName: `Paise ${stamp()}`, billDate: new Date(), subtotal: 99.99, taxAmount: 0 }),
     );
     const pay = (amount: number) =>
-      asUser(ACTOR, () => payVendorBill(bill.id, { amount, accountId: account.id, paidOn: new Date() }));
+      asUser(ACTOR, () => payBillSettled(bill.id, { amount, accountId: account.id, paidOn: new Date() }));
 
     expect((await pay(99.98)).bill.status).toBe('part_paid');
     const over = await expectReject(() => pay(0.02));

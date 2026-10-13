@@ -14,12 +14,11 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from '../helpers.js';
+import { asUser, expectReject, prisma, tenantId, unscopedPrisma, payOutSettled } from '../helpers.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { collectInvoicePayment, createInvoice } from '../../domains/invoicing.js';
 import { enrolStudent } from '../../domains/education.js';
 import { importBankStatement, matchBankLines } from '../../domains/compliance/books.js';
-import { recordTransaction } from '../../domains/books.js';
 import '../../domains/compliance/gst.js';
 
 const FINANCE = 'finance@kaizen.co.in';
@@ -114,8 +113,8 @@ describe('FX-34: a bank line that fits two ledger entries is not committed to ei
     const day = new Date('2030-06-10T00:00:00.000Z');
 
     const [a, b] = await asUser(FINANCE, async () => [
-      await recordTransaction({ txnDate: day, direction: 'out', amount: 4321, accountId: account.id, note: 'A' }),
-      await recordTransaction({ txnDate: day, direction: 'out', amount: 4321, accountId: account.id, note: 'B' }),
+      await payOutSettled({ txnDate: day, direction: 'out', amount: 4321, accountId: account.id, note: 'A' }),
+      await payOutSettled({ txnDate: day, direction: 'out', amount: 4321, accountId: account.id, note: 'B' }),
     ]);
     await asUser(FINANCE, () =>
       importBankStatement(account.id, [{ date: day, amount: 4321, direction: 'out', narration: 'Vendor NEFT' }]),

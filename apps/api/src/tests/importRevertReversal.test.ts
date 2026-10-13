@@ -26,10 +26,10 @@ import {
   tenantId,
   unscopedPrisma,
   type BooksTenant,
+  reverseSettled,
 } from './helpers.js';
 import { stageImport, setImportOptions } from '../imports/service.js';
 import { commitImport, revertImport } from '../imports/commit.js';
-import { reverseTransaction } from '../domains/books.js';
 import { createBusinessLine } from '../domains/businessLines.js';
 import { currentCompensation, listCompensationForEmployment } from '../domains/employment.js';
 import { attendanceForPeriod } from '../domains/leave.js';
@@ -340,10 +340,7 @@ describe('double reversal is refused', () => {
     const { entityIds } = await commitStatement(tag, [{ date: '13/08/2013', amount: '60.00', direction: 'out' }]);
 
     const outcomes = await asUser(FINANCE, () =>
-      Promise.allSettled([
-        reverseTransaction(entityIds[0], 'first of two'),
-        reverseTransaction(entityIds[0], 'second of two'),
-      ]),
+      Promise.allSettled([reverseSettled(entityIds[0], 'first of two'), reverseSettled(entityIds[0], 'second of two')]),
     );
 
     expect(outcomes.filter((o) => o.status === 'fulfilled')).toHaveLength(1);
@@ -362,7 +359,7 @@ describe('double reversal is refused', () => {
       { date: '13/08/2013', amount: '70.00', direction: 'in' },
       { date: '14/08/2013', amount: '71.00', direction: 'in' },
     ]);
-    await asUser(FINANCE, () => reverseTransaction(entityIds[0], 'corrected by hand'));
+    await asUser(FINANCE, () => reverseSettled(entityIds[0], 'corrected by hand'));
 
     const result = await asUser(CHAIRMAN, () => revertImport(batchId));
 

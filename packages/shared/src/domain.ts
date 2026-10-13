@@ -675,6 +675,9 @@ export const RECORD_TYPE_CODES = [
   // The books (§15): a ledger movement, a supplier bill, a capital purchase
   // and a borrowing.
   'TXN',
+  // A request to move money out (PayoutRequest). Its own series, so a request
+  // number is never mistaken for the cashbook entry it may become.
+  'PO',
   'BILL',
   'FA',
   'LN',
