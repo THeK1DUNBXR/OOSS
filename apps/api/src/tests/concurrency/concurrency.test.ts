@@ -12,10 +12,10 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { EVENTS } from '@kaizen/shared';
-import { asSystem } from '../platform/context.js';
-import { emit, verifyChain } from '../platform/eventBus.js';
-import { prisma } from '../platform/db.js';
-import { tenantId } from './helpers.js';
+import { asSystem } from '../../platform/context.js';
+import { emit, verifyChain } from '../../platform/eventBus.js';
+import { prisma } from '../../platform/db.js';
+import { tenantId } from '../helpers.js';
 
 let tid: string;
 

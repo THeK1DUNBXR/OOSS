@@ -1095,10 +1095,16 @@
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
-      "file": "apps/api/src/tests/paymentAllocationRaces.test.ts",
+      "file": "apps/api/src/tests/concurrency/paymentAllocationRaces.test.ts",
       "rule": "Number(",
       "count": 5,
-      "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
+      "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count. Moved to tests/concurrency/ with the L3 config (same five sites)."
+    },
+    {
+      "file": "apps/api/src/tests/concurrency/allocations200.test.ts",
+      "rule": "Number(",
+      "count": 2,
+      "reason": "L3 (CI-GATES-DRAFT). recordPayment and allocatePayment still take a rupee number, so the test turns its bigint paise into one at that boundary (formatMinor then Number). Goes when 1.6 moves those inputs to paise; do not raise the count."
     },
     {
       "file": "apps/api/src/tests/platformTxHelpers.test.ts",
