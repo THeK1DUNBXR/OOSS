@@ -3,6 +3,9 @@
 // names file:line and the rule. Baselines are ratchets: `--write-baseline`
 // regenerates the ratchet entries from the current code (review the diff; a
 // count that rises is a new violation, not a baseline update).
+import { runG1 } from './g1-static.mjs';
+import { runG2 } from './g2-map.mjs';
+import { runG3 } from './g3-drift.mjs';
 import { runG4 } from './g4-mock.mjs';
 import { runG8, collectG8 } from './g8-governed.mjs';
 import { runG9, collectMoney, collectIst, MONEY_RULES, IST_RULES } from './g9-ratchet.mjs';
@@ -55,7 +58,7 @@ if (process.argv.includes('--write-baseline')) {
   process.exit(0);
 }
 
-const results = [runG4(), runG8(), ...runG9(), runG10(), runG13()];
+const results = [runG1(), runG2(), runG3(), runG4(), runG8(), ...runG9(), runG10(), runG13()];
 let failures = 0;
 for (const r of results) {
   const status = r.problems.length === 0 ? 'ok' : 'FAIL';
