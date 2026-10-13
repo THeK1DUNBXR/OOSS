@@ -973,6 +973,7 @@ async function commitSalaryRow(data: Record<string, unknown>) {
   const fullName = String(data.fullName ?? '').trim();
   const amount = Number(data.monthlyAmount ?? 0);
   if (!fullName || !amount) return null;
+  const amountMinor = rupeesToMinor(amount);
 
   const candidates = await prisma.person.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, mergedIntoId: null },
@@ -1001,7 +1002,7 @@ async function commitSalaryRow(data: Record<string, unknown>) {
   // Matched, not created: the record belongs to whichever entry made it, so this
   // batch's revert must leave it: a matched row undoes only what it created, and
   // this one creates nothing (created is empty for a matched salary row).
-  if (existing && Number(existing.amount) === amount) {
+  if (existing && existing.amountMinor === amountMinor) {
     return { entityType: 'compensationRecord', entityId: existing.id, matched: true };
   }
 
@@ -1016,7 +1017,7 @@ async function commitSalaryRow(data: Record<string, unknown>) {
       data: {
         tenantId: auth.tenantId,
         employmentRelationshipId: employment.id,
-        amount,
+        amountMinor,
         currency: 'INR',
         revisionReason: 'imported_baseline',
         status: 'Effective',
@@ -1029,13 +1030,13 @@ async function commitSalaryRow(data: Record<string, unknown>) {
       action: 'create',
       subjectType: 'compensation_record',
       subjectId: record.id,
-      after: { amount, status: 'Effective' },
+      after: { amount, amountMinor: amountMinor.toString(), status: 'Effective' },
       tx,
     });
     await emit({
       name: EVENTS.COMPENSATION_RECORD_CREATED,
       subject: { entityType: 'compensation_record', entityId: record.id },
-      newState: { amount, status: 'Effective' },
+      newState: { amount, amountMinor: amountMinor.toString(), status: 'Effective' },
       impact: { domains: ['hr'] },
       tx,
     });

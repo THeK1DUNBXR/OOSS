@@ -5,6 +5,7 @@
  * letter immutability and register CSV shape.
  */
 
+import { rupeesToMinor } from '../../platform/wire.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { financialYearOf, isoWeekLabel, isoWeekRange } from '@kaizen/shared';
 import { asUser, prisma, tenantId, unscopedPrisma } from '../helpers.js';
@@ -75,8 +76,8 @@ async function makeEmployee(label: string, monthlyBasic = 30_000) {
         tenantId: TENANT,
         employmentRelationshipId: employment.id,
         revisionReason: 'initial',
-        amount: monthlyBasic,
-        basicPay: monthlyBasic,
+        amountMinor: rupeesToMinor(monthlyBasic),
+        basicPayMinor: rupeesToMinor(monthlyBasic),
         status: 'Effective',
         effectiveFrom: new Date(Date.now() - 30 * 86_400_000),
       },

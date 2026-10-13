@@ -5,6 +5,7 @@
  * paise either. Pure helpers are tested without the database.
  */
 
+import { rupeesToMinor } from '../../platform/wire.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { bigintReplacer } from '../../platform/wire.js';
 import { asUser, prisma, tenantId, unscopedPrisma } from '../helpers.js';
@@ -77,7 +78,7 @@ async function freshEmployment(label: string) {
         tenantId: TENANT,
         employmentRelationshipId: employment.id,
         revisionReason: 'hire',
-        amount: 600_000,
+        amountMinor: rupeesToMinor(600_000),
         status: 'Effective',
         effectiveFrom: new Date(Date.now() - 30 * 86_400_000),
       },

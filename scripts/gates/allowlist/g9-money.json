@@ -71,13 +71,13 @@
     {
       "file": "apps/api/src/domains/compliance/labour.ts",
       "rule": "num(",
-      "count": 11,
+      "count": 9,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
       "file": "apps/api/src/domains/compliance/payroll.ts",
       "rule": "num(",
-      "count": 26,
+      "count": 25,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -126,12 +126,6 @@
       "file": "apps/api/src/domains/decisions.ts",
       "rule": "Math.round(",
       "count": 4,
-      "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
-    },
-    {
-      "file": "apps/api/src/domains/employment.ts",
-      "rule": "num(",
-      "count": 1,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -221,7 +215,7 @@
     {
       "file": "apps/api/src/domains/hcm/analytics.ts",
       "rule": "num(",
-      "count": 9,
+      "count": 4,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -233,7 +227,7 @@
     {
       "file": "apps/api/src/domains/hcm/compensation.ts",
       "rule": "num(",
-      "count": 4,
+      "count": 3,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -437,7 +431,7 @@
     {
       "file": "apps/api/src/imports/commit.ts",
       "rule": "Number(",
-      "count": 16,
+      "count": 15,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -581,7 +575,7 @@
     {
       "file": "apps/api/src/routes/hr.routes.ts",
       "rule": "num(",
-      "count": 9,
+      "count": 6,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -803,7 +797,7 @@
     {
       "file": "apps/api/src/tests/fixtures/demoHr.ts",
       "rule": "Number(",
-      "count": 2,
+      "count": 1,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -827,7 +821,7 @@
     {
       "file": "apps/api/src/tests/hcm/compensation.test.ts",
       "rule": "Number(",
-      "count": 4,
+      "count": 3,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {

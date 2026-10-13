@@ -17,7 +17,7 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import { bigintReplacer } from '../../platform/wire.js';
+import { bigintReplacer, minorToDecimal, rupeesToMinor } from '../../platform/wire.js';
 import { asUser, prisma, tenantId, unscopedPrisma } from '../helpers.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { hire, transitionEmployment } from '../../domains/employment.js';
@@ -123,7 +123,7 @@ async function makeEmployee(label: string) {
         tenantId: TENANT,
         employmentRelationshipId: employment.id,
         revisionReason: 'hire',
-        amount: 600_000,
+        amountMinor: rupeesToMinor(600_000),
         status: 'Effective',
         effectiveFrom: new Date(Date.now() - 30 * 86_400_000),
       },
@@ -393,7 +393,7 @@ describe('HCM money columns: wire characterisation (pre-conversion)', () => {
     const record = await unscopedPrisma.compensationRecord.findFirstOrThrow({
       where: { employmentRelationshipId: employment.id, status: 'Effective' },
     });
-    expect(record.amount.toFixed(2)).toBe('660000.00');
+    expect(minorToDecimal(record.amountMinor).toFixed(2)).toBe('660000.00');
 
     const mine = wire(await asUser('operations@kaizen.co.in', () => myRevisionLines(employment.id)));
     expect(mine[0].currentCtc).toBe('600000');

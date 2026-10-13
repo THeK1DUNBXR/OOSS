@@ -11,6 +11,7 @@
  * siblings the conversion adds do not change the pinned shape.
  */
 
+import { rupeesToMinor } from '../../platform/wire.js';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { bigintReplacer, minorToDecimal } from '../../platform/wire.js';
 import { asUser, prisma, tenantId, unscopedPrisma } from '../helpers.js';
@@ -229,8 +230,8 @@ async function compensationFor(
         tenantId: TENANT,
         employmentRelationshipId: employmentId,
         revisionReason: 'initial',
-        amount: basic,
-        basicPay: basic,
+        amountMinor: rupeesToMinor(basic),
+        basicPayMinor: rupeesToMinor(basic),
         status: 'Effective',
         effectiveFrom,
       },

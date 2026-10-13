@@ -4657,10 +4657,13 @@ model CompensationRecord {
   linkedAssignment         Assignment?            @relation(fields: [linkedAssignmentId], references: [id])
 
   revisionReason String
-  amount         Decimal  @db.Decimal(14, 2)
+  /// Paise. Was Decimal(14,2) until ORDERED-PLAN 1.6 HCM slice; the API keeps the
+  /// rupee `amount` beside `amountMinor` on the wire for one wave.
+  amountMinor    BigInt
   currency       String   @default("INR")
   /// Monthly gross broken out, so payroll does not re-derive it every run.
-  basicPay       Decimal? @db.Decimal(14, 2)
+  /// Paise, as amountMinor.
+  basicPayMinor  BigInt?
   status         String   @default("Proposed") // R2
   correlationId  String?
   decisionId     String?
@@ -4870,7 +4873,8 @@ model LearningActivity {
 
   title        String
   isCompliance Boolean @default(false)
-  cost         Decimal @default(0) @db.Decimal(10, 2)
+  /// Paise. Was Decimal(10,2) until ORDERED-PLAN 1.6 HCM slice.
+  costMinor    BigInt @default(0)
   /// Optional link to the Education catalogue, so an internally-delivered
   /// course is one course rather than two records of the same thing.
   courseId     String?

@@ -318,7 +318,12 @@ router.get(
       // fields it already knows will be refused.
       canEditEmploymentDetails: revealLast4,
       currentCompensation: pay
-        ? { amount: num(pay.amount), currency: pay.currency, effectiveFrom: pay.effectiveFrom }
+        ? {
+            amount: rupeesOfMinorString(pay.amountMinor),
+            amountMinor: pay.amountMinor,
+            currency: pay.currency,
+            effectiveFrom: pay.effectiveFrom,
+          }
         : null,
       availableTransitions: employmentRelationshipMachine.allowedEvents(e.status as never),
       onboardingTransitions: e.onboarding ? onboardingMachine.allowedEvents(e.onboarding.status as never) : [],
@@ -453,8 +458,10 @@ router.get(
       effectiveTo: r.effectiveTo?.toISOString() ?? null,
       linkedAssignmentId: r.linkedAssignmentId,
       // Withheld rather than absent, so the surface can say so out loud.
-      amount: money ? num(r.amount) : null,
-      basicPay: money ? num(r.basicPay) : null,
+      amount: money ? rupeesOfMinorString(r.amountMinor) : null,
+      amountMinor: money ? r.amountMinor : null,
+      basicPay: money ? rupeesOfMinorString(r.basicPayMinor) : null,
+      basicPayMinor: money ? r.basicPayMinor : null,
       availableTransitions: r.availableTransitions,
       proposedByPartyId: r.proposedByPartyId,
       proposedByName: r.proposedByName,

@@ -17,6 +17,7 @@
  * says it should.
  */
 
+import { rupeesToMinor } from '../../platform/wire.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { emiSchedule, revisionBudgetCheck, compaRatio, computeVariablePayout } from '@kaizen/shared';
 import {
@@ -107,7 +108,7 @@ async function makeEmployee(label: string) {
         tenantId: TENANT,
         employmentRelationshipId: employment.id,
         revisionReason: 'hire',
-        amount: 600_000,
+        amountMinor: rupeesToMinor(600_000),
         status: 'Effective',
         effectiveFrom: new Date(Date.now() - 30 * 86_400_000),
       },
@@ -245,7 +246,7 @@ describe('salary revision cycles', () => {
       orderBy: { createdAt: 'desc' },
     });
     expect(record).toBeTruthy();
-    expect(Number(record!.amount)).toBe(660_000);
+    expect(record!.amountMinor).toBe(66_000_000n);
   });
 
   it('HCM-COMPENSATION-007: a cycle whose approved lines exceed its own budget is refused approval', async () => {

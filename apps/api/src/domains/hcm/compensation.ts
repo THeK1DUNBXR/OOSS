@@ -196,7 +196,7 @@ export async function compaRatioFor(employmentRelationshipId: string, payGradeId
     }),
   ]);
   if (!grade) throw ApiError.notFound('Pay grade');
-  const current = num(record?.amount) ?? 0;
+  const current = record ? minorToRupees(record.amountMinor) : 0;
   const midPay = minorToRupees(grade.midPayMinor);
   const ratio = compaRatio(current, midPay);
   return {
@@ -561,9 +561,10 @@ export async function applyCycle(id: string) {
   });
   let applied = 0;
   for (const line of lines) {
-    // CompensationRecord.amount is still a Decimal (its own slice), so the paise
-    // figure is read out to the rupee number that column is written from.
-    const amount = minorToRupees(line.approvedCtcMinor ?? line.proposedCtcMinor);
+    // The figure is paise from the line to the record; the rupee number is read out
+    // only for the event's dual-emitted `amount`.
+    const amountMinor = line.approvedCtcMinor ?? line.proposedCtcMinor;
+    const amount = minorToRupees(amountMinor);
     // One transaction per line: a line's superseded record, its new record,
     // the line's status and both events land together, or the line stays approved.
     await governedWrite(async (tx) => {
@@ -581,7 +582,7 @@ export async function applyCycle(id: string) {
           tenantId: auth.tenantId,
           employmentRelationshipId: line.employmentRelationshipId,
           revisionReason: 'annual_cycle',
-          amount,
+          amountMinor,
           currency: 'INR',
           status: 'Effective',
           effectiveFrom: cycle.effectiveDate,
@@ -595,7 +596,7 @@ export async function applyCycle(id: string) {
         action: 'create',
         subjectType: 'compensation_record',
         subjectId: record.id,
-        after: record as never,
+        after: withDecimalMinor(record, ['amount', 'basicPay'] as const) as never,
         tx,
       });
       await emit({
@@ -605,7 +606,12 @@ export async function applyCycle(id: string) {
           { relation: 'pays', entityType: 'employment_relationship', entityId: line.employmentRelationshipId },
           { relation: 'applies', entityType: 'salary_revision_line', entityId: line.id },
         ],
-        newState: { status: 'Effective', amount, revisionReason: 'annual_cycle' },
+        newState: {
+          status: 'Effective',
+          amount,
+          amountMinor: amountMinor.toString(),
+          revisionReason: 'annual_cycle',
+        },
         confidentiality: 'confidential',
         impact: { domains: ['hr', 'fin'] },
         tx,

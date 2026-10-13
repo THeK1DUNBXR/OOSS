@@ -920,16 +920,17 @@ export async function settleOffboarding(offboardingId: string) {
 
   const asOf = employment.separationDate ?? new Date();
   const structure = await currentSalaryStructure(employment.id, asOf);
+  const basicRecord = structure
+    ? null
+    : await prisma.compensationRecord.findFirst({
+        where: { employmentRelationshipId: employment.id, status: 'Effective', voidedAt: null },
+        orderBy: { effectiveFrom: 'desc' },
+      });
   const basicMonthly = structure
     ? minorToRupees(structure.basicMinor)
-    : (num(
-        (
-          await prisma.compensationRecord.findFirst({
-            where: { employmentRelationshipId: employment.id, status: 'Effective', voidedAt: null },
-            orderBy: { effectiveFrom: 'desc' },
-          })
-        )?.basicPay,
-      ) ?? 0);
+    : basicRecord?.basicPayMinor != null
+      ? minorToRupees(basicRecord.basicPayMinor)
+      : 0;
   const grossMonthly = structure
     ? minorToRupees(structure.basicMinor) +
       minorToRupees(structure.hraMinor) +
