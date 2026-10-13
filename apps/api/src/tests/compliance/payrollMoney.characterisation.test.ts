@@ -11,7 +11,7 @@
  * siblings the conversion adds do not change the pinned shape.
  */
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { bigintReplacer, minorToDecimal } from '../../platform/wire.js';
 import { asUser, prisma, tenantId, unscopedPrisma } from '../helpers.js';
 import { getEmployment, hire, transitionEmployment, transitionOffboarding } from '../../domains/employment.js';
@@ -101,6 +101,8 @@ const PERIOD_YEAR = /\b20\d\d-(\d\d)\b/g;
 /** A bank advice's reference: the run's record code and a random suffix. */
 const PAYMENT_REF = /PRN-\d{4}-\d+\/[a-z0-9]+/g;
 
+/** Source prefix on the test-local gratuity factor rows, so the file removes only its own. */
+const FIXTURE_SOURCE = 'fixture: S10';
 let TENANT: string;
 let RUN_YEAR = 2070;
 let seq = 0;
@@ -117,6 +119,47 @@ beforeAll(async () => {
     select: { payPeriod: true },
   });
   if (latest) RUN_YEAR = parseInt(latest.payPeriod.slice(0, 4), 10) + 1;
+  await unscopedPrisma.statutoryRule.deleteMany({
+    where: { tenantId: TENANT, source: { startsWith: FIXTURE_SOURCE } },
+  });
+  // The accrual now reads the factor from a rule (S10). These two rows are test-local:
+  // 14/26 is a fixture so the 2024 test can tell which row was read, and 15/26 is the
+  // cited figure, which the 2026 pins read. APPROVED rows may not overlap, so 14/26 ends
+  // where 15/26 begins.
+  const factorRow = {
+    tenantId: TENANT,
+    domain: 'gratuity',
+    key: 'gratuity.factor',
+    jurisdiction: 'IN',
+    approvedBy: 'fixture:checker',
+    approvedAt: new Date(),
+    createdBy: 'fixture:maker',
+    status: 'APPROVED',
+  } as const;
+  await unscopedPrisma.statutoryRule.create({
+    data: {
+      ...factorRow,
+      effectiveFrom: new Date('2020-01-01T00:00:00.000Z'),
+      effectiveTo: new Date('2025-01-01T00:00:00.000Z'),
+      value: { daysPerYear: '14', daysPerMonth: '26' },
+      source: `${FIXTURE_SOURCE} test-local, deliberately not the Act's figure`,
+    } as never,
+  });
+  await unscopedPrisma.statutoryRule.create({
+    data: {
+      ...factorRow,
+      effectiveFrom: new Date('2025-01-01T00:00:00.000Z'),
+      effectiveTo: null,
+      value: { daysPerYear: '15', daysPerMonth: '26' },
+      source: `${FIXTURE_SOURCE} test-local, the cited 15/26 (Payment of Gratuity Act 1972 s.4(2))`,
+    } as never,
+  });
+});
+
+afterAll(async () => {
+  await unscopedPrisma.statutoryRule.deleteMany({
+    where: { tenantId: TENANT, source: { startsWith: FIXTURE_SOURCE } },
+  });
 });
 
 async function makeEmployee(label: string, hireDate = '2020-01-01') {
@@ -642,6 +685,57 @@ describe('payroll money: the statutory run, exports, payslips, journal and bank 
         "961.54",
       ]
     `);
+  });
+
+  it('gratuity accrual reads the factor row in force on the run date: 15 June 2024 is the 14/26 fixture row', async () => {
+    const { employment } = await makeEmployee('factor-2024');
+    await structureFor(employment.id, { basic: 20_000, hra: 0 });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2024-06-15T06:00:00.000Z'));
+    try {
+      await asSystem(TENANT, () => runGratuityAccrual(), 'characterisation');
+    } finally {
+      vi.useRealTimers();
+    }
+    const accrued = await unscopedPrisma.gratuityAccrual.findMany({
+      where: { tenantId: TENANT, employmentRelationshipId: employment.id },
+      select: { accruedMinor: true },
+    });
+    // 2000000 paise x 14 / (26 x 12) = 89743.59 paise, so 89744 paise.
+    expect(wire(accrued.map((r) => minorToDecimal(r.accruedMinor)))).toEqual(['897.44']);
+  });
+
+  it('a basic of 20,007 rupees accrues 961.88: the exact 961.875 rounds half up (the old float formula gave 961.87)', async () => {
+    const { employment } = await makeEmployee('tie');
+    await structureFor(employment.id, { basic: 20_007, hra: 0 });
+    await asSystem(TENANT, () => runGratuityAccrual(), 'characterisation');
+    const accrued = await unscopedPrisma.gratuityAccrual.findMany({
+      where: { tenantId: TENANT, employmentRelationshipId: employment.id },
+      select: { accruedMinor: true },
+    });
+    // 2000700 paise x 15 / 312 = 96187.5 paise exactly. The float (15/26) was a hair under the
+    // tie and rounded down, which is the defect this pins.
+    expect(wire(accrued.map((r) => minorToDecimal(r.accruedMinor)))).toEqual(['961.88']);
+  });
+
+  it('a date with no approved factor row refuses the accrual: the reason is recorded and nothing is written', async () => {
+    const { employment } = await makeEmployee('no-rule-2019');
+    await structureFor(employment.id, { basic: 20_000, hra: 0 }, '2018-01-01');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2019-06-15T06:00:00.000Z'));
+    let result;
+    try {
+      result = await asSystem(TENANT, () => runGratuityAccrual(), 'characterisation');
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(result.errors.join(' | ')).toMatch(
+      /No APPROVED statutory rule for gratuity\.factor in IN covers 2019-06-15/,
+    );
+    const accrued = await unscopedPrisma.gratuityAccrual.findMany({
+      where: { tenantId: TENANT, employmentRelationshipId: employment.id },
+    });
+    expect(accrued).toHaveLength(0);
   });
 
   it('overtime: basic over 208 has more than two decimals, the rate is stored in paise and the amount is not recomputed from it', async () => {

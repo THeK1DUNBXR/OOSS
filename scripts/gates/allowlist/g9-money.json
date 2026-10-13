@@ -185,7 +185,7 @@
     {
       "file": "apps/api/src/domains/filings.ts",
       "rule": "Math.round(",
-      "count": 8,
+      "count": 6,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {
@@ -510,18 +510,6 @@
       "file": "apps/api/src/imports/tallyXml.ts",
       "rule": "Number(",
       "count": 3,
-      "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
-    },
-    {
-      "file": "apps/api/src/jobs/compliance/payroll.ts",
-      "rule": "num(",
-      "count": 1,
-      "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
-    },
-    {
-      "file": "apps/api/src/jobs/compliance/payroll.ts",
-      "rule": "round2(",
-      "count": 1,
       "reason": "Baselined at Wave 7 (W7-A). Convert this site to bigint paise through the 1.6 money helper (FX-31); do not raise the count."
     },
     {

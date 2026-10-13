@@ -275,6 +275,18 @@ describe('ruleAt fails closed with a typed error (round 27 c)', () => {
 });
 
 describe('the seeded pack holds no APPROVED row (G10 c(3))', () => {
+  it('the two figures moved out of code (share-transfer stamp rate, gratuity factor) are seeded as DRAFT with UNVERIFIED citations', async () => {
+    await asUser(CHAIRMAN, () => seedStatutory());
+    const moved = await unscopedPrisma.statutoryRule.findMany({
+      where: { tenantId: tid, domain: { in: ['stamp_duty', 'gratuity'] }, createdBy: SEED_CREATED_BY },
+    });
+    expect(moved.map((r) => r.key).sort()).toEqual(['gratuity.factor', 'stamp_duty.share_transfer_rate']);
+    for (const row of moved) {
+      expect(row.status).toBe('DRAFT');
+      expect(row.source.startsWith('UNVERIFIED:')).toBe(true);
+    }
+  });
+
   it('after seeding, no seeded row is APPROVED, every seeded row is DRAFT with the marker author, and every source is UNVERIFIED', async () => {
     await asUser(CHAIRMAN, () => seedStatutory());
     const seeded = await unscopedPrisma.statutoryRule.findMany({
