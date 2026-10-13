@@ -242,3 +242,27 @@ model PayrollQuery {
   @@index([tenantId, status])
   @@map("hcm_payroll_queries")
 }
+
+/// Finance's map from a payroll division to the business line its pay cost is
+/// booked under (FX-73). `division` is the instruction's division, or 'shared'
+/// for an instruction with none. Date-effective and insert-only: a change is a
+/// new row, and an end is the one update the table allows (effectiveTo, once).
+/// A division with no mapping on the posting date refuses the run's accrual.
+model PayrollDivisionLine {
+  id       String @id @default(cuid())
+  tenantId String
+
+  division String
+  lineId   String
+  line     BusinessLine @relation(fields: [tenantId, lineId], references: [tenantId, id])
+
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@unique([tenantId, division, effectiveFrom])
+  @@index([tenantId, division])
+  @@map("hcm_payroll_division_lines")
+}

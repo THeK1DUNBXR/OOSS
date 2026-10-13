@@ -12,6 +12,7 @@ import { EVENTS, REFERRAL_TRANSITIONS, type ReferralStatus } from '@kaizen/share
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
@@ -21,6 +22,7 @@ import { findOrCreatePerson, type PersonInput } from '../identity.js';
 import { createLead } from '../leads.js';
 
 registerGovernedEntities('mkt', ['marketing_referral']);
+registerGovernedEntities('mkt', ['marketing_referral_program']);
 
 // ---------------------------------------------------------------------------
 // Programs
@@ -84,16 +86,34 @@ export async function updateReferralProgram(id: string, patch: Partial<ReferralP
     where: { id, tenantId: auth.tenantId, deletedAt: null },
   });
   if (!program) throw ApiError.notFound('Referral program');
-  return prisma.marketingReferralProgram.update({
-    where: { id },
-    data: {
-      ...(patch.name !== undefined ? { name: patch.name } : {}),
-      ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
-      ...(patch.rewardKind !== undefined ? { rewardKind: patch.rewardKind } : {}),
-      ...(patch.rewardAmount !== undefined ? { rewardAmount: patch.rewardAmount } : {}),
-      ...(patch.terms !== undefined ? { terms: patch.terms } : {}),
-      updatedById: auth.partyId,
-    },
+  return governedWrite(async (tx) => {
+    const updated = await tx.marketingReferralProgram.update({
+      where: { id },
+      data: {
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
+        ...(patch.rewardKind !== undefined ? { rewardKind: patch.rewardKind } : {}),
+        ...(patch.rewardAmount !== undefined ? { rewardAmount: patch.rewardAmount } : {}),
+        ...(patch.terms !== undefined ? { terms: patch.terms } : {}),
+        updatedById: auth.partyId,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_referral_program',
+      subjectId: id,
+      before: { name: program.name, kind: program.kind },
+      after: { name: updated.name, kind: updated.kind },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_REFERRAL_PROGRAM_UPDATED,
+      subject: { entityType: 'marketing_referral_program', entityId: id },
+      previousState: { name: program.name },
+      newState: { name: updated.name },
+      tx,
+    });
+    return updated;
   });
 }
 

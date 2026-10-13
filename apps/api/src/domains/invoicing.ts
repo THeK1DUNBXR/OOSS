@@ -348,7 +348,12 @@ export function filingPeriodOf(date: Date): string {
  * assertPeriodOpen enforces, read in the caller's transaction when one is given:
  * the import revert checks it per row before it reverses anything (FX-71a).
  */
-export async function filedReturnFor(date: Date, db: Pick<DbTx, 'gstFiling'> = prisma) {
+// The default is cast: the extended client's type is deep enough, once the payroll
+// accrual's models joined the schema (FX-73), that comparing it to Pick<DbTx> overflows tsc's stack.
+export async function filedReturnFor(
+  date: Date,
+  db: Pick<DbTx, 'gstFiling'> = prisma as unknown as Pick<DbTx, 'gstFiling'>,
+) {
   const auth = currentAuth();
   return db.gstFiling.findFirst({
     where: { tenantId: auth.tenantId, period: filingPeriodOf(date), status: 'filed' },

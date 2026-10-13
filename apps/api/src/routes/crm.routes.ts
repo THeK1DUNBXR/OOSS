@@ -62,6 +62,7 @@ import {
   forecastRollup,
   coverageByPosition,
   openRenewalOpportunity,
+  updateOpportunity,
 } from '../domains/opportunities.js';
 import { logInteraction, timelineFor, recentInteractions } from '../domains/interactions.js';
 import { completeTask } from '../domains/tasks.js';
@@ -1048,35 +1049,7 @@ router.post(
 
 router.patch(
   '/opportunities/:id',
-  handler(async (req) => {
-    const opportunity = await prisma.opportunity.findFirst({ where: { id: req.params.id } });
-    if (!opportunity) throw ApiError.notFound('Opportunity');
-    await assertCan({ resource: 'opportunities', verb: 'edit', record: { ownerPartyId: opportunity.ownerPartyId } });
-
-    const schema = z.object({
-      title: z.string().optional(),
-      expectedValue: z.number().nullish(),
-      expectedCloseDate: z.string().nullish(),
-      strategicValue: z.enum(['high', 'medium', 'low']).nullish(),
-      lostReason: z.string().nullish(),
-      economicBuyer: z.string().nullish(),
-      decisionCriteria: z.string().nullish(),
-    });
-    const input = schema.parse(req.body);
-
-    return prisma.opportunity.update({
-      where: { id: req.params.id },
-      data: {
-        ...(input.title ? { title: input.title } : {}),
-        ...(input.expectedValue !== undefined ? { expectedValue: input.expectedValue ?? undefined } : {}),
-        ...(input.expectedCloseDate !== undefined
-          ? { expectedCloseDate: input.expectedCloseDate ? new Date(input.expectedCloseDate) : null }
-          : {}),
-        ...(input.strategicValue !== undefined ? { strategicValue: input.strategicValue } : {}),
-        ...(input.lostReason !== undefined ? { lostReason: input.lostReason } : {}),
-      },
-    });
-  }),
+  handler(async (req) => updateOpportunity(req.params.id, req.body)),
 );
 
 router.post(

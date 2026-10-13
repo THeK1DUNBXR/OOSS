@@ -24,6 +24,7 @@ import { trialBalance } from '../../domains/compliance/books.js';
 import { postPayrollToBooks } from '../../domains/books.js';
 import { generatePayrollJournal, postPayrollJournal } from '../../domains/hcm/payrollops.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
+import { readyPayrollPosting } from './payrollLedgerFixture.js';
 
 const OPERATIONS = 'operations@kaizen.co.in';
 const FINANCE = 'finance@kaizen.co.in';
@@ -36,6 +37,11 @@ let TENANT: string;
 
 beforeAll(async () => {
   TENANT = await tenantId();
+  // A run's accrual posts with its cash leg (FX-73), so the tenant needs what the accrual needs.
+  await readyPayrollPosting(TENANT, {
+    months: ['2044-01', '2044-02', '2044-03', '2044-04', '2044-05', '2044-06', '2044-07'],
+    divisions: ['software', 'skill'],
+  });
 });
 
 /** Two divisions, one employment each, net 34,000 and 20,000: net pay is 54,000 in total. */

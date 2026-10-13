@@ -29,6 +29,7 @@ import {
 import { prisma, num } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
@@ -40,7 +41,7 @@ import { recomputeCampaignActual } from './campaigns.js';
 // Budgets
 // ---------------------------------------------------------------------------
 
-registerGovernedEntities('mkt', ['marketing_budget', 'marketing_spend']);
+registerGovernedEntities('mkt', ['marketing_budget', 'marketing_spend', 'marketing_vendor']);
 
 export interface BudgetInput {
   period: string;
@@ -696,14 +697,32 @@ export async function updateVendor(
   const existing = await prisma.marketingVendor.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
   if (!existing) throw ApiError.notFound('Vendor');
 
-  const row = await prisma.marketingVendor.update({
-    where: { id },
-    data: {
-      ...(patch.services !== undefined ? { services: patch.services } : {}),
-      ...(patch.contractRef !== undefined ? { contractRef: patch.contractRef } : {}),
-      ...(patch.active !== undefined ? { active: patch.active } : {}),
-      updatedById: auth.partyId,
-    },
+  const row = await governedWrite(async (tx) => {
+    const updated = await tx.marketingVendor.update({
+      where: { id },
+      data: {
+        ...(patch.services !== undefined ? { services: patch.services } : {}),
+        ...(patch.contractRef !== undefined ? { contractRef: patch.contractRef } : {}),
+        ...(patch.active !== undefined ? { active: patch.active } : {}),
+        updatedById: auth.partyId,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_vendor',
+      subjectId: id,
+      before: { active: existing.active },
+      after: { active: updated.active },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_VENDOR_UPDATED,
+      subject: { entityType: 'marketing_vendor', entityId: id, recordCode: existing.recordCode },
+      previousState: { active: existing.active },
+      newState: { active: updated.active },
+      tx,
+    });
+    return updated;
   });
   return toVendorView(row);
 }
