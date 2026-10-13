@@ -891,19 +891,24 @@ export async function initiateApprovalChain(leaveRequestId: string, chainId?: st
           ? await hrOpsOwnerId(auth.tenantId)
           : (level.approverPartyId ?? null);
 
-    rows.push(
-      await prisma.leaveRequestApproval.create({
-        data: {
-          tenantId: auth.tenantId,
-          leaveRequestId,
-          chainId: chain.id,
-          level: level.level,
-          kind: level.kind,
-          approverPartyId,
-          decision: 'pending',
-        },
-      }),
-    );
+    const approval = await prisma.leaveRequestApproval.create({
+      data: {
+        tenantId: auth.tenantId,
+        leaveRequestId,
+        chainId: chain.id,
+        level: level.level,
+        kind: level.kind,
+        approverPartyId,
+        decision: 'pending',
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'leave_request_approval',
+      subjectId: approval.id,
+      after: { leaveRequestId, chainId: chain.id, level: approval.level, kind: approval.kind, decision: 'pending' },
+    });
+    rows.push(approval);
   }
   return rows;
 }
@@ -1047,7 +1052,7 @@ export async function electRestrictedHoliday(input: {
     );
   }
 
-  return prisma.restrictedHolidayElection.create({
+  const election = await prisma.restrictedHolidayElection.create({
     data: {
       tenantId: auth.tenantId,
       employmentRelationshipId: input.employmentRelationshipId,
@@ -1056,6 +1061,13 @@ export async function electRestrictedHoliday(input: {
       createdById: auth.partyId,
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'restricted_holiday_election',
+    subjectId: election.id,
+    after: { employmentRelationshipId: input.employmentRelationshipId, holidayId: input.holidayId, fy: input.fy },
+  });
+  return election;
 }
 
 export async function withdrawRestrictedHolidayElection(id: string) {

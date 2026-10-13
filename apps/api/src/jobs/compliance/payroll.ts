@@ -3,6 +3,9 @@ import { istYearMonth, mulRatio } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { ruleAt, ruleIntegerField } from '../../domains/statutory.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+
+registerGovernedEntities('cmp_pay', ['gratuity_accrual']);
 
 const GRATUITY_KEY = 'gratuity.factor';
 
@@ -87,13 +90,19 @@ export async function runGratuityAccrual(): Promise<JobResult> {
       const factor = await gratuityFactor(now);
       const monthlyAccrualMinor = mulRatio(basicMinor, factor.daysPerYear, factor.daysPerMonth * 12n);
 
-      await prisma.gratuityAccrual.create({
+      const accrual = await prisma.gratuityAccrual.create({
         data: {
           tenantId: auth.tenantId,
           employmentRelationshipId: employment.id,
           asOfDate,
           accruedMinor: monthlyAccrualMinor,
         },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'gratuity_accrual',
+        subjectId: accrual.id,
+        after: { asOfDate, accruedMinor: accrual.accruedMinor.toString() },
       });
       processed += 1;
     } catch (err) {

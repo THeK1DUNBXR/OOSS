@@ -61,6 +61,7 @@ registerGovernedEntities('hcm_performance', ['succession_plan', 'final_rating'])
 
 registerGovernedEntities('hcm_performance', ['review_cycle', 'review_assignment', 'calibration_session']);
 registerGovernedEntities('hcm_performance', ['feedback', 'one_on_one', 'pip']);
+registerGovernedEntities('hcm_performance', ['review_template']);
 
 async function employmentOrThrow(employmentRelationshipId: string): Promise<{ id: string; personId: string }> {
   const auth = currentAuth();
@@ -234,7 +235,7 @@ export async function createReviewTemplate(input: { name: string; sections: unkn
   if (!Array.isArray(input.ratingScale) || input.ratingScale.length === 0) {
     throw ApiError.badRequest('A review template needs a rating scale.');
   }
-  return prisma.reviewTemplate.create({
+  const template = await prisma.reviewTemplate.create({
     data: {
       tenantId: auth.tenantId,
       name: input.name,
@@ -242,6 +243,13 @@ export async function createReviewTemplate(input: { name: string; sections: unkn
       ratingScale: input.ratingScale as never,
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'review_template',
+    subjectId: template.id,
+    after: { name: template.name, sectionCount: input.sections.length, ratingScalePoints: input.ratingScale.length },
+  });
+  return template;
 }
 
 // ---------------------------------------------------------------------------
@@ -979,10 +987,22 @@ export async function addPipCheckpoint(id: string, checkpoint: { note: string; o
   if (pip.outcome !== 'open')
     throw ApiError.conflict(`This PIP is already ${pip.outcome}. No further checkpoints can be added.`);
 
-  const checkpoints = ((pip.checkpoints as unknown as Array<Record<string, unknown>>) ?? []).concat([
+  const previous = (pip.checkpoints as unknown as Array<Record<string, unknown>>) ?? [];
+  const checkpoints = previous.concat([
     { at: new Date().toISOString(), note: checkpoint.note, onTrack: checkpoint.onTrack },
   ]);
-  return prisma.pip.update({ where: { id }, data: { checkpoints: checkpoints as never } });
+  const updated = await prisma.pip.update({ where: { id }, data: { checkpoints: checkpoints as never } });
+  // The checkpoint note is left out of the audit row, as it is for performance
+  // evidence: the log is read more widely than the PIP is. The count and the
+  // on-track flag say what changed.
+  await auditWrite({
+    action: 'update',
+    subjectType: 'pip',
+    subjectId: id,
+    before: { checkpointCount: previous.length },
+    after: { checkpointCount: checkpoints.length, onTrack: checkpoint.onTrack },
+  });
+  return updated;
 }
 
 /** Closes a PIP. Barred from the person it is about — the Self-Dealing Bar in its corrective form. */

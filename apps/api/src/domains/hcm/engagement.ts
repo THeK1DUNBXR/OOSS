@@ -40,6 +40,9 @@ registerGovernedEntities('hcm_engagement', [
   'hr_case',
   'policy_document',
   'exit_interview',
+  'announcement_ack',
+  'survey_response',
+  'hr_case_message',
 ]);
 
 async function hrOpsOwnerId(tenantId: string): Promise<string | null> {
@@ -50,7 +53,10 @@ async function hrOpsOwnerId(tenantId: string): Promise<string | null> {
   return affiliation?.partyId ?? null;
 }
 
-/** `ENG:<entity>` sequence — a plain, human-referenced number for the entities that hold no RECORD_TYPE_CODES prefix of their own. */
+/**
+ * `ENG:<entity>` sequence — a plain, human-referenced number for the entities that hold no RECORD_TYPE_CODES prefix of their own.
+ * Not audited: the sequence is a counter. The record it numbers is audited where it is written.
+ */
 async function nextEngagementNumber(entity: string): Promise<string> {
   const auth = currentAuth();
   const year = istYearMonth(new Date()).year;
@@ -241,11 +247,25 @@ export async function acknowledgeAnnouncement(id: string) {
   const row = await prisma.announcement.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Announcement');
   if (!row.acknowledgementRequired) throw ApiError.badRequest('This announcement does not require acknowledgement.');
+  const key = {
+    tenantId_announcementId_partyId: { tenantId: auth.tenantId, announcementId: id, partyId: auth.partyId },
+  };
+  const existing = await prisma.announcementAck.findUnique({ where: key });
   const ack = await prisma.announcementAck.upsert({
-    where: { tenantId_announcementId_partyId: { tenantId: auth.tenantId, announcementId: id, partyId: auth.partyId } },
+    where: key,
     create: { tenantId: auth.tenantId, announcementId: id, partyId: auth.partyId },
     update: {},
   });
+  // Only the first acknowledgement is a record. A repeat finds the row above and
+  // changes nothing, so it is not logged again.
+  if (!existing) {
+    await auditWrite({
+      action: 'create',
+      subjectType: 'announcement_ack',
+      subjectId: ack.id,
+      after: { announcementId: id, partyId: auth.partyId },
+    });
+  }
   return ack;
 }
 
@@ -511,6 +531,11 @@ export async function submitSurveyResponse(surveyId: string, answers: SurveyAnsw
     if (await alreadyRespondedAnonymously(auth.tenantId, surveyId, auth.partyId)) {
       throw ApiError.conflict('You have already answered this survey.');
     }
+    // Not audited, deliberately. An audit row names the actor, and for an
+    // anonymous survey the actor is the respondent: logging the response would
+    // undo the anonymity the survey promises. The dedupe row is bookkeeping on the
+    // same path and stays unaudited too. Anonymous responses need an audit that does not name the respondent;
+    // until one exists they stay unaudited.
     return prisma.$transaction(async (tx) => {
       try {
         await tx.surveyResponseDedupe.create({
@@ -540,7 +565,7 @@ export async function submitSurveyResponse(surveyId: string, answers: SurveyAnsw
   if (!employment) throw ApiError.badRequest('No employment record found to respond as.');
 
   try {
-    return await prisma.surveyResponse.create({
+    const response = await prisma.surveyResponse.create({
       data: {
         tenantId: auth.tenantId,
         surveyId,
@@ -549,6 +574,15 @@ export async function submitSurveyResponse(surveyId: string, answers: SurveyAnsw
         answers: answers as never,
       },
     });
+    // The answers are left out of the audit row; the row says who responded to
+    // which survey, as the response row itself does.
+    await auditWrite({
+      action: 'create',
+      subjectType: 'survey_response',
+      subjectId: response.id,
+      after: { surveyId, employmentRelationshipId: employment.id },
+    });
+    return response;
   } catch (err) {
     if ((err as { code?: string }).code === 'P2002') {
       throw ApiError.conflict('You have already answered this survey.');
@@ -772,6 +806,14 @@ export async function addHrCaseMessage(id: string, body: string) {
   if (!body.trim()) throw ApiError.badRequest('A message needs a body.');
   const message = await prisma.hrCaseMessage.create({
     data: { tenantId: auth.tenantId, caseId: row.id, authorPartyId: auth.partyId ?? 'system', body },
+  });
+  // The body is left out of the audit row. A confidential case's text must not
+  // be readable from the audit log, which is read more widely than the case.
+  await auditWrite({
+    action: 'create',
+    subjectType: 'hr_case_message',
+    subjectId: message.id,
+    after: { caseId: row.id },
   });
   return message;
 }

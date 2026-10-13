@@ -534,6 +534,8 @@ export async function settleTravelRequest(id: string, expenseClaimId: string) {
 async function nextLetterRequestNumber(tx: DbTx): Promise<string> {
   const auth = currentAuth();
   const year = istYearMonth(new Date()).year;
+  // Not audited: this is a number series, a counter. The record that takes the
+  // number is the audited write.
   const row = await tx.recordSequence.upsert({
     where: { tenantId_entityType_year: { tenantId: auth.tenantId, entityType: 'HCM:LREQ', year } },
     create: { tenantId: auth.tenantId, entityType: 'HCM:LREQ', year, nextSequence: 2 },
@@ -779,6 +781,8 @@ export async function listIssuedHrLetters(employmentRelationshipId: string) {
 async function nextIdCardNumber(): Promise<string> {
   const auth = currentAuth();
   const year = istYearMonth(new Date()).year;
+  // Not audited: this is a number series, a counter. The record that takes the
+  // number is the audited write.
   const row = await prisma.recordSequence.upsert({
     where: { tenantId_entityType_year: { tenantId: auth.tenantId, entityType: 'HCM:IDC', year } },
     create: { tenantId: auth.tenantId, entityType: 'HCM:IDC', year, nextSequence: 2 },

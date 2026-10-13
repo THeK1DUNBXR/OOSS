@@ -54,6 +54,7 @@ registerGovernedEntities('cmp_pay', [
   'pt_slab_table',
   'lwf_rate_table',
   'minimum_wage_table',
+  'payroll_instruction',
   'employment_relationship',
   'offboarding',
 ]);
@@ -506,10 +507,27 @@ export async function computeInstruction(payrollRunId: string) {
 
   let computed = 0;
 
+  // One row per instruction written. Each carries a payslip's figures, which is
+  // what approval is given on, so a run's figures are not left without a record.
+  const auditComputed = (
+    instruction: { id: string; grossAmountMinor: bigint; netAmountMinor: bigint },
+    row: { grossAmountMinor: bigint; netAmountMinor: bigint },
+  ) =>
+    auditWrite({
+      action: 'update',
+      subjectType: 'payroll_instruction',
+      subjectId: instruction.id,
+      before: {
+        grossAmountMinor: instruction.grossAmountMinor.toString(),
+        netAmountMinor: instruction.netAmountMinor.toString(),
+      },
+      after: { grossAmountMinor: row.grossAmountMinor.toString(), netAmountMinor: row.netAmountMinor.toString() },
+    });
+
   for (const instruction of instructions) {
     const employment = instruction.employmentRelationship;
     if (employment.engagementType !== 'employee') {
-      await prisma.payrollInstruction.update({
+      const row = await prisma.payrollInstruction.update({
         where: { id: instruction.id },
         data: {
           basicPayMinor: 0n,
@@ -528,6 +546,7 @@ export async function computeInstruction(payrollRunId: string) {
           computedFrom: { engagementType: employment.engagementType, tdsSectionHint: '194J' } as never,
         },
       });
+      await auditComputed(instruction, row);
       computed += 1;
       continue;
     }
@@ -570,7 +589,7 @@ export async function computeInstruction(payrollRunId: string) {
       payPeriod: run.payPeriod,
     });
 
-    await prisma.payrollInstruction.update({
+    const row = await prisma.payrollInstruction.update({
       where: { id: instruction.id },
       data: {
         grossAmountMinor: rupeesToMinor(gross),
@@ -596,6 +615,7 @@ export async function computeInstruction(payrollRunId: string) {
         } as never,
       },
     });
+    await auditComputed(instruction, row);
     computed += 1;
   }
 
