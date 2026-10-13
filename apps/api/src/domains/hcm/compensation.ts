@@ -25,6 +25,8 @@ import {
 } from '@kaizen/shared';
 import { EVENTS } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
+import { minorString, minorToDecimal, rupeesToMinor, withDecimalMinor } from '../../platform/wire.js';
+import { grownByPercent, minorToRupees } from '../money.js';
 import { governedWrite } from '../../platform/governedWrite.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -47,10 +49,23 @@ registerGovernedEntities('hcm_compensation', [
   'compensation_record',
 ]);
 
-/** Withholds a money field for a caller who cannot see it — null, never zero, with a reason. */
-function money(value: unknown, visible: boolean): { amount: number | null; withheldReason: string | null } {
-  if (visible) return { amount: num(value as never), withheldReason: null };
-  return { amount: null, withheldReason: 'no_permission' };
+/**
+ * A money column as the list endpoints show it: the rupee number the wire has
+ * always carried and its paise string, both null (never zero) with a reason for
+ * a viewer without the grant.
+ */
+function money(
+  minor: bigint | null | undefined,
+  visible: boolean,
+): { amount: number | null; amountMinor: string | null; withheldReason: string | null } {
+  if (visible) {
+    return {
+      amount: minor === null || minor === undefined ? null : minorToRupees(minor),
+      amountMinor: minorString(minor),
+      withheldReason: null,
+    };
+  }
+  return { amount: null, amountMinor: null, withheldReason: 'no_permission' };
 }
 
 /**
@@ -109,7 +124,8 @@ async function ownEmploymentWhere(resource: string): Promise<Record<string, unkn
 export async function listPayGrades() {
   const auth = currentAuth();
   await assertCan({ resource: 'pay_grades', verb: 'view' });
-  return prisma.payGrade.findMany({ where: { tenantId: auth.tenantId }, orderBy: { level: 'asc' } });
+  const rows = await prisma.payGrade.findMany({ where: { tenantId: auth.tenantId }, orderBy: { level: 'asc' } });
+  return rows.map((g) => withDecimalMinor(g, ['minPay', 'midPay', 'maxPay'] as const));
 }
 
 export interface PayGradeInput {
@@ -125,7 +141,10 @@ export interface PayGradeInput {
 export async function createPayGrade(input: PayGradeInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'pay_grades', verb: 'create' });
-  if (!(input.minPay <= input.midPay && input.midPay <= input.maxPay)) {
+  const minPayMinor = rupeesToMinor(input.minPay);
+  const midPayMinor = rupeesToMinor(input.midPay);
+  const maxPayMinor = rupeesToMinor(input.maxPay);
+  if (!(minPayMinor <= midPayMinor && midPayMinor <= maxPayMinor)) {
     throw ApiError.badRequest('A pay grade needs minPay <= midPay <= maxPay.');
   }
   const row = await prisma.payGrade.create({
@@ -133,15 +152,15 @@ export async function createPayGrade(input: PayGradeInput) {
       tenantId: auth.tenantId,
       code: input.code,
       level: input.level,
-      minPay: input.minPay,
-      midPay: input.midPay,
-      maxPay: input.maxPay,
+      minPayMinor,
+      midPayMinor,
+      maxPayMinor,
       currency: input.currency ?? 'INR',
       note: input.note ?? null,
     },
   });
   await auditWrite({ action: 'create', subjectType: 'pay_grade', subjectId: row.id, after: row });
-  return row;
+  return withDecimalMinor(row, ['minPay', 'midPay', 'maxPay'] as const);
 }
 
 export async function updatePayGrade(id: string, patch: Partial<PayGradeInput>) {
@@ -154,15 +173,15 @@ export async function updatePayGrade(id: string, patch: Partial<PayGradeInput>) 
     data: {
       code: patch.code ?? undefined,
       level: patch.level ?? undefined,
-      minPay: patch.minPay ?? undefined,
-      midPay: patch.midPay ?? undefined,
-      maxPay: patch.maxPay ?? undefined,
+      minPayMinor: patch.minPay == null ? undefined : rupeesToMinor(patch.minPay),
+      midPayMinor: patch.midPay == null ? undefined : rupeesToMinor(patch.midPay),
+      maxPayMinor: patch.maxPay == null ? undefined : rupeesToMinor(patch.maxPay),
       currency: patch.currency ?? undefined,
       note: patch.note === undefined ? undefined : patch.note,
     },
   });
   await auditWrite({ action: 'update', subjectType: 'pay_grade', subjectId: id, before, after: row });
-  return row;
+  return withDecimalMinor(row, ['minPay', 'midPay', 'maxPay'] as const);
 }
 
 /** Compa-ratio for one employment against one grade — the pure logic plus the grant check. */
@@ -178,13 +197,16 @@ export async function compaRatioFor(employmentRelationshipId: string, payGradeId
   ]);
   if (!grade) throw ApiError.notFound('Pay grade');
   const current = num(record?.amount) ?? 0;
-  const ratio = compaRatio(current, num(grade.midPay) ?? 0);
+  const midPay = minorToRupees(grade.midPayMinor);
+  const ratio = compaRatio(current, midPay);
   return {
     currentCtc: current,
-    grade,
+    grade: withDecimalMinor(grade, ['minPay', 'midPay', 'maxPay'] as const),
     ratio,
     band:
-      ratio === null ? null : compaBand(ratio, num(grade.minPay) ?? 0, num(grade.midPay) ?? 0, num(grade.maxPay) ?? 0),
+      ratio === null
+        ? null
+        : compaBand(ratio, minorToRupees(grade.minPayMinor), midPay, minorToRupees(grade.maxPayMinor)),
   };
 }
 
@@ -218,7 +240,10 @@ export async function getRevisionCycle(id: string) {
   const lines = await prisma.salaryRevisionLine.findMany({ where: { tenantId: auth.tenantId, cycleId: id } });
   const visible = await canSeeMoney('salary_revisions');
   const budget = revisionBudgetCheck(
-    lines.map((l) => ({ currentCtc: num(l.currentCtc) ?? 0, proposedCtc: num(l.proposedCtc) ?? 0 })),
+    lines.map((l) => ({
+      currentCtc: minorToRupees(l.currentCtcMinor),
+      proposedCtc: minorToRupees(l.proposedCtcMinor),
+    })),
     num(cycle.budgetPct) ?? 0,
   );
   return {
@@ -295,7 +320,12 @@ export async function addRevisionLine(input: RevisionLineInput) {
   }
   await assertEmploymentVisible('salary_revisions', input.employmentRelationshipId);
 
-  const proposedCtc = Math.round(input.currentCtc * (1 + input.proposedPct / 100) * 100) / 100;
+  // The proposal is the current figure grown by the percentage, in exact paise.
+  // The old float form, Math.round(x * (1 + pct / 100) * 100) / 100, rounded a
+  // half-paisa tie down whenever the double sat a hair under it (250090 at
+  // +0.25% gave 250715.22; the exact figure is 250715.23).
+  const currentCtcMinor = rupeesToMinor(input.currentCtc);
+  const proposedCtcMinor = grownByPercent(currentCtcMinor, input.proposedPct);
   const row = await prisma.salaryRevisionLine.upsert({
     where: {
       tenantId_cycleId_employmentRelationshipId: {
@@ -308,29 +338,29 @@ export async function addRevisionLine(input: RevisionLineInput) {
       tenantId: auth.tenantId,
       cycleId: input.cycleId,
       employmentRelationshipId: input.employmentRelationshipId,
-      currentCtc: input.currentCtc,
+      currentCtcMinor,
       proposedPct: input.proposedPct,
-      proposedCtc,
+      proposedCtcMinor,
       ratingLink: input.ratingLink ?? null,
       note: input.note ?? null,
       status: 'proposed',
       proposedById: auth.partyId,
     },
     update: {
-      currentCtc: input.currentCtc,
+      currentCtcMinor,
       proposedPct: input.proposedPct,
-      proposedCtc,
+      proposedCtcMinor,
       ratingLink: input.ratingLink ?? null,
       note: input.note ?? null,
       status: 'proposed',
       proposedById: auth.partyId,
       approvedById: null,
-      approvedCtc: null,
+      approvedCtcMinor: null,
       decidedAt: null,
     },
   });
   await auditWrite({ action: 'create', subjectType: 'salary_revision_line', subjectId: row.id, after: row });
-  return row;
+  return withDecimalMinor(row, ['currentCtc', 'proposedCtc', 'approvedCtc'] as const);
 }
 
 export async function listRevisionLines(cycleId: string) {
@@ -346,13 +376,21 @@ export async function listRevisionLines(cycleId: string) {
     where: { tenantId: auth.tenantId, cycleId, ...scoped },
     orderBy: { createdAt: 'asc' },
   });
-  return lines.map((l) => ({
-    ...l,
-    currentCtc: money(l.currentCtc, visible).amount,
-    proposedCtc: money(l.proposedCtc, visible).amount,
-    approvedCtc: l.approvedCtc === null ? null : money(l.approvedCtc, visible).amount,
-    moneyWithheldReason: visible ? null : 'no_permission',
-  }));
+  return lines.map((l) => {
+    const current = money(l.currentCtcMinor, visible);
+    const proposed = money(l.proposedCtcMinor, visible);
+    const approved = money(l.approvedCtcMinor, visible);
+    return {
+      ...l,
+      currentCtc: current.amount,
+      currentCtcMinor: current.amountMinor,
+      proposedCtc: proposed.amount,
+      proposedCtcMinor: proposed.amountMinor,
+      approvedCtc: approved.amount,
+      approvedCtcMinor: approved.amountMinor,
+      moneyWithheldReason: visible ? null : 'no_permission',
+    };
+  });
 }
 
 /** Moves a draft cycle to `proposed` — nothing more may be added after this. */
@@ -393,13 +431,13 @@ export async function approveRevisionLine(lineId: string, approvedCtc?: number, 
     ]);
   }
 
-  const finalCtc = approvedCtc ?? num(line.proposedCtc) ?? 0;
+  const finalCtcMinor = approvedCtc == null ? line.proposedCtcMinor : rupeesToMinor(approvedCtc);
   const row = await prisma.salaryRevisionLine.update({
     where: { id: lineId },
     data: {
       status: 'approved',
       approvedById: auth.partyId,
-      approvedCtc: finalCtc,
+      approvedCtcMinor: finalCtcMinor,
       decidedAt: new Date(),
       note: note ?? line.note,
     },
@@ -411,7 +449,7 @@ export async function approveRevisionLine(lineId: string, approvedCtc?: number, 
     before: line,
     after: row,
   });
-  return row;
+  return withDecimalMinor(row, ['currentCtc', 'proposedCtc', 'approvedCtc'] as const);
 }
 
 export async function rejectRevisionLine(lineId: string, note: string) {
@@ -435,7 +473,7 @@ export async function rejectRevisionLine(lineId: string, note: string) {
     where: { id: lineId },
     data: { status: 'rejected', approvedById: auth.partyId, decidedAt: new Date(), note },
   });
-  return row;
+  return withDecimalMinor(row, ['currentCtc', 'proposedCtc', 'approvedCtc'] as const);
 }
 
 /**
@@ -463,8 +501,8 @@ export async function approveCycle(id: string) {
   const approvedLines = lines.filter((l) => l.status === 'approved');
   const budget = revisionBudgetCheck(
     approvedLines.map((l) => ({
-      currentCtc: num(l.currentCtc) ?? 0,
-      proposedCtc: num(l.approvedCtc ?? l.proposedCtc) ?? 0,
+      currentCtc: minorToRupees(l.currentCtcMinor),
+      proposedCtc: minorToRupees(l.approvedCtcMinor ?? l.proposedCtcMinor),
     })),
     num(cycle.budgetPct) ?? 0,
   );
@@ -523,7 +561,9 @@ export async function applyCycle(id: string) {
   });
   let applied = 0;
   for (const line of lines) {
-    const amount = num(line.approvedCtc ?? line.proposedCtc) ?? 0;
+    // CompensationRecord.amount is still a Decimal (its own slice), so the paise
+    // figure is read out to the rupee number that column is written from.
+    const amount = minorToRupees(line.approvedCtcMinor ?? line.proposedCtcMinor);
     // One transaction per line: a line's superseded record, its new record,
     // the line's status and both events land together, or the line stays approved.
     await governedWrite(async (tx) => {
@@ -603,10 +643,11 @@ export async function applyCycle(id: string) {
 export async function myRevisionLines(employmentRelationshipId: string) {
   await assertEmploymentVisible('salary_revisions', employmentRelationshipId);
   const auth = currentAuth();
-  return prisma.salaryRevisionLine.findMany({
+  const rows = await prisma.salaryRevisionLine.findMany({
     where: { tenantId: auth.tenantId, employmentRelationshipId },
     orderBy: { createdAt: 'desc' },
   });
+  return rows.map((r) => withDecimalMinor(r, ['currentCtc', 'proposedCtc', 'approvedCtc'] as const));
 }
 
 // ---------------------------------------------------------------------------
@@ -654,7 +695,7 @@ export async function computePayout(planId: string, employmentRelationshipId: st
   await assertEmploymentVisible('variable_pay', employmentRelationshipId);
   const plan = await prisma.variablePayPlan.findFirst({ where: { id: planId, tenantId: auth.tenantId } });
   if (!plan) throw ApiError.notFound('Variable pay plan');
-  const computedAmount = computeVariablePayout(base, plan.formula as unknown as VariablePayFormula);
+  const computedAmountMinor = rupeesToMinor(computeVariablePayout(base, plan.formula as unknown as VariablePayFormula));
   const row = await prisma.variablePayout.upsert({
     where: {
       tenantId_planId_employmentRelationshipId_period: {
@@ -669,19 +710,19 @@ export async function computePayout(planId: string, employmentRelationshipId: st
       planId,
       employmentRelationshipId,
       period,
-      computedAmount,
+      computedAmountMinor,
       status: 'computed',
       computedById: auth.partyId,
     },
     update: {
-      computedAmount,
+      computedAmountMinor,
       status: 'computed',
-      approvedAmount: null,
+      approvedAmountMinor: null,
       approvedById: null,
       computedById: auth.partyId,
     },
   });
-  return row;
+  return withDecimalMinor(row, ['computedAmount', 'approvedAmount'] as const);
 }
 
 export async function listVariablePayouts(employmentRelationshipId?: string) {
@@ -699,12 +740,18 @@ export async function listVariablePayouts(employmentRelationshipId?: string) {
     Object.assign(where, await ownEmploymentWhere('variable_pay'));
   }
   const rows = await prisma.variablePayout.findMany({ where, orderBy: { createdAt: 'desc' } });
-  return rows.map((r) => ({
-    ...r,
-    computedAmount: money(r.computedAmount, visible).amount,
-    approvedAmount: r.approvedAmount === null ? null : money(r.approvedAmount, visible).amount,
-    moneyWithheldReason: visible ? null : 'no_permission',
-  }));
+  return rows.map((r) => {
+    const computed = money(r.computedAmountMinor, visible);
+    const approved = money(r.approvedAmountMinor, visible);
+    return {
+      ...r,
+      computedAmount: computed.amount,
+      computedAmountMinor: computed.amountMinor,
+      approvedAmount: approved.amount,
+      approvedAmountMinor: approved.amountMinor,
+      moneyWithheldReason: visible ? null : 'no_permission',
+    };
+  });
 }
 
 /** The Self-Dealing Bar on variable pay, same shape as a salary revision line. */
@@ -731,7 +778,7 @@ export async function approvePayout(id: string, note?: string) {
       data: {
         status: 'approved',
         approvedById: auth.partyId,
-        approvedAmount: payout.computedAmount,
+        approvedAmountMinor: payout.computedAmountMinor,
         note: note ?? payout.note,
       },
     });
@@ -751,7 +798,7 @@ export async function approvePayout(id: string, note?: string) {
       impact: { domains: ['hr', 'fin'] },
       tx,
     });
-    return row;
+    return withDecimalMinor(row, ['computedAmount', 'approvedAmount'] as const);
   });
 }
 
@@ -780,7 +827,7 @@ export async function markPayoutPaid(id: string) {
       impact: { domains: ['hr', 'fin'] },
       tx,
     });
-    return row;
+    return withDecimalMinor(row, ['computedAmount', 'approvedAmount'] as const);
   });
 }
 
@@ -801,10 +848,11 @@ export interface BenefitPlanInput {
 export async function listBenefitPlans(activeOnly = false) {
   const auth = currentAuth();
   await assertCan({ resource: 'benefit_plans', verb: 'view' });
-  return prisma.benefitPlan.findMany({
+  const rows = await prisma.benefitPlan.findMany({
     where: { tenantId: auth.tenantId, ...(activeOnly ? { active: true } : {}) },
     orderBy: { name: 'asc' },
   });
+  return rows.map((r) => withDecimalMinor(r, ['employerContribution', 'employeeContribution'] as const));
 }
 
 export async function createBenefitPlan(input: BenefitPlanInput) {
@@ -816,13 +864,13 @@ export async function createBenefitPlan(input: BenefitPlanInput) {
       name: input.name,
       kind: input.kind,
       provider: input.provider ?? null,
-      employerContribution: input.employerContribution,
-      employeeContribution: input.employeeContribution,
+      employerContributionMinor: rupeesToMinor(input.employerContribution),
+      employeeContributionMinor: rupeesToMinor(input.employeeContribution),
       enrolmentOpensOn: input.enrolmentOpensOn ?? null,
       enrolmentClosesOn: input.enrolmentClosesOn ?? null,
     },
   });
-  return row;
+  return withDecimalMinor(row, ['employerContribution', 'employeeContribution'] as const);
 }
 
 export async function enrolInBenefit(planId: string, employmentRelationshipId: string, dependants: unknown[] = []) {
@@ -905,6 +953,9 @@ export async function listMyBenefitEnrollments(employmentRelationshipId: string)
 // Employee loans
 // ---------------------------------------------------------------------------
 
+/** The EmployeeLoan money columns, as the wire names them. */
+const LOAN_MONEY = ['principal', 'emi', 'outstandingPrincipal'] as const;
+
 export interface LoanRequestInput {
   employmentRelationshipId: string;
   principal: number;
@@ -926,23 +977,24 @@ export async function requestLoan(input: LoanRequestInput) {
   if (input.tenureMonths <= 0 || input.tenureMonths > 120)
     throw ApiError.badRequest('Tenure must be between 1 and 120 months.');
   const { emi } = emiSchedule(input.principal, input.interestPct, input.tenureMonths);
+  const principalMinor = rupeesToMinor(input.principal);
   const recordCode = await nextRecordCode('LOAN');
   const row = await prisma.employeeLoan.create({
     data: {
       tenantId: auth.tenantId,
       recordCode,
       employmentRelationshipId: input.employmentRelationshipId,
-      principal: input.principal,
+      principalMinor,
       interestPct: input.interestPct,
       tenureMonths: input.tenureMonths,
-      emi,
-      outstandingPrincipal: input.principal,
+      emiMinor: rupeesToMinor(emi),
+      outstandingPrincipalMinor: principalMinor,
       status: 'requested',
       requestedById: auth.partyId,
     },
   });
   await auditWrite({ action: 'create', subjectType: 'employee_loan', subjectId: row.id, after: row });
-  return row;
+  return withDecimalMinor(row, LOAN_MONEY);
 }
 
 export async function listLoans(employmentRelationshipId?: string) {
@@ -967,11 +1019,17 @@ export async function listLoans(employmentRelationshipId?: string) {
   const rows = await prisma.employeeLoan.findMany({ where, orderBy: { createdAt: 'desc' } });
   return rows.map((r) => {
     const rowVisible = visible || (myId !== null && r.employmentRelationshipId === myId);
+    const principal = money(r.principalMinor, rowVisible);
+    const emi = money(r.emiMinor, rowVisible);
+    const outstanding = money(r.outstandingPrincipalMinor, rowVisible);
     return {
       ...r,
-      principal: money(r.principal, rowVisible).amount,
-      emi: money(r.emi, rowVisible).amount,
-      outstandingPrincipal: money(r.outstandingPrincipal, rowVisible).amount,
+      principal: principal.amount,
+      principalMinor: principal.amountMinor,
+      emi: emi.amount,
+      emiMinor: emi.amountMinor,
+      outstandingPrincipal: outstanding.amount,
+      outstandingPrincipalMinor: outstanding.amountMinor,
       moneyWithheldReason: rowVisible ? null : 'no_permission',
     };
   });
@@ -1016,7 +1074,7 @@ export async function approveLoan(id: string, note?: string) {
       impact: { domains: ['hr', 'fin'] },
       tx,
     });
-    return row;
+    return withDecimalMinor(row, LOAN_MONEY);
   });
 }
 
@@ -1037,10 +1095,11 @@ export async function rejectLoan(id: string, note: string) {
       { axis: 'WHO', passed: false, reason: 'proposer_is_approver' },
     ]);
   }
-  return prisma.employeeLoan.update({
+  const row = await prisma.employeeLoan.update({
     where: { id },
     data: { status: 'rejected', approvedById: auth.partyId, decidedAt: new Date(), note },
   });
+  return withDecimalMinor(row, LOAN_MONEY);
 }
 
 export async function disburseLoan(id: string, startDate: Date) {
@@ -1070,7 +1129,7 @@ export async function disburseLoan(id: string, startDate: Date) {
       impact: { domains: ['hr', 'fin'] },
       tx,
     });
-    return row;
+    return withDecimalMinor(row, LOAN_MONEY);
   });
 }
 
@@ -1081,19 +1140,25 @@ export async function recordLoanRepayment(id: string, amount: number) {
   const loan = await prisma.employeeLoan.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!loan) throw ApiError.notFound('Employee loan');
   if (loan.status !== 'disbursed') throw ApiError.conflict('Only a disbursed loan can take a repayment.');
-  const outstanding = Math.max((num(loan.outstandingPrincipal) ?? 0) - amount, 0);
-  const closing = outstanding <= 0;
+  // Exact paise, floored at zero. The old float subtraction was rounded only by
+  // the column on write, so the balance was never computed in the unit it is held in.
+  const remainingMinor = loan.outstandingPrincipalMinor - rupeesToMinor(amount);
+  const outstandingMinor = remainingMinor < 0n ? 0n : remainingMinor;
+  const closing = outstandingMinor <= 0n;
   return governedWrite(async (tx) => {
     const row = await tx.employeeLoan.update({
       where: { id },
-      data: { outstandingPrincipal: outstanding, ...(closing ? { status: 'closed', closedAt: new Date() } : {}) },
+      data: {
+        outstandingPrincipalMinor: outstandingMinor,
+        ...(closing ? { status: 'closed', closedAt: new Date() } : {}),
+      },
     });
     await auditWrite({
       action: 'update',
       subjectType: 'employee_loan',
       subjectId: id,
-      before: { status: loan.status, outstandingPrincipal: loan.outstandingPrincipal as never },
-      after: { status: row.status, outstandingPrincipal: row.outstandingPrincipal as never },
+      before: { status: loan.status, outstandingPrincipal: minorToDecimal(loan.outstandingPrincipalMinor) as never },
+      after: { status: row.status, outstandingPrincipal: minorToDecimal(row.outstandingPrincipalMinor) as never },
       tx,
     });
     if (closing) {
@@ -1106,7 +1171,7 @@ export async function recordLoanRepayment(id: string, amount: number) {
         tx,
       });
     }
-    return row;
+    return withDecimalMinor(row, LOAN_MONEY);
   });
 }
 
@@ -1137,7 +1202,7 @@ export async function submitExpenseClaim(input: ExpenseClaimInput) {
         recordCode,
         employmentRelationshipId: input.employmentRelationshipId,
         category: input.category,
-        amount: input.amount,
+        amountMinor: rupeesToMinor(input.amount),
         receipts: (input.receipts ?? []) as never,
         note: input.note ?? null,
         status: 'submitted',
@@ -1152,7 +1217,7 @@ export async function submitExpenseClaim(input: ExpenseClaimInput) {
       impact: { domains: ['hr', 'fin'] },
       tx,
     });
-    return row;
+    return withDecimalMinor(row, ['amount'] as const);
   });
 }
 
@@ -1177,9 +1242,11 @@ export async function listExpenseClaims(employmentRelationshipId?: string) {
   const rows = await prisma.expenseClaim.findMany({ where, orderBy: { createdAt: 'desc' } });
   return rows.map((r) => {
     const rowVisible = visible || (myId !== null && r.employmentRelationshipId === myId);
+    const amount = money(r.amountMinor, rowVisible);
     return {
       ...r,
-      amount: money(r.amount, rowVisible).amount,
+      amount: amount.amount,
+      amountMinor: amount.amountMinor,
       moneyWithheldReason: rowVisible ? null : 'no_permission',
     };
   });
@@ -1223,7 +1290,7 @@ export async function approveExpenseClaim(id: string, note?: string) {
       impact: { domains: ['hr', 'fin'] },
       tx,
     });
-    return row;
+    return withDecimalMinor(row, ['amount'] as const);
   });
 }
 
@@ -1264,7 +1331,7 @@ export async function rejectExpenseClaim(id: string, note: string) {
       impact: { domains: ['hr', 'fin'] },
       tx,
     });
-    return row;
+    return withDecimalMinor(row, ['amount'] as const);
   });
 }
 
@@ -1305,6 +1372,6 @@ export async function reimburseExpenseClaim(id: string, note?: string) {
       impact: { domains: ['hr', 'fin'] },
       tx,
     });
-    return row;
+    return withDecimalMinor(row, ['amount'] as const);
   });
 }

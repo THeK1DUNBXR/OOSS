@@ -31,7 +31,9 @@ import { EVENTS, HR_LETTER_KINDS, istDateKey, istYearMonth, type HrLetterKind } 
 import type { AssetAssignment } from '@prisma/client';
 import { governedWrite } from '../../platform/governedWrite.js';
 import { lockAssignableParty } from '../ownership.js';
-import { prisma, num, type DbTx } from '../../platform/db.js';
+import { prisma, type DbTx } from '../../platform/db.js';
+import { withDecimalMinor, rupeesToMinorOrNull, rupeesToMinor } from '../../platform/wire.js';
+import { maskMoney } from '../money.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
@@ -43,12 +45,13 @@ import { issueLetter, listLetters as listHrLetters } from '../compliance/labour.
 
 registerGovernedEntities('hcm_assets', ['asset', 'asset_assignment', 'travel_request', 'letter_request', 'id_card']);
 
-/** Nulls `cost` (and estimated/advance money on travel) in place for a viewer without financial visibility on the resource. */
-function maskCost<T extends Record<string, unknown>>(row: T, canSee: boolean, fields: string[]): T {
-  if (canSee) return row;
-  const out = { ...row };
-  for (const f of fields) (out as Record<string, unknown>)[f] = null;
-  return out;
+/**
+ * The money columns of a row as the wire has always shown them (a Decimal
+ * string, nulled for a viewer without financial visibility). A masked field and
+ * its `<name>Minor` sibling are nulled together.
+ */
+function moneyView<T extends object, N extends string>(row: T, canSee: boolean, names: readonly N[]) {
+  return maskMoney(withDecimalMinor(row, names), canSee, names);
 }
 
 /**
@@ -117,7 +120,7 @@ export async function listAssets(filter: { status?: string } = {}) {
     where: { tenantId: auth.tenantId, ...(filter.status ? { status: filter.status } : {}) },
     orderBy: { createdAt: 'desc' },
   });
-  return rows.map((r) => maskCost(r, canSee, ['cost']));
+  return rows.map((r) => moneyView(r, canSee, ['cost'] as const));
 }
 
 export async function createAsset(input: {
@@ -145,13 +148,13 @@ export async function createAsset(input: {
       category: input.category,
       serial: input.serial ?? null,
       purchaseDate: input.purchaseDate ?? null,
-      cost: input.cost ?? null,
+      costMinor: rupeesToMinorOrNull(input.cost) ?? null,
       note: input.note ?? null,
     },
   });
   await auditWrite({ action: 'create', subjectType: 'asset', subjectId: row.id, after: row as never });
   const canSee = await canSeeMoney('hcm_assets');
-  return maskCost(row, canSee, ['cost']);
+  return moneyView(row, canSee, ['cost'] as const);
 }
 
 async function loadAsset(id: string) {
@@ -179,7 +182,7 @@ export async function transitionAsset(id: string, to: Exclude<HcmAssetStatus, 'a
     before: { status: from },
     after: { status: to },
   });
-  return updated;
+  return withDecimalMinor(updated, ['cost'] as const);
 }
 
 // ---------------------------------------------------------------------------
@@ -392,7 +395,7 @@ export async function listTravelRequests(filter: { employmentRelationshipId?: st
     },
     orderBy: { createdAt: 'desc' },
   });
-  return rows.map((r) => maskCost(r, canSee, ['estimatedCost', 'advanceRequested']));
+  return rows.map((r) => moneyView(r, canSee, ['estimatedCost', 'advanceRequested'] as const));
 }
 
 export async function createTravelRequest(input: {
@@ -428,8 +431,8 @@ export async function createTravelRequest(input: {
         startDate: input.startDate,
         endDate: input.endDate,
         mode: input.mode,
-        estimatedCost: input.estimatedCost,
-        advanceRequested: input.advanceRequested ?? null,
+        estimatedCostMinor: rupeesToMinor(input.estimatedCost),
+        advanceRequestedMinor: rupeesToMinorOrNull(input.advanceRequested) ?? null,
         note: input.note ?? null,
       },
     });
@@ -442,7 +445,7 @@ export async function createTravelRequest(input: {
       impact: { domains: ['hr'] },
       tx,
     });
-    return row;
+    return withDecimalMinor(row, ['estimatedCost', 'advanceRequested'] as const);
   });
 }
 
@@ -494,7 +497,7 @@ export async function decideTravelRequest(id: string, decision: 'approved' | 're
         tx,
       });
     }
-    return updated;
+    return withDecimalMinor(updated, ['estimatedCost', 'advanceRequested'] as const);
   });
 }
 
@@ -516,7 +519,7 @@ export async function settleTravelRequest(id: string, expenseClaimId: string) {
     before: { status: from, expenseClaimId: null },
     after: { status: 'settled', expenseClaimId },
   });
-  return updated;
+  return withDecimalMinor(updated, ['estimatedCost', 'advanceRequested'] as const);
 }
 
 // ---------------------------------------------------------------------------
