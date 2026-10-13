@@ -35,7 +35,14 @@ import { assertCan } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
 import { runHooks } from '../platform/hooks.js';
 import { openAccountingDate, periodRefusesEntries } from './compliance/books.js';
-import { invoiceLabel, paymentWire, receiptWire, rehydrateReceivablesFor, totalsOf } from './invoicing.js';
+import {
+  invoiceLabel,
+  isGatewayReferenceClash,
+  paymentWire,
+  receiptWire,
+  rehydrateReceivablesFor,
+  totalsOf,
+} from './invoicing.js';
 import { rupeesToMinor, wireInt, withDecimalMinor } from '../platform/wire.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { lockLegacyPeriod } from '../platform/periodLock.js';
@@ -179,31 +186,45 @@ export async function recordPayment(input: {
   // month is written into the open one, and that is the month the lock must hold. The hook
   // above reads the status outside a transaction, so the lock is what holds it through the
   // insert (periodLock.ts, FX-70).
-  const { recordCode, payment } = await prisma.$transaction(async (tx) => {
-    await lockLegacyPeriod(tx, auth.tenantId, accountingDate);
-    const recordCode = await nextRecordCode('PAY', new Date(), tx);
-    const payment = await tx.payment.create({
-      data: {
-        tenantId: auth.tenantId,
-        recordCode,
-        amountMinor,
-        currency: input.currency ?? 'INR',
-        gatewayReference: input.gatewayReference,
-        receivedAt: accountingDate,
-        valueDate: movedFromClosed ? arrivedAt : null,
-        status: 'received',
-        method: input.method ?? 'bank_transfer',
-        payerOrganizationId: input.payerOrganizationId ?? null,
-        payerPersonId: input.payerPersonId ?? null,
-        // Null for a gateway webhook, which has no human behind it; the party for
-        // money somebody took. It is also the narrowing that lets an employee hold
-        // `payments@own` and see their own collections rather than the company's.
-        recordedById: auth.partyId,
-        note: input.note ?? null,
-      },
+  const outcome = await prisma
+    .$transaction(async (tx) => {
+      await lockLegacyPeriod(tx, auth.tenantId, accountingDate);
+      const recordCode = await nextRecordCode('PAY', new Date(), tx);
+      const payment = await tx.payment.create({
+        data: {
+          tenantId: auth.tenantId,
+          recordCode,
+          amountMinor,
+          currency: input.currency ?? 'INR',
+          gatewayReference: input.gatewayReference,
+          receivedAt: accountingDate,
+          valueDate: movedFromClosed ? arrivedAt : null,
+          status: 'received',
+          method: input.method ?? 'bank_transfer',
+          payerOrganizationId: input.payerOrganizationId ?? null,
+          payerPersonId: input.payerPersonId ?? null,
+          // Null for a gateway webhook, which has no human behind it; the party for
+          // money somebody took. It is also the narrowing that lets an employee hold
+          // `payments@own` and see their own collections rather than the company's.
+          recordedById: auth.partyId,
+          note: input.note ?? null,
+        },
+      });
+      return { kind: 'created' as const, recordCode, payment };
+    })
+    .catch(async (err: unknown) => {
+      // Two calls with one reference both passed the check above, and this one lost the
+      // insert. It is the same replay as the sequential case, so it returns the winner
+      // and writes nothing: no audit row, no exception, no event for the loser's attempt.
+      if (!isGatewayReferenceClash(err)) throw err;
+      const winner = await prisma.payment.findFirst({
+        where: { tenantId: auth.tenantId, gatewayReference: input.gatewayReference },
+      });
+      if (!winner) throw err;
+      return { kind: 'replay' as const, payment: winner };
     });
-    return { recordCode, payment };
-  });
+  if (outcome.kind === 'replay') return paymentWire(outcome.payment);
+  const { recordCode, payment } = outcome;
 
   await auditWrite({
     action: 'create',

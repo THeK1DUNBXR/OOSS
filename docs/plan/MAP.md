@@ -32,7 +32,7 @@
 
 **`apps/api/src/domains/books.ts`** (1847 lines) — listAccounts:100 · createAccount:110 · listCategories:153 · createCategory:162 · accountBalances:204 · TransactionInput:248 · groupCounterpartyOptions:277 · recordTransaction:315 · recordTransaction:316 · recordTransaction:317 · recordTransaction:318 · checkTransactionAllowed:349 · TransactionInputMinor:358 · writeTransaction:373 · writeTransactionMinor:388 · assertPeriodPostableInTx:512 · reverseTransactionIn:530 · reverseTransaction:611 · listTransactions:628 · listVendorBills:664 · recordVendorBill:678 · payVendorBill:759 · payablesAgeing:801 · detectOverdueBills:843 · priceInvoiceGst:903 · gstSummary:977 · setBudgetLine:1026 · budgetVariance:1094 · listAssets:1166 · createAsset:1200 · assetSchedule:1306 · listLoans:1324 · createLoan:1359 · loanSchedule:1412 · generateRecurring:1446 · ProfitAndLoss:1554 · profitAndLoss:1570 · monthlyTrend:1636 · cashPosition:1669 · cashForecast:1698 · lockPayrollRunForPosting:1748 · postPayrollToBooks:1775
 
-**`apps/api/src/domains/businessLines.ts`** (566 lines) — istDay:45 · todayIst:56 · isoDay:60 · reasonOf:64 · textOf:70 · assertOpenOn:86 · isRaceLoss:139 · RACE_MESSAGE_TEXT:147 · CreateBusinessLineInput:183 · createBusinessLine:193 · renameBusinessLine:236 · retireBusinessLine:268 · SuccessorInput:308 · RecordSuccessionInput:313 · recordSuccession:325 · DistributionSubject:409 · DistributionShare:415 · SetLineDistributionInput:420 · setLineDistribution:464
+**`apps/api/src/domains/businessLines.ts`** (566 lines) — istDay:45 · todayIst:56 · isoDay:60 · reasonOf:64 · textOf:70 · assertOpenOn:86 · isUniqueViolation:115 · isRaceLoss:139 · RACE_MESSAGE_TEXT:147 · CreateBusinessLineInput:183 · createBusinessLine:193 · renameBusinessLine:236 · retireBusinessLine:268 · SuccessorInput:308 · RecordSuccessionInput:313 · recordSuccession:325 · DistributionSubject:409 · DistributionShare:415 · SetLineDistributionInput:420 · setLineDistribution:464
 
 **`apps/api/src/domains/capability.ts`** (586 lines) — listSkills:51 · createSkill:57 · CapabilityView:83 · capabilitiesForParty:105 · assertClaim:152 · addEvidence:212 · verifyClaim:335 · recordContradiction:431 · changeClaimState:487 · claimFromLearningCompletion:530 · findCapableParties:556
 
@@ -90,7 +90,7 @@
 
 **`apps/api/src/domains/compliance/corporate/registers.ts`** (118 lines) — RegisterEntryInput:19 · listRegisterEntries:26 · createRegisterEntry:44 · currentRegister:85 · exportRegisterCsv:102
 
-**`apps/api/src/domains/compliance/corporate/security.ts`** (273 lines) — securityPolicy:33 · updateSecurityPolicy:52 · assertStepUpForApprove:84 · BackupOutcome:121 · runBackup:143 · runScheduledBackup:225 · runManualBackup:261 · listBackups:266
+**`apps/api/src/domains/compliance/corporate/security.ts`** (281 lines) — securityPolicy:33 · updateSecurityPolicy:60 · assertStepUpForApprove:92 · BackupOutcome:129 · runBackup:151 · runScheduledBackup:233 · runManualBackup:269 · listBackups:274
 
 **`apps/api/src/domains/compliance/corporate/totp.ts`** (118 lines) — base32Encode:14 · base32Decode:30 · generateTotpSecret:49 · hotpRaw:58 · totpRaw:72 · totp:77 · verifyTotp:86 · otpauthUri:107
 
@@ -120,7 +120,7 @@
 
 **`apps/api/src/domains/filings.ts`** (1026 lines) — assertDematCompliant:62 · assertFemaPricingFloor:101 · handleAllotmentEffectiveForFema:158 · handleTransferEffectiveForFema:184 · runFlaReturn:227 · checkDematRequirements:323 · latestHalfYearEnd:384 · runPas6HalfYearly:393 · pas6:428 · mgt1Register:536 · mgt2Register:558 · mgt1Export:627 · mgt2Export:646 · pas3AllotteeList:668 · pas3Export:748 · sh4Data:812 · RecordFilingInput:897 · recordFiling:909 · listFilings:985
 
-**`apps/api/src/domains/finance.ts`** (811 lines) — issueFeeInstalments:87 · recordPayment:141 · reversePayment:256 · allocatePayment:343 · issueCreditNote:615 · rehydrateReceivables:756 · detectOverduePayments:764
+**`apps/api/src/domains/finance.ts`** (832 lines) — issueFeeInstalments:94 · recordPayment:148 · reversePayment:277 · allocatePayment:364 · issueCreditNote:636 · rehydrateReceivables:777 · detectOverduePayments:785
 
 **`apps/api/src/domains/founderView.ts`** (307 lines) — FounderSource:41 · FOUNDER_SOURCES:247 · founderView:293
 
@@ -170,7 +170,7 @@
 
 **`apps/api/src/domains/invoicePosting.ts`** (582 lines) — ledgerEntityForNewInvoice:48 · postInvoiceIssue:106 · postReceiptAllocation:201 · postCreditNote:271 · issueEntryExists:356 · issueEntryIn:369 · receiptPostsFor:386 · reverseEntryIn:401 · reverseInvoiceIssue:435 · paymentHasReceiptEntries:445 · reverseReceiptEntries:468 · listInvoiceDivisionLines:492 · InvoiceDivisionLineInput:501 · setInvoiceDivisionLine:513
 
-**`apps/api/src/domains/invoicing.ts`** (2166 lines) — InvoiceLineInput:121 · CollectedPaymentInput:160 · InvoiceInput:174 · invoiceLabel:220 · isCourseFeeInvoice:234 · lineTotalOf:246 · InvoiceTotals:250 · totalsOf:267 · totalsMinorOf:293 · paymentWire:322 · receiptWire:333 · InvoiceWire:347 · invoiceWire:351 · filingPeriodOf:371 · filedReturnFor:382 · assertPeriodOpen:402 · CUSTOMER_KINDS:424 · CustomerKind:425 · createInvoice:823 · updateInvoice:1060 · issueInvoiceDraft:1161 · voidInvoice:1268 · collectInvoicePayment:1338 · declarePaymentTerms:1670 · loadInvoiceForRead:1744 · invoiceSummary:1760 · invoiceDocument:1786 · rehydrateReceivablesFor:2105
+**`apps/api/src/domains/invoicing.ts`** (2252 lines) — InvoiceLineInput:122 · CollectedPaymentInput:161 · InvoiceInput:175 · invoiceLabel:221 · isCourseFeeInvoice:235 · lineTotalOf:247 · InvoiceTotals:251 · totalsOf:268 · totalsMinorOf:294 · paymentWire:323 · receiptWire:334 · InvoiceWire:348 · invoiceWire:352 · filingPeriodOf:372 · filedReturnFor:383 · assertPeriodOpen:403 · CUSTOMER_KINDS:425 · CustomerKind:426 · createInvoice:824 · updateInvoice:1074 · issueInvoiceDraft:1175 · voidInvoice:1294 · ReferenceBasis:1350 · refuseIfReferenceOnFile:1379 · isGatewayReferenceClash:1398 · collectInvoicePayment:1425 · declarePaymentTerms:1756 · loadInvoiceForRead:1830 · invoiceSummary:1846 · invoiceDocument:1872 · rehydrateReceivablesFor:2191
 
 **`apps/api/src/domains/it/assets.ts`** (929 lines) — AssetThresholds:73 · currentThresholds:81 · CreateAssetInput:95 · createAsset:113 · UpdateAssetInput:171 · updateAsset:189 · AssetFilter:226 · listAssets:245 · myAssets:282 · assetDetail:293 · AssignAssetInput:397 · assignAsset:410 · ReturnAssetInput:472 · returnAsset:484 · transitionAsset:566 · AddAssetEventInput:632 · addAssetEvent:637 · listAssetEvents:658 · resolveDeskOwnerPartyId:676 · WarrantyLadderResult:685 · runWarrantyLadder:691 · RepairDetectorResult:751 · runInRepairTooLongDetector:756 · OrphanedAssetResult:787 · runOrphanedAssetDetector:795 · summary:839
 

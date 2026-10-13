@@ -88,6 +88,7 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
+import { isUniqueViolation } from './businessLines.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { companyProfile, documentNumbering, supplyingParty } from './companyProfile.js';
@@ -883,6 +884,19 @@ export async function createInvoice(input: InvoiceInput) {
   // Read before the transaction: the profile goes through the global client,
   // which refuses inside one. The numbers are taken inside it, so a failed
   // write gives its number back (documentNumber.ts).
+  // A payment taken with the invoice is refused here, before the invoice is written, if
+  // its explicit reference is already on file. Left to collectInvoicePayment, that 409
+  // comes after the invoice has committed and INVOICE_ISSUED has fired: the invoice
+  // stays issued behind a refusal, and a client retry issues a second one. A derived
+  // key is not checked here: it embeds the new invoice's number, so it cannot clash.
+  // The payments permission is asserted first, as collection does, so the refusal does
+  // not reveal a payment's record code to someone who may not hold payments.
+  if (payingNow > 0) {
+    await assertCan({ resource: 'payments', verb: 'create' });
+    const reference = input.payment?.reference?.trim();
+    if (reference) await refuseIfReferenceOnFile(auth.tenantId, reference, { explicit: true });
+  }
+
   const numbering = await documentNumbering();
   // Refused before anything is written: an invoice with no entity to be booked to is
   // not created, whether it is a draft or an issue (invoicePosting.ts).
@@ -1177,6 +1191,18 @@ export async function issueInvoiceDraft(
   // GST classification rules and e-invoicing readiness attach here (workstream B).
   await runHooks('invoice.before_issue', { invoice: existing, lines: existing.lines, issuedDate });
 
+  // The payment taken at issue is checked before the draft becomes a document, for the
+  // reason given in createInvoice. Without it a refused collection leaves the draft
+  // issued, with a number, and a retry of the issue has nothing left to refuse. The
+  // narrow race, two issues of different drafts with one new reference, is not closed
+  // here (see refuseIfReferenceOnFile).
+  const paying = options.payment && options.payment.amount > 0 ? options.payment : null;
+  if (paying) {
+    await assertCan({ resource: 'payments', verb: 'create' });
+    const reference = paying.reference?.trim();
+    if (reference) await refuseIfReferenceOnFile(auth.tenantId, reference, { explicit: true });
+  }
+
   // Here is where the invoice number is allocated, and nowhere else: at the
   // moment the draft becomes a document. Allocating it inside the same update
   // as the status means the two cannot come apart. A course-fee draft draws
@@ -1317,6 +1343,67 @@ export async function voidInvoice(invoiceId: string, reason: string) {
 // ---------------------------------------------------------------------------
 
 /**
+ * What a clashing gateway reference was matched on. An explicit reference is the one
+ * the clerk typed. A derived key is the invoice, the mode, the IST day and the amount,
+ * and the refusal has to say which of the two it was.
+ */
+export type ReferenceBasis = { explicit: true } | { explicit: false; invoice: string };
+
+function referenceClashConflict(
+  clash: { recordCode: string },
+  gatewayReference: string,
+  basis: ReferenceBasis,
+): ApiError {
+  return ApiError.conflict(
+    basis.explicit
+      ? `A payment with the reference ${gatewayReference} is already on file as ${clash.recordCode}. ` +
+          'Two payments with one reference cannot both be reconciled later, so this one is refused rather than accepted and left ambiguous.'
+      : `A payment of the same amount for ${basis.invoice} on this day is already on file as ${clash.recordCode}. ` +
+          'If this is a second payment, give it its own reference.',
+    { existing: clash.recordCode },
+  );
+}
+
+/**
+ * Refuses a gateway reference already on file, before anything is written.
+ *
+ * createInvoice and issueInvoiceDraft call this before their transactions, and not
+ * only collectInvoicePayment (which checks the same thing again). A clash found there
+ * comes after the invoice has committed and INVOICE_ISSUED has fired: the caller gets
+ * a 409, the invoice stays issued, and a client retry issues a second one. Refused
+ * first, nothing is written. What this does not close is two issues racing with one
+ * new reference: both pass here, and the loser's collection refuses after its own
+ * invoice has committed. Closing that needs the issue and the collection in one
+ * transaction, which is a restructure, not this check.
+ */
+export async function refuseIfReferenceOnFile(
+  tenantId: string,
+  gatewayReference: string,
+  basis: ReferenceBasis,
+): Promise<void> {
+  const clash = await prisma.payment.findFirst({ where: { tenantId, gatewayReference } });
+  if (clash) throw referenceClashConflict(clash, gatewayReference, basis);
+}
+
+/**
+ * Whether a payment insert's unique violation is the gateway-reference constraint.
+ *
+ * Prisma names the constraint in `meta.target` when it reports it, as the field list
+ * or the constraint name. Inside an interactive transaction it does not: the race
+ * suite saw `target: null` on every P2002 from these inserts (ledger.ts:150-154 says
+ * the same). So an absent target does not refuse. The caller re-reads the reference,
+ * and a row carrying it is the proof. A target naming other fields, such as recordCode,
+ * is not this clash and is rethrown.
+ */
+export function isGatewayReferenceClash(err: unknown): boolean {
+  if (!isUniqueViolation(err)) return false;
+  const target = (err as { meta?: { target?: unknown } }).meta?.target;
+  if (target === undefined || target === null) return true;
+  const fields = Array.isArray(target) ? target.map(String) : [String(target)];
+  return fields.some((field) => field.includes('gatewayReference'));
+}
+
+/**
  * Takes a payment against an invoice and issues the receipt for it.
  *
  * One call, because at a counter it is one act: the money arrives, a receipt
@@ -1378,19 +1465,10 @@ export async function collectInvoicePayment(
   const gatewayReference =
     input.reference?.trim() || `${invoiceLabel(invoice)}/${input.mode}/${istDateKey(receivedAt)}/${amount.toFixed(2)}`;
 
-  const clash = await prisma.payment.findFirst({
-    where: { tenantId: auth.tenantId, gatewayReference },
-  });
-  if (clash) {
-    throw ApiError.conflict(
-      input.reference?.trim()
-        ? `A payment with the reference ${gatewayReference} is already on file as ${clash.recordCode}. ` +
-            'Two payments with one reference cannot both be reconciled later, so this one is refused rather than accepted and left ambiguous.'
-        : `A payment of the same amount for ${invoiceLabel(invoice)} on this day is already on file as ${clash.recordCode}. ` +
-            'If this is a second payment, give it its own reference.',
-      { existing: clash.recordCode },
-    );
-  }
+  const basis: ReferenceBasis = input.reference?.trim()
+    ? { explicit: true }
+    : { explicit: false, invoice: invoiceLabel(invoice) };
+  await refuseIfReferenceOnFile(auth.tenantId, gatewayReference, basis);
 
   // The company's numbering profile goes through the global client, which
   // refuses inside a transaction, so it is read here.
@@ -1606,6 +1684,14 @@ export async function collectInvoicePayment(
       allocatedMinor: wireInt(allocatedPaise),
       balanceAfterMinor: wireInt(balanceAfterPaise),
     };
+  }).catch(async (err: unknown) => {
+    // A concurrent collection with the same reference committed between the check above
+    // and this insert. The loser gets the same 409 as the sequential check, not a 500.
+    // The row is re-read, and only a row carrying this reference is taken as the clash.
+    if (!isGatewayReferenceClash(err)) throw err;
+    const winner = await prisma.payment.findFirst({ where: { tenantId: auth.tenantId, gatewayReference } });
+    if (!winner) throw err;
+    throw referenceClashConflict(winner, gatewayReference, basis);
   });
   const { settled } = result;
 
