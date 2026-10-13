@@ -1,6 +1,9 @@
 /**
- * Ledger gates L1 to L3 and the posting rules around them (ORDERED-PLAN Wave 3,
- * items 1.1 to 1.3; MONEY-LEDGER-CONTRACT decisions 7 to 11 and 16).
+ * Wave 3 refusal checks, named L1 to L3 here. These are not the CI-GATES-DRAFT
+ * gates of the same names: those are ledgerProperty.test.ts (L1) and
+ * concurrency/allocations200.test.ts (L3). The postings, reversals and periods
+ * below are the refusals the ledger owes (ORDERED-PLAN Wave 3, items 1.1 to 1.3;
+ * MONEY-LEDGER-CONTRACT decisions 7 to 11 and 16).
  *
  * Real Postgres, real contexts, no mocks. The database checks are asserted as
  * the application role (kaizen_app), with raw SQL, because that is the writer
@@ -161,6 +164,17 @@ describe('L1: the database refuses an entry that is not a balanced double entry'
     await expect(
       asAppRole(async (tx) => {
         await tx.$executeRaw`INSERT INTO "journal_entries" ("id","tenantId","entityId","periodId","entryNumber","entryDate","status","narration","sourceType") VALUES (${entryId}, ${tid}, ${entityId}, ${p.id}, ${'L1E-' + entryId}, ${'2030-06-15'}::date, 'posted', 'empty', 'manual')`;
+      }),
+    ).rejects.toThrow(/at least two lines/);
+  });
+
+  it('refuses an entry with one line at commit, as the application role', async () => {
+    const p = await unscopedPrisma.accountingPeriod.findFirstOrThrow({ where: { tenantId: tid, period: '2030-06' } });
+    const entryId = randomUUID();
+    await expect(
+      asAppRole(async (tx) => {
+        await tx.$executeRaw`INSERT INTO "journal_entries" ("id","tenantId","entityId","periodId","entryNumber","entryDate","status","narration","sourceType") VALUES (${entryId}, ${tid}, ${entityId}, ${p.id}, ${'L1O-' + entryId}, ${'2030-06-15'}::date, 'posted', 'one line', 'manual')`;
+        await tx.$executeRaw`INSERT INTO "journal_lines" ("id","tenantId","entryId","lineNo","accountId","amountMinor","currency","baseAmountMinor") VALUES (${randomUUID()}, ${tid}, ${entryId}, 1, ${bankId}, ${10000n}, 'INR', ${10000n})`;
       }),
     ).rejects.toThrow(/at least two lines/);
   });

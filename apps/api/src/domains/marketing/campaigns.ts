@@ -28,6 +28,7 @@ import {
 import { prisma, num, type DbTx } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
@@ -446,31 +447,47 @@ export async function updateCampaign(id: string, patch: CampaignUpdateInput): Pr
   if (patch.startAt && patch.endAt && patch.endAt <= patch.startAt)
     throw ApiError.badRequest('endAt must be after startAt.');
 
-  const updated = await prisma.marketingCampaign.update({
-    where: { id },
-    data: {
-      ...(patch.name !== undefined ? { name: patch.name } : {}),
-      ...(patch.objective !== undefined ? { objective: patch.objective } : {}),
-      ...(patch.division !== undefined ? { division: patch.division } : {}),
-      ...(patch.vertical !== undefined ? { vertical: patch.vertical } : {}),
-      ...(patch.channelMix !== undefined ? { channelMix: patch.channelMix } : {}),
-      ...(patch.startAt !== undefined ? { startAt: patch.startAt } : {}),
-      ...(patch.endAt !== undefined ? { endAt: patch.endAt } : {}),
-      ...(patch.budgetPlanned !== undefined ? { budgetPlanned: patch.budgetPlanned } : {}),
-      ...(patch.currency !== undefined ? { currency: patch.currency } : {}),
-      ...(patch.offeringId !== undefined ? { offeringId: patch.offeringId } : {}),
-      ...(patch.courseId !== undefined ? { courseId: patch.courseId } : {}),
-      ...(patch.audienceId !== undefined ? { audienceId: patch.audienceId } : {}),
-      ...(patch.contentBrief !== undefined ? { contentBrief: patch.contentBrief } : {}),
-      ...(patch.tags !== undefined ? { tags: patch.tags } : {}),
-      ...(patch.targetLeads !== undefined ? { targetLeads: patch.targetLeads } : {}),
-      ...(patch.targetEnrolments !== undefined ? { targetEnrolments: patch.targetEnrolments } : {}),
-      ...(patch.targetPipelineValue !== undefined ? { targetPipelineValue: patch.targetPipelineValue } : {}),
-      updatedById: currentAuth().partyId,
-    },
-    include: CAMPAIGN_INCLUDE,
+  await governedWrite(async (tx) => {
+    const updated = await tx.marketingCampaign.update({
+      where: { id },
+      data: {
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.objective !== undefined ? { objective: patch.objective } : {}),
+        ...(patch.division !== undefined ? { division: patch.division } : {}),
+        ...(patch.vertical !== undefined ? { vertical: patch.vertical } : {}),
+        ...(patch.channelMix !== undefined ? { channelMix: patch.channelMix } : {}),
+        ...(patch.startAt !== undefined ? { startAt: patch.startAt } : {}),
+        ...(patch.endAt !== undefined ? { endAt: patch.endAt } : {}),
+        ...(patch.budgetPlanned !== undefined ? { budgetPlanned: patch.budgetPlanned } : {}),
+        ...(patch.currency !== undefined ? { currency: patch.currency } : {}),
+        ...(patch.offeringId !== undefined ? { offeringId: patch.offeringId } : {}),
+        ...(patch.courseId !== undefined ? { courseId: patch.courseId } : {}),
+        ...(patch.audienceId !== undefined ? { audienceId: patch.audienceId } : {}),
+        ...(patch.contentBrief !== undefined ? { contentBrief: patch.contentBrief } : {}),
+        ...(patch.tags !== undefined ? { tags: patch.tags } : {}),
+        ...(patch.targetLeads !== undefined ? { targetLeads: patch.targetLeads } : {}),
+        ...(patch.targetEnrolments !== undefined ? { targetEnrolments: patch.targetEnrolments } : {}),
+        ...(patch.targetPipelineValue !== undefined ? { targetPipelineValue: patch.targetPipelineValue } : {}),
+        updatedById: currentAuth().partyId,
+      },
+      include: CAMPAIGN_INCLUDE,
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_campaign',
+      subjectId: id,
+      before: { name: row.name, status: row.status },
+      after: { name: updated.name, status: updated.status },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_CAMPAIGN_UPDATED,
+      subject: { entityType: 'marketing_campaign', entityId: id, recordCode: row.recordCode },
+      previousState: { status: row.status },
+      newState: { status: updated.status },
+      tx,
+    });
   });
-  void updated;
 
   return getCampaign(id);
 }
@@ -480,9 +497,24 @@ export async function deleteCampaign(id: string): Promise<{ ok: true }> {
   const row = await requireCampaignRow(id);
   if (row.status !== 'draft') throw ApiError.conflict('Only a draft campaign may be deleted.');
 
-  await prisma.marketingCampaign.update({
-    where: { id },
-    data: { deletedAt: new Date(), updatedById: currentAuth().partyId },
+  await governedWrite(async (tx) => {
+    await tx.marketingCampaign.update({
+      where: { id },
+      data: { deletedAt: new Date(), updatedById: currentAuth().partyId },
+    });
+    await auditWrite({
+      action: 'delete',
+      subjectType: 'marketing_campaign',
+      subjectId: id,
+      before: { status: row.status, recordCode: row.recordCode },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_CAMPAIGN_DELETED,
+      subject: { entityType: 'marketing_campaign', entityId: id, recordCode: row.recordCode },
+      previousState: { status: row.status },
+      tx,
+    });
   });
   return { ok: true };
 }

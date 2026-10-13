@@ -18,9 +18,10 @@ import {
   bonus,
   statutoryLines,
   type PtSlab,
+  ENCRYPTED_FIELD_PREFIX,
 } from '@kaizen/shared';
 import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from '../helpers.js';
-import { hire, transitionEmployment } from '../../domains/employment.js';
+import { hire, transitionEmployment, updateEmployeeProfile } from '../../domains/employment.js';
 import { transitionPayrollRun } from '../../domains/payroll.js';
 import {
   proposeSalaryStructure,
@@ -38,9 +39,23 @@ import { nextRecordCode } from '../../platform/recordCode.js';
 
 let TENANT: string;
 let fixtureSeq = 0;
+// The runs below need pay periods no earlier run in this tenant has used: a
+// payroll run is unique on (tenantId, payPeriod). Fixed 2031 periods made the
+// file pass once per database and then collide, and CI's failing-test-first
+// gate runs it twice on one database (old code, then head). Each run takes
+// the year after the latest one already on file; the month stays fixed
+// because PT and LWF depend on it.
+let RUN_YEAR = 2100;
+const period = (month: string) => `${RUN_YEAR}-${month}`;
 
 beforeAll(async () => {
   TENANT = await tenantId();
+  const latest = await unscopedPrisma.payrollRun.findFirst({
+    where: { tenantId: TENANT, payPeriod: { gte: '2100-01' } },
+    orderBy: { payPeriod: 'desc' },
+    select: { payPeriod: true },
+  });
+  if (latest) RUN_YEAR = parseInt(latest.payPeriod.slice(0, 4), 10) + 1;
 });
 
 /** A throwaway employee, hired by Operations. Mirrors hr.test.ts's makeEmployee. */
@@ -195,7 +210,20 @@ describe('statutory arithmetic (packages/shared/src/compliance/payroll.ts)', () 
 describe('payroll runs against the dated tables (real database)', () => {
   it('CMP-PAY-001 / CMP-PAY-002 / CMP-PAY-003: a full run — compute, self-approval refused, a different approver succeeds, a payslip is issued and final', async () => {
     const { employment: emp, person } = await makeEmployee('run-a');
-    const payPeriod = '2031-01';
+    const payPeriod = period('01');
+    // The floor this run is approved against, stated here rather than
+    // inherited. CMP-PAY-005 below files a ₹9,99,999 floor, and the latest row
+    // on or before the period wins, so on a database where that test already
+    // ran this approval was refused for a floor it never set. 12,000 is the
+    // seeded Tamil Nadu figure.
+    await asUser('finance@kaizen.co.in', () =>
+      createMinimumWageTable({
+        state: 'Tamil Nadu',
+        category: 'general',
+        monthlyAmount: 12_000,
+        effectiveFrom: new Date(`${payPeriod}-01T00:00:00Z`),
+      }),
+    );
 
     // Proposed by the chairman, who holds every grant, including `approve`. Finance then approves
     // it, a different approver from the proposer. Owner ruling 2026-10-12: the founder is exempt
@@ -309,7 +337,7 @@ describe('payroll runs against the dated tables (real database)', () => {
     const { employment: emp } = await makeEmployee('contractor');
     await asUser('operations@kaizen.co.in', () => setEngagementType(emp.id, 'contractor'));
 
-    const payPeriod = '2031-02';
+    const payPeriod = period('02');
     const run = await makeSoloRun(emp.id, payPeriod);
     await asUser('operations@kaizen.co.in', () => computeInstruction(run.id));
 
@@ -334,7 +362,7 @@ describe('payroll runs against the dated tables (real database)', () => {
         state: 'Tamil Nadu',
         category: 'general',
         monthlyAmount: 999_999,
-        effectiveFrom: new Date('2025-01-01'),
+        effectiveFrom: new Date(`${period('03')}-01T00:00:00Z`),
       }),
     );
     const { employment: emp } = await makeEmployee('below-min-wage');
@@ -343,7 +371,7 @@ describe('payroll runs against the dated tables (real database)', () => {
       const { runHooks } = await import('../../platform/hooks.js');
       return expectReject(() =>
         runHooks('payroll_run.before_approve', {
-          run: { id: 'synthetic-run', preparedById: null, payPeriod: '2031-03' },
+          run: { id: 'synthetic-run', preparedById: null, payPeriod: period('03') },
           instructions: [
             {
               id: 'synthetic-instr',
@@ -378,7 +406,7 @@ describe('payroll runs against the dated tables (real database)', () => {
     );
     await asUser('finance@kaizen.co.in', () => approveSalaryStructure(structure.id));
 
-    const payPeriod = '2031-04';
+    const payPeriod = period('04');
     const run = await makeSoloRun(emp.id, payPeriod);
     await asUser('operations@kaizen.co.in', () => transitionPayrollRun(run.id, 'COMPUTE'));
 
@@ -389,6 +417,47 @@ describe('payroll runs against the dated tables (real database)', () => {
 
     const esic = await asUser('finance@kaizen.co.in', () => exportEsic(run.id));
     expect(esic.split('\n')[0]).toBe('IP Number,IP Name,Days,Wages,Reason Code');
+  });
+
+  it('UAN and ESIC number are encrypted on the way in, and the ECR and ESIC files still carry them in the clear (FX-64)', async () => {
+    const { employment: emp } = await makeEmployee('uan-esic');
+    const uan = '100200300400';
+    const esic = '3100000000000002';
+    await asUser('chairman@kaizen.co.in', () => updateEmployeeProfile(emp.id, { uanNumber: uan, esicNumber: esic }));
+
+    const raw = await unscopedPrisma.employmentRelationship.findFirstOrThrow({ where: { id: emp.id } });
+    expect(raw.uanNumber?.startsWith(ENCRYPTED_FIELD_PREFIX)).toBe(true);
+    expect(raw.esicNumber?.startsWith(ENCRYPTED_FIELD_PREFIX)).toBe(true);
+
+    await asUser('operations@kaizen.co.in', () =>
+      proposeSalaryStructure({
+        employmentRelationshipId: emp.id,
+        effectiveFrom: new Date('2020-01-01'),
+        ctcAnnual: 240_000,
+        basic: 12_000,
+        hra: 4_000,
+      }),
+    );
+    const structure = await asUser('chairman@kaizen.co.in', () =>
+      prisma.salaryStructure.findFirstOrThrow({
+        where: { tenantId: TENANT, employmentRelationshipId: emp.id },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+    await asUser('finance@kaizen.co.in', () => approveSalaryStructure(structure.id));
+    const run = await makeSoloRun(emp.id, period('05'));
+    await asUser('operations@kaizen.co.in', () => transitionPayrollRun(run.id, 'COMPUTE'));
+
+    const ecr = await asUser('finance@kaizen.co.in', () => exportEcr(run.id));
+    expect(
+      ecr
+        .split('\n')
+        .find((l) => l.length > 0)!
+        .split('#~#')[0],
+    ).toBe(uan);
+
+    const esicFile = await asUser('finance@kaizen.co.in', () => exportEsic(run.id));
+    expect(esicFile.split('\n').some((l) => l.startsWith(`${esic},`))).toBe(true);
   });
 
   it('full-and-final settlement computes gratuity, leave encashment and bonus from years of service', async () => {

@@ -8,6 +8,8 @@
  * tested without a tenant.
  */
 
+import { round2 } from '../finance.js';
+
 export const HCM_COMPENSATION_MODULE = 'compensation' as const;
 
 // ---------------------------------------------------------------------------
@@ -54,11 +56,6 @@ export interface EmiSchedule {
   totalInterest: number;
   totalPayable: number;
   instalments: EmiInstalment[];
-}
-
-/** Rounds to paise-safe 2dp so a schedule never carries a fraction of a rupee that cannot be paid. */
-function round2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
 /**

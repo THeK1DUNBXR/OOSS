@@ -8,10 +8,10 @@
  * collections against one invoice all passed the check.
  */
 import { describe, expect, it } from 'vitest';
-import { asUser, prisma, tenantId, unscopedPrisma } from './helpers.js';
-import { createInvoice, collectInvoicePayment, totalsOf } from '../domains/invoicing.js';
-import { allocatePayment, issueFeeInstalments, recordPayment } from '../domains/finance.js';
-import { DOCUMENT_SERIES, nextDocumentNumber } from '../platform/documentNumber.js';
+import { asUser, prisma, tenantId, unscopedPrisma } from '../helpers.js';
+import { createInvoice, collectInvoicePayment, totalsOf } from '../../domains/invoicing.js';
+import { allocatePayment, issueFeeInstalments, recordPayment } from '../../domains/finance.js';
+import { DOCUMENT_SERIES, nextDocumentNumber } from '../../platform/documentNumber.js';
 
 let TENANT: string;
 

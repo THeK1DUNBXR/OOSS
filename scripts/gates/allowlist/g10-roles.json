@@ -1,0 +1,240 @@
+{
+  "gate": "G10 roles",
+  "description": "Ratchet for G10 check (c)(1): no role label or holder email literal in finance, HCM, compliance or shared code. The approver is resolved from a tenant duty. Per-file counts; a count may only fall. Regenerate with node scripts/gates/run.mjs --write-baseline.",
+  "entries": [
+    {
+      "file": "apps/api/src/domains/accountRecovery.ts",
+      "rule": "chairman",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/commercial.ts",
+      "rule": "chairman",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/commercial.ts",
+      "rule": "finance_head",
+      "count": 2,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/books.ts",
+      "rule": "chairman",
+      "count": 2,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/books.ts",
+      "rule": "finance_head",
+      "count": 2,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/corporate/fema.ts",
+      "rule": "finance_head",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/corporate/security.ts",
+      "rule": "chairman",
+      "count": 2,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/corporate/security.ts",
+      "rule": "finance_head",
+      "count": 2,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/gst.ts",
+      "rule": "chairman",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/gst.ts",
+      "rule": "finance_head",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/tax.ts",
+      "rule": "accountant",
+      "count": 2,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/compliance/tax.ts",
+      "rule": "finance_head",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/decisions.ts",
+      "rule": "chairman",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/employment.ts",
+      "rule": "chairman",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/filings.ts",
+      "rule": "accountant",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/filings.ts",
+      "rule": "chairman",
+      "count": 3,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/finance.ts",
+      "rule": "accountant",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/group.ts",
+      "rule": "chairman",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/hcm/workflow.ts",
+      "rule": "finance_head",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/health.ts",
+      "rule": "chairman",
+      "count": 10,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/health.ts",
+      "rule": "finance_head",
+      "count": 3,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/it/software.ts",
+      "rule": "chairman",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/it/software.ts",
+      "rule": "finance_head",
+      "count": 2,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/budget.ts",
+      "rule": "chairman",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/campaigns.ts",
+      "rule": "chairman",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/messaging.ts",
+      "rule": "chairman",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/marketing/plans.ts",
+      "rule": "chairman",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/receipts.ts",
+      "rule": "accountant",
+      "count": 2,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/domains/statutory.ts",
+      "rule": "accountant",
+      "count": 2,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/jobs/scheduler.ts",
+      "rule": "chairman",
+      "count": 3,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/jobs/scheduler.ts",
+      "rule": "finance_head",
+      "count": 2,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/platform/approvalPolicySync.ts",
+      "rule": "chairman",
+      "count": 3,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/platform/approvalPolicySync.ts",
+      "rule": "finance_head",
+      "count": 2,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "apps/api/src/platform/tenantKind.ts",
+      "rule": "chairman",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/equity.ts",
+      "rule": "accountant",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/marketing.ts",
+      "rule": "chairman",
+      "count": 1,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/permissions.ts",
+      "rule": "chairman",
+      "count": 2,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/permissions.ts",
+      "rule": "finance_head",
+      "count": 2,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    },
+    {
+      "file": "packages/shared/src/planes.ts",
+      "rule": "chairman",
+      "count": 3,
+      "reason": "Baselined at G10 (round 27 c). Resolve this approver from a tenant duty; do not raise the count."
+    }
+  ]
+}

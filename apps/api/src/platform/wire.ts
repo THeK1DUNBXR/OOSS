@@ -1,4 +1,6 @@
-import { parseMinor } from '@kaizen/shared';
+import { decimalToMinor, parseMinor, type DecimalLike } from '@kaizen/shared';
+
+export type { DecimalLike };
 
 /**
  * BigInt has no JSON form, and JSON.stringify throws on one, so a BigInt column
@@ -21,11 +23,6 @@ export function bigintReplacer(_key: string, value: unknown): unknown {
   return typeof value === 'bigint' ? value.toString() : value;
 }
 
-/** A Prisma Decimal, or anything else that prints a fixed number of places. */
-export interface DecimalLike {
-  toFixed(digits: number): string;
-}
-
 /**
  * A Decimal money column as paise on the wire. Computed from the Decimal's own
  * two-place string and never from a JavaScript number: a number that reached
@@ -37,7 +34,7 @@ export function minorOf(value: DecimalLike | null | undefined): string | null;
 export function minorOf(value: DecimalLike | null | undefined): string | null {
   if (value === null || value === undefined) return null;
   if (typeof value === 'number') throw new TypeError('minorOf takes a Decimal, not a JavaScript number');
-  return wireInt(parseMinor(value.toFixed(2)));
+  return wireInt(decimalToMinor(value));
 }
 
 export type MinorFields<T, K extends keyof T> = { [P in K as `${P & string}Minor`]: string | null };

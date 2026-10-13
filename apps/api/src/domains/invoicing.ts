@@ -74,7 +74,7 @@ import {
   type PaymentMode,
   type RevenueTreatment,
 } from '@kaizen/shared';
-import { istDateKey } from '@kaizen/shared';
+import { istDateKey, toMinorHalfUp } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../platform/db.js';
 import { withMinor, wireInt, type DecimalLike } from '../platform/wire.js';
 import { currentAuth } from '../platform/context.js';
@@ -348,7 +348,12 @@ export function filingPeriodOf(date: Date): string {
  * assertPeriodOpen enforces, read in the caller's transaction when one is given:
  * the import revert checks it per row before it reverses anything (FX-71a).
  */
-export async function filedReturnFor(date: Date, db: Pick<DbTx, 'gstFiling'> = prisma) {
+// The default is cast: the extended client's type is deep enough, once the payroll
+// accrual's models joined the schema (FX-73), that comparing it to Pick<DbTx> overflows tsc's stack.
+export async function filedReturnFor(
+  date: Date,
+  db: Pick<DbTx, 'gstFiling'> = prisma as unknown as Pick<DbTx, 'gstFiling'>,
+) {
   const auth = currentAuth();
   return db.gstFiling.findFirst({
     where: { tenantId: auth.tenantId, period: filingPeriodOf(date), status: 'filed' },
@@ -578,7 +583,9 @@ function resolveDiscount(
   if (hasAmount) {
     const discountAmount = round2(input.discountAmount!);
     if (discountAmount < 0) throw ApiError.badRequest(`The discount on "${description}" cannot be negative.`);
-    if (discountAmount > gross + 0.001) {
+    // Every money comparison in this file is paise against paise. gross can carry
+    // float noise (0.1 x 3), which is what the old 0.001 absorbed here.
+    if (toMinorHalfUp(discountAmount) > toMinorHalfUp(gross)) {
       throw ApiError.badRequest(
         `The discount on "${description}" (₹${discountAmount.toFixed(2)}) is more than its fee of ₹${gross.toFixed(2)}.`,
       );
@@ -811,7 +818,7 @@ export async function createInvoice(input: InvoiceInput) {
   // customer is the one who finds out.
   const payingNow = round2(input.payment?.amount ?? 0);
   if (payingNow < 0) throw ApiError.badRequest('An amount collected cannot be negative.');
-  if (payingNow > gst.grandTotal + 0.001) {
+  if (toMinorHalfUp(payingNow) > toMinorHalfUp(gst.grandTotal)) {
     throw ApiError.unprocessable(
       `₹${payingNow.toFixed(2)} is more than the invoice total of ₹${gst.grandTotal.toFixed(2)}. ` +
         'Money taken beyond an invoice is an advance, not a payment against it — record it on Payments and allocate it when the next invoice is raised.',
@@ -1557,7 +1564,7 @@ export async function declarePaymentTerms(
   const now = round2(input.amountPayableNow);
 
   if (now < 0) throw ApiError.badRequest('An amount payable now cannot be negative.');
-  if (now > totals.payable + 0.001) {
+  if (toMinorHalfUp(now) > toMinorHalfUp(totals.payable)) {
     throw ApiError.unprocessable(
       `₹${now.toFixed(2)} is more than the invoice total of ₹${totals.payable.toFixed(2)}.`,
       { payable: totals.payable },
@@ -1908,7 +1915,7 @@ export async function invoiceDocument(invoiceId: string) {
       received: totals.allocated,
       creditNoted: totals.creditNoted,
       outstanding: totals.outstanding,
-      settled: totals.outstanding <= 0.001,
+      settled: toMinorHalfUp(totals.outstanding) <= 0n,
       instalments: receipts.length,
       /**
        * True once there is something for a final invoice to consolidate.

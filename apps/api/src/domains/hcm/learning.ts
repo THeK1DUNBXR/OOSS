@@ -169,7 +169,26 @@ export async function setProgramActive(id: string, isActive: boolean) {
   await assertCan({ resource: 'training_programs', verb: 'edit' });
   const program = await prisma.trainingProgram.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!program) throw ApiError.notFound('Training program');
-  return prisma.trainingProgram.update({ where: { id }, data: { isActive } });
+  return governedWrite(async (tx) => {
+    const updated = await tx.trainingProgram.update({ where: { id }, data: { isActive } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'training_program',
+      subjectId: id,
+      before: { isActive: program.isActive },
+      after: { isActive },
+      tx,
+    });
+    await emit({
+      name: EVENTS.TRAINING_PROGRAM_UPDATED,
+      subject: { entityType: 'training_program', entityId: id },
+      previousState: { isActive: program.isActive },
+      newState: { isActive },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return updated;
+  });
 }
 
 // ---------------------------------------------------------------------------
