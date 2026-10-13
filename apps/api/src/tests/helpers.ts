@@ -113,9 +113,47 @@ export async function asPrincipal<T>(auth: AuthContext, fn: () => Promise<T>): P
  */
 export const PAYOUT_APPROVER_EMAIL = 'chairman@kaizen.co.in';
 
+/**
+ * Runs `fn` with MFA enrolled for `email` for the duration of the call, then puts the user's
+ * enrolment back. assertStepUpForApprove (domains/compliance/corporate/security.ts) refuses an
+ * approver whose role is in the MFA policy and who has not enrolled, and the chairman is in
+ * that policy (seed/compliance/corporate.ts). The policy is left as it is; the test enrols the
+ * approver for the call only.
+ */
+export async function withMfaEnrolled<T>(email: string, fn: () => Promise<T>): Promise<T> {
+  const user =
+    (await unscopedPrisma.user.findFirst({ where: { email, tenant: { slug: 'kaizen' } } })) ??
+    (await unscopedPrisma.user.findFirstOrThrow({ where: { email } }));
+  const before = { mfaSecret: user.mfaSecret, mfaEnabledAt: user.mfaEnabledAt };
+  await unscopedPrisma.user.update({ where: { id: user.id }, data: { mfaEnabledAt: new Date() } });
+  try {
+    return await fn();
+  } finally {
+    await unscopedPrisma.user.update({ where: { id: user.id }, data: before });
+  }
+}
+
+/** approvePayout as the second holder, with that holder enrolled in MFA for the call. */
+export async function approvePayoutAs(email: string, id: string, note?: string | null) {
+  return withMfaEnrolled(email, () => asUser(email, () => approvePayout(id, note)));
+}
+
+/**
+ * The second holder for a request in `tenant`: the kaizen chairman, or the chairman of a books
+ * tenant (booksTenant), since a request is approved inside the tenant it was made in.
+ */
+async function approverEmailFor(tenant: string): Promise<string> {
+  if (tenant === (await tenantId())) return PAYOUT_APPROVER_EMAIL;
+  const aff = await unscopedPrisma.affiliation.findFirstOrThrow({
+    where: { tenantId: tenant, roleSlug: 'chairman', status: 'active' },
+  });
+  const user = await unscopedPrisma.user.findFirstOrThrow({ where: { tenantId: tenant, personId: aff.partyId } });
+  return user.email;
+}
+
 async function settledRequest(request: PayoutRequest): Promise<PayoutRequest> {
   if (request.state === 'approved') return request;
-  const settled = await asUser(PAYOUT_APPROVER_EMAIL, () => approvePayout(request.id));
+  const settled = await approvePayoutAs(await approverEmailFor(request.tenantId), request.id);
   return settled.request;
 }
 

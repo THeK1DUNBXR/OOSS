@@ -14,6 +14,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { formatMinor, parseMinor } from '@kaizen/shared';
 import {
+  approvePayoutAs,
   asPrincipal,
   asUser,
   authFor,
@@ -24,6 +25,8 @@ import {
   withFixtureRole,
 } from './helpers.js';
 import { assertTrialBalance, journalTrialBalance } from '../platform/balances.js';
+import { setImportOptions, stageImport } from '../imports/service.js';
+import { commitImport } from '../imports/commit.js';
 import {
   accountBalances,
   recordTransaction,
@@ -97,7 +100,7 @@ describe('a money-out request writes nothing until a second person approves it',
       payVendorBill(bill.id, { amount: 5_000, accountId: account.id, paidOn: new Date() }),
     );
 
-    const settled = await asUser(CHAIRMAN, () => approvePayout(request.id));
+    const settled = await approvePayoutAs(CHAIRMAN, request.id);
 
     expect(settled.request.state).toBe('approved');
     expect(settled.transaction?.direction).toBe('out');
@@ -117,9 +120,9 @@ describe('a money-out request writes nothing until a second person approves it',
     const second = await asUser(FINANCE, () =>
       payVendorBill(bill.id, { amount: 3_000, accountId: account.id, paidOn: new Date() }),
     );
-    await asUser(CHAIRMAN, () => approvePayout(first.id));
+    await approvePayoutAs(CHAIRMAN, first.id);
 
-    const err = await expectReject(() => asUser(CHAIRMAN, () => approvePayout(second.id)));
+    const err = await expectReject(() => approvePayoutAs(CHAIRMAN, second.id));
     expect(err.status).toBe(422);
     expect(err.message).toContain('outstanding');
     expect((await requestsFor({ vendorBillId: bill.id, state: 'requested' })).map((r) => r.id)).toEqual([second.id]);
@@ -144,7 +147,7 @@ describe('a money-out request writes nothing until a second person approves it',
 
     expect(await outRowsFor(declinedBill.id)).toHaveLength(0);
     expect(await outRowsFor(withdrawnBill.id)).toHaveLength(0);
-    const again = await expectReject(() => asUser(CHAIRMAN, () => approvePayout(declined.id)));
+    const again = await expectReject(() => approvePayoutAs(CHAIRMAN, declined.id));
     expect(again.status).toBe(409);
   });
 
@@ -260,7 +263,7 @@ describe('a money-out request writes nothing until a second person approves it',
     expect(await asUser(FINANCE, () => accountBalances())).toEqual(balancesBefore);
     assertTrialBalance(await asUser(CHAIRMAN, () => journalTrialBalance(ALL_TIME)));
 
-    await asUser(CHAIRMAN, () => approvePayout(request.id));
+    await approvePayoutAs(CHAIRMAN, request.id);
 
     expect(await outSum()).toBe(formatMinor(parseMinor(sumBefore) + parseMinor('1234.50')));
     assertTrialBalance(await asUser(CHAIRMAN, () => journalTrialBalance(ALL_TIME)));
@@ -269,7 +272,13 @@ describe('a money-out request writes nothing until a second person approves it',
   it('reversal of an inward row is a request; approval writes the reversal, which is outward', async () => {
     const account = await bankAccount();
     const original = await asUser(FINANCE, () =>
-      recordTransaction({ txnDate: new Date(), direction: 'in', amount: 1_500, accountId: account.id, note: unique('Receipt to reverse') }),
+      recordTransaction({
+        txnDate: new Date(),
+        direction: 'in',
+        amount: 1_500,
+        accountId: account.id,
+        note: unique('Receipt to reverse'),
+      }),
     );
 
     const asked = await asUser(FINANCE, () => reverseTransaction(original.id, 'Receipt was a duplicate'));
@@ -280,7 +289,7 @@ describe('a money-out request writes nothing until a second person approves it',
     const stillOpen = await unscopedPrisma.transaction.findUniqueOrThrow({ where: { id: original.id } });
     expect(stillOpen.reversedById).toBeNull();
 
-    const settled = await asUser(CHAIRMAN, () => approvePayout(asked.id));
+    const settled = await approvePayoutAs(CHAIRMAN, asked.id);
     expect(settled.transaction?.direction).toBe('out');
     const reversed = await unscopedPrisma.transaction.findUniqueOrThrow({ where: { id: original.id } });
     expect(reversed.reversedById).toBe(settled.transaction?.id);
@@ -299,7 +308,7 @@ describe('a money-out request writes nothing until a second person approves it',
     );
     expect('amountMinor' in original).toBe(true);
     if (!('amountMinor' in original)) throw new Error('expected a request');
-    await asUser(CHAIRMAN, () => approvePayout(original.id));
+    await approvePayoutAs(CHAIRMAN, original.id);
     const row = await unscopedPrisma.payoutRequest.findUniqueOrThrow({ where: { id: original.id } });
     const cashRow = await unscopedPrisma.transaction.findUniqueOrThrow({ where: { id: row.transactionId! } });
 
@@ -317,9 +326,10 @@ describe('recurring cash-outs are approved once, as a rule', () => {
       data: {
         tenantId: TENANT,
         label,
+        categoryId: (await unscopedPrisma.ledgerCategory.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
         accountId: account.id,
         direction: 'out',
-        amount: 800,
+        amountMinor: 80_000n,
         cadence: 'monthly',
         dayOfMonth: 1,
         startDate: new Date(Date.UTC(2026, 0, 1)),
@@ -334,8 +344,10 @@ describe('recurring cash-outs are approved once, as a rule', () => {
     await asUser(FINANCE, () => generateRecurring('2026-11'));
     expect(await unscopedPrisma.transaction.count({ where: { tenantId: TENANT, note: label } })).toBe(0);
 
-    await asUser(CHAIRMAN, () => approvePayout(asked.id));
-    const requestsBefore = await unscopedPrisma.payoutRequest.count({ where: { tenantId: TENANT, recurringRuleId: rule.id } });
+    await approvePayoutAs(CHAIRMAN, asked.id);
+    const requestsBefore = await unscopedPrisma.payoutRequest.count({
+      where: { tenantId: TENANT, recurringRuleId: rule.id },
+    });
     await asUser(FINANCE, () => generateRecurring('2026-11'));
 
     const posted = await unscopedPrisma.transaction.findMany({ where: { tenantId: TENANT, note: label } });
@@ -354,30 +366,61 @@ describe('recurring cash-outs are approved once, as a rule', () => {
       data: {
         tenantId: TENANT,
         label,
+        categoryId: (await unscopedPrisma.ledgerCategory.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
         accountId: account.id,
         direction: 'out',
-        amount: 500,
+        amountMinor: 50_000n,
         cadence: 'monthly',
         dayOfMonth: 1,
         startDate: new Date(Date.UTC(2026, 0, 1)),
       },
     });
     const first = await asUser(FINANCE, () => requestRecurringRuleApproval(rule.id));
-    await asUser(CHAIRMAN, () => approvePayout(first.id));
+    await approvePayoutAs(CHAIRMAN, first.id);
     await asUser(FINANCE, () => generateRecurring('2026-11'));
     expect(await unscopedPrisma.transaction.count({ where: { tenantId: TENANT, note: label } })).toBe(1);
 
-    await unscopedPrisma.recurringRule.update({ where: { id: rule.id }, data: { amount: 650 } });
+    await unscopedPrisma.recurringRule.update({ where: { id: rule.id }, data: { amountMinor: 65_000n } });
     await asUser(FINANCE, () => generateRecurring('2026-12'));
     expect(await unscopedPrisma.transaction.count({ where: { tenantId: TENANT, note: label } })).toBe(1);
 
     const second = await asUser(FINANCE, () => requestRecurringRuleApproval(rule.id));
-    await asUser(CHAIRMAN, () => approvePayout(second.id));
+    await approvePayoutAs(CHAIRMAN, second.id);
     await asUser(FINANCE, () => generateRecurring('2026-12'));
     const posted = await unscopedPrisma.transaction.findMany({
       where: { tenantId: TENANT, note: label },
       orderBy: { txnDate: 'asc' },
     });
     expect(posted.map((t) => String(t.amount))).toEqual(['500', '650']);
+  });
+});
+
+describe('money that has already left is not gated', () => {
+  it('a bank-statement debit is written at once, with no request: the money left the account before the file did', async () => {
+    const account = await bankAccount();
+    const tag = unique('Bank debit gate');
+    const requestsBefore = await unscopedPrisma.payoutRequest.count({ where: { tenantId: TENANT } });
+
+    const staged = await asUser(CHAIRMAN, async () => {
+      const batch = await stageImport({
+        fileName: `${tag}.csv`,
+        buffer: Buffer.from(
+          ['Date,Narration,Withdrawal,Deposit,Reference', `15/04/2027,${tag},431.25,,${tag}-1`].join('\n'),
+          'utf8',
+        ),
+        kindOverride: 'bank_statement',
+      });
+      await setImportOptions(batch.batchId, { accountId: account.id });
+      return batch;
+    });
+    const result = await asUser(CHAIRMAN, () => commitImport(staged.batchId));
+
+    expect(result.errors).toEqual([]);
+    const rows = await unscopedPrisma.transaction.findMany({ where: { tenantId: TENANT, note: { contains: tag } } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].direction).toBe('out');
+    expect(rows[0].source).toBe('bank_import');
+    expect(String(rows[0].amount)).toBe('431.25');
+    expect(await unscopedPrisma.payoutRequest.count({ where: { tenantId: TENANT } })).toBe(requestsBefore);
   });
 });

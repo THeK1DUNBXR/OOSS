@@ -197,7 +197,7 @@ export async function requestRecurringRuleApproval(ruleId: string): Promise<Payo
     kind: 'recurring_rule',
     source: 'recurring_rule',
     txnDate: rule.startDate,
-    amountMinor: decimalToMinor(rule.amount),
+    amountMinor: rule.amountMinor,
     accountId: rule.accountId,
     categoryId: rule.categoryId,
     division: rule.division,
