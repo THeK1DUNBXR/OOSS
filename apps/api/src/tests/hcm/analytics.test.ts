@@ -471,9 +471,9 @@ describe('HCM-ANALYTICS-011 — compa-ratio distribution', () => {
           code: `PG-CR-${stamp}`,
           level,
           currency: 'INR',
-          minPay: 80_000,
-          midPay: 100_000,
-          maxPay: 120_000,
+          minPayMinor: 8_000_000n,
+          midPayMinor: 10_000_000n,
+          maxPayMinor: 12_000_000n,
         },
       });
 

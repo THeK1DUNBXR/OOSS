@@ -15,9 +15,9 @@ model PayGrade {
   level    Int
   currency String @default("INR")
 
-  minPay Decimal @db.Decimal(14, 2)
-  midPay Decimal @db.Decimal(14, 2)
-  maxPay Decimal @db.Decimal(14, 2)
+  minPayMinor BigInt
+  midPayMinor BigInt
+  maxPayMinor BigInt
 
   note String?
 
@@ -65,13 +65,13 @@ model SalaryRevisionLine {
   cycleId                  String
   employmentRelationshipId String
 
-  currentCtc  Decimal  @db.Decimal(14, 2)
+  currentCtcMinor  BigInt
   proposedPct Decimal  @db.Decimal(6, 2)
-  proposedCtc Decimal  @db.Decimal(14, 2)
+  proposedCtcMinor BigInt
   /// A free-text pointer to the rating/cycle that justified the number — not
   /// a foreign key, since WS5 performance owns that table.
   ratingLink  String?
-  approvedCtc Decimal? @db.Decimal(14, 2)
+  approvedCtcMinor BigInt?
 
   /// proposed | approved | rejected | applied
   status String @default("proposed")
@@ -125,8 +125,8 @@ model VariablePayout {
   /// "2026-Q2", "2026-08" — whatever grain the plan's `period` implies.
   period                   String
 
-  computedAmount Decimal  @db.Decimal(14, 2)
-  approvedAmount Decimal? @db.Decimal(14, 2)
+  computedAmountMinor BigInt
+  approvedAmountMinor BigInt?
 
   /// computed | approved | paid
   status String @default("computed")
@@ -155,8 +155,8 @@ model BenefitPlan {
   kind     String
   provider String?
 
-  employerContribution Decimal @db.Decimal(12, 2)
-  employeeContribution Decimal @db.Decimal(12, 2)
+  employerContributionMinor BigInt
+  employeeContributionMinor BigInt
 
   enrolmentOpensOn  DateTime?
   enrolmentClosesOn DateTime?
@@ -205,10 +205,10 @@ model EmployeeLoan {
 
   employmentRelationshipId String
 
-  principal    Decimal @db.Decimal(14, 2)
+  principalMinor    BigInt
   interestPct  Decimal @db.Decimal(6, 2)
   tenureMonths Int
-  emi          Decimal @db.Decimal(12, 2)
+  emiMinor          BigInt
 
   /// requested | approved | rejected | disbursed | closed
   status String @default("requested")
@@ -220,7 +220,7 @@ model EmployeeLoan {
   startDate     DateTime?
   closedAt      DateTime?
 
-  outstandingPrincipal Decimal @db.Decimal(14, 2)
+  outstandingPrincipalMinor BigInt
   note                 String?
 
   createdAt DateTime @default(now())
@@ -243,7 +243,7 @@ model ExpenseClaim {
 
   /// travel | food | phone | other
   category String
-  amount   Decimal @db.Decimal(12, 2)
+  amountMinor   BigInt
   receipts Json    @default("[]")
 
   /// submitted | approved | rejected | reimbursed
