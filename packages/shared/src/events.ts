@@ -353,6 +353,9 @@ export const EVENTS = {
   /// consolidates.
   FINAL_INVOICE_RAISED: 'kz.fin.final_invoice.raised',
   FINAL_INVOICE_SUPERSEDED: 'kz.fin.final_invoice.superseded',
+  /// Finance's map from an invoice division to the business line its revenue is
+  /// booked under. The issue of an invoice refuses while its division has no line.
+  INVOICE_DIVISION_LINE_MAPPED: 'kz.fin.invoice_division_line.mapped',
 
   // --- Education ------------------------------------------------------------
   ENROLLMENT_CREATED: 'kz.edu.enrollment.created',

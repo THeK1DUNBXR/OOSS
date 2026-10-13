@@ -123,6 +123,7 @@ describe('the paise siblings on the wire', () => {
     const period = await untouchedPeriod();
     const invoice = await asUser(FINANCE, () =>
       createInvoice({
+        division: 'education',
         organizationId: ORG,
         placeOfSupply: '33',
         issuedDate: firstDayOf(period),
@@ -199,6 +200,7 @@ describe('the paise siblings on the wire', () => {
     const period = await untouchedPeriod();
     await asUser(LATHA, () =>
       createInvoice({
+        division: 'education',
         organizationId: ORG,
         placeOfSupply: '33',
         customerGstin: GSTIN,

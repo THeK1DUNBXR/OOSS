@@ -38,6 +38,13 @@ import { openAccountingDate, periodRefusesEntries } from './compliance/books.js'
 import { invoiceLabel, paymentWire, receiptWire, rehydrateReceivablesFor, totalsOf } from './invoicing.js';
 import { withMinor } from '../platform/wire.js';
 import { governedWrite } from '../platform/governedWrite.js';
+import { lockLegacyPeriod } from '../platform/periodLock.js';
+import {
+  paymentHasReceiptEntries,
+  postReceiptAllocation,
+  receiptPostsFor,
+  reverseReceiptEntries,
+} from './invoicePosting.js';
 import {
   assertFits,
   clampZero,
@@ -226,21 +233,28 @@ export async function reversePayment(paymentId: string, reason: string) {
     throw ApiError.unprocessable('This payment is itself a reversal. Reversing it would restore the original error.');
   }
   await runHooks('accounting_document.before_write', { date: new Date(), what: 'This reversal' });
+  // The reversal of the receipts' journal entries is a write in the transactions domain.
+  if (await paymentHasReceiptEntries(paymentId)) await assertCan({ resource: 'transactions', verb: 'create' });
 
-  const recordCode = await nextRecordCode('PAY');
-  const reversal = await prisma.payment.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      amount: num(original.amount)! * -1,
-      currency: original.currency,
-      gatewayReference: `${original.gatewayReference}:REVERSAL`,
-      receivedAt: new Date(),
-      status: 'refunded',
-      method: original.method,
-      reversalOfPaymentId: paymentId,
-      note: reason,
-    },
+  // The payment's reversal row and the reversal of its receipts' entries commit together.
+  const { recordCode, reversal } = await governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('PAY', undefined, tx);
+    const reversal = await tx.payment.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        amount: num(original.amount)! * -1,
+        currency: original.currency,
+        gatewayReference: `${original.gatewayReference}:REVERSAL`,
+        receivedAt: new Date(),
+        status: 'refunded',
+        method: original.method,
+        reversalOfPaymentId: paymentId,
+        note: reason,
+      },
+    });
+    await reverseReceiptEntries(tx, paymentId, reason);
+    return { recordCode, reversal };
   });
 
   await auditWrite({
@@ -296,6 +310,8 @@ export async function allocatePayment(input: {
   const { documentNumbering } = await import('./companyProfile.js');
   const { DOCUMENT_SERIES, nextDocumentNumber } = await import('../platform/documentNumber.js');
   const numbering = await documentNumbering();
+  // An allocation to an invoice posts its receipt to the journal (invoicePosting.ts).
+  if (input.invoiceId) await assertCan({ resource: 'transactions', verb: 'create' });
 
   const receipt = await governedWrite(async (tx) => {
     // Payment first, then invoice: the order every allocation takes them in, so
@@ -351,6 +367,9 @@ export async function allocatePayment(input: {
       balanceAfter = poundsOf(clampZero(position.outstanding - amountPaise));
     }
 
+    // The period row before the number is taken (periodLock.ts order), for an allocation
+    // that posts. A month with no row gets one; a closed or closing month is refused.
+    if (input.invoiceId) await lockLegacyPeriod(tx, auth.tenantId, new Date());
     const recordCode = await nextDocumentNumber(
       tx,
       DOCUMENT_SERIES.receipt,
@@ -373,6 +392,32 @@ export async function allocatePayment(input: {
         paymentReference: payment.gatewayReference,
       },
     });
+
+    if (input.invoiceId) {
+      const invoice = await tx.invoice.findFirst({
+        where: { id: input.invoiceId, tenantId: auth.tenantId },
+        select: {
+          recordCode: true,
+          draftReference: true,
+          ledgerEntityId: true,
+          organizationId: true,
+          personId: true,
+        },
+      });
+      if (!invoice) throw ApiError.notFound('Invoice');
+      // Owner decision, 2026-10-13: no journal entry against an invoice issued before
+      // posting was wired (see collectInvoicePayment). The receipt row is still written.
+      if (await receiptPostsFor(tx, input.invoiceId)) {
+        await postReceiptAllocation(tx, {
+          receiptId: receipt.id,
+          receiptCode: recordCode,
+          allocatedAmount: receipt.allocatedAmount,
+          paymentMode: payment.method,
+          invoice,
+          receivedAt: new Date(),
+        });
+      }
+    }
 
     await auditWrite({
       tx,

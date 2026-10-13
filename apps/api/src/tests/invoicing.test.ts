@@ -231,6 +231,7 @@ describe('an invoice is priced when it is raised', () => {
   it('multiplies by the quantity, which the line used to carry and nothing used', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         lines: [{ description: 'Three seats', quantity: 3, unitPrice: 20_000, gstRate: 18, hsnSac: '999293' }],
       });
@@ -248,6 +249,7 @@ describe('an invoice is priced when it is raised', () => {
       const orgId = await anAccount();
 
       const local = await createInvoice({
+        division: 'education',
         organizationId: orgId,
         placeOfSupply: '33',
         lines: [{ description: 'Local', unitPrice: 10_000, gstRate: 18 }],
@@ -258,6 +260,7 @@ describe('an invoice is priced when it is raised', () => {
       expect(local.interState).toBe(false);
 
       const away = await createInvoice({
+        division: 'education',
         organizationId: orgId,
         customerGstin: '29AABCT1332L1ZA',
         lines: [{ description: 'Interstate', unitPrice: 10_000, gstRate: 18 }],
@@ -271,6 +274,7 @@ describe('an invoice is priced when it is raised', () => {
   it('prices a line per rate, because one invoice can carry two', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [
@@ -288,6 +292,7 @@ describe('an invoice is priced when it is raised', () => {
   it('bills a person, without inventing a company for them', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         lines: [{ description: 'Course fee', unitPrice: 60_000, gstRate: 18 }],
@@ -306,6 +311,7 @@ describe('an invoice is priced when it is raised', () => {
 
       const both = await expectReject(async () =>
         createInvoice({
+          division: 'education',
           organizationId: await anAccount(),
           personId: await aPerson(),
           lines: [{ description: 'x', unitPrice: 100 }],
@@ -319,6 +325,7 @@ describe('an invoice is priced when it is raised', () => {
     await asUser('latha@kaizen.co.in', async () => {
       const err = await expectReject(async () =>
         createInvoice({
+          division: 'education',
           organizationId: await anAccount(),
           customerGstin: '33AABCK1234H1Z9',
           lines: [{ description: 'x', unitPrice: 100 }],
@@ -333,6 +340,7 @@ describe('a line discount goes either way, and tax follows what it actually cost
   it('takes a rupee discount off the fee and taxes what is left', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Course fee', unitPrice: 60_000, gstRate: 18, discountAmount: 6_000 }],
@@ -355,6 +363,7 @@ describe('a line discount goes either way, and tax follows what it actually cost
   it('takes a percentage off the fee and works out the same rupee figure', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Course fee', unitPrice: 50_000, gstRate: 18, discountPercent: 20 }],
@@ -372,6 +381,7 @@ describe('a line discount goes either way, and tax follows what it actually cost
     await asUser('latha@kaizen.co.in', async () => {
       const err = await expectReject(async () =>
         createInvoice({
+          division: 'education',
           organizationId: await anAccount(),
           lines: [{ description: 'x', unitPrice: 1_000, discountAmount: 100, discountPercent: 10 }],
         }),
@@ -384,6 +394,7 @@ describe('a line discount goes either way, and tax follows what it actually cost
     await asUser('latha@kaizen.co.in', async () => {
       const err = await expectReject(async () =>
         createInvoice({
+          division: 'education',
           organizationId: await anAccount(),
           lines: [{ description: 'x', unitPrice: 1_000, discountAmount: 1_500 }],
         }),
@@ -396,6 +407,7 @@ describe('a line discount goes either way, and tax follows what it actually cost
     await asUser('latha@kaizen.co.in', async () => {
       const err = await expectReject(async () =>
         createInvoice({
+          division: 'education',
           organizationId: await anAccount(),
           lines: [{ description: 'x', unitPrice: 1_000, discountPercent: 150 }],
         }),
@@ -407,6 +419,7 @@ describe('a line discount goes either way, and tax follows what it actually cost
   it('prints the fee before the discount, the discount, and what it was actually billed at', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Course fee', unitPrice: 60_000, gstRate: 18, discountAmount: 6_000 }],
@@ -426,6 +439,7 @@ describe('a line discount goes either way, and tax follows what it actually cost
   it('has no discount at all when none is given, on an ordinary line', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         lines: [{ description: 'No discount', unitPrice: 1_000, gstRate: 18 }],
       });
@@ -441,6 +455,7 @@ describe('a draft is editable and an issued tax invoice is not', () => {
   it('reprices the whole invoice when a draft is rewritten', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const draft = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         issue: false,
@@ -462,6 +477,7 @@ describe('a draft is editable and an issued tax invoice is not', () => {
   it('refuses to edit one the customer is already holding', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const issued = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Issued', unitPrice: 1000, gstRate: 18 }],
@@ -478,6 +494,7 @@ describe('a draft is editable and an issued tax invoice is not', () => {
   it('will not take money against a draft, because a draft is not a document', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const draft = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         issue: false,
         lines: [{ description: 'Draft', unitPrice: 1000 }],
@@ -492,6 +509,7 @@ describe('a draft is editable and an issued tax invoice is not', () => {
       const orgId = await anAccount();
 
       const unpaid = await createInvoice({
+        division: 'education',
         organizationId: orgId,
         lines: [{ description: 'Mistake', unitPrice: 500 }],
       });
@@ -499,6 +517,7 @@ describe('a draft is editable and an issued tax invoice is not', () => {
       expect(voided.status).toBe('void');
 
       const paid = await createInvoice({
+        division: 'education',
         organizationId: orgId,
         lines: [{ description: 'Real', unitPrice: 1000, gstRate: 0 }],
         payment: { amount: 1000, mode: 'cash', reference: `CASH-${stamp()}` },
@@ -517,6 +536,7 @@ describe('an instalment issues a receipt and never restates the invoice', () => 
   it('writes the declaration when the money is taken as the invoice is handed over', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Programme', unitPrice: 60_000, gstRate: 18 }],
@@ -534,6 +554,7 @@ describe('an instalment issues a receipt and never restates the invoice', () => 
   it('leaves the invoice alone when a later instalment arrives', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Programme', unitPrice: 60_000, gstRate: 18 }],
@@ -566,6 +587,7 @@ describe('an instalment issues a receipt and never restates the invoice', () => 
   it('settles the invoice when the last instalment lands, and says so', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Small', unitPrice: 1000, gstRate: 0 }],
@@ -587,6 +609,7 @@ describe('an instalment issues a receipt and never restates the invoice', () => 
   it('refuses more than is outstanding rather than accepting an advance quietly', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         lines: [{ description: 'Small', unitPrice: 1000, gstRate: 0 }],
       });
@@ -601,6 +624,7 @@ describe('an instalment issues a receipt and never restates the invoice', () => 
     await asUser('latha@kaizen.co.in', async () => {
       const reference = `DUP-${stamp()}`;
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         lines: [{ description: 'Small', unitPrice: 1000, gstRate: 0 }],
         payment: { amount: 400, mode: 'cheque', reference },
@@ -615,6 +639,7 @@ describe('an instalment issues a receipt and never restates the invoice', () => 
   it('refuses to restate the terms of an invoice that has been issued', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         lines: [{ description: 'Issued', unitPrice: 1000, gstRate: 0 }],
       });
@@ -626,6 +651,7 @@ describe('an instalment issues a receipt and never restates the invoice', () => 
   it('states the terms on a draft, and carries them onto the issued document', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const draft = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         issue: false,
         lines: [{ description: 'Half now', unitPrice: 1000, gstRate: 0 }],
@@ -642,6 +668,7 @@ describe('an instalment issues a receipt and never restates the invoice', () => 
   it('gives the receipt its own document, naming the invoice and the instalment', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         lines: [{ description: 'Course fee', unitPrice: 60_000, gstRate: 18 }],
@@ -671,6 +698,7 @@ describe('an instalment issues a receipt and never restates the invoice', () => 
   it('lists receipts with the balance each one left behind', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Two halves', unitPrice: 1000, gstRate: 0 }],
@@ -697,6 +725,7 @@ describe('the final invoice names the receipts it consolidates', () => {
   it('lists every instalment, the total payable and what is left', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         lines: [{ description: 'Course fee', unitPrice: 60_000, gstRate: 18 }],
@@ -729,6 +758,7 @@ describe('the final invoice names the receipts it consolidates', () => {
   it('prints the balance rather than refusing to exist while one remains', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Partly paid', unitPrice: 1000, gstRate: 0 }],
@@ -743,6 +773,7 @@ describe('the final invoice names the receipts it consolidates', () => {
   it('refuses when there are no receipts, because the tax invoice already says everything', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         lines: [{ description: 'Nothing paid', unitPrice: 1000, gstRate: 0 }],
       });
@@ -754,6 +785,7 @@ describe('the final invoice names the receipts it consolidates', () => {
   it('supersedes an earlier statement rather than replacing it', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Two statements', unitPrice: 1000, gstRate: 0 }],
@@ -781,6 +813,7 @@ describe('the moment a payment settles an invoice, the final invoice is raised a
   it('a full payment at creation is not a special case: one receipt, one final invoice naming it', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Paid in full', unitPrice: 1000, gstRate: 0 }],
@@ -808,6 +841,7 @@ describe('the moment a payment settles an invoice, the final invoice is raised a
   it('two part payments raise it on the second, naming both receipts in order, numbered gaplessly', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Two instalments', unitPrice: 1000, gstRate: 0 }],
@@ -845,6 +879,7 @@ describe('the moment a payment settles an invoice, the final invoice is raised a
   it('refuses a payment against an invoice already settled', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         lines: [{ description: 'Settled at once', unitPrice: 500, gstRate: 0 }],
         payment: { amount: 500, mode: 'cash', reference: `CASH-${stamp()}` },
@@ -861,6 +896,7 @@ describe('the moment a payment settles an invoice, the final invoice is raised a
   it('carries the receipts and the final invoice reference on the tax invoice document', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Documented', unitPrice: 1000, gstRate: 0 }],
@@ -936,6 +972,7 @@ describe('the invoice says which of the three it is addressed to', () => {
       });
 
       const invoice = await createInvoice({
+        division: 'education',
         personId: student.personId,
         lines: [{ description: 'A course', unitPrice: 10_000, gstRate: 18, hsnSac: '999293' }],
       });
@@ -952,6 +989,7 @@ describe('the invoice document separates what it says from where the account sta
   it('prints the declaration made at issue, and keeps today’s balance beside it', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Programme', unitPrice: 60_000, gstRate: 18, hsnSac: '999293' }],
@@ -984,6 +1022,7 @@ describe('the invoice document separates what it says from where the account sta
   it('prints the whole amount as payable now on a credit invoice, not today’s balance', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'On credit', unitPrice: 1000, gstRate: 0 }],
@@ -1011,6 +1050,7 @@ describe('an employee raises invoices and sees their own', () => {
   it('lets an employee raise one and read it back', async () => {
     const raised = await asUser('priya@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Counter sale', unitPrice: 2000, gstRate: 18 }],
@@ -1029,6 +1069,7 @@ describe('an employee raises invoices and sees their own', () => {
     // Somebody else's invoice, raised by the finance head.
     const theirs = await asUser('latha@kaizen.co.in', async () =>
       createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         lines: [{ description: 'Not the employee’s', unitPrice: 100, gstRate: 0 }],
       }),
@@ -1036,6 +1077,7 @@ describe('an employee raises invoices and sees their own', () => {
 
     await asUser('priya@kaizen.co.in', async () => {
       const mine = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         lines: [{ description: 'Mine', unitPrice: 100, gstRate: 0 }],
       });
@@ -1053,6 +1095,7 @@ describe('an employee raises invoices and sees their own', () => {
   it('refuses an employee the invoice somebody else raised, on the WHERE axis', async () => {
     const theirs = await asUser('latha@kaizen.co.in', async () =>
       createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         lines: [{ description: 'Finance head’s', unitPrice: 100, gstRate: 0 }],
       }),
@@ -1110,6 +1153,7 @@ describe('GSTR-1 reports a registered customer by invoice and an unregistered on
 
     await asUser('latha@kaizen.co.in', async () => {
       await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         customerGstin: '33AAACS9101K1ZI',
         placeOfSupply: '33',
@@ -1117,6 +1161,7 @@ describe('GSTR-1 reports a registered customer by invoice and an unregistered on
         lines: [{ description: 'Registered customer', unitPrice: 10_000, gstRate: 18, hsnSac: '998314' }],
       });
       await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         issuedDate,
@@ -1144,6 +1189,7 @@ describe('GSTR-1 reports a registered customer by invoice and an unregistered on
   it('numbers an issued invoice in the company’s own series, and a draft not at all', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const draft = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         issue: false,
         lines: [{ description: 'Unissued', unitPrice: 100 }],
@@ -1166,6 +1212,7 @@ describe('GSTR-1 reports a registered customer by invoice and an unregistered on
   it('numbers a receipt in the same series, under its own letter', async () => {
     await asUser('latha@kaizen.co.in', async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         lines: [{ description: 'Numbered', unitPrice: 1000, gstRate: 0 }],
@@ -1185,6 +1232,7 @@ describe('GSTR-1 reports a registered customer by invoice and an unregistered on
       // An invoice with no HSN on its line: accepted by the books, rejected by
       // the portal.
       const bad = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         issuedDate: firstDayOf(period),
@@ -1212,6 +1260,7 @@ describe('GSTR-1 reports a registered customer by invoice and an unregistered on
     const period = await openPeriod();
     await asUser('latha@kaizen.co.in', async () => {
       await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         issuedDate: firstDayOf(period),
@@ -1228,12 +1277,14 @@ describe('GSTR-1 reports a registered customer by invoice and an unregistered on
     await asUser('latha@kaizen.co.in', async () => {
       const orgId = await anAccount();
       await createInvoice({
+        division: 'education',
         organizationId: orgId,
         issue: false,
         issuedDate: firstDayOf(period),
         lines: [{ description: 'Draft', unitPrice: 1000, gstRate: 18 }],
       });
       const voided = await createInvoice({
+        division: 'education',
         organizationId: orgId,
         placeOfSupply: '33',
         issuedDate: firstDayOf(period),
@@ -1255,6 +1306,7 @@ describe('GSTR-3B says what is actually paid in cash', () => {
     const period = await openPeriod();
     await asUser('latha@kaizen.co.in', async () => {
       await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         placeOfSupply: '33',
         issuedDate: firstDayOf(period),
@@ -1281,6 +1333,7 @@ describe('filing a return closes its month', () => {
 
     await asUser('latha@kaizen.co.in', async () => {
       const billed = await createInvoice({
+        division: 'education',
         organizationId: await anAccount(),
         customerGstin: '33AAACS9101K1ZI',
         placeOfSupply: '33',
@@ -1311,6 +1364,7 @@ describe('filing a return closes its month', () => {
       // is an edit to one already in it.
       const late = await expectReject(async () =>
         createInvoice({
+          division: 'education',
           organizationId: await anAccount(),
           issuedDate,
           lines: [{ description: 'Too late', unitPrice: 100 }],
@@ -1414,6 +1468,7 @@ describe('the course catalogue is editable and carries its price', () => {
     await asUser('chairman@kaizen.co.in', async () => {
       const course = await prisma.course.findFirstOrThrow({ where: { feeAmount: { not: null }, active: true } });
       const invoice = await createInvoice({
+        division: 'education',
         personId: await aPerson(),
         placeOfSupply: '33',
         lines: [{ courseId: course.id }],
@@ -1661,6 +1716,7 @@ describe('a student’s timeline is one record made of four kinds of day', () =>
         orderBy: { recordCode: 'asc' },
       });
       await createInvoice({
+        division: 'education',
         personId: enrollment.personId,
         placeOfSupply: '33',
         lines: [{ description: `Fee ${stamp()}`, unitPrice: 1000, gstRate: 0 }],

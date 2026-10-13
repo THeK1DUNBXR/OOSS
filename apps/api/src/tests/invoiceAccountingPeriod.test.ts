@@ -56,6 +56,7 @@ async function invoiceCount(): Promise<number> {
 async function openDraft() {
   return asUser(FIXTURE.finance, () =>
     createInvoice({
+      division: 'education',
       organizationId: ORG_ID,
       issue: false,
       lines: [{ description: unique('W2 draft'), unitPrice: 1000, gstRate: 18 }],
@@ -66,6 +67,7 @@ async function openDraft() {
 async function openIssued() {
   return asUser(FIXTURE.finance, () =>
     createInvoice({
+      division: 'education',
       organizationId: ORG_ID,
       lines: [{ description: unique('W2 issued'), unitPrice: 1000, gstRate: 18 }],
     }),
@@ -78,6 +80,7 @@ describe('Closed period — invoice writes dated inside it are refused', () => {
     const err = await expectReject(() =>
       asUser(FIXTURE.finance, () =>
         createInvoice({
+          division: 'education',
           organizationId: ORG_ID,
           issuedDate: new Date('2017-10-15T06:00:00Z'),
           lines: [{ description: unique('W2 closed'), unitPrice: 1000, gstRate: 18 }],
@@ -92,6 +95,7 @@ describe('Closed period — invoice writes dated inside it are refused', () => {
     const refused = await expectReject(() =>
       asUser(FIXTURE.finance, () =>
         createInvoice({
+          division: 'education',
           organizationId: ORG_ID,
           issuedDate: new Date('2017-10-01T00:30:00+05:30'),
           lines: [{ description: unique('W2 ist refused'), unitPrice: 1000, gstRate: 18 }],
@@ -102,6 +106,7 @@ describe('Closed period — invoice writes dated inside it are refused', () => {
 
     const accepted = await asUser(FIXTURE.finance, () =>
       createInvoice({
+        division: 'education',
         organizationId: ORG_ID,
         issuedDate: new Date('2017-11-01T00:30:00+05:30'),
         lines: [{ description: unique('W2 ist accepted'), unitPrice: 1000, gstRate: 18 }],

@@ -151,6 +151,7 @@ describe('Books writes emit their event', () => {
     const org = await unscopedPrisma.organization.findFirstOrThrow({ where: { tenantId: TENANT } });
     const draft = await asUser(FINANCE, () =>
       createInvoice({
+        division: 'education',
         organizationId: org.id,
         issue: false,
         lines: [{ description: unique('W2 event draft'), unitPrice: 1000, gstRate: 18 }],

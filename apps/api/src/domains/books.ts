@@ -313,7 +313,9 @@ export async function recordTransaction(input: TransactionInput) {
  * the scoped client.
  */
 export async function checkTransactionAllowed(input: Pick<TransactionInput, 'txnDate' | 'source'>) {
-  await assertCan({ resource: 'transactions', verb: 'create' });
+  // A create with no record: the evaluator checks scope only against a record, so assertCan
+  // alone lets an `@own` grant write the whole cashbook. A write with no record needs all scope.
+  await assertScopeAll('transactions', 'create');
   // A closed accounting period vetoes the entry here (docs/plan/compliance.md, D).
   await runHooks('transaction.before_record', { txnDate: input.txnDate, source: input.source ?? 'manual' });
 }
@@ -1350,7 +1352,9 @@ export async function loanSchedule(id: string) {
  */
 export async function generateRecurring(period: string): Promise<{ created: number; skipped: number }> {
   const auth = currentAuth();
-  await assertCan({ resource: 'transactions', verb: 'create' });
+  // A create with no record: the evaluator checks scope only against a record, so assertCan
+  // alone lets an `@own` grant write the whole cashbook. A write with no record needs all scope.
+  await assertScopeAll('transactions', 'create');
 
   const { from, to } = monthRange(period);
   const { year: fromYear, month: fromMonth } = istYearMonth(from);
@@ -1651,7 +1655,9 @@ export async function lockPayrollRunForPosting(tx: DbTx, tenantId: string, runId
  */
 export async function postPayrollToBooks(payrollRunId: string, accountId: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'transactions', verb: 'create' });
+  // A create with no record: the evaluator checks scope only against a record, so assertCan
+  // alone lets an `@own` grant write the whole cashbook. A write with no record needs all scope.
+  await assertScopeAll('transactions', 'create');
   await assertCan({ resource: 'payroll', verb: 'view' });
 
   const run = await prisma.payrollRun.findFirst({

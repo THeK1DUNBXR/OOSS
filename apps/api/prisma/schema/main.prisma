@@ -3116,6 +3116,13 @@ model Invoice {
   /// Which division earns the revenue on this invoice.
   division      String?
 
+  /// The ledger entity the invoice is booked to (Phase 0, invoice posting). Set at
+  /// creation: the tenant's one entity, or the one named when there are several. Null
+  /// only where the migration found no single entity to fill it from. Posting refuses
+  /// a null, so an issue in such a tenant names the entity it needs.
+  ledgerEntityId String?
+  ledgerEntity   LedgerEntity? @relation(fields: [tenantId, ledgerEntityId], references: [tenantId, id])
+
   /// An individual customer. The education motion bills people at least as
   /// often as it bills companies — somebody who walks in and pays for a course
   /// is not an organisation, and forcing one into existence to raise their
@@ -3190,6 +3197,31 @@ model Invoice {
   @@index([tenantId, createdById])
   @@index([tenantId, gstFilingId])
   @@map("invoices")
+}
+
+/// Finance's map from an invoice's division to the business line its revenue is booked
+/// under (Phase 0, invoice posting). The same shape as PayrollDivisionLine, kept apart
+/// because a payroll division and an invoice division are different vocabularies: the
+/// payroll map is written by payroll, and nothing on an invoice names a line. Insert
+/// only: a change is a new row from a later day, and an end is one update setting
+/// effectiveTo on an open row. Refusal names the division when it has no line on the day.
+model InvoiceDivisionLine {
+  id       String @id @default(cuid())
+  tenantId String
+
+  division String
+  lineId   String
+  line     BusinessLine @relation(fields: [tenantId, lineId], references: [tenantId, id])
+
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@unique([tenantId, division, effectiveFrom])
+  @@index([tenantId, division])
+  @@map("invoice_division_lines")
 }
 
 model InvoiceLine {

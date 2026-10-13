@@ -59,6 +59,7 @@ describe('the course-fee invoice lifecycle', () => {
     await asUser(EMPLOYEE, async () => {
       const { enrollment } = await anEnrollment(`TEMP${Date.now()}`);
       const invoice = await createInvoice({
+        division: 'education',
         personId: enrollment.personId,
         placeOfSupply: '33',
         enrollmentDate: new Date(),
@@ -83,6 +84,7 @@ describe('the course-fee invoice lifecycle', () => {
     await asUser(EMPLOYEE, async () => {
       const { enrollment } = await anEnrollment(`SETTLE${Date.now()}`);
       const invoice = await createInvoice({
+        division: 'education',
         personId: enrollment.personId,
         placeOfSupply: '33',
         enrollmentDate: new Date(),
@@ -133,6 +135,7 @@ describe('the course-fee invoice lifecycle', () => {
     await asUser(EMPLOYEE, async () => {
       const { enrollment } = await anEnrollment(`DROP${Date.now()}`);
       const invoice = await createInvoice({
+        division: 'education',
         personId: enrollment.personId,
         placeOfSupply: '33',
         enrollmentDate: new Date(),
@@ -160,6 +163,7 @@ describe('the course-fee invoice lifecycle', () => {
     await asUser(EMPLOYEE, async () => {
       const { enrollment } = await anEnrollment(`NIL${Date.now()}`);
       const invoice = await createInvoice({
+        division: 'education',
         personId: enrollment.personId,
         placeOfSupply: '33',
         enrollmentDate: new Date(),
@@ -180,6 +184,7 @@ describe('the course-fee invoice lifecycle', () => {
   it('a generic (non-course) invoice is untouched: still the on-demand, supersedable statement', async () => {
     await asUser(EMPLOYEE, async () => {
       const invoice = await createInvoice({
+        division: 'education',
         organizationId: (
           await prisma.organization.create({
             data: {

@@ -28,6 +28,7 @@ import {
   totalsMinorOf,
   invoiceWire,
 } from '../domains/invoicing.js';
+import { listInvoiceDivisionLines, setInvoiceDivisionLine } from '../domains/invoicePosting.js';
 import {
   listReceipts,
   receiptDocument,
@@ -253,6 +254,25 @@ router.get(
   handler(async (req) => invoiceDocument(req.params.id)),
 );
 
+// Invoice division lines (Phase 0, invoice posting): the map an issue posts its revenue through.
+router.get(
+  '/invoice-division-lines',
+  handler(async () => listInvoiceDivisionLines()),
+);
+router.post(
+  '/invoice-division-lines',
+  handler(async (req) => {
+    const body = z
+      .object({
+        division: divisionEnum,
+        lineId: z.string().min(1),
+        effectiveFrom: z.string().min(1),
+      })
+      .parse(req.body);
+    return setInvoiceDivisionLine(body);
+  }),
+);
+
 const invoiceBodySchema = z.object({
   accountId: z.string().nullish(),
   organizationId: z.string().nullish(),
@@ -280,7 +300,9 @@ const invoiceBodySchema = z.object({
 router.post(
   '/invoices',
   handler(async (req, res) => {
-    const body = invoiceBodySchema.parse(req.body);
+    // The ledger entity is named at creation only: an update does not move an invoice to
+    // another entity, so the field is not in the update's schema, where it would be ignored.
+    const body = invoiceBodySchema.extend({ ledgerEntityId: z.string().min(1).nullish() }).parse(req.body);
     const invoice = await createInvoice({
       ...body,
       issuedDate: body.issuedDate ? new Date(body.issuedDate) : undefined,
