@@ -129,6 +129,8 @@ beforeAll(async () => {
 
   founder = await makeAccount('founder');
   notFounder = await makeAccount('notfounder');
+  // The suite shares one database, so the login limiter's buckets carry over from earlier files; CI hit 429 here.
+  await unscopedPrisma.$executeRaw`DELETE FROM "RateLimitBucket" WHERE key LIKE 'login:%'`;
   founder.token = await signedInToken(founder);
   notFounder.token = await signedInToken(notFounder);
 });
