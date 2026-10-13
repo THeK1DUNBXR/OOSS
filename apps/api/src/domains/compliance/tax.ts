@@ -35,6 +35,9 @@ import {
   type SlabTable,
 } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
+import { rupeesToMinor, withDecimalMinor } from '../../platform/wire.js';
+import { minorToRupees } from '../money.js';
+import { PAYROLL_INSTRUCTION_MONEY } from './payroll.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { governedWrite } from '../../platform/governedWrite.js';
@@ -482,11 +485,11 @@ export async function pendingTdsLiability(
 
   if (sectionGroup === '192') {
     const rows = await prisma.payrollInstruction.findMany({
-      where: { tenantId: auth.tenantId, payPeriod: month, tdsAmount: { gt: 0 } },
-      select: { tdsAmount: true, employmentRelationshipId: true },
+      where: { tenantId: auth.tenantId, payPeriod: month, tdsAmountMinor: { gt: 0n } },
+      select: { tdsAmountMinor: true, employmentRelationshipId: true },
     });
     return {
-      amount: round2(rows.reduce((s, r) => s + (num(r.tdsAmount) ?? 0), 0)),
+      amount: round2(rows.reduce((s, r) => s + minorToRupees(r.tdsAmountMinor), 0)),
       deducteeCount: new Set(rows.map((r) => r.employmentRelationshipId)).size,
     };
   }
@@ -804,7 +807,7 @@ async function annualGrossEstimate(employmentId: string, fy: string): Promise<nu
     where: { tenantId: auth.tenantId, employmentRelationshipId: employmentId, payPeriod: { in: fyMonths(fy) } },
     orderBy: { payPeriod: 'desc' },
   });
-  return round2((num(latest?.grossAmount) ?? 0) * 12);
+  return round2((latest ? minorToRupees(latest.grossAmountMinor) : 0) * 12);
 }
 
 export async function salaryProjection(employmentId: string, fy?: string): Promise<SalaryProjection> {
@@ -827,9 +830,9 @@ export async function salaryProjection(employmentId: string, fy?: string): Promi
   const paidPeriods = fyMonths(targetFy).filter((p) => p <= currentPeriod());
   const deducted = await prisma.payrollInstruction.findMany({
     where: { tenantId: auth.tenantId, employmentRelationshipId: employmentId, payPeriod: { in: paidPeriods } },
-    select: { tdsAmount: true },
+    select: { tdsAmountMinor: true },
   });
-  const alreadyDeducted = round2(deducted.reduce((s, d) => s + (num(d.tdsAmount) ?? 0), 0));
+  const alreadyDeducted = round2(deducted.reduce((s, d) => s + minorToRupees(d.tdsAmountMinor), 0));
   const monthsRemaining = Math.max(1, 12 - paidPeriods.length + 1);
   const monthlyEstimate = monthlyTds(annualTax, monthsRemaining, alreadyDeducted);
 
@@ -876,12 +879,16 @@ export async function applySalaryTds(payrollRunId: string) {
   for (const instruction of run.instructions) {
     const projection = await salaryProjection(instruction.employmentRelationshipId, fy);
     const tdsAmount = projection.monthlyEstimate;
-    const oldTds = num(instruction.tdsAmount) ?? 0;
-    const deductions = round2((num(instruction.deductions) ?? 0) - oldTds + tdsAmount);
-    const netAmount = round2((num(instruction.grossAmount) ?? 0) - deductions);
+    const oldTds = minorToRupees(instruction.tdsAmountMinor);
+    const deductions = round2(minorToRupees(instruction.deductionsMinor) - oldTds + tdsAmount);
+    const netAmount = round2(minorToRupees(instruction.grossAmountMinor) - deductions);
     const row = await prisma.payrollInstruction.update({
       where: { id: instruction.id },
-      data: { tdsAmount, deductions, netAmount },
+      data: {
+        tdsAmountMinor: rupeesToMinor(tdsAmount),
+        deductionsMinor: rupeesToMinor(deductions),
+        netAmountMinor: rupeesToMinor(netAmount),
+      },
     });
     updated.push(row);
   }
@@ -892,7 +899,10 @@ export async function applySalaryTds(payrollRunId: string) {
     subjectId: run.id,
     meta: { operation: 'apply_salary_tds', count: updated.length },
   });
-  return updated;
+  // Every money column of the row, not just the four this function wrote: a
+  // column left out would reach the client as a bare paise string under a new
+  // name, with its rupee field gone.
+  return updated.map((row) => withDecimalMinor(row, PAYROLL_INSTRUCTION_MONEY));
 }
 
 // ---------------------------------------------------------------------------
@@ -1030,15 +1040,15 @@ async function returnRows(fy: string, quarter: Quarter, form: '24Q' | '26Q'): Pr
 
   if (form === '24Q') {
     const rows = await prisma.payrollInstruction.findMany({
-      where: { tenantId: auth.tenantId, payPeriod: { in: periods }, tdsAmount: { gt: 0 } },
+      where: { tenantId: auth.tenantId, payPeriod: { in: periods }, tdsAmountMinor: { gt: 0n } },
       include: { employmentRelationship: { include: { person: { select: { fullName: true } } } } },
     });
     return rows.map((r) => ({
       pan: r.employmentRelationship.panNumber,
       name: r.employmentRelationship.person.fullName,
       section: '192',
-      amountPaid: num(r.grossAmount) ?? 0,
-      tds: num(r.tdsAmount) ?? 0,
+      amountPaid: minorToRupees(r.grossAmountMinor),
+      tds: minorToRupees(r.tdsAmountMinor),
       challan: null,
     }));
   }
@@ -1274,9 +1284,13 @@ export async function issueCertificate(input: IssueCertificateInput) {
       },
     });
     snapshot = {
-      rows: rows.map((r) => ({ payPeriod: r.payPeriod, grossAmount: num(r.grossAmount), tds: num(r.tdsAmount) })),
-      totalGross: round2(rows.reduce((s, r) => s + (num(r.grossAmount) ?? 0), 0)),
-      totalTds: round2(rows.reduce((s, r) => s + (num(r.tdsAmount) ?? 0), 0)),
+      rows: rows.map((r) => ({
+        payPeriod: r.payPeriod,
+        grossAmount: minorToRupees(r.grossAmountMinor),
+        tds: minorToRupees(r.tdsAmountMinor),
+      })),
+      totalGross: round2(rows.reduce((s, r) => s + minorToRupees(r.grossAmountMinor), 0)),
+      totalTds: round2(rows.reduce((s, r) => s + minorToRupees(r.tdsAmountMinor), 0)),
     };
   }
 

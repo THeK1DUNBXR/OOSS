@@ -16,6 +16,7 @@ import { CONFIDENCE_RANK, ORIGINATION_FOR_TIER } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
+import { rupeesToMinor } from '../../platform/wire.js';
 
 /** Mirrors the shape `seedPeopleAndUsers` returns. */
 interface SeededPerson {
@@ -465,9 +466,9 @@ export async function seedDemoHr(people: SeededPerson[]) {
           payrollRunId: run.id,
           payPeriod: period,
           status: 'Computed',
-          grossAmount: gross,
-          deductions,
-          netAmount: gross - deductions,
+          grossAmountMinor: rupeesToMinor(gross),
+          deductionsMinor: rupeesToMinor(deductions),
+          netAmountMinor: rupeesToMinor(gross - deductions),
           division: unit?.division ?? 'shared',
         },
       });
@@ -478,7 +479,11 @@ export async function seedDemoHr(people: SeededPerson[]) {
 
     await prisma.payrollRun.update({
       where: { id: run.id },
-      data: { grossTotal, netTotal: Math.round(grossTotal * 0.88), headcount },
+      data: {
+        grossTotalMinor: rupeesToMinor(grossTotal),
+        netTotalMinor: rupeesToMinor(Math.round(grossTotal * 0.88)),
+        headcount,
+      },
     });
   }
 

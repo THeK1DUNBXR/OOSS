@@ -32,6 +32,8 @@ import {
   type PtSlab,
 } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
+import { rupeesToMinor, withDecimalMinor } from '../../platform/wire.js';
+import { minorToRupees } from '../money.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan, scopeFor } from '../../platform/permissions.js';
@@ -298,6 +300,37 @@ async function currentMinimumWage(state: string, category: string, at: Date): Pr
  */
 const DEFAULT_WAGE_CATEGORY = 'general';
 
+/** The paise columns a salary structure carries, read back as the Decimals a raw row always returned. */
+const SALARY_MONEY = [
+  'ctcAnnual',
+  'basic',
+  'hra',
+  'specialAllowance',
+  'conveyance',
+  'employerPfMonthly',
+  'employerEsiMonthly',
+] as const;
+
+/** The paise columns of a payroll run and of its instructions, read back as the Decimals a raw row always returned. */
+export const PAYROLL_RUN_MONEY = ['grossTotal', 'netTotal'] as const;
+export const PAYROLL_INSTRUCTION_MONEY = [
+  'grossAmount',
+  'deductions',
+  'netAmount',
+  'basicPay',
+  'hra',
+  'otherAllowances',
+  'pfEmployee',
+  'pfEmployer',
+  'epsEmployer',
+  'esiEmployee',
+  'esiEmployer',
+  'professionalTax',
+  'tdsAmount',
+  'lwfEmployee',
+  'lwfEmployer',
+] as const;
+
 // ---------------------------------------------------------------------------
 // Salary structures
 // ---------------------------------------------------------------------------
@@ -311,7 +344,7 @@ export async function listSalaryStructures(employmentRelationshipId?: string) {
     where.employmentRelationshipId = employmentRelationshipId;
   }
   const rows = await prisma.salaryStructure.findMany({ where, orderBy: { effectiveFrom: 'desc' } });
-  return attachEmploymentNames(rows);
+  return attachEmploymentNames(rows.map((r) => withDecimalMinor(r, SALARY_MONEY)));
 }
 
 export interface SalaryStructureInput {
@@ -347,20 +380,20 @@ export async function proposeSalaryStructure(input: SalaryStructureInput) {
       tenantId: auth.tenantId,
       employmentRelationshipId: input.employmentRelationshipId,
       effectiveFrom: input.effectiveFrom,
-      ctcAnnual: input.ctcAnnual,
-      basic: input.basic,
-      hra: input.hra,
-      specialAllowance: input.specialAllowance ?? 0,
-      conveyance: input.conveyance ?? 0,
+      ctcAnnualMinor: rupeesToMinor(input.ctcAnnual),
+      basicMinor: rupeesToMinor(input.basic),
+      hraMinor: rupeesToMinor(input.hra),
+      specialAllowanceMinor: rupeesToMinor(input.specialAllowance ?? 0),
+      conveyanceMinor: rupeesToMinor(input.conveyance ?? 0),
       otherAllowances: (input.otherAllowances ?? {}) as never,
-      employerPfMonthly,
-      employerEsiMonthly,
+      employerPfMonthlyMinor: rupeesToMinor(employerPfMonthly),
+      employerEsiMonthlyMinor: rupeesToMinor(employerEsiMonthly),
       status: 'Proposed',
       proposedById: auth.partyId,
     },
   });
   await auditWrite({ action: 'create', subjectType: 'salary_structure', subjectId: row.id, after: row });
-  return row;
+  return withDecimalMinor(row, SALARY_MONEY);
 }
 
 /** Approved by `salary_structures:approve`, and never by the proposer. */
@@ -383,7 +416,7 @@ export async function approveSalaryStructure(id: string) {
     data: { status: 'Approved', approvedById: auth.partyId, approvedAt: new Date() },
   });
   await auditWrite({ action: 'update', subjectType: 'salary_structure', subjectId: row.id, before, after: row });
-  return row;
+  return withDecimalMinor(row, SALARY_MONEY);
 }
 
 /** The approved structure in force on `at`, latest-effective-first. */
@@ -439,19 +472,19 @@ export async function computeInstruction(payrollRunId: string) {
       await prisma.payrollInstruction.update({
         where: { id: instruction.id },
         data: {
-          basicPay: 0,
-          hra: 0,
-          otherAllowances: instruction.grossAmount,
-          pfEmployee: 0,
-          pfEmployer: 0,
-          epsEmployer: 0,
-          esiEmployee: 0,
-          esiEmployer: 0,
-          professionalTax: 0,
-          lwfEmployee: 0,
-          lwfEmployer: 0,
-          deductions: 0,
-          netAmount: instruction.grossAmount,
+          basicPayMinor: 0n,
+          hraMinor: 0n,
+          otherAllowancesMinor: instruction.grossAmountMinor,
+          pfEmployeeMinor: 0n,
+          pfEmployerMinor: 0n,
+          epsEmployerMinor: 0n,
+          esiEmployeeMinor: 0n,
+          esiEmployerMinor: 0n,
+          professionalTaxMinor: 0n,
+          lwfEmployeeMinor: 0n,
+          lwfEmployerMinor: 0n,
+          deductionsMinor: 0n,
+          netAmountMinor: instruction.grossAmountMinor,
           computedFrom: { engagementType: employment.engagementType, tdsSectionHint: '194J' } as never,
         },
       });
@@ -463,11 +496,11 @@ export async function computeInstruction(payrollRunId: string) {
     if (!structure || !pfRow || !esiRow || !ptRow || !lwfRow) continue; // stays uncomputed on purpose
 
     const otherAllowancesTotal =
-      num(structure.specialAllowance)! +
-      num(structure.conveyance)! +
+      minorToRupees(structure.specialAllowanceMinor) +
+      minorToRupees(structure.conveyanceMinor) +
       Object.values((structure.otherAllowances as Record<string, number>) ?? {}).reduce((a, b) => a + Number(b), 0);
-    const basic = num(structure.basic)!;
-    const hra = num(structure.hra)!;
+    const basic = minorToRupees(structure.basicMinor);
+    const hra = minorToRupees(structure.hraMinor);
     const gross = basic + hra + otherAllowancesTotal;
 
     const tables = {
@@ -500,20 +533,20 @@ export async function computeInstruction(payrollRunId: string) {
     await prisma.payrollInstruction.update({
       where: { id: instruction.id },
       data: {
-        grossAmount: gross,
-        basicPay: lines.basicPay,
-        hra: lines.hra,
-        otherAllowances: lines.otherAllowances,
-        pfEmployee: lines.pfEmployee,
-        pfEmployer: lines.pfEmployer,
-        epsEmployer: lines.epsEmployer,
-        esiEmployee: lines.esiEmployee,
-        esiEmployer: lines.esiEmployer,
-        professionalTax: lines.professionalTax,
-        lwfEmployee: lines.lwfEmployee,
-        lwfEmployer: lines.lwfEmployer,
-        deductions: lines.totalDeductions,
-        netAmount: lines.netAmount,
+        grossAmountMinor: rupeesToMinor(gross),
+        basicPayMinor: rupeesToMinor(lines.basicPay),
+        hraMinor: rupeesToMinor(lines.hra),
+        otherAllowancesMinor: rupeesToMinor(lines.otherAllowances),
+        pfEmployeeMinor: rupeesToMinor(lines.pfEmployee),
+        pfEmployerMinor: rupeesToMinor(lines.pfEmployer),
+        epsEmployerMinor: rupeesToMinor(lines.epsEmployer),
+        esiEmployeeMinor: rupeesToMinor(lines.esiEmployee),
+        esiEmployerMinor: rupeesToMinor(lines.esiEmployer),
+        professionalTaxMinor: rupeesToMinor(lines.professionalTax),
+        lwfEmployeeMinor: rupeesToMinor(lines.lwfEmployee),
+        lwfEmployerMinor: rupeesToMinor(lines.lwfEmployer),
+        deductionsMinor: rupeesToMinor(lines.totalDeductions),
+        netAmountMinor: rupeesToMinor(lines.netAmount),
         computedFrom: {
           pfTableId: pfRow.id,
           esiTableId: esiRow.id,
@@ -538,7 +571,7 @@ registerHook('payroll_run.before_approve', 'cmp_pay', async (payload) => {
   const instructions = payload.instructions as Array<{
     id: string;
     computedFrom: unknown;
-    grossAmount: unknown;
+    grossAmountMinor: unknown;
     employmentRelationshipId: string;
   }>;
   const approverPartyId = payload.approverPartyId as string | null;
@@ -590,7 +623,9 @@ registerHook('payroll_run.before_approve', 'cmp_pay', async (payload) => {
   const floor = await currentMinimumWage(state, DEFAULT_WAGE_CATEGORY, periodEnd);
 
   if (floor != null) {
-    const below = instructions.filter((i) => i.computedFrom != null && num(i.grossAmount as never)! < floor);
+    const below = instructions.filter(
+      (i) => i.computedFrom != null && minorToRupees(i.grossAmountMinor as bigint) < floor,
+    );
     if (below.length > 0) {
       for (const i of below) {
         await raiseException({
@@ -668,20 +703,20 @@ async function issuePayslipsForRun(payrollRunId: string, payPeriod: string, inst
       },
       payPeriod,
       earnings: {
-        basic: num(instruction.basicPay),
-        hra: num(instruction.hra),
-        otherAllowances: num(instruction.otherAllowances),
-        gross: num(instruction.grossAmount),
+        basic: minorToRupees(instruction.basicPayMinor),
+        hra: minorToRupees(instruction.hraMinor),
+        otherAllowances: minorToRupees(instruction.otherAllowancesMinor),
+        gross: minorToRupees(instruction.grossAmountMinor),
       },
       deductions: {
-        pf: num(instruction.pfEmployee),
-        esi: num(instruction.esiEmployee),
-        professionalTax: num(instruction.professionalTax),
-        lwf: num(instruction.lwfEmployee),
-        tds: num(instruction.tdsAmount),
-        total: num(instruction.deductions),
+        pf: minorToRupees(instruction.pfEmployeeMinor),
+        esi: minorToRupees(instruction.esiEmployeeMinor),
+        professionalTax: minorToRupees(instruction.professionalTaxMinor),
+        lwf: minorToRupees(instruction.lwfEmployeeMinor),
+        tds: minorToRupees(instruction.tdsAmountMinor),
+        total: minorToRupees(instruction.deductionsMinor),
       },
-      net: num(instruction.netAmount),
+      net: minorToRupees(instruction.netAmountMinor),
       bankLast4: readRegulated(employment.bankAccountNumber)?.slice(-4) ?? null,
     };
 
@@ -789,24 +824,24 @@ export async function exportEcr(payrollRunId: string): Promise<string> {
   if (!run) throw ApiError.notFound('Payroll run');
 
   const instructions = await prisma.payrollInstruction.findMany({
-    where: { payrollRunId, tenantId: auth.tenantId, pfEmployee: { gt: 0 } },
+    where: { payrollRunId, tenantId: auth.tenantId, pfEmployeeMinor: { gt: 0n } },
     include: { employmentRelationship: { include: { person: true } } },
   });
 
   const lines = instructions.map((i) => {
     const employment = i.employmentRelationship;
-    const pfWage = num(i.basicPay) ?? 0;
+    const pfWage = minorToRupees(i.basicPayMinor);
     const epsWage = Math.min(pfWage, pfWage); // EPS wage equals capped basic already
     return [
       readRegulated(employment.uanNumber) ?? '',
       employment.person.fullName,
-      num(i.grossAmount),
+      minorToRupees(i.grossAmountMinor),
       pfWage,
       epsWage,
       pfWage,
-      num(i.pfEmployee),
-      num(i.epsEmployer),
-      num(i.pfEmployer),
+      minorToRupees(i.pfEmployeeMinor),
+      minorToRupees(i.epsEmployerMinor),
+      minorToRupees(i.pfEmployerMinor),
       0, // NCP days — not tracked yet
       0, // refund
     ].join('#~#');
@@ -825,7 +860,7 @@ export async function exportEsic(payrollRunId: string): Promise<string> {
   if (!run) throw ApiError.notFound('Payroll run');
 
   const instructions = await prisma.payrollInstruction.findMany({
-    where: { payrollRunId, tenantId: auth.tenantId, esiEmployee: { gt: 0 } },
+    where: { payrollRunId, tenantId: auth.tenantId, esiEmployeeMinor: { gt: 0n } },
     include: { employmentRelationship: { include: { person: true } } },
   });
 
@@ -833,7 +868,13 @@ export async function exportEsic(payrollRunId: string): Promise<string> {
   for (const i of instructions) {
     const employment = i.employmentRelationship;
     rows.push(
-      [readRegulated(employment.esicNumber) ?? '', employment.person.fullName, 26, num(i.grossAmount), ''].join(','),
+      [
+        readRegulated(employment.esicNumber) ?? '',
+        employment.person.fullName,
+        26,
+        minorToRupees(i.grossAmountMinor),
+        '',
+      ].join(','),
     );
   }
 
@@ -851,6 +892,15 @@ function monthsBetween(from: Date, to: Date): number {
   return (to.getUTCFullYear() - from.getUTCFullYear()) * 12 + (to.getUTCMonth() - from.getUTCMonth());
 }
 
+/** The paise columns of an offboarding, read back as the Decimals a raw row always returned. */
+const OFFBOARDING_MONEY = [
+  'settlementAmount',
+  'gratuityAmount',
+  'leaveEncashmentAmount',
+  'bonusAmount',
+  'noticeRecoveryAmount',
+] as const;
+
 export async function settleOffboarding(offboardingId: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'payroll', verb: 'edit' });
@@ -866,7 +916,7 @@ export async function settleOffboarding(offboardingId: string) {
   const asOf = employment.separationDate ?? new Date();
   const structure = await currentSalaryStructure(employment.id, asOf);
   const basicMonthly = structure
-    ? num(structure.basic)!
+    ? minorToRupees(structure.basicMinor)
     : (num(
         (
           await prisma.compensationRecord.findFirst({
@@ -876,10 +926,10 @@ export async function settleOffboarding(offboardingId: string) {
         )?.basicPay,
       ) ?? 0);
   const grossMonthly = structure
-    ? num(structure.basic)! +
-      num(structure.hra)! +
-      num(structure.specialAllowance)! +
-      num(structure.conveyance)! +
+    ? minorToRupees(structure.basicMinor) +
+      minorToRupees(structure.hraMinor) +
+      minorToRupees(structure.specialAllowanceMinor) +
+      minorToRupees(structure.conveyanceMinor) +
       Object.values((structure.otherAllowances as Record<string, number>) ?? {}).reduce((a, b) => a + Number(b), 0)
     : basicMonthly;
 
@@ -917,16 +967,21 @@ export async function settleOffboarding(offboardingId: string) {
   const row = await prisma.offboarding.update({
     where: { id: offboardingId },
     data: {
-      gratuityAmount: grat.amount,
-      leaveEncashmentAmount,
-      bonusAmount: bonusResult.amount,
-      noticeRecoveryAmount,
-      settlementAmount,
+      gratuityAmountMinor: rupeesToMinor(grat.amount),
+      leaveEncashmentAmountMinor: rupeesToMinor(leaveEncashmentAmount),
+      bonusAmountMinor: rupeesToMinor(bonusResult.amount),
+      noticeRecoveryAmountMinor: rupeesToMinor(noticeRecoveryAmount),
+      settlementAmountMinor: rupeesToMinor(settlementAmount),
       settlementComputedAt: new Date(),
     },
   });
   await auditWrite({ action: 'update', subjectType: 'offboarding', subjectId: row.id, before, after: row });
-  return { ...row, gratuityYears: grat.years, gratuityEligible: grat.eligible, encashDays };
+  return {
+    ...withDecimalMinor(row, OFFBOARDING_MONEY),
+    gratuityYears: grat.years,
+    gratuityEligible: grat.eligible,
+    encashDays,
+  };
 }
 
 // ---------------------------------------------------------------------------

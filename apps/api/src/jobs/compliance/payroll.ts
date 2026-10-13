@@ -1,6 +1,8 @@
 import type { JobDefinition, JobResult } from '../scheduler.js';
 import { istYearMonth, round2 } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
+import { rupeesToMinor } from '../../platform/wire.js';
+import { minorToRupees } from '../../domains/money.js';
 import { currentAuth } from '../../platform/context.js';
 
 /**
@@ -40,7 +42,7 @@ export async function runGratuityAccrual(): Promise<JobResult> {
         orderBy: { effectiveFrom: 'desc' },
       });
       const basicMonthly = structure
-        ? num(structure.basic)!
+        ? minorToRupees(structure.basicMinor)
         : (num(
             (
               await prisma.compensationRecord.findFirst({
@@ -64,7 +66,12 @@ export async function runGratuityAccrual(): Promise<JobResult> {
       if (existing) continue; // idempotent: already accrued this month
 
       await prisma.gratuityAccrual.create({
-        data: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, asOfDate, accrued: monthlyAccrual },
+        data: {
+          tenantId: auth.tenantId,
+          employmentRelationshipId: employment.id,
+          asOfDate,
+          accruedMinor: rupeesToMinor(monthlyAccrual),
+        },
       });
       processed += 1;
     } catch (err) {

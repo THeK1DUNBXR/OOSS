@@ -12,6 +12,7 @@
  * and going stale when a diagram changes.
  */
 
+import { rupeesOfMinorString } from '../domains/money.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { HANDOVER_KINDS } from '../domains/handover.js';
@@ -797,8 +798,10 @@ router.get(
       payPeriod: r.payPeriod,
       status: r.status,
       headcount: r.headcount,
-      grossTotal: money ? num(r.grossTotal) : null,
-      netTotal: money ? num(r.netTotal) : null,
+      grossTotal: money ? rupeesOfMinorString(r.grossTotalMinor) : null,
+      grossTotalMinor: money ? r.grossTotalMinor : null,
+      netTotal: money ? rupeesOfMinorString(r.netTotalMinor) : null,
+      netTotalMinor: money ? r.netTotalMinor : null,
       approvedAt: r.approvedAt?.toISOString() ?? null,
       disbursedAt: r.disbursedAt?.toISOString() ?? null,
       availableTransitions: payrollMachine.allowedEvents(r.status as never),
@@ -818,8 +821,10 @@ router.get(
       payPeriod: run.payPeriod,
       status: run.status,
       headcount: run.headcount,
-      grossTotal: money ? num(run.grossTotal) : null,
-      netTotal: money ? num(run.netTotal) : null,
+      grossTotal: money ? rupeesOfMinorString(run.grossTotalMinor) : null,
+      grossTotalMinor: money ? run.grossTotalMinor : null,
+      netTotal: money ? rupeesOfMinorString(run.netTotalMinor) : null,
+      netTotalMinor: money ? run.netTotalMinor : null,
       availableTransitions: payrollMachine.allowedEvents(run.status as never),
       instructions: run.instructions.map((i) => ({
         id: i.id,
@@ -827,9 +832,12 @@ router.get(
         fullName: i.employmentRelationship.person.fullName,
         division: i.division,
         status: i.status,
-        grossAmount: money ? num(i.grossAmount) : null,
-        deductions: money ? num(i.deductions) : null,
-        netAmount: money ? num(i.netAmount) : null,
+        grossAmount: money ? rupeesOfMinorString(i.grossAmountMinor) : null,
+        grossAmountMinor: money ? i.grossAmountMinor : null,
+        deductions: money ? rupeesOfMinorString(i.deductionsMinor) : null,
+        deductionsMinor: money ? i.deductionsMinor : null,
+        netAmount: money ? rupeesOfMinorString(i.netAmountMinor) : null,
+        netAmountMinor: money ? i.netAmountMinor : null,
       })),
     };
   }),
