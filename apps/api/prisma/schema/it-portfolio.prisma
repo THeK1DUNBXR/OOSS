@@ -41,7 +41,8 @@ model ItInitiative {
   businessCase    String?
   expectedBenefit String?
 
-  budget   Decimal @db.Decimal(18, 2)
+  /// Paise. Was Decimal(18,2) until 20261013222000_it_money_minor.
+  budgetMinor BigInt
   currency String  @default("INR")
 
   /// idea | assessed | approved | in_flight | delivered | benefits_realised | cancelled
@@ -145,7 +146,8 @@ model ItBudgetLine {
   /// run | grow
   kind     String
 
-  planned  Decimal @db.Decimal(18, 2)
+  /// Paise. Was Decimal(18,2) until 20261013222000_it_money_minor.
+  plannedMinor BigInt
   currency String  @default("INR")
 
   /// The finance `LedgerCategory` ids whose books rows are this line's

@@ -1,4 +1,5 @@
-import { decimalToMinor, parseMinor, type DecimalLike } from '@kaizen/shared';
+import { Prisma } from '@prisma/client';
+import { decimalToMinor, formatMinor, parseMinor, toMinorHalfUp, type DecimalLike } from '@kaizen/shared';
 
 export type { DecimalLike };
 
@@ -61,4 +62,60 @@ export function withMinor<T extends object, K extends keyof T & string>(
  */
 export function paiseSum(values: readonly DecimalLike[]): bigint {
   return values.reduce((total, value) => total + parseMinor(value.toFixed(2)), 0n);
+}
+
+/**
+ * A paise column as the Decimal a raw Prisma row used to carry. Its JSON form
+ * is the same two-place string the Decimal column produced, so a raw-row path
+ * keeps the type a client already reads.
+ */
+export function minorToDecimal(minor: bigint): Prisma.Decimal;
+export function minorToDecimal(minor: bigint | null | undefined): Prisma.Decimal | null;
+export function minorToDecimal(minor: bigint | null | undefined): Prisma.Decimal | null {
+  if (minor === null || minor === undefined) return null;
+  return new Prisma.Decimal(formatMinor(minor));
+}
+
+/** The paise column's wire string, or null. */
+export function minorString(minor: bigint | null | undefined): string | null {
+  return minor === null || minor === undefined ? null : wireInt(minor);
+}
+
+/** T with each named paise column replaced by the wire pair: `<name>` (value V) and `<name>Minor` (string). */
+export type WithMinorPair<T, N extends string, V> = Omit<T, `${N}Minor`> & {
+  [K in N]: V;
+} & { [K in N as `${K}Minor`]: string | null };
+
+/**
+ * A raw Prisma row with paise columns, shaped as it was before the conversion:
+ * each `<name>` is the Decimal the column used to return, and `<name>Minor`
+ * is its paise string. Every raw-row return path of a converted model passes
+ * through here, so the wire type does not change.
+ */
+export function withDecimalMinor<T extends object, N extends string>(
+  row: T,
+  names: readonly N[],
+): WithMinorPair<T, N, Prisma.Decimal | null> {
+  const out = { ...row } as Record<string, unknown>;
+  for (const name of names) {
+    const minor = (row as Record<string, unknown>)[`${name}Minor`] as bigint | null | undefined;
+    out[name] = minorToDecimal(minor);
+    out[`${name}Minor`] = minorString(minor);
+  }
+  return out as WithMinorPair<T, N, Prisma.Decimal | null>;
+}
+
+/**
+ * A rupee number from a request body, as paise. Rounded half away from zero to
+ * two places and refused for NaN or infinity, so the write never goes through a
+ * float sum.
+ */
+export function rupeesToMinor(rupees: number): bigint {
+  return toMinorHalfUp(rupees);
+}
+
+/** As rupeesToMinor, with `undefined` left undefined (the column is not touched) and `null` as null. */
+export function rupeesToMinorOrNull(rupees: number | null | undefined): bigint | null | undefined {
+  if (rupees === undefined) return undefined;
+  return rupees === null ? null : toMinorHalfUp(rupees);
 }

@@ -330,7 +330,8 @@ describe('portfolio — domain and wiring', () => {
     expect(afterLateBill.variance).toBe(145_000);
 
     const stillPlanned = await unscopedPrisma.itBudgetLine.findFirstOrThrow({ where: { id: line.id } });
-    expect(Number(stillPlanned.planned)).toBe(200_000);
+    // The column is paise since 20261013222000_it_money_minor: 200,000 rupees.
+    expect(stillPlanned.plannedMinor).toBe(20_000_000n);
 
     // A draft bill is not yet a commitment and a cancelled one never was —
     // neither counts as spend.

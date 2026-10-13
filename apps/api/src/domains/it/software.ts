@@ -45,6 +45,8 @@ import {
   type ItSummaryBase,
 } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
+import { rupeesToMinor, withDecimalMinor } from '../../platform/wire.js';
+import { minorToRupees } from './money.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
@@ -59,9 +61,15 @@ registerGovernedEntities('it_software', ['it_application', 'it_licence']);
 
 const RENEWAL_POLICY_CODE = 'POL-IT-LICENCE-APPROVAL';
 
-function num(d: unknown): number {
-  if (d === null || d === undefined) return 0;
-  return typeof d === 'number' ? d : Number((d as { toString(): string }).toString());
+/**
+ * The licence's two money columns as the wire has always carried them: the
+ * Decimal the raw row returned, with its paise string beside it.
+ */
+const LICENCE_MONEY = ['costPerPeriod', 'pendingRenewalCostPerPeriod'] as const;
+function licenceWire<T extends { costPerPeriodMinor: bigint; pendingRenewalCostPerPeriodMinor: bigint | null }>(
+  row: T,
+) {
+  return withDecimalMinor(row, LICENCE_MONEY);
 }
 
 /**
@@ -80,6 +88,8 @@ function maskLicenceMoney<T extends Record<string, unknown>>(row: T, seesMoney: 
   const masked: Record<string, unknown> = { ...row };
   if ('costPerPeriod' in masked) masked.costPerPeriod = null;
   if ('pendingRenewalCostPerPeriod' in masked) masked.pendingRenewalCostPerPeriod = null;
+  if ('costPerPeriodMinor' in masked) masked.costPerPeriodMinor = null;
+  if ('pendingRenewalCostPerPeriodMinor' in masked) masked.pendingRenewalCostPerPeriodMinor = null;
   if ('annualisedCost' in masked) masked.annualisedCost = null;
   return masked as T;
 }
@@ -217,7 +227,7 @@ export async function applicationDetail(id: string) {
       where: { tenantId: auth.tenantId, applicationId: id, deletedAt: null },
       orderBy: { createdAt: 'desc' },
     });
-    licences = rows.map((row) => maskLicenceMoney(row, seesMoney));
+    licences = rows.map((row) => maskLicenceMoney(licenceWire(row), seesMoney));
   }
 
   return {
@@ -380,7 +390,7 @@ export async function createLicence(input: CreateLicenceInput) {
         kind: input.kind,
         seatsPurchased: input.seatsPurchased ?? 0,
         seatsInUse: input.seatsInUse ?? 0,
-        costPerPeriod: input.costPerPeriod,
+        costPerPeriodMinor: rupeesToMinor(input.costPerPeriod),
         currency: input.currency ?? 'INR',
         billingCycle: input.billingCycle,
         termStart: input.termStart ?? null,
@@ -408,7 +418,7 @@ export async function createLicence(input: CreateLicenceInput) {
       newState: {
         kind: licence.kind,
         seatsPurchased: licence.seatsPurchased,
-        costPerPeriod: num(licence.costPerPeriod),
+        costPerPeriod: minorToRupees(licence.costPerPeriodMinor),
       },
       owner: { partyId: application.ownerPartyId },
       impact: { domains: [IT_DOMAIN] },
@@ -417,7 +427,7 @@ export async function createLicence(input: CreateLicenceInput) {
     return licence;
   });
 
-  return licence;
+  return licenceWire(licence);
 }
 
 export interface LicenceFilter {
@@ -452,7 +462,7 @@ export async function listLicences(filter: LicenceFilter = {}) {
     filtered = rows.filter((r) => seatUtilisation(r.seatsPurchased, r.seatsInUse).overAllocated);
   }
 
-  return filtered.map((row) => maskLicenceMoney(row, seesMoney));
+  return filtered.map((row) => maskLicenceMoney(licenceWire(row), seesMoney));
 }
 
 async function loadLicence(id: string) {
@@ -471,8 +481,8 @@ export async function licenceDetail(id: string) {
   const seesMoney = await canSeeMoney('it_licences');
   const events = await prisma.itLicenceEvent.findMany({ where: { licenceId: id }, orderBy: { createdAt: 'desc' } });
   const shaped = {
-    ...licence,
-    annualisedCost: annualisedCost(num(licence.costPerPeriod), licence.billingCycle as ItBillingCycle),
+    ...licenceWire(licence),
+    annualisedCost: annualisedCost(minorToRupees(licence.costPerPeriodMinor), licence.billingCycle as ItBillingCycle),
     seatUtilisation: seatUtilisation(licence.seatsPurchased, licence.seatsInUse),
     events,
   };
@@ -519,7 +529,7 @@ export async function updateSeats(id: string, seatsInUse: number, note?: string)
     after: { seatsInUse },
   });
 
-  return updated;
+  return licenceWire(updated);
 }
 
 /**
@@ -584,7 +594,7 @@ export async function proposeRenewal(id: string, input: ProposeRenewalInput): Pr
   }
   if (!input.newTermEnd) throw ApiError.badRequest('A renewal proposal needs the new term end date.');
 
-  const costPerPeriod = input.newCostPerPeriod ?? num(licence.costPerPeriod);
+  const costPerPeriod = input.newCostPerPeriod ?? minorToRupees(licence.costPerPeriodMinor);
   const billingCycle = (input.newBillingCycle ?? licence.billingCycle) as ItBillingCycle;
   const annualised = annualisedCost(costPerPeriod, billingCycle);
 
@@ -628,7 +638,7 @@ export async function proposeRenewal(id: string, input: ProposeRenewalInput): Pr
         pendingRenewalProposedById: auth.partyId,
         pendingRenewalApprovalStepId: step.id,
         pendingRenewalTermEnd: input.newTermEnd,
-        pendingRenewalCostPerPeriod: costPerPeriod,
+        pendingRenewalCostPerPeriodMinor: rupeesToMinor(costPerPeriod),
         pendingRenewalNote: input.note ?? null,
       },
     });
@@ -704,7 +714,7 @@ export async function proposeRenewal(id: string, input: ProposeRenewalInput): Pr
 
   return {
     applied: false,
-    licence: updated,
+    licence: licenceWire(updated),
     approvalStepId: step.id,
     resolvedApproverRole: approver?.roleSlug ?? 'finance_head',
     reason: 'Awaiting approval — a licence renewal is never applied by the person who proposed it.',
@@ -736,7 +746,7 @@ export async function approveRenewal(id: string, approve: boolean, note = ''): P
           pendingRenewalApprovalStepId: null,
           pendingRenewalProposedById: null,
           pendingRenewalTermEnd: null,
-          pendingRenewalCostPerPeriod: null,
+          pendingRenewalCostPerPeriodMinor: null,
           pendingRenewalNote: null,
         },
       });
@@ -761,7 +771,7 @@ export async function approveRenewal(id: string, approve: boolean, note = ''): P
     });
     return {
       applied: false,
-      licence: cleared,
+      licence: licenceWire(cleared),
       approvalStepId: decided.id,
       resolvedApproverRole: decided.resolvedApproverRole,
       reason: 'Declined.',
@@ -775,12 +785,12 @@ export async function approveRenewal(id: string, approve: boolean, note = ''): P
         status: 'active',
         termEnd: licence.pendingRenewalTermEnd ?? licence.termEnd,
         renewalDate: licence.pendingRenewalTermEnd ?? licence.renewalDate,
-        costPerPeriod: licence.pendingRenewalCostPerPeriod ?? licence.costPerPeriod,
+        costPerPeriodMinor: licence.pendingRenewalCostPerPeriodMinor ?? licence.costPerPeriodMinor,
         renewalNotifiedRungs: [],
         pendingRenewalApprovalStepId: null,
         pendingRenewalProposedById: null,
         pendingRenewalTermEnd: null,
-        pendingRenewalCostPerPeriod: null,
+        pendingRenewalCostPerPeriodMinor: null,
         pendingRenewalNote: null,
       },
     });
@@ -792,7 +802,7 @@ export async function approveRenewal(id: string, approve: boolean, note = ''): P
         kind: 'renewal_approved',
         actorPartyId: auth.partyId,
         note: note || null,
-        detail: { termEnd: updated.termEnd, costPerPeriod: num(updated.costPerPeriod) },
+        detail: { termEnd: updated.termEnd, costPerPeriod: minorToRupees(updated.costPerPeriodMinor) },
       },
     });
     await auditWrite({
@@ -807,7 +817,7 @@ export async function approveRenewal(id: string, approve: boolean, note = ''): P
       name: EVENTS.IT_LICENCE_RENEWED,
       subject: { entityType: 'it_licence', entityId: id, recordCode: licence.recordCode },
       previousState: { termEnd: licence.termEnd },
-      newState: { termEnd: updated.termEnd, costPerPeriod: num(updated.costPerPeriod) },
+      newState: { termEnd: updated.termEnd, costPerPeriod: minorToRupees(updated.costPerPeriodMinor) },
       owner: { partyId: licence.application.ownerPartyId },
       impact: { domains: [IT_DOMAIN] },
       tx,
@@ -817,7 +827,7 @@ export async function approveRenewal(id: string, approve: boolean, note = ''): P
 
   return {
     applied: true,
-    licence: updated,
+    licence: licenceWire(updated),
     approvalStepId: decided.id,
     resolvedApproverRole: decided.resolvedApproverRole,
     reason: 'Renewed.',
@@ -847,7 +857,7 @@ export async function cancelLicence(id: string, reason: string) {
         pendingRenewalApprovalStepId: null,
         pendingRenewalProposedById: null,
         pendingRenewalTermEnd: null,
-        pendingRenewalCostPerPeriod: null,
+        pendingRenewalCostPerPeriodMinor: null,
         pendingRenewalNote: null,
       },
     });
@@ -875,7 +885,7 @@ export async function cancelLicence(id: string, reason: string) {
     return updated;
   });
 
-  return updated;
+  return licenceWire(updated);
 }
 
 // ---------------------------------------------------------------------------
@@ -1095,7 +1105,7 @@ export async function licencesSummary(): Promise<LicencesSummary> {
   const now = new Date();
 
   for (const row of rows) {
-    const cost = annualisedCost(num(row.costPerPeriod), row.billingCycle as ItBillingCycle);
+    const cost = annualisedCost(minorToRupees(row.costPerPeriodMinor), row.billingCycle as ItBillingCycle);
     const existing = byApp.get(row.applicationId);
     byApp.set(row.applicationId, {
       applicationId: row.applicationId,
@@ -1122,7 +1132,10 @@ export async function licencesSummary(): Promise<LicencesSummary> {
     notYetMeasured: false,
     annualisedSpend: seesMoney
       ? totalAnnualisedSpend(
-          rows.map((r) => ({ costPerPeriod: num(r.costPerPeriod), billingCycle: r.billingCycle as ItBillingCycle })),
+          rows.map((r) => ({
+            costPerPeriod: minorToRupees(r.costPerPeriodMinor),
+            billingCycle: r.billingCycle as ItBillingCycle,
+          })),
         )
       : null,
     annualisedSpendByApplication: seesMoney

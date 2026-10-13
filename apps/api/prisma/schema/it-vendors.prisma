@@ -132,7 +132,8 @@ model ItVendorContract {
 
   title String
 
-  value    Decimal @db.Decimal(18, 2)
+  /// Paise. Was Decimal(18,2) until 20261013222000_it_money_minor.
+  valueMinor BigInt
   currency String  @default("INR")
 
   termMonths Int?

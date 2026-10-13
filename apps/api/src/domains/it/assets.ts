@@ -33,7 +33,10 @@ import {
   type ItAssetLifecycleEvent,
   type ItAssetStatus,
 } from '@kaizen/shared';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../platform/db.js';
+import { rupeesToMinorOrNull, withDecimalMinor, type WithMinorPair } from '../../platform/wire.js';
+import { minorToRupees } from './money.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { availableTransitions } from '../../platform/lifecycle.js';
@@ -131,7 +134,7 @@ export async function createAsset(input: CreateAssetInput) {
         model: input.model ?? null,
         serial: input.serial ?? null,
         purchaseDate: input.purchaseDate ?? null,
-        purchaseCost: input.purchaseCost ?? null,
+        purchaseCostMinor: rupeesToMinorOrNull(input.purchaseCost) ?? null,
         warrantyEnd: input.warrantyEnd ?? null,
         supplierName: input.supplierName ?? null,
         vendorId: input.vendorId ?? null,
@@ -197,7 +200,7 @@ export async function updateAsset(id: string, patch: UpdateAssetInput) {
       ...(patch.model !== undefined ? { model: patch.model } : {}),
       ...(patch.serial !== undefined ? { serial: patch.serial } : {}),
       ...(patch.purchaseDate !== undefined ? { purchaseDate: patch.purchaseDate } : {}),
-      ...(patch.purchaseCost !== undefined ? { purchaseCost: patch.purchaseCost } : {}),
+      ...(patch.purchaseCost !== undefined ? { purchaseCostMinor: rupeesToMinorOrNull(patch.purchaseCost) } : {}),
       ...(patch.warrantyEnd !== undefined ? { warrantyEnd: patch.warrantyEnd, warrantyNotifiedRungs: [] } : {}),
       ...(patch.supplierName !== undefined ? { supplierName: patch.supplierName } : {}),
       ...(patch.vendorId !== undefined ? { vendorId: patch.vendorId } : {}),
@@ -209,7 +212,13 @@ export async function updateAsset(id: string, patch: UpdateAssetInput) {
     },
   });
 
-  await auditWrite({ action: 'update', subjectType: 'it_asset', subjectId: id, before: asset, after: updated });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_asset',
+    subjectId: id,
+    before: withDecimalMinor(asset, ['purchaseCost']),
+    after: withDecimalMinor(updated, ['purchaseCost']),
+  });
   return withTransitions(updated);
 }
 
@@ -324,7 +333,11 @@ export async function assetDetail(id: string) {
     // The books' figure when the asset is capitalised, otherwise what was
     // typed in here — never both added together (Principle 8: money stays
     // in the books).
-    bookValue: fixedAsset ? fixedAsset.cost : asset.purchaseCost ? Number(asset.purchaseCost) : null,
+    bookValue: fixedAsset
+      ? fixedAsset.cost
+      : asset.purchaseCostMinor !== null
+        ? minorToRupees(asset.purchaseCostMinor)
+        : null,
     fixedAsset,
     assignments: assignments.map((a) => ({ ...a, holderName: nameOf(a.partyId) })),
     events,
@@ -351,8 +364,13 @@ async function withHolderNames<T extends { holderPartyId: string | null }>(
   }));
 }
 
-function withTransitions<T extends { status: string }>(row: T): T & { availableTransitions: ItAssetLifecycleEvent[] } {
-  return { ...row, availableTransitions: availableTransitions(itAssetMachine, row.status as ItAssetStatus) };
+function withTransitions<T extends { status: string; purchaseCostMinor: bigint | null }>(
+  row: T,
+): WithMinorPair<T, 'purchaseCost', Prisma.Decimal | null> & { availableTransitions: ItAssetLifecycleEvent[] } {
+  return {
+    ...withDecimalMinor(row, ['purchaseCost'] as const),
+    availableTransitions: availableTransitions(itAssetMachine, row.status as ItAssetStatus),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -866,7 +884,9 @@ export async function summary() {
   }
 
   const bookValue = assetBookValue(
-    rows.filter((r) => r.status !== 'disposed').map((r) => (r.purchaseCost ? Number(r.purchaseCost) : null)),
+    rows
+      .filter((r) => r.status !== 'disposed')
+      .map((r) => (r.purchaseCostMinor !== null ? minorToRupees(r.purchaseCostMinor) : null)),
   );
 
   const topHolderIds = [...holderCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);

@@ -49,6 +49,8 @@ import {
   type ItTechDebtSummary,
 } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
+import { minorString, rupeesToMinor, withDecimalMinor } from '../../platform/wire.js';
+import { minorToRupees } from './money.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
@@ -77,7 +79,15 @@ registerGovernedEntities('it_portfolio', [
 // because a budget summary nests money inside `byCategory`/`byDivision`.
 // ---------------------------------------------------------------------------
 
-const BUDGET_MONEY_FIELDS = ['planned', 'actual', 'variance', 'plannedTotal', 'actualTotal', 'spendToDate'] as const;
+const BUDGET_MONEY_FIELDS = [
+  'planned',
+  'plannedMinor',
+  'actual',
+  'variance',
+  'plannedTotal',
+  'actualTotal',
+  'spendToDate',
+] as const;
 
 function walkMaskBudget(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(walkMaskBudget);
@@ -156,7 +166,7 @@ export async function createInitiative(input: CreateInitiativeInput) {
         ownerPartyId: input.ownerPartyId,
         businessCase: input.businessCase ?? null,
         expectedBenefit: input.expectedBenefit ?? null,
-        budget: input.budget,
+        budgetMinor: rupeesToMinor(input.budget),
         currency: input.currency ?? 'INR',
         stage: 'idea',
         rag: 'green',
@@ -186,7 +196,7 @@ export async function createInitiative(input: CreateInitiativeInput) {
     return initiative;
   });
 
-  return initiative;
+  return withDecimalMinor(initiative, ['budget']);
 }
 
 export interface InitiativeFilter {
@@ -198,7 +208,7 @@ export interface InitiativeFilter {
 export async function listInitiatives(filter: InitiativeFilter = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'it_initiatives', verb: 'view' });
-  return prisma.itInitiative.findMany({
+  const rows = await prisma.itInitiative.findMany({
     where: {
       tenantId: auth.tenantId,
       ...(filter.stage ? { stage: filter.stage } : {}),
@@ -207,6 +217,7 @@ export async function listInitiatives(filter: InitiativeFilter = {}) {
     },
     orderBy: { createdAt: 'desc' },
   });
+  return rows.map((row) => withDecimalMinor(row, ['budget']));
 }
 
 /** Spend to date: a sum over the `VendorBill` rows the initiative names —
@@ -244,7 +255,7 @@ export async function initiativeDetail(id: string) {
   // the same "financial visibility" as seeing what a budget line has spent.
   const seesMoney = await canSeeMoney('it_budgets');
   return {
-    ...initiative,
+    ...withDecimalMinor(initiative, ['budget']),
     spendToDate: seesMoney ? spendToDate : null,
     availableTransitions: availableTransitions(itInitiativeMachine, initiative.stage as ItInitiativeStage),
   };
@@ -291,7 +302,7 @@ export async function transitionInitiative(
         type: 'it_initiative',
         label: `${initiative.recordCode} — ${initiative.title}`,
         ownerPartyId: initiative.sponsorPartyId,
-        commercialValue: num(initiative.budget),
+        commercialValue: minorToRupees(initiative.budgetMinor),
         currency: initiative.currency,
         strategicValue: null,
         termMonths: null,
@@ -299,7 +310,12 @@ export async function transitionInitiative(
       'it_initiative.approve',
     );
     if (!gate.permitted) {
-      return { applied: false, initiative, approvalStepId: gate.approvalStepId, reason: gate.reason };
+      return {
+        applied: false,
+        initiative: withDecimalMinor(initiative, ['budget']),
+        approvalStepId: gate.approvalStepId,
+        reason: gate.reason,
+      };
     }
   } else {
     await assertCan({ resource: 'it_initiatives', verb: 'edit', record: { ownerPartyId: initiative.ownerPartyId } });
@@ -330,7 +346,7 @@ export async function transitionInitiative(
     return updated;
   });
 
-  return { applied: true, initiative: updated, approvalStepId: null, reason: null };
+  return { applied: true, initiative: withDecimalMinor(updated, ['budget']), approvalStepId: null, reason: null };
 }
 
 export interface PostUpdateInput {
@@ -551,7 +567,7 @@ export async function createBudgetLine(input: CreateBudgetLineInput) {
         category: input.category,
         division: input.division ?? null,
         kind: input.kind,
-        planned: input.planned,
+        plannedMinor: rupeesToMinor(input.planned),
         currency: input.currency ?? 'INR',
         bookCategoryIds: input.bookCategoryIds ?? [],
         status: 'draft',
@@ -576,7 +592,7 @@ export async function createBudgetLine(input: CreateBudgetLineInput) {
     return line;
   });
 
-  return line;
+  return withDecimalMinor(line, ['planned']);
 }
 
 export interface UpdateBudgetLineInput {
@@ -597,7 +613,7 @@ export async function updateBudgetLine(id: string, input: UpdateBudgetLineInput)
   const updated = await prisma.itBudgetLine.update({
     where: { id },
     data: {
-      ...(input.planned !== undefined ? { planned: input.planned } : {}),
+      ...(input.planned !== undefined ? { plannedMinor: rupeesToMinor(input.planned) } : {}),
       ...(input.division !== undefined ? { division: input.division } : {}),
       ...(input.bookCategoryIds !== undefined ? { bookCategoryIds: input.bookCategoryIds } : {}),
     },
@@ -607,10 +623,10 @@ export async function updateBudgetLine(id: string, input: UpdateBudgetLineInput)
     action: 'update',
     subjectType: 'it_budget_line',
     subjectId: id,
-    before: { planned: num(line.planned) },
-    after: { planned: input.planned ?? num(line.planned) },
+    before: { planned: minorToRupees(line.plannedMinor) },
+    after: { planned: input.planned ?? minorToRupees(line.plannedMinor) },
   });
-  return updated;
+  return withDecimalMinor(updated, ['planned']);
 }
 
 /**
@@ -657,7 +673,7 @@ export async function approveBudgetLine(id: string) {
     return updated;
   });
 
-  return updated;
+  return withDecimalMinor(updated, ['planned']);
 }
 
 export async function budgetLineDetail(id: string) {
@@ -667,7 +683,10 @@ export async function budgetLineDetail(id: string) {
   if (!line) throw ApiError.notFound('Budget line');
   const actual = await computeBudgetActual(line);
   const seesMoney = await canSeeMoney('it_budgets');
-  return maskBudgetMoney({ ...line, actual, variance: (num(line.planned) ?? 0) - actual }, seesMoney);
+  return maskBudgetMoney(
+    { ...withDecimalMinor(line, ['planned']), actual, variance: minorToRupees(line.plannedMinor) - actual },
+    seesMoney,
+  );
 }
 
 /**
@@ -747,13 +766,14 @@ export async function budgetForFy(fy: string): Promise<BudgetForFy> {
   const withActuals = await Promise.all(
     lines.map(async (l) => {
       const actual = await computeBudgetActual(l);
-      const planned = num(l.planned) ?? 0;
+      const planned = minorToRupees(l.plannedMinor);
       return {
         id: l.id,
         category: l.category,
         division: l.division,
         kind: l.kind,
         planned,
+        plannedMinor: minorString(l.plannedMinor),
         actual,
         variance: planned - actual,
         status: l.status,
@@ -794,7 +814,7 @@ export async function budgetSummary(fy?: string): Promise<ItBudgetSummary> {
   }
 
   const withActuals = await Promise.all(
-    lines.map(async (l) => ({ line: l, planned: num(l.planned) ?? 0, actual: await computeBudgetActual(l) })),
+    lines.map(async (l) => ({ line: l, planned: minorToRupees(l.plannedMinor), actual: await computeBudgetActual(l) })),
   );
 
   // Accumulated as plain (never-null) numbers regardless of who is asking —

@@ -12,6 +12,7 @@
 
 import { IT_DOMAIN, burnAhead, fyElapsedFraction } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
+import { minorToRupees } from '../../domains/it/money.js';
 import { currentAuth } from '../../platform/context.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { computeBudgetActual, getSetting } from '../../domains/it/portfolio.js';
@@ -88,7 +89,7 @@ export async function runBudgetBurnJob(): Promise<JobResult> {
   const now = new Date();
 
   for (const line of lines) {
-    const planned = Number(line.planned);
+    const planned = minorToRupees(line.plannedMinor);
     const actual = await computeBudgetActual(line);
     const elapsed = fyElapsedFraction(line.fy, now);
     const result = burnAhead(planned, actual, elapsed, marginPct);

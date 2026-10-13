@@ -35,7 +35,9 @@ model ItAsset {
   serial String?
 
   purchaseDate DateTime?
-  purchaseCost Decimal?  @db.Decimal(18, 2)
+  /// Paise. Was Decimal(18,2) until 20261013222000_it_money_minor, which
+  /// converted it in place; a Decimal would be rounded by the first float that touched it.
+  purchaseCostMinor BigInt?
   warrantyEnd  DateTime?
 
   /// The supplier's name as typed in. `vendorId` is a bare id into workstream
