@@ -175,7 +175,7 @@ async function deliverRow(row: OutboxRow, now: Date): Promise<'delivered' | 'ret
     // Also written to the dead-letter table the admin view and health domain
     // read, one row per failed subscriber, so existing surfaces keep working.
     for (const f of failures) {
-      await prisma.eventDeadLetter.create({
+      const letter = await prisma.eventDeadLetter.create({
         data: {
           tenantId: row.tenantId,
           eventRecordId: row.eventRecordId,
@@ -185,6 +185,14 @@ async function deliverRow(row: OutboxRow, now: Date): Promise<'delivered' | 'ret
           lastError: f.error,
           payload: envelope as never,
         },
+      });
+      // A subscriber that gave up on an event is a delivery the business did not get.
+      // The payload is left out of the audit: the event record already holds it.
+      await auditWrite({
+        action: 'create',
+        subjectType: 'event_dead_letter',
+        subjectId: letter.id,
+        after: { eventName: row.eventName, subscriberKey: f.key, attempts: row.attempts },
       });
     }
     return 'dead';

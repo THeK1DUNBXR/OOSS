@@ -28,7 +28,11 @@ import {
 } from '@kaizen/shared';
 import { TEMPLATES, type TemplateSpec } from './templates.js';
 
-registerGovernedEntities('fin', ['import_batch']);
+registerGovernedEntities('fin', ['import_batch', 'import_row']);
+
+// A purge writes one row per staged row, so it runs well past the default interactive
+// transaction timeout. Matches the chunk commit's timeout (commit.ts CHUNK_TIMEOUT_MS).
+const PURGE_TIMEOUT_MS = 5 * 60_000;
 
 /**
  * What a staged row shows in place of a regulated value for a caller below
@@ -196,22 +200,27 @@ export async function purgeStagedRaw(id: string): Promise<{ rows: number }> {
     return [{ id: r.id, normalised: blanked }];
   });
 
-  await prisma.$transaction([
-    prisma.importRow.updateMany({
-      where: { tenantId: auth.tenantId, batchId: id },
-      data: { raw: {} as never },
-    }),
-    ...normalisedUpdates.map((u) =>
-      prisma.importRow.update({ where: { id: u.id }, data: { normalised: u.normalised as never } }),
-    ),
-  ]);
-
-  await auditWrite({
-    action: 'update',
-    subjectType: 'import_batch',
-    subjectId: id,
-    meta: { rowsPurged: rows.length, fields: ['raw', 'normalised.regulated'] },
-  });
+  // The audit row is inside the transaction, so a purge that rolls back leaves no record of
+  // a purge that did not happen.
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.importRow.updateMany({
+        where: { tenantId: auth.tenantId, batchId: id },
+        data: { raw: {} as never },
+      });
+      for (const u of normalisedUpdates) {
+        await tx.importRow.update({ where: { id: u.id }, data: { normalised: u.normalised as never } });
+      }
+      await auditWrite({
+        action: 'update',
+        subjectType: 'import_batch',
+        subjectId: id,
+        meta: { rowsPurged: rows.length, fields: ['raw', 'normalised.regulated'] },
+        tx,
+      });
+    },
+    { timeout: PURGE_TIMEOUT_MS, maxWait: 10_000 },
+  );
 
   await emit({
     name: EVENTS.IMPORT_PURGED,

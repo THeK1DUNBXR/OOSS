@@ -184,6 +184,13 @@ export async function stageImport(input: {
       createdById: auth.partyId,
     },
   });
+  // Written before the rows, so a staging that fails part-way still leaves the batch on record.
+  await auditWrite({
+    action: 'create',
+    subjectType: 'import_batch',
+    subjectId: batch.id,
+    after: { fileName: input.fileName, kind: detection.kind, sourceFormat, status: 'parsed' },
+  });
 
   const stats: Record<string, number> = { total: 0, ready: 0, duplicate: 0, skipped: 0, error: 0 };
   const spec = templateByKind(detection.kind);
@@ -226,6 +233,13 @@ export async function stageImport(input: {
   await prisma.importBatch.update({
     where: { id: batch.id },
     data: { stats: stats as never, status: 'previewed' },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'import_batch',
+    subjectId: batch.id,
+    before: { status: 'parsed' },
+    after: { status: 'previewed', stats },
   });
 
   await emit({
@@ -360,10 +374,18 @@ export async function setImportOptions(id: string, options: Record<string, unkno
   if (batch.status === 'committed') {
     throw ApiError.conflict('This import has already been committed. Revert it first if the options were wrong.');
   }
-  return prisma.importBatch.update({
+  const updated = await prisma.importBatch.update({
     where: { id },
     data: { options: { ...(batch.options as object), ...options } as never },
   });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'import_batch',
+    subjectId: id,
+    before: { options: batch.options },
+    after: { options: updated.options },
+  });
+  return updated;
 }
 
 /** Excludes a row from the commit, or puts an excluded one back. */
@@ -375,5 +397,14 @@ export async function setRowStatus(rowId: string, status: 'ready' | 'skipped') {
   if (row.status === 'committed') {
     throw ApiError.conflict('That row is already in the books. Reverting the batch is the way to take it out.');
   }
-  return prisma.importRow.update({ where: { id: rowId }, data: { status, message: null } });
+  const updated = await prisma.importRow.update({ where: { id: rowId }, data: { status, message: null } });
+  // Taking a row in or out of the commit decides what reaches the books, so it is audited.
+  await auditWrite({
+    action: 'update',
+    subjectType: 'import_row',
+    subjectId: rowId,
+    before: { status: row.status },
+    after: { status },
+  });
+  return updated;
 }

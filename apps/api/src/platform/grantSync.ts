@@ -36,6 +36,7 @@ import { prisma, unscopedPrisma } from './db.js';
 import { config } from './config.js';
 import { asSystem } from './context.js';
 import { emit } from '../platform/eventBus.js';
+import { auditWrite } from '../platform/audit.js';
 import { ROLE_GRANT_MATRIX, parseCell } from '../seed/grants.js';
 
 export interface GrantAddition {
@@ -90,7 +91,14 @@ export async function addMissingGrants(tenantId: string): Promise<GrantAddition[
           },
         });
 
-        // A permission change leaves the same trail whoever makes it.
+        // A permission change leaves the same trail whoever makes it. The audit
+        // row precedes the event, as everywhere else (CLAUDE.md rule 5).
+        await auditWrite({
+          action: 'permission_change',
+          subjectType: 'grant',
+          subjectId: created.id,
+          after: { roleSlug: slug, resource: spec.resource, verbs: parsed.verbs, scope: parsed.scope },
+        });
         await emit({
           name: EVENTS.GRANT_CHANGED,
           subject: { entityType: 'grant', entityId: created.id },

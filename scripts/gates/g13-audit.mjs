@@ -42,8 +42,17 @@
 //   journal*      written only by platform/ledger.ts post() (CLAUDE.md rule 2),
 //                 so exempt only in that file. A journal write anywhere else is a
 //                 rule 2 violation and stays visible here.
-// jobClaim, jobFiringLog and eventDeadLetter are not exempt. They are bookkeeping
-// too, but nobody has reviewed them as audit infrastructure, so they count.
+//   recordSequence  a counter: the increments that number documents, record codes and
+//                 journal entries. The one administrative write, setNextNumber, is
+//                 audited directly (platform/documentNumber.ts).
+//   navNode       the menu, rebuilt from NAV_REGISTRY on boot and per deploy (navSync.ts).
+//   dailyMetric   dashboard figures recounted each day from source rows that are audited.
+//   narrative     generated Command Center prose over events; the events it cites are the record.
+//   notification  in-app notices and their read state. The exception, approval or event that
+//                 raised a notice is audited where it happens.
+//   jobClaim      scheduler lease and attempt state (jobs/scheduler.ts), not business state.
+//   jobFiringLog  dedupe claim for a job's repeat notice (jobs/scheduler.ts claimFiring).
+// eventDeadLetter is not exempt: a dead letter is a delivery the business did not get.
 //
 // Roots: domains, routes, jobs, imports, platform, events. cli, agents, lib, seed
 // and scripts are outside the roots. Tests, seed and fixture paths are excluded.
@@ -91,6 +100,13 @@ export const EXEMPT_MODELS = new Set([
   'journalEntry',
   'journalLine',
   'journalReversal',
+  'recordSequence',
+  'navNode',
+  'dailyMetric',
+  'narrative',
+  'notification',
+  'jobClaim',
+  'jobFiringLog',
 ]);
 
 // Seed and fixture directories, and seed files (seed.ts, seed-demo.ts). A file

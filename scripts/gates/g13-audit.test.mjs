@@ -7,7 +7,15 @@ import { analyzeAudit, EXEMPT_MODELS } from './g13-audit.mjs';
 import { checkRatchet } from './lib.mjs';
 
 const PROD = 'apps/api/src/domains/fixture.ts';
-const DELEGATES = new Set(['lead', 'task', 'auditRecord', 'journalEntry', 'transaction']);
+const DELEGATES = new Set([
+  'lead',
+  'task',
+  'auditRecord',
+  'journalEntry',
+  'transaction',
+  'recordSequence',
+  'eventDeadLetter',
+]);
 
 function analyze(text, file = PROD, extra = {}) {
   return analyzeAudit({ [file]: text }, { delegates: DELEGATES, ...extra });
@@ -54,6 +62,26 @@ test('skips a model that is audit or event infrastructure', () => {
   assert.deepEqual(result.findings, []);
   assert.equal(result.exempt, 1);
   assert.equal(result.writes, 0);
+});
+
+test('a reviewed counter is exempt, and a dead letter is not', () => {
+  const result = analyze(
+    [
+      'export async function bump(tx) {',
+      '  await tx.recordSequence.upsert({ where: {}, create: {}, update: {} });',
+      '}',
+      'export async function deadLetter(tx, row) {',
+      '  await tx.eventDeadLetter.create({ data: row });',
+      '}',
+      '',
+    ].join('\n'),
+    'apps/api/src/platform/fixture.ts',
+  );
+  assert.deepEqual(
+    result.findings.map((f) => [f.line, f.scope]),
+    [[5, 'deadLetter']],
+  );
+  assert.equal(result.exempt, 1);
 });
 
 test('a journal write is exempt only in platform/ledger.ts', () => {
