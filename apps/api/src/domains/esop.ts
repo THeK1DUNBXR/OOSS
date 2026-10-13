@@ -29,7 +29,7 @@ import {
   type PromoterCheck,
 } from '@kaizen/shared';
 import { prisma, dec, num } from '../platform/db.js';
-import { rupeesToMinor, rupeesToMinorOrNull } from '../platform/wire.js';
+import { rupeesToMinor } from '../platform/wire.js';
 import { minorToRupees, minorToRupeesOrNull } from './money.js';
 import { currentAuth } from '../platform/context.js';
 import { assertCan, assertScopeAll, scopeFor } from '../platform/permissions.js';

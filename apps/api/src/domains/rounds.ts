@@ -41,9 +41,9 @@ import { emit } from '../platform/eventBus.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { raiseException } from '../platform/exceptions.js';
-import { effectiveBalance, shareTransactionView, holderView, outgoingCount } from './equity.js';
+import { effectiveBalance, shareTransactionView, outgoingCount } from './equity.js';
 import { round2 } from '@kaizen/shared';
-import { rupeesToMinor, rupeesToMinorOrNull } from '../platform/wire.js';
+import { rupeesToMinor } from '../platform/wire.js';
 import { minorToRupees, minorToRupeesOrNull } from './money.js';
 
 // ---------------------------------------------------------------------------
@@ -198,7 +198,10 @@ export async function round(id: string) {
     round: fundingRoundView(row),
     transactions: transactions.map(shareTransactionView),
     raised: round2(raised),
-    postMoney: row.preMoneyValuationMinor != null ? round2((minorToRupeesOrNull(row.preMoneyValuationMinor) ?? 0) + raised) : null,
+    postMoney:
+      row.preMoneyValuationMinor != null
+        ? round2((minorToRupeesOrNull(row.preMoneyValuationMinor) ?? 0) + raised)
+        : null,
   };
 }
 
@@ -351,7 +354,8 @@ export async function closeRound(id: string) {
   const raised = transactions
     .filter((t) => t.type === 'allotment' && t.pricePerShareMinor != null)
     .reduce((sum, t) => sum + (num(t.count) ?? 0) * (minorToRupeesOrNull(t.pricePerShareMinor) ?? 0), 0);
-  const postMoney = row.preMoneyValuationMinor != null ? round2((minorToRupeesOrNull(row.preMoneyValuationMinor) ?? 0) + raised) : null;
+  const postMoney =
+    row.preMoneyValuationMinor != null ? round2((minorToRupeesOrNull(row.preMoneyValuationMinor) ?? 0) + raised) : null;
 
   const updated = await governedWrite(async (tx) => {
     const next = await tx.fundingRound.update({
