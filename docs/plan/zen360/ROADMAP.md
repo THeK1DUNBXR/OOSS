@@ -1,5 +1,7 @@
 # Zen 360 roadmap: owner Phase 0 and Phase 1
 
+> Phase 1 is now planned in [`PHASE-1-MASTER-PLAN.md`](PHASE-1-MASTER-PLAN.md) (23 Oct 2026). This file remains the source for Phase 0.
+
 Status: planning only. Nothing in this roadmap is built. The docs give no effort estimate. Each phase ends at a stop rule (done criteria), not at a date.
 
 Where this file and `DECISIONS.md` differ, `DECISIONS.md` governs. The item-level detail is in `ORDERED-PLAN.md`.
@@ -34,6 +36,8 @@ Round 18b (DECISIONS.md, 2026-10-11) changes this table. Tenancy items (the leak
 - **Wave 7, proof.** Concurrency suite, ~~tenant-leakage fuzzer~~ **(DEFERRED round 18b)**, eleven of the twelve CI checks (G1 to G6 and G8 to G12; G7 DEFERRED round 18b) and ledger tests L1 to L3. **Exit:** all pass. The full ten-thousand-operation test and the full concurrency runs happen at phase end (DECISIONS.md round 9 and 10).
 
 ### 1b. Phase 1: developers can work from home
+
+> Superseded for Phase 1 by [`PHASE-1-MASTER-PLAN.md`](PHASE-1-MASTER-PLAN.md) (23 Oct 2026). Kept for history; the master plan's stop rule (section 9) governs Phase 1.
 
 Owner definition (DECISIONS.md, "Owner phase definitions"): complete the features that let software developers work from home with no issues, covering daily workflow tools and delivery and project work.
 

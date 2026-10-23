@@ -1,5 +1,7 @@
 # Zen 360 ordered plan: owner Phase 0 and Phase 1 (planning only, 2026-10-10)
 
+> Phase 1 is now planned in [`PHASE-1-MASTER-PLAN.md`](PHASE-1-MASTER-PLAN.md) (23 Oct 2026). This file remains the source for Phase 0.
+
 Status: planning document, with build status on each item. Items marked DONE, BUILT, PARTLY, OPEN or NOT BUILT were checked against the code on 2026-10-12 (DECISIONS.md, round 23, item a). Items not yet checked carry no status. This file is not authority over the decisions in `docs/plan/zen360/DECISIONS.md`; where they differ, DECISIONS.md governs.
 
 Round 18b (DECISIONS.md, 2026-10-11) defers tenancy and all hosting. Items marked DEFERRED or moved below are superseded by round 18b and are kept as history.
@@ -144,6 +146,8 @@ Moved to "After Phase 1: hosting and operations (deferred)" below. The non-owner
 ---
 
 ## Phase 1: software developers can work from home
+
+> Superseded for Phase 1 by [`PHASE-1-MASTER-PLAN.md`](PHASE-1-MASTER-PLAN.md) (23 Oct 2026). The letters 1A to 1F below are the old scheme and collide with the master plan's 1A to 1P. Its section 2 maps them: 1A to 1C, 1B to 1D, 1C to 1K, 1D to 1K, 1E to 1I, 1F to 1N. Kept for history and item references.
 
 Stop rule for each sub-phase: its items are merged and its listed tests pass. Tests are written first.
 
