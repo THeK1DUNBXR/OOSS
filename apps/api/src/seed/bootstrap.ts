@@ -249,7 +249,14 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
     group: 'money',
     position: 11,
     requiredPermission: 'invoices:V',
-    synonyms: ['bill a customer', 'raise an invoice', 'sales invoice'],
+    synonyms: [
+      'bill a customer',
+      'raise an invoice',
+      'sales invoice',
+      'course invoices',
+      'reprint an invoice',
+      'search invoices',
+    ],
   },
   {
     nodeKey: 'fin_new_invoice',
@@ -260,16 +267,6 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
     position: 12,
     requiredPermission: 'invoices:C',
     synonyms: ['raise an invoice', 'course invoice', 'bill a student', 'counter sale', 'enrol and bill'],
-  },
-  {
-    nodeKey: 'fin_invoice_history',
-    label: 'Invoice History',
-    icon: 'receipt',
-    path: '/finance/invoices/history',
-    group: 'money',
-    position: 13,
-    requiredPermission: 'invoices:V',
-    synonyms: ['course invoices', 'reprint an invoice', 'search invoices'],
   },
   {
     nodeKey: 'fin_receipts',

@@ -57,9 +57,48 @@ interface JustCollected {
   finalInvoice: { id: string; recordCode: string } | null;
 }
 
+export type InvoiceTab = 'open' | 'drafts' | 'all' | 'courses';
+
+/** The tab's rows, then the search. The search runs inside the tab, so a
+ * query on Drafts can't surface an issued invoice. Matches the invoice number,
+ * the customer and the first course on the invoice — the three things a
+ * finance user remembers an invoice by. */
+export function invoicesShown(rows: InvoiceView[], tab: InvoiceTab, query: string): InvoiceView[] {
+  const inTab = rows.filter((i) => {
+    switch (tab) {
+      case 'open':
+        return (i.outstanding ?? 0) > 0 && i.status !== 'draft' && i.status !== 'void';
+      case 'drafts':
+        return i.status === 'draft';
+      case 'courses':
+        return i.division === 'education';
+      case 'all':
+        return true;
+    }
+  });
+  const q = query.trim().toLowerCase();
+  if (!q) return inTab;
+  return inTab.filter((i) => {
+    const course = i.lines.find((l) => l.courseName)?.courseName ?? '';
+    return (
+      (i.label ?? '').toLowerCase().includes(q) ||
+      (i.customerName ?? '').toLowerCase().includes(q) ||
+      course.toLowerCase().includes(q)
+    );
+  });
+}
+
+const EMPTY_TAB_MESSAGE: Record<InvoiceTab, string> = {
+  open: 'Nothing is outstanding.',
+  drafts: 'No drafts.',
+  all: 'No invoices.',
+  courses: 'No course-sale invoices.',
+};
+
 export function Invoices() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<'open' | 'drafts' | 'all'>('open');
+  const [tab, setTab] = useState<InvoiceTab>('open');
+  const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<InvoiceView | null>(null);
   const [collecting, setCollecting] = useState<InvoiceView | null>(null);
@@ -85,9 +124,10 @@ export function Invoices() {
 
   const outstanding = data.reduce((s, i) => s + (i.outstanding ?? 0), 0);
   const overdue = data.filter((i) => i.daysOverdue !== null).length;
-  const drafts = data.filter((i) => i.status === 'draft');
-  const open = data.filter((i) => (i.outstanding ?? 0) > 0 && i.status !== 'draft' && i.status !== 'void');
-  const shown = tab === 'drafts' ? drafts : tab === 'open' ? open : data;
+  const drafts = invoicesShown(data, 'drafts', '');
+  const open = invoicesShown(data, 'open', '');
+  const courses = invoicesShown(data, 'courses', '');
+  const shown = invoicesShown(data, tab, query);
 
   return (
     <div>
@@ -168,23 +208,43 @@ export function Invoices() {
         />
       </div>
 
+      {/* Invoice History used to list the course-sale invoices on its own
+          screen. It is folded in here as a tab so there is one list of
+          invoices, not two over the same rows. */}
       <Tabs
         tabs={[
           { key: 'open', label: 'Owed to us', count: open.length },
           { key: 'drafts', label: 'Drafts', count: drafts.length },
           { key: 'all', label: 'Everything', count: data.length },
+          { key: 'courses', label: 'Course sales', count: courses.length },
         ]}
         active={tab}
         onChange={setTab}
       />
+
+      <div className="mb-3">
+        <input
+          className="input max-w-sm"
+          aria-label="Search invoices"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by invoice no., customer or course"
+        />
+      </div>
 
       {isLoading ? (
         <Loading />
       ) : shown.length === 0 ? (
         <Card>
           <EmptyState
-            message={tab === 'drafts' ? 'No drafts.' : tab === 'open' ? 'Nothing is outstanding.' : 'No invoices.'}
-            hint="Bill a student, an institution or an organisation."
+            message={
+              query.trim()
+                ? tab === 'all'
+                  ? 'Nothing matches that search.'
+                  : 'Nothing on this tab matches that search. Try Everything.'
+                : EMPTY_TAB_MESSAGE[tab]
+            }
+            hint={query.trim() ? undefined : 'Bill a student, an institution or an organisation.'}
           />
         </Card>
       ) : (
@@ -308,6 +368,16 @@ export function Invoices() {
                 <Link className="btn" to={`/finance/invoices/${inv.id}/document`}>
                   Open the document
                 </Link>
+                {inv.receiptCount > 0 && (
+                  <Link className="btn" to={`/finance/invoices/${inv.id}/document`}>
+                    {inv.receiptCount} receipt{inv.receiptCount === 1 ? '' : 's'}
+                  </Link>
+                )}
+                {inv.finalInvoiceId && (
+                  <Link className="btn" to={`/finance/final-invoices/${inv.finalInvoiceId}`}>
+                    {inv.finalInvoiceCode ?? 'Final invoice'}
+                  </Link>
+                )}
                 {inv.editable && (
                   <>
                     <button className="btn" onClick={() => setEditing(inv)}>

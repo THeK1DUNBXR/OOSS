@@ -317,6 +317,6 @@ apps/web/src/
   pages/Courses.tsx               the catalogue, incl. the Fee & Add-on
                                   Master tab
   pages/kaizenInvoice/            the course-sale invoice screens: New
-                                  Invoice, Invoice History, the printed
-                                  course ledger, and their own styling
+                                  Invoice, the printed course ledger, and
+                                  their own styling
 ```

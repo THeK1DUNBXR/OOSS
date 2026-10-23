@@ -70,9 +70,6 @@ const Payments = lazy(() => import('./pages/Finance.js').then((m) => ({ default:
 const Receivables = lazy(() => import('./pages/Finance.js').then((m) => ({ default: m.Receivables })));
 const InvoiceDocument = lazy(() => import('./pages/InvoiceDocument.js').then((m) => ({ default: m.InvoiceDocument })));
 const NewInvoice = lazy(() => import('./pages/kaizenInvoice/NewInvoice.js').then((m) => ({ default: m.NewInvoice })));
-const InvoiceHistory = lazy(() =>
-  import('./pages/kaizenInvoice/InvoiceHistory.js').then((m) => ({ default: m.InvoiceHistory })),
-);
 const ReceiptDocument = lazy(() => import('./pages/ReceiptDocument.js').then((m) => ({ default: m.ReceiptDocument })));
 const Receipts = lazy(() => import('./pages/ReceiptDocument.js').then((m) => ({ default: m.Receipts })));
 const FinalInvoiceDocument = lazy(() =>
@@ -421,7 +418,8 @@ function Routed() {
           <Route path="/finance/assets" element={<Assets />} />
           <Route path="/finance/invoices" element={<Invoices />} />
           <Route path="/finance/invoices/new" element={<NewInvoice />} />
-          <Route path="/finance/invoices/history" element={<InvoiceHistory />} />
+          {/* Old bookmarks to Invoice History land on the one list of invoices. */}
+          <Route path="/finance/invoices/history" element={<Navigate to="/finance/invoices" replace />} />
           {/* The document route sits above the detail route: a printable invoice is
             a different surface from the list, not a modal over it. */}
           <Route path="/finance/invoices/:id/document" element={<InvoiceDocument />} />

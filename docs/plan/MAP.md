@@ -596,7 +596,7 @@
 
 **`apps/web/src/pages/FinalInvoiceDocument.tsx`** (297 lines) — FinalInvoiceDocument:38 · FinalInvoices:196
 
-**`apps/web/src/pages/Finance.tsx`** (688 lines) — Invoices:60 · Payments:446 · Receivables:623
+**`apps/web/src/pages/Finance.tsx`** (752 lines) — invoicesShown:66 · Invoices:98 · Payments:510 · Receivables:687
 
 **`apps/web/src/pages/FounderView.tsx`** (156 lines) — FounderView:43
 
@@ -779,8 +779,6 @@
 **`apps/web/src/pages/it/Vendors.tsx`** (1045 lines) — ItVendors:51 · ItVendorDetail:274 · ItVendorContracts:544 · ItVendorContractDetail:782
 
 **`apps/web/src/pages/kaizenInvoice/FeeMasterCatalog.tsx`** (122 lines) — FeeMasterCatalog:22
-
-**`apps/web/src/pages/kaizenInvoice/InvoiceHistory.tsx`** (164 lines) — InvoiceHistory:19
 
 **`apps/web/src/pages/kaizenInvoice/KaizenInvoiceDocument.tsx`** (127 lines) — KaizenInvoiceDocument:26
 

@@ -94,7 +94,7 @@ export function KaizenInvoiceDocument({ doc }: { doc: InvoiceDocumentView }) {
 
   return (
     <div>
-      <DocumentToolbar backTo="/finance/invoices/history" backLabel="Invoice History" onPrint={handlePrint} />
+      <DocumentToolbar backTo="/finance/invoices" backLabel="Invoices" onPrint={handlePrint} />
 
       {doc.isTempInvoice && (
         <div className="no-print mb-4 flex flex-wrap items-center gap-4 rounded border-l-2 border-band-watch bg-band-watch/10 px-3 py-2 text-xs">

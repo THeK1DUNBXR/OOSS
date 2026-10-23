@@ -227,8 +227,8 @@ Translucent fill (`ink-900/85` or the sidebar's own tint) + `backdrop-blur-glass
 
 ## Named exception: the course-invoice screens
 
-`apps/web/src/pages/kaizenInvoice/*` (New Invoice, Invoice History, the
-Fee & Add-on Master tab on Courses, and the printed course ledger) is a
+`apps/web/src/pages/kaizenInvoice/*` (New Invoice, the Fee & Add-on Master
+tab on Courses, and the printed course ledger) is a
 deliberate, scoped departure from every rule above: black/gold/navy,
 Archivo Black headings, thick 1.5–3px hairline-and-hard-border hierarchy,
 pill tags, no glass or soft shadow anywhere. The brief for that feature was
