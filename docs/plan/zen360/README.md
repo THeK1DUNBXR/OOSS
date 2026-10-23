@@ -1,5 +1,7 @@
 # Zen 360 proposal — verified gap analysis and plan additions
 
+> Phase 1 is now planned in [`PHASE-1-MASTER-PLAN.md`](PHASE-1-MASTER-PLAN.md) (23 Oct 2026). The phase numbers in this folder are the older scheme, and where they differ from the master plan, the master plan governs for Phase 1.
+
 The source is _Zen 360 – Unified Group Operating Platform Proposal_, shareable edition, 10 October 2026 (75 pages). It was checked against the repo at `claude/wonderful-gauss-0d3bu5`, 10 October 2026. **No code was changed.** This folder says what the proposal asks for, what the code already does, what is broken underneath it, and where the work sits in the existing phase plan.
 
 **Read this file. Open the registers only for the module you are working on.** Like `MAP.md`, they are lookups, not reading.

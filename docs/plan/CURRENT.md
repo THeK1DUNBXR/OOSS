@@ -1,5 +1,7 @@
 # Current work
 
+> Phase 1 is now planned in [`zen360/PHASE-1-MASTER-PLAN.md`](zen360/PHASE-1-MASTER-PLAN.md) (23 Oct 2026). This file remains the source for Phase 0.
+
 **Active phase:** owner Phase 0, **Wave 0: foundations** (not yet closed; see Status). The Phase 0 session continues in the order below (DECISIONS round 23, item a).
 **Also in progress (round 26, 2026-10-13):** Wave 7 (proof), local only and not pushed. Owner statement; not checked against the code.
 **Source:** [`zen360/ORDERED-PLAN.md`](zen360/ORDERED-PLAN.md), Wave 0. Stop rule: [`zen360/ROADMAP.md`](zen360/ROADMAP.md) section 1a.

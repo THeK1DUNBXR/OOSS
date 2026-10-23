@@ -4,7 +4,7 @@ Zen 360 (formerly KaiERP) — Kaizen Infinities' operating platform. CRM, HRM, F
 
 TypeScript pnpm monorepo: `apps/api` (Express + Prisma + Postgres), `apps/web` (React + Vite + Tailwind + TanStack Query), `packages/shared` (vocabulary both tiers import), hosting (server, reverse proxy, caching, routing) is undecided until after Phase 1; the Cloudflare Worker that served the built client has been removed. Schema changes go through `apps/api/prisma/migrations` (never `db push`); `db:drift` gates them in CI.
 
-Plan: start at `docs/plan/CURRENT.md` and `docs/plan/zen360/ORDERED-PLAN.md` (owner Phase 0 and Phase 1; the source of truth). Old specs are in `docs/plan/archive/`, where item numbers such as `1.6` remain valid references and old `P0`–`P8` labels are retired. **Read only the one item spec you need.**
+Plan: Phase 1 is in `docs/plan/zen360/PHASE-1-MASTER-PLAN.md` (23 Oct 2026; the source of truth for Phase 1). Phase 0 is still in `docs/plan/CURRENT.md` and `docs/plan/zen360/ORDERED-PLAN.md`, which stay live for Phase 0 and carry Phase 1 banners. Superseded plan files with no live content move to `docs/plan/archive/` (the old zen360 Phase 1 sections moved there on 23 Oct 2026: `zen360-ordered-plan-phase-1-old.md` and `zen360-roadmap-phase-1-old.md`), where item numbers such as `1.6` remain valid references and old `P0`–`P8` labels are retired. **Read only the one item spec you need.**
 
 ## Rules
 
@@ -61,3 +61,27 @@ Disagree with the plan? Say so in the PR with reasoning. It was written without 
 - **`/handoff` then `/clear` between phases.** Carrying a finished phase forward pays for it on every subsequent turn.
 - **Stop and report rather than half-finish.** A half-converted refactor costs more to recover than to redo.
 - **Do not narrate.** Say what changed, at the end. Output tokens cost more than input, and the tool calls are already visible.
+
+## Frontend design system
+
+Kaizen Glass (root `DESIGN.md`, `design/tokens.css`) is the target design system, migrated in stages under proposed sub-phase 1Q (`PHASE-1-MASTER-PLAN.md` section 7). Until 1Q Stage 1 ships, existing `apps/web` screens follow `apps/web/DESIGN.md` and the Tailwind tokens enforced by `scripts/check-tailwind-tokens.mjs` (run by `pnpm lint`). Do not mix the two systems in one screen.
+For Kaizen Glass work: use only `design/tokens.css` tokens, applied as `var(--name)`; follow the Do and Don't lists in `DESIGN.md`; keep the "Example data" label (section 5.24) on any screen showing sample figures.
+Fonts and brand marks are in `design/fonts/` and `design/brand/`. Do not load fonts from a CDN.
+Open questions and known conflicts are in `DESIGN.md` section 10. Do not resolve them silently.
+
+## Build and review policy (D-48)
+
+Source: `PHASE-1-MASTER-PLAN.md` section 4.
+
+- Haiku builds: code, docs, extraction and research. Opus advises and orchestrates only; it does not write the change.
+- Sonnet, in a fresh context, reviews every change in a high-stakes area before merge. It never reviews its own work.
+- High-stakes areas:
+  1. Money and the ledger: `ledger.ts`, `money.ts`, invoicing, payments, refunds.
+  2. Payroll and statutory rules: PF, ESI, PT, TDS, GST, `StatutoryRule` rows.
+  3. Login, permissions and approvals: `permissions.ts`, 2FA, sessions, approvals, maker-checker.
+  4. Data access and the audit trail: tenant scoping, `audit.ts`, RLS.
+  5. Personal data: DPDP consent, field visibility, anything sent to an AI model.
+  6. Schema migrations.
+- The reviewer gets the diff and these rules, not the builder's reasoning. Findings cite `file:line`, or say "no findings".
+- Two unresolved disagreements go to Opus, then to the owner.
+- Everything else: CI only.

@@ -1,6 +1,6 @@
 # Archive: superseded phase plan
 
-Everything in this folder was the repo's original P0 to P8 plan. It was superseded on 2026-10-11 by the owner's plan in `docs/plan/zen360/`. Files here are kept for item specs and history. They are not an instruction source.
+Most of this folder was the repo's original P0 to P8 plan, superseded on 2026-10-11 by the owner's plan in `docs/plan/zen360/`. The two `zen360-*-phase-1-old.md` files are the old owner Phase 1 sections (1A to 1F), archived on 23 Oct 2026 when Phase 1 moved to `docs/plan/zen360/PHASE-1-MASTER-PLAN.md`. Files here are kept for item specs and history. They are not an instruction source.
 
 **Source of truth:** `docs/plan/zen360/ORDERED-PLAN.md`, with `docs/plan/zen360/ROADMAP.md` for stop rules and the deferred list, and `docs/plan/zen360/DECISIONS.md` where any of them differ (DECISIONS governs).
 
@@ -13,21 +13,23 @@ Everything in this folder was the repo's original P0 to P8 plan. It was supersed
 
 ## Files in this folder
 
-| File                      | What it was                                                                                                     |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `README-old-index.md`     | The old index (`docs/plan/README.md` before 2026-10-11). Renamed here because `archive/README.md` is this page. |
-| `phase-0-stabilise.md`    | Old P0, items 0.1 to 0.8                                                                                        |
-| `phase-1-ledger.md`       | Old P1, items 1.1 to 1.6                                                                                        |
-| `phase-2-audit.md`        | Old P2, items 2.1 and 2.2                                                                                       |
-| `phase-3-statutory.md`    | Old P3, items 3.1 to 3.5                                                                                        |
-| `phase-4-interface.md`    | Old P4, items 4.1 to 4.6 (including 4.2a)                                                                       |
-| `phase-5-semantic.md`     | Old P5, items 5.1 to 5.3                                                                                        |
-| `phase-6-intelligence.md` | Old P6, items 6.1 to 6.5                                                                                        |
-| `phase-7-product.md`      | Old P7, product and tenancy items                                                                               |
-| `phase-8-proof.md`        | Old P8, proof and assurance items                                                                               |
-| `sequencing.md`           | Old staffing and order notes                                                                                    |
-| `rationale.md`            | Old reasoning for the P0 to P8 shape                                                                            |
-| `prompts.md`              | Old kick-off prompts, one per old phase                                                                         |
+| File                                 | What it was                                                                                                        |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `README-old-index.md`                | The old index (`docs/plan/README.md` before 2026-10-11). Renamed here because `archive/README.md` is this page.    |
+| `phase-0-stabilise.md`               | Old P0, items 0.1 to 0.8                                                                                           |
+| `phase-1-ledger.md`                  | Old P1, items 1.1 to 1.6                                                                                           |
+| `phase-2-audit.md`                   | Old P2, items 2.1 and 2.2                                                                                          |
+| `phase-3-statutory.md`               | Old P3, items 3.1 to 3.5                                                                                           |
+| `phase-4-interface.md`               | Old P4, items 4.1 to 4.6 (including 4.2a)                                                                          |
+| `phase-5-semantic.md`                | Old P5, items 5.1 to 5.3                                                                                           |
+| `phase-6-intelligence.md`            | Old P6, items 6.1 to 6.5                                                                                           |
+| `phase-7-product.md`                 | Old P7, product and tenancy items                                                                                  |
+| `phase-8-proof.md`                   | Old P8, proof and assurance items                                                                                  |
+| `sequencing.md`                      | Old staffing and order notes                                                                                       |
+| `rationale.md`                       | Old reasoning for the P0 to P8 shape                                                                               |
+| `prompts.md`                         | Old kick-off prompts, one per old phase                                                                            |
+| `zen360-ordered-plan-phase-1-old.md` | Old owner Phase 1 section from `zen360/ORDERED-PLAN.md`, items 1A to 1F and Feature 1 waves. Archived 23 Oct 2026. |
+| `zen360-roadmap-phase-1-old.md`      | Old owner Phase 1 table from `zen360/ROADMAP.md` section 1b, rows 1A to 1F and F1 W2 to W6. Archived 23 Oct 2026.  |
 
 ## Mapping: old phase to owner plan
 
