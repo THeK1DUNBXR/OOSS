@@ -4,7 +4,7 @@ Zen 360 (formerly KaiERP) — Kaizen Infinities' operating platform. CRM, HRM, F
 
 TypeScript pnpm monorepo: `apps/api` (Express + Prisma + Postgres), `apps/web` (React + Vite + Tailwind + TanStack Query), `packages/shared` (vocabulary both tiers import), hosting (server, reverse proxy, caching, routing) is undecided until after Phase 1; the Cloudflare Worker that served the built client has been removed. Schema changes go through `apps/api/prisma/migrations` (never `db push`); `db:drift` gates them in CI.
 
-Plan: Phase 1 is in `docs/plan/zen360/PHASE-1-MASTER-PLAN.md` (23 Oct 2026; the source of truth for Phase 1). Phase 0 is still in `docs/plan/CURRENT.md` and `docs/plan/zen360/ORDERED-PLAN.md`, which stay live for Phase 0 and carry Phase 1 banners. Superseded plan files with no live content move to `docs/plan/archive/` (none has moved yet), where item numbers such as `1.6` remain valid references and old `P0`–`P8` labels are retired. **Read only the one item spec you need.**
+Plan: Phase 1 is in `docs/plan/zen360/PHASE-1-MASTER-PLAN.md` (23 Oct 2026; the source of truth for Phase 1). Phase 0 is still in `docs/plan/CURRENT.md` and `docs/plan/zen360/ORDERED-PLAN.md`, which stay live for Phase 0 and carry Phase 1 banners. Superseded plan files with no live content move to `docs/plan/archive/` (the old zen360 Phase 1 sections moved there on 23 Oct 2026: `zen360-ordered-plan-phase-1-old.md` and `zen360-roadmap-phase-1-old.md`), where item numbers such as `1.6` remain valid references and old `P0`–`P8` labels are retired. **Read only the one item spec you need.**
 
 ## Rules
 

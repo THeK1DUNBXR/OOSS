@@ -48,6 +48,21 @@ Each rule cites its source. Where the prototype does not fully follow a rule, se
 7. **Plain, true, British-Indian business English.** No exclamation marks, no slogans, no emoji. "Not yet measured" is never shown as zero. Empty states are true statements. Indian numbering (₹4,50,000) and date order (19 Oct 2026). (P1 "Voice and glossary".)
 8. **Motion is one grammar.** One curve, 150 to 300 ms, exits faster than entrances, and only `transform`, `opacity`, `filter`, `clip-path` animate. Reduced motion removes travel. (SRC `css/motion.css` header; P1 "Motion".)
 
+### 1.1 Interaction and efficiency
+
+Source: `docs/plan/zen360/PHASE-1-MASTER-PLAN.md` section 7, "1Q usability requirements" (owner request, 23 Oct 2026). Speed never removes a control.
+
+1. **Click budgets.** Every routine task has a step budget from Home, in the table in that section. New screens must meet it. End-to-end tests count steps, and a screen over budget fails CI.
+2. **Act where you see it.** Approve, reject, assign and record from the list row or from Home, without opening the record first. Bulk actions only where safe, within the bulk-approve limit once D-35 is settled.
+3. **Smart defaults.** Prefill from context (cohort, project, student, client) and from the user's last entry. A routine entry becomes a confirmation.
+4. **Keyboard first.** The Go palette (Ctrl+K) runs actions, not only navigation. Tally F-keys in Finance and mnemonics elsewhere (D-36). Every action is reachable without a mouse.
+5. **Undo over confirm.** A reversible action acts at once and offers Undo. Confirm an irreversible or money-moving action. A posted journal entry is corrected only by reversal.
+6. **Home shows today.** Home lists only the items that need this person today, each with its action button.
+7. **Phone one-handed.** Approvals and Requests are one tap from the bottom capsule. Money-out approval needs a deliberate tap, never a swipe.
+8. **Plain forms.** Fewer fields, more shown only when needed, inline validation, ₹ with lakh grouping, IST dates.
+9. **Macros and templates prepare work only.** Nothing they run posts, pays, runs payroll, files or emails a customer without human approval. Every run is audited.
+10. **Speed never removes a control.** Approvals, maker-checker and 2FA stay as built, however short the path.
+
 ---
 
 ## 2. Tokens
@@ -982,6 +997,9 @@ Rule: 44px for every touch control on phone. The base `.btn` at 28px is not safe
 8. Animate only transform, opacity, filter, clip-path and grid rows, with the named durations. Give every animation a reduced-motion path.
 9. Put money decisions in Approvals with a step-up code at commit and no undo tap (P3 D-13 grouping note; section 10).
 10. Test both themes (light, true-black dark) and 1440px and 390px widths before handing over.
+11. Put the primary action on the row or card, so the common case is one tap from the list or Home (1.1, item 2).
+12. Offer Undo for a reversible action, and confirm only an irreversible or money-moving one (1.1, item 5).
+13. Make every routine action reachable from the Go palette and from the keyboard (1.1, item 4).
 
 **Do not**
 
@@ -995,6 +1013,10 @@ Rule: 44px for every touch control on phone. The base `.btn` at 28px is not safe
 8. Do not use `#FFC20E` as a focus outline on light. Use `var(--ring)`.
 9. Do not ship the prototype-only controls in 5.30.
 10. Do not write "Snooze", "Asked by", "Chennai" or exclamation marks into copy.
+11. Do not add a confirmation dialog to a reversible action. Offer Undo instead (1.1, item 5).
+12. Do not make an approval swipeable. Money-out approval needs a deliberate tap (1.1, item 7).
+13. Do not let a template or macro post, pay, run payroll, file or email a customer without human approval (1.1, item 9).
+14. Do not drop an approval, maker-checker or 2FA step to save a click (1.1, item 10).
 
 ---
 
