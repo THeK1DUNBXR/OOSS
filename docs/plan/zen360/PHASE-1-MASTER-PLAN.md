@@ -288,6 +288,48 @@ Each table is as in the draft. G references carry the gap-list reference in brac
 
 1Q is not in the stop rule unless the owner adds it (see section 9 and decision 10).
 
+### 1Q usability requirements (owner request, 23 Oct 2026)
+
+Routine work should take the fewest possible steps. Speed never removes a control: approvals, maker-checker, 2FA and the journal rules stay as they are.
+
+**Principles**
+
+1. Click budget. Every routine task has a maximum number of steps, checked by an end-to-end test that counts interactions. A screen change that exceeds its budget fails CI.
+2. Act where you see it. Approve, reject, assign and record from the list row or from Home, without opening the record first. Bulk actions where safe, within the bulk-approve limit once D-35 is settled.
+3. Smart defaults. Forms prefill from context (current cohort, project, student, client) and from the user's last entry. Routine entries become confirmations.
+4. Keyboard first. The Go palette (Ctrl+K) runs actions, not only navigation ("new invoice", "approve leave"). Tally F-keys in Finance and mnemonics elsewhere (D-36). Every action is reachable without a mouse.
+5. Undo over confirm. Reversible actions act at once and offer Undo. Confirmation is kept for irreversible or money-moving actions; posted journal entries are corrected only by reversal.
+6. Home shows today. Each person's Home lists only what needs them today, each item with its action button.
+7. Phone one-handed. Approvals and Requests are one tap from the bottom capsule. Money-out approval needs a deliberate tap, never a swipe.
+8. Plain forms. Fewer fields, more shown only when needed, inline validation, Indian formats (₹ with lakh grouping, IST dates).
+
+**Initial click budgets (to confirm with users before Stage 2)**
+
+| Routine task                                       | Budget (steps from Home)     |
+| -------------------------------------------------- | ---------------------------- |
+| Approve or reject one pending item                 | 1 (2 with a required reason) |
+| Request leave or work-from-home                    | 3                            |
+| Log today's timesheet (copy from yesterday)        | 2                            |
+| Mark a session's attendance                        | 2 plus exceptions            |
+| Record a walk-in or phone enquiry                  | 3                            |
+| Raise an invoice for an existing student or client | 4                            |
+| Record a receipt against an invoice                | 3                            |
+| Submit an expense claim with receipt               | 4                            |
+
+**Macros, staged**
+
+- Stage A, templates and saved routines: recurring invoices, copy-last timesheet, saved filters and views, preset checklists such as month-end close and new-cohort setup.
+- Stage B, user-built macros: a sequence of actions saved and run with one command. Linked to the unscheduled visual workflow builder (G 1.3); planned with it, after 1Z.
+- Guard for both stages: a macro prepares work; it never posts a journal entry, pays, runs payroll, files a return or emails a customer without human approval (repo CLAUDE.md "Never" list). Every macro run is audited like any other write.
+
+**Where each lands in 1Q**
+
+| 1Q stage                     | Usability work                                                                                     |
+| ---------------------------- | -------------------------------------------------------------------------------------------------- |
+| Stage 1 Foundation           | Click-budget test harness; row actions and Undo in the shared table and components                 |
+| Stage 2 Shell and navigation | Go palette actions and shortcuts; Home of today's actions; one-tap Approvals and Requests on phone |
+| Stage 3 Sweep and dark mode  | Smart defaults on routine forms; Stage A templates and saved routines; all budgets passing         |
+
 ## 8. 1Z Applied Corp configuration
 
 | Configuration                                                                                                                                               | Uses       |
@@ -360,6 +402,8 @@ Each table is as in the draft. G references carry the gap-list reference in brac
 10. _Proposed:_ Whether 1Q enters the stop rule (section 9, check 9).
 
 11) Build and review policy — decided 23 Oct 2026 (see Build and review policy section; decision D-48).
+
+12. _Proposed:_ Click budgets for routine tasks: confirm the initial table in section 7 with staff before 1Q Stage 2.
 
 ## Appendix A. Gap list Part 1: relevant to Applied Corp (91)
 
