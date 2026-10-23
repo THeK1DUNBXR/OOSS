@@ -61,3 +61,11 @@ Disagree with the plan? Say so in the PR with reasoning. It was written without 
 - **`/handoff` then `/clear` between phases.** Carrying a finished phase forward pays for it on every subsequent turn.
 - **Stop and report rather than half-finish.** A half-converted refactor costs more to recover than to redo.
 - **Do not narrate.** Say what changed, at the end. Output tokens cost more than input, and the tool calls are already visible.
+
+## Frontend design system
+
+Zen 360 frontend uses the Kaizen Glass design system. Before building or changing any frontend UI, read `DESIGN.md` at the repo root.
+Use only tokens from `design/tokens.css`, applied as `var(--name)`. Never hard-code a colour, font or spacing that has a token.
+Follow the Do and Don't lists in `DESIGN.md`. Keep the "Example data" label rule (section 5.24) on any screen that shows sample figures.
+Fonts and brand marks are in `design/fonts/` and `design/brand/`. Do not load fonts from a CDN.
+Open questions and known conflicts are listed in `DESIGN.md` section 10. Do not resolve them silently.

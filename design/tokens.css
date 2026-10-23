@@ -1,0 +1,641 @@
+/* Kaizen Glass design tokens, Zen 360.
+   Source: artifact 6qVSdzK1XYGMAtC2deCUJE, version 1792538168-3a83, css/tokens.css, with the cascade
+   overrides from the live stylesheets listed at the end of this file. Names and values are copied from
+   the source. The source uses light-dark(light, dark); it is split here into the light block and the
+   dark blocks, under the same selectors the source uses for dark mode. */
+
+/* ===== colour (light), and default for every token ===== */
+:root{
+  /* colour */
+  --prim-top:#FFC20E;
+  --spot:rgba(255,194,14,.16);
+  --au-a:rgba(255,214,90,.42);
+  --au-b:rgba(110,120,200,.20);
+  --au-c:rgba(255,194,14,.20);
+  --accent:#8A6A00;
+  --accent-fill:#FFC20E;
+  --accent-soft:rgba(15,15,18,.06);
+  --band-bg:transparent;
+  --band-ink:#0F0F12;
+  --band-link:#0F0F12;
+  --band-sec:#3A3A45;
+  --band-ul:#FFC20E;
+  --bg:#FFFFFF;
+  --btn-hover:#FFD04D;
+  --btn-hover-ink:#0F0F12;
+  --c-admin:#475569;
+  --c-board:#4F46E5;
+  --c-communication:#EA580C;
+  --c-delivery:#16A34A;
+  --c-money:#2563EB;
+  --c-people:#0D9488;
+  --c-sales:#DB2777;
+  --c-today:#F59E0B;
+  --c-training:#7C3AED;
+  --cash-ink:#0F0F12;
+  --ct-admin:#475569;
+  --ct-board:#4F46E5;
+  --ct-communication:#AD4109;
+  --ct-delivery:#107535;
+  --ct-money:#2159D3;
+  --ct-people:#0A7067;
+  --ct-sales:#B42062;
+  --ct-today:#935F07;
+  --ct-training:#7235DA;
+  --d-ed:#12805C;
+  --d-sk:#C2670F;
+  --d-sw:#2A78D6;
+  --fill:rgba(15,15,18,.05);
+  --fill-strong:rgba(15,15,18,.09);
+  --gold:#C9A227;
+  --gold-hi:#FFC20E;
+  --green:#1A7A4C;
+  --hero:transparent;
+  --hero-glow:rgba(255,194,14,.30);
+  --hero-glow-2:rgba(11,10,69,.07);
+  --ink:#0F0F12;
+  --link:#0F0F12;
+  --on-accent:#0F0F12;
+  --on-dc:#FFFFFF;
+  --orange:#A64E08;
+  --orange-soft:rgba(166,78,8,.09);
+  --pill-bg:rgba(15,15,18,.05);
+  --pill-ink:#0F0F12;
+  --prim-bot:#FFB000;
+  --r1:#C7D8FA;
+  --r2:#8FB0F3;
+  --r3:#3B6FE0;
+  --r4:#1E3A8A;
+  --red:#AD2C22;
+  --ring:#0F0F12;
+  --s-in:#2563EB;
+  --s-out:#D97706;
+  --scrim:rgba(15,15,18,.18);
+  --secondary:#3A3A45;
+  --sel:rgba(15,15,18,.06);
+  --sep:rgba(15,15,18,.14);
+  --series:#2B2B33;
+  --surface:#FFFFFF;
+  --tertiary:#5A5A66;
+  --zg-fill:rgba(15,15,18,.06);
+  --zg-glass:rgba(255,255,255,.88);
+  --zg-hair:rgba(15,15,18,.14);
+  --zg-ink:#0F0F12;
+  --zg-ink2:#3A3A45;
+  --zg-line:rgba(15,15,18,.10);
+  /* glass (blur, saturation, tints, borders, ambient field) */
+  --g-b1:#FFC20E;
+  --edge-top:rgba(255,255,255,1);
+  --hero-sheen:linear-gradient(180deg,rgba(255,255,255,.78) 0,rgba(255,255,255,.18) 42%,transparent 70%);
+  --au-x1:12%;
+  --au-x2:92%;
+  --au-x3:78%;
+  --au-y1:6%;
+  --au-y2:18%;
+  --au-y3:98%;
+  --edge-bot:rgba(15,15,18,.18);
+  --edge-mid:rgba(255,255,255,.55);
+  --g-b2:#FF9F43;
+  --g-b3:#5AA2FF;
+  --g-bd:rgba(15,15,18,.08);
+  --g-bg:rgba(255,255,255,.44);
+  --g-bg-float:rgba(255,255,255,.8);
+  --g-blur:blur(28px) saturate(160%);
+  --g-d:#FFC20E;
+  --g-d3:#5AA2FF;
+  --g-d3p:color-mix(in srgb,#5AA2FF 80%,#fff);
+  --g-dp:color-mix(in srgb,#FFC20E 80%,#fff);
+  --g-f1:#FFC20E;
+  --g-f1p:color-mix(in srgb,#FFC20E 80%,#fff);
+  --g-f2:#FF9F43;
+  --g-f2p:color-mix(in srgb,#FF9F43 80%,#fff);
+  --g-inset-bg:rgba(255,255,255,.55);
+  --glass:rgba(255,255,255,.5);
+  --glass-hi:rgba(255,255,255,.8);
+  --mat-chrome-bd:rgba(15,15,18,.08);
+  --mat-chrome-bg:rgba(255,255,255,.88);
+  --mat-chrome-edge-bot:rgba(15,15,18,.14);
+  --mat-chrome-edge-top:rgba(255,255,255,1);
+  --mat-chrome-filter:blur(30px) saturate(160%);
+  --mat-regular-bd:rgba(15,15,18,.08);
+  --mat-regular-bg:rgba(255,255,255,.46);
+  --mat-regular-edge-bot:rgba(15,15,18,.18);
+  --mat-regular-edge-top:rgba(255,255,255,1);
+  --mat-regular-filter:blur(28px) saturate(160%);
+  --mat-thick-bd:rgba(15,15,18,.09);
+  --mat-thick-bg:rgba(255,255,255,.88);
+  --mat-thick-edge-bot:rgba(15,15,18,.16);
+  --mat-thick-edge-top:rgba(255,255,255,1);
+  --mat-thick-filter:blur(30px) saturate(160%);
+  --mat-thin-bd:rgba(15,15,18,.10);
+  --mat-thin-bg:rgba(255,255,255,.5);
+  --mat-thin-edge-bot:rgba(15,15,18,.12);
+  --mat-thin-edge-top:rgba(255,255,255,1);
+  --mat-thin-filter:blur(16px) saturate(140%);
+  --mat-ultrathin-bd:rgba(15,15,18,.05);
+  --mat-ultrathin-bg:rgba(255,255,255,.22);
+  --mat-ultrathin-edge-bot:rgba(15,15,18,.06);
+  --mat-ultrathin-edge-top:rgba(255,255,255,.8);
+  --mat-ultrathin-filter:blur(10px) saturate(130%);
+  /* elevation / shadow */
+  --btn-glow:none;
+  --g-inset-sh:inset 0 0 0 1px rgba(15,15,18,.10);
+  --g-sh:0 1px 2px rgba(15,15,18,.04),0 12px 32px -16px rgba(15,15,18,.12);
+  --g-sh-float:0 2px 4px rgba(15,15,18,.05),0 24px 56px -20px rgba(15,15,18,.22);
+  --g-spec:inset 0 1px 0 rgba(255,255,255,.9);
+  --mat-chrome-hl:inset 0 1px 0 rgba(255,255,255,1);
+  --mat-chrome-sh:0 1px 2px rgba(15,15,18,.05),0 14px 36px -16px rgba(15,15,18,.20);
+  --mat-regular-hl:inset 0 1px 0 rgba(255,255,255,.9);
+  --mat-regular-sh:0 1px 2px rgba(15,15,18,.04),0 12px 32px -16px rgba(15,15,18,.12);
+  --mat-thick-hl:inset 0 1px 0 rgba(255,255,255,1);
+  --mat-thick-sh:0 2px 4px rgba(15,15,18,.05),0 24px 56px -20px rgba(15,15,18,.22);
+  --mat-thin-hl:inset 0 1px 0 rgba(255,255,255,.85);
+  --mat-ultrathin-hl:inset 0 1px 0 rgba(255,255,255,.6);
+  --prim-hl:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -1px 0 rgba(150,90,0,.18);
+  --prim-sh:0 1px 2px rgba(120,80,0,.18),0 6px 14px -8px rgba(255,176,0,.55);
+  --shadow:0 1px 2px rgba(15,15,18,.04),0 12px 32px -16px rgba(15,15,18,.12);
+  --zg-hl:inset 0 1px 0 rgba(255,255,255,.9);
+  --zg-sh:0 1px 2px rgba(15,15,18,.04),0 12px 32px -16px rgba(15,15,18,.12);
+  /* typography */
+  --bd-serif:Poppins,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --display:Poppins,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-display:Poppins,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-num:"Archivo Fig",Archivo,Poppins,system-ui,sans-serif;
+  --f-ui:Poppins,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --fd-track-l:-.02em;
+  --fd-track-m:-.02em;
+  --fd-weight:600;
+  --ff-mono-fb:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --ff-sans-fb:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --fig-stretch:112%;
+  --figfont:"Archivo Fig",Archivo,Poppins,system-ui,sans-serif;
+  --font:Poppins,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --h-stretch:100%;
+  --h-weight:600;
+  --hl-stretch:112%;
+  --hl-track:-.02em;
+  --hl-weight:600;
+  --mono:"Archivo Fig",Archivo,Poppins,system-ui,sans-serif;
+  --serif:Poppins,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --t-body:.84375rem;
+  --t-fig:1.6875rem;
+  --t-hero:2.125rem;
+  --t-lead:1.0625rem;
+  --t-meta:.75rem;
+  --t-sheet:1.34375rem;
+  --t-title:.9375rem;
+  --track-h:-.02em;
+  /* spacing */
+  --gl:max(16px,0px);
+  --gr:max(16px,0px);
+  --u:8px;
+  /* radius */
+  --g-r:24px;
+  --r-tile:18px;
+  --spot-r:340px;
+  /* motion (durations, easings) */
+  --dur-1:120ms;
+  --dur-2:200ms;
+  --dur-3:320ms;
+  --dur-4:480ms;
+  --ease-in:cubic-bezier(.4,0,1,1);
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-spring:linear(0,.267 5%,.664 9%,.922 14%,1.028 18%,1.045 23%,1.03 27%,1.013 32%,1.002 36%,.998 41%,.999 50%,1 60%,1);
+  --m-ease:cubic-bezier(0.16,1,0.3,1);
+  --m-fast:150ms;
+  --m-in:260ms;
+  --m-out:140ms;
+  /* misc */
+  --cash-deco:none;
+  --mx:50%;
+  --my:50%;
+  --wash:0%;
+  /* z-index: none defined in the source */
+  /* breakpoints: none defined as custom properties. Media queries in the source use literal 47.5rem and 68.75rem */
+}
+
+/* ===== colour (dark) ===== */
+@media (prefers-color-scheme:dark){
+:root:not([data-theme="light"]){
+  /* colour */
+  --spot:rgba(255,176,40,.07);
+  --au-a:rgba(255,150,30,.17);
+  --au-b:rgba(40,46,150,.22);
+  --au-c:rgba(255,120,20,.09);
+  --accent:#FFC20E;
+  --accent-soft:rgba(255,255,255,.08);
+  --band-ink:#F2F2F4;
+  --band-link:#F2F2F4;
+  --band-sec:#A8A8B4;
+  --bg:#000000;
+  --c-admin:#94A3B8;
+  --c-board:#818CF8;
+  --c-communication:#FB923C;
+  --c-delivery:#4ADE80;
+  --c-money:#60A5FA;
+  --c-people:#2DD4BF;
+  --c-sales:#F472B6;
+  --c-today:#FBBF24;
+  --c-training:#A78BFA;
+  --cash-ink:#FFC20E;
+  --ct-admin:#96A5B9;
+  --ct-board:#8E98F9;
+  --ct-communication:#FB923C;
+  --ct-delivery:#4ADE80;
+  --ct-money:#60A5FA;
+  --ct-people:#2DD4BF;
+  --ct-sales:#F475B7;
+  --ct-today:#FBBF24;
+  --ct-training:#AB90FA;
+  --fill:rgba(255,255,255,.06);
+  --fill-strong:rgba(255,255,255,.10);
+  --green:#30D158;
+  --hero-glow:rgba(255,140,24,.20);
+  --hero-glow-2:rgba(11,10,69,.28);
+  --ink:#F2F2F4;
+  --link:#F2F2F4;
+  --on-dc:#0B1020;
+  --orange:#FF9F0A;
+  --orange-soft:rgba(255,159,10,.12);
+  --pill-bg:rgba(255,255,255,.06);
+  --pill-ink:#F2F2F4;
+  --r1:#1E3A6E;
+  --r2:#2F5FB3;
+  --r3:#5B8FEA;
+  --r4:#A9C6FA;
+  --red:#FF6961;
+  --ring:#FFC20E;
+  --scrim:rgba(0,0,0,.62);
+  --secondary:#A8A8B4;
+  --sel:rgba(255,255,255,.08);
+  --sep:rgba(255,255,255,.10);
+  --series:#F2F2F4;
+  --surface:#0A0A0C;
+  --tertiary:#8E8E98;
+  --zg-fill:rgba(255,255,255,.06);
+  --zg-glass:rgba(255,255,255,.05);
+  --zg-hair:rgba(255,255,255,.14);
+  --zg-ink:#F2F2F4;
+  --zg-ink2:#A8A8B4;
+  --zg-line:rgba(255,255,255,.12);
+  /* glass (blur, saturation, tints, borders, ambient field) */
+  --g-b1:#C98F00;
+  --edge-top:rgba(255,255,255,.34);
+  --hero-sheen:linear-gradient(180deg,rgba(255,255,255,.07) 0,rgba(255,255,255,.015) 42%,transparent 70%);
+  --edge-bot:rgba(255,255,255,.04);
+  --edge-mid:rgba(255,255,255,.08);
+  --g-b2:#8C4F00;
+  --g-b3:#2B55B5;
+  --g-bd:rgba(255,255,255,.10);
+  --g-bg:rgba(255,255,255,.045);
+  --g-bg-float:rgba(14,14,16,.9);
+  --g-d:#C98F00;
+  --g-d3:#2B55B5;
+  --g-d3p:#2B55B5;
+  --g-dp:#C98F00;
+  --g-f1:#C98F00;
+  --g-f1p:#C98F00;
+  --g-f2:#8C4F00;
+  --g-f2p:#8C4F00;
+  --g-inset-bg:rgba(255,255,255,.06);
+  --glass:rgba(255,255,255,.05);
+  --glass-hi:rgba(14,14,16,.9);
+  --mat-chrome-bd:rgba(255,255,255,.12);
+  --mat-chrome-bg:rgba(0,0,0,.84);
+  --mat-chrome-edge-bot:rgba(255,255,255,.05);
+  --mat-chrome-edge-top:rgba(255,255,255,.38);
+  --mat-regular-bd:rgba(255,255,255,.10);
+  --mat-regular-bg:rgba(255,255,255,.045);
+  --mat-regular-edge-bot:rgba(255,255,255,.04);
+  --mat-regular-edge-top:rgba(255,255,255,.34);
+  --mat-thick-bd:rgba(255,255,255,.12);
+  --mat-thick-bg:rgba(0,0,0,.84);
+  --mat-thick-edge-bot:rgba(255,255,255,.05);
+  --mat-thick-edge-top:rgba(255,255,255,.40);
+  --mat-thin-bd:rgba(255,255,255,.11);
+  --mat-thin-bg:rgba(255,255,255,.06);
+  --mat-thin-edge-bot:rgba(255,255,255,.05);
+  --mat-thin-edge-top:rgba(255,255,255,.26);
+  --mat-ultrathin-bd:rgba(255,255,255,.06);
+  --mat-ultrathin-bg:rgba(255,255,255,.025);
+  --mat-ultrathin-edge-bot:rgba(255,255,255,.02);
+  --mat-ultrathin-edge-top:rgba(255,255,255,.22);
+  /* elevation / shadow */
+  --g-inset-sh:inset 0 0 0 1px rgba(255,255,255,.10);
+  --g-sh:0 1px 2px rgba(0,0,0,.6),0 12px 32px -16px rgba(0,0,0,.8);
+  --g-sh-float:0 2px 4px rgba(0,0,0,.7),0 24px 56px -20px rgba(0,0,0,.9);
+  --g-spec:inset 0 1px 0 rgba(255,255,255,.08);
+  --mat-chrome-hl:inset 0 1px 0 rgba(255,255,255,.10);
+  --mat-chrome-sh:0 1px 2px rgba(0,0,0,.6),0 14px 36px -16px rgba(0,0,0,.85);
+  --mat-regular-hl:inset 0 1px 0 rgba(255,255,255,.08);
+  --mat-regular-sh:0 1px 2px rgba(0,0,0,.6),0 12px 32px -16px rgba(0,0,0,.8);
+  --mat-thick-hl:inset 0 1px 0 rgba(255,255,255,.10);
+  --mat-thick-sh:0 2px 4px rgba(0,0,0,.7),0 24px 56px -20px rgba(0,0,0,.9);
+  --mat-thin-hl:inset 0 1px 0 rgba(255,255,255,.07);
+  --mat-ultrathin-hl:inset 0 1px 0 rgba(255,255,255,.05);
+  --shadow:0 1px 2px rgba(0,0,0,.6),0 12px 32px -16px rgba(0,0,0,.8);
+  --zg-hl:inset 0 1px 0 rgba(255,255,255,.08);
+  --zg-sh:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.8);
+}
+}
+:root[data-theme="dark"]{
+  /* colour */
+  --spot:rgba(255,176,40,.07);
+  --au-a:rgba(255,150,30,.17);
+  --au-b:rgba(40,46,150,.22);
+  --au-c:rgba(255,120,20,.09);
+  --accent:#FFC20E;
+  --accent-soft:rgba(255,255,255,.08);
+  --band-ink:#F2F2F4;
+  --band-link:#F2F2F4;
+  --band-sec:#A8A8B4;
+  --bg:#000000;
+  --c-admin:#94A3B8;
+  --c-board:#818CF8;
+  --c-communication:#FB923C;
+  --c-delivery:#4ADE80;
+  --c-money:#60A5FA;
+  --c-people:#2DD4BF;
+  --c-sales:#F472B6;
+  --c-today:#FBBF24;
+  --c-training:#A78BFA;
+  --cash-ink:#FFC20E;
+  --ct-admin:#96A5B9;
+  --ct-board:#8E98F9;
+  --ct-communication:#FB923C;
+  --ct-delivery:#4ADE80;
+  --ct-money:#60A5FA;
+  --ct-people:#2DD4BF;
+  --ct-sales:#F475B7;
+  --ct-today:#FBBF24;
+  --ct-training:#AB90FA;
+  --fill:rgba(255,255,255,.06);
+  --fill-strong:rgba(255,255,255,.10);
+  --green:#30D158;
+  --hero-glow:rgba(255,140,24,.20);
+  --hero-glow-2:rgba(11,10,69,.28);
+  --ink:#F2F2F4;
+  --link:#F2F2F4;
+  --on-dc:#0B1020;
+  --orange:#FF9F0A;
+  --orange-soft:rgba(255,159,10,.12);
+  --pill-bg:rgba(255,255,255,.06);
+  --pill-ink:#F2F2F4;
+  --r1:#1E3A6E;
+  --r2:#2F5FB3;
+  --r3:#5B8FEA;
+  --r4:#A9C6FA;
+  --red:#FF6961;
+  --ring:#FFC20E;
+  --scrim:rgba(0,0,0,.62);
+  --secondary:#A8A8B4;
+  --sel:rgba(255,255,255,.08);
+  --sep:rgba(255,255,255,.10);
+  --series:#F2F2F4;
+  --surface:#0A0A0C;
+  --tertiary:#8E8E98;
+  --zg-fill:rgba(255,255,255,.06);
+  --zg-glass:rgba(255,255,255,.05);
+  --zg-hair:rgba(255,255,255,.14);
+  --zg-ink:#F2F2F4;
+  --zg-ink2:#A8A8B4;
+  --zg-line:rgba(255,255,255,.12);
+  /* glass (blur, saturation, tints, borders, ambient field) */
+  --g-b1:#C98F00;
+  --edge-top:rgba(255,255,255,.34);
+  --hero-sheen:linear-gradient(180deg,rgba(255,255,255,.07) 0,rgba(255,255,255,.015) 42%,transparent 70%);
+  --edge-bot:rgba(255,255,255,.04);
+  --edge-mid:rgba(255,255,255,.08);
+  --g-b2:#8C4F00;
+  --g-b3:#2B55B5;
+  --g-bd:rgba(255,255,255,.10);
+  --g-bg:rgba(255,255,255,.045);
+  --g-bg-float:rgba(14,14,16,.9);
+  --g-d:#C98F00;
+  --g-d3:#2B55B5;
+  --g-d3p:#2B55B5;
+  --g-dp:#C98F00;
+  --g-f1:#C98F00;
+  --g-f1p:#C98F00;
+  --g-f2:#8C4F00;
+  --g-f2p:#8C4F00;
+  --g-inset-bg:rgba(255,255,255,.06);
+  --glass:rgba(255,255,255,.05);
+  --glass-hi:rgba(14,14,16,.9);
+  --mat-chrome-bd:rgba(255,255,255,.12);
+  --mat-chrome-bg:rgba(0,0,0,.84);
+  --mat-chrome-edge-bot:rgba(255,255,255,.05);
+  --mat-chrome-edge-top:rgba(255,255,255,.38);
+  --mat-regular-bd:rgba(255,255,255,.10);
+  --mat-regular-bg:rgba(255,255,255,.045);
+  --mat-regular-edge-bot:rgba(255,255,255,.04);
+  --mat-regular-edge-top:rgba(255,255,255,.34);
+  --mat-thick-bd:rgba(255,255,255,.12);
+  --mat-thick-bg:rgba(0,0,0,.84);
+  --mat-thick-edge-bot:rgba(255,255,255,.05);
+  --mat-thick-edge-top:rgba(255,255,255,.40);
+  --mat-thin-bd:rgba(255,255,255,.11);
+  --mat-thin-bg:rgba(255,255,255,.06);
+  --mat-thin-edge-bot:rgba(255,255,255,.05);
+  --mat-thin-edge-top:rgba(255,255,255,.26);
+  --mat-ultrathin-bd:rgba(255,255,255,.06);
+  --mat-ultrathin-bg:rgba(255,255,255,.025);
+  --mat-ultrathin-edge-bot:rgba(255,255,255,.02);
+  --mat-ultrathin-edge-top:rgba(255,255,255,.22);
+  /* elevation / shadow */
+  --g-inset-sh:inset 0 0 0 1px rgba(255,255,255,.10);
+  --g-sh:0 1px 2px rgba(0,0,0,.6),0 12px 32px -16px rgba(0,0,0,.8);
+  --g-sh-float:0 2px 4px rgba(0,0,0,.7),0 24px 56px -20px rgba(0,0,0,.9);
+  --g-spec:inset 0 1px 0 rgba(255,255,255,.08);
+  --mat-chrome-hl:inset 0 1px 0 rgba(255,255,255,.10);
+  --mat-chrome-sh:0 1px 2px rgba(0,0,0,.6),0 14px 36px -16px rgba(0,0,0,.85);
+  --mat-regular-hl:inset 0 1px 0 rgba(255,255,255,.08);
+  --mat-regular-sh:0 1px 2px rgba(0,0,0,.6),0 12px 32px -16px rgba(0,0,0,.8);
+  --mat-thick-hl:inset 0 1px 0 rgba(255,255,255,.10);
+  --mat-thick-sh:0 2px 4px rgba(0,0,0,.7),0 24px 56px -20px rgba(0,0,0,.9);
+  --mat-thin-hl:inset 0 1px 0 rgba(255,255,255,.07);
+  --mat-ultrathin-hl:inset 0 1px 0 rgba(255,255,255,.05);
+  --shadow:0 1px 2px rgba(0,0,0,.6),0 12px 32px -16px rgba(0,0,0,.8);
+  --zg-hl:inset 0 1px 0 rgba(255,255,255,.08);
+  --zg-sh:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.8);
+}
+
+/* ===== conditional :root overrides from live stylesheets, in index.html load order (verbatim) ===== */
+/* css/nav.css */
+:root[data-zn="dark"]{
+  --zg-ink:#F2F2F4;
+  --zg-ink2:#A8A8B4;
+  --zg-hair:rgba(255,255,255,.14);
+  --zg-fill:rgba(255,255,255,.06);
+  --zg-glass:rgba(255,255,255,.05);
+  --zg-line:rgba(255,255,255,.12);
+  --zg-hl:inset 0 1px 0 rgba(255,255,255,.08);
+  --zg-sh:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.8);
+}
+/* css/type.css */
+@media (max-width:47.5rem){:root{
+  --t-hero:1.875rem;
+  --t-fig:1.5rem;
+}}
+/* css/glass.css */
+:root[data-view]:not([data-view="today"]){
+  --g-f1:var(--g-d);
+  --g-f2:color-mix(in srgb,var(--g-d) 70%,#fff);
+}
+/* css/glass.css */
+:root[data-view="money"]{
+  --g-d:var(--c-money);
+  --g-d3:var(--c-money);
+}
+/* css/glass.css */
+:root[data-view="people"]{
+  --g-d:var(--c-people);
+  --g-d3:var(--c-people);
+}
+/* css/glass.css */
+:root[data-view="sales"]{
+  --g-d:var(--c-sales);
+  --g-d3:var(--c-sales);
+}
+/* css/glass.css */
+:root[data-view="delivery"]{
+  --g-d:var(--c-delivery);
+  --g-d3:var(--c-delivery);
+}
+/* css/glass.css */
+:root[data-view="training"]{
+  --g-d:var(--c-training);
+  --g-d3:var(--c-training);
+}
+/* css/glass.css */
+:root[data-view="communication"]{
+  --g-d:var(--c-communication);
+  --g-d3:var(--c-communication);
+}
+/* css/glass.css */
+:root[data-view="board"]{
+  --g-d:var(--c-board);
+  --g-d3:var(--c-board);
+}
+/* css/glass.css */
+:root[data-view="admin"]{
+  --g-d:var(--c-admin);
+  --g-d3:var(--c-admin);
+}
+/* css/glass.css */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){:root{
+  --g-bg:light-dark(rgba(255,255,255,.94),rgba(24,26,36,.95));
+  --g-bg-float:light-dark(rgba(255,255,255,.97),rgba(26,28,40,.98));
+}}
+/* css/glass.css */
+@media (prefers-reduced-transparency:reduce){:root{
+  --g-bg:light-dark(rgba(255,255,255,.94),rgba(24,26,36,.95));
+  --g-bg-float:light-dark(rgba(255,255,255,.97),rgba(26,28,40,.98));
+}}
+/* css/glass.css */
+@media (max-width:47.5rem){:root{
+  --g-r:16px;
+}}
+/* css/kaizen.css */
+@media (max-width:47.5rem){html:root:root:root:root{
+  --g-r:24px;
+}}
+/* css/kaizen.css */
+@media (prefers-reduced-transparency:reduce){html:root:root:root:root{
+  --g-bg:light-dark(rgba(255,255,255,.94),rgba(10,10,12,.96));
+  --g-bg-float:light-dark(rgba(255,255,255,.98),rgba(10,10,12,.98));
+  --glass-hi:var(--g-bg-float);
+}}
+/* css/fusion.css */
+:root[data-view="money"]{
+  --au-x1:88%;
+  --au-y1:4%;
+  --au-x2:8%;
+  --au-y2:30%;
+  --au-x3:60%;
+  --au-y3:100%;
+}
+/* css/fusion.css */
+:root[data-view="people"]{
+  --au-x1:6%;
+  --au-y1:34%;
+  --au-x2:96%;
+  --au-y2:8%;
+  --au-x3:40%;
+  --au-y3:96%;
+}
+/* css/fusion.css */
+:root[data-view="sales"]{
+  --au-x1:50%;
+  --au-y1:-6%;
+  --au-x2:98%;
+  --au-y2:46%;
+  --au-x3:6%;
+  --au-y3:90%;
+}
+/* css/fusion.css */
+:root[data-view="delivery"]{
+  --au-x1:92%;
+  --au-y1:60%;
+  --au-x2:10%;
+  --au-y2:6%;
+  --au-x3:70%;
+  --au-y3:-4%;
+}
+/* css/fusion.css */
+:root[data-view="training"]{
+  --au-x1:20%;
+  --au-y1:80%;
+  --au-x2:84%;
+  --au-y2:0%;
+  --au-x3:56%;
+  --au-y3:50%;
+}
+/* css/fusion.css */
+:root[data-view="communication"]{
+  --au-x1:74%;
+  --au-y1:-2%;
+  --au-x2:2%;
+  --au-y2:56%;
+  --au-x3:90%;
+  --au-y3:84%;
+}
+/* css/fusion.css */
+:root[data-view="board"]{
+  --au-x1:30%;
+  --au-y1:-8%;
+  --au-x2:70%;
+  --au-y2:104%;
+  --au-x3:100%;
+  --au-y3:30%;
+}
+/* css/fusion.css */
+:root[data-view="admin"]{
+  --au-x1:4%;
+  --au-y1:70%;
+  --au-x2:60%;
+  --au-y2:-6%;
+  --au-x3:96%;
+  --au-y3:74%;
+}
+/* css/fusion-motion.css */
+@supports (transition-timing-function:linear(0,1)){:root{
+  --ease-spring:linear(0,.267 5%,.664 9%,.922 14%,1.028 18%,1.045 23%,1.03 27%,1.013 32%,1.002 36%,.998 41%,.999 50%,1 60%,1);
+}}
+/* css/fusion-motion.css */
+@media (prefers-reduced-motion:reduce){:root{
+  --dur-1:.01ms;
+  --dur-2:.01ms;
+  --dur-3:.01ms;
+  --dur-4:.01ms;
+  --ease-spring:linear;
+  --ease-out:linear;
+  --ease-in:linear;
+}}
+/* css/fix-chrome.css */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){:root{
+  --mat-chrome-bg:light-dark(rgba(255,255,255,.97),rgba(0,0,0,.97));
+  --mat-thick-bg:light-dark(rgba(255,255,255,.97),rgba(0,0,0,.97));
+  --g-bg-float:light-dark(rgba(255,255,255,.97),rgba(0,0,0,.97));
+  --zg-glass:light-dark(rgba(255,255,255,.97),rgba(0,0,0,.97));
+}}
